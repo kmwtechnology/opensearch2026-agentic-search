@@ -348,6 +348,7 @@ def main():
             validate_google_api()
 
         # Step 3: Product + Judgment Data Loading via Lucille ETL
+        docs_ingest_failed = False
         if not args.skip_docs:
             print("\n[6/7] Loading ESCI products and judgments via Lucille ETL...")
             print(
@@ -367,12 +368,28 @@ def main():
                 )
                 print("      ✓ Products and judgments loaded via Lucille ETL")
             except subprocess.CalledProcessError as e:
-                print(f"      ⚠ Lucille ingest failed (exit {e.returncode})")
-                print("      Check prerequisites: java -version (17+) and mvn -version (3.8+)")
+                docs_ingest_failed = True
+                print(f"      ✗ Lucille ingest failed (exit {e.returncode})")
+                print("      Check prerequisites: docker -v (default path), or")
+                print("      java -version (21+) and mvn -version (3.8+) if LUCILLE_USE_DOCKER=false")
                 print("      Retry manually: bash langchain_agent/scripts/lucille_ingest.sh")
             except FileNotFoundError:
-                print("      ⚠ lucille_ingest.sh not found — skipping Lucille ingest")
+                docs_ingest_failed = True
+                print("      ✗ lucille_ingest.sh not found — Lucille ingest skipped")
                 print("      Run manually: bash langchain_agent/scripts/lucille_ingest.sh")
+
+        # A failed ingest means zero (or stale) products are indexed — that's not
+        # a state to report as "SETUP COMPLETE". Fail loud instead of continuing
+        # past it; --skip-docs remains the way to deliberately opt out of ingest.
+        if docs_ingest_failed:
+            print("\n" + "=" * 70)
+            print("✗ SETUP INCOMPLETE — Lucille ingest failed, no products indexed")
+            print("=" * 70)
+            print("\nDatabase, OpenSearch index, and API key setup succeeded above.")
+            print("Fix the ingest issue and retry:")
+            print("  bash langchain_agent/scripts/lucille_ingest.sh --reset-index")
+            print("\n" + "=" * 70)
+            return 1
 
         # Summary
         print("\n" + "=" * 70)
