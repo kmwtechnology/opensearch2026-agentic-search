@@ -136,7 +136,7 @@ WebSocket-streamed Pydantic events: `SearchProgressEvent`, `RerankerProgressEven
 - **Hybrid search** — RRF fusion (k=60); `alpha` ∈ [0,1] weights lexical→semantic.
 - **Product dedup** — `OpenSearchRetriever.collapse_by_document()` for `esci_products`.
 - **No chunking for products** — ESCI products indexed whole (50–500 words). Controlled by `CHUNKING_STRATEGY`.
-- **Attribute normalization** — post-ingest enrichment adds normalized fields for better filter recall. `product_color_primary`, `product_color_secondary`, `product_brand_normalized` are keyword fields populated by `scripts/enrich_attribute_normalization.py` (Step 5b of `lucille_ingest.sh`). Uses `AttributeNormalizer` class with deterministic rules: 16 canonical colors (e.g., "grey" → "gray"), synonym expansion, compound extraction ("Black & Purple" → primary: "black", secondary: "purple"), brand case-folding. Improves recall: "blue" now matches "Navy", "Cyan", "Teal", etc. Raw fields preserved, no data loss. Reproducible and auditable (rules-only, no AI).
+- **Attribute normalization** — integrated into the Lucille ETL pipeline via `AttributeNormalizerStage` (custom Java stage). `product_color_primary`, `product_color_secondary`, `product_brand_normalized` are keyword fields set during ingest, not as a post-processing step. Uses deterministic rules: 16 canonical colors (e.g., "grey" → "gray"), synonym expansion, compound extraction ("Black & Purple" → primary: "black", secondary: "purple"), brand case-folding. Improves recall: "blue" now matches "Navy", "Cyan", "Teal", etc. Raw fields preserved, no data loss. Reproducible and auditable (rules-only, no AI). See **Lucille Custom Stages** below.
 
 - **Dual-mapped attributes** — `product_brand` and `product_color` mapped as both `text` (BM25) and `keyword` (faceting). Use `.keyword` for aggregations. Filters use normalized fields instead (`product_color_primary`, `product_brand_normalized`).
 - **Faceting** — `OpenSearchVectorStore.get_facets()`.
@@ -258,13 +258,22 @@ The custom `lucille-esci` Maven module (configs + mappings) lives in-repo. **`lu
 Lucille is the **only** ingest mechanism. Python ingest scripts (`ingest_esci_products.py`, `ingest_esci_judgments.py`) were removed in PR #48.
 
 1. Reads precomputed parquets from `data/` — no Google API calls for the 10k sample
-2. `products.conf` (Lucille) — sets `chunk_text`, `collection_id=esci_products`, dual-mapped brand/color fields; **also copies `product_title → title_suggest` and `product_brand → brand_suggest`** (edge-ngram fields required by `/api/suggest`; missing = typeahead returns 0 results)
+2. `products.conf` (Lucille) — sets `chunk_text`, `collection_id=esci_products`, dual-mapped brand/color fields; **also copies `product_title → title_suggest` and `product_brand → brand_suggest`** (edge-ngram fields required by `/api/suggest`; missing = typeahead returns 0 results); runs `normalizeAttributes` stage (custom Java stage, see **Lucille Custom Stages** below)
 3. `judgments.conf` (Lucille) — reads `esci_judgments_aggregated.parquet` (pre-aggregated by `prepare_judgments_parquet.py`)
 4. ESCI labels → graded relevance: E=4.0, S=1.0, C=0.1, I=0.0 (set in `data/esci_judgments_aggregated.parquet`)
 5. `OpenSearchVectorStore.lookup_judgments(query)` → exact `term` match on `query.keyword`. No fuzzy fallback.
-5b. **Post-ingest enrichment** (`scripts/enrich_attribute_normalization.py`) — adds normalized color/brand fields for better filter recall. Populates `product_color_primary`, `product_color_secondary`, `product_brand_normalized` on all docs via bulk update. Uses deterministic rules (16 canonical colors, synonym expansion, compound extraction). Reproducible and auditable.
 
 Flags: `--reset-index` atomically deletes+recreates the index via `setup.py --reset-index --skip-db --skip-docs --skip-models` (Python, not curl) before Lucille starts — prevents the race where Lucille's indexer auto-creates a broken default-mapped index between a curl DELETE and the next write; `--skip-judgments` skips the judgments step.
+
+### Lucille Custom Stages
+
+The ingest pipeline includes custom Java stages in `langchain_agent/lucille-esci/src/main/java/com/kmwllc/esci/`:
+
+**`AttributeNormalizerStage`** — normalizes product colors and brands during ingest (runs as the `normalizeAttributes` stage in `products.conf`). Reduces ingest from two-pass (Lucille → OpenSearch → Python bulk-update) to single-pass (Lucille → OpenSearch). Configuration: loads `color_mappings.json` at startup for 16 canonical colors + brand generics. Outputs: `product_color_primary`, `product_color_secondary`, `product_brand_normalized` as keyword fields for filter precision.
+
+**Pattern for adding new stages:** (1) Extend `Stage`, implement `start()` (config parsing, one-time setup) and `processDocument(Document doc)` (per-document transformation); (2) Add to `pom.xml` dependencies as needed; (3) Reference in `products.conf` or `judgments.conf` as a stage in the pipeline; (4) Include in `docker/lucille/Dockerfile` multi-stage build (Maven compile + resolve dependencies).
+
+Docker build: `docker/lucille/Dockerfile` compiles custom stages (`mvn package`) and resolves all runtime dependencies from Maven Central via `lucille-esci/pom.xml`, then layers compiled jars into a minimal JRE image. No local Java/Maven checkout required.
 
 ## Scripts
 
