@@ -163,28 +163,35 @@ if [ "$NODE_MAJOR" -lt 24 ]; then
 fi
 echo "✓ Node.js $NODE_VERSION found"
 
-# Java 21+ and Maven required for Lucille ETL ingest (called by setup.py)
-if ! command -v java &> /dev/null; then
-    echo "❌ Java not found"
-    echo "   Java 21+ is required for Lucille ETL ingest."
-    echo "   Install with: brew install openjdk@21"
-    exit 1
-fi
-JAVA_VER=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}' | cut -d. -f1)
-if [ "${JAVA_VER:-0}" -lt 21 ]; then
-    echo "❌ Java version too old: $JAVA_VER (need 21+)"
-    echo "   Install with: brew install openjdk@21"
-    exit 1
-fi
-echo "✓ Java $JAVA_VER found"
+# Lucille ETL ingest (called by setup.py) runs via Docker by default
+# (LUCILLE_USE_DOCKER, see lucille_ingest.sh) — Docker was already checked
+# above, so Java/Maven aren't needed. Only enforce them when the native path
+# is explicitly requested.
+if [ "${LUCILLE_USE_DOCKER:-true}" = "false" ]; then
+    if ! command -v java &> /dev/null; then
+        echo "❌ Java not found"
+        echo "   Java 21+ is required for the native Lucille ETL path (LUCILLE_USE_DOCKER=false)."
+        echo "   Install with: brew install openjdk@21"
+        exit 1
+    fi
+    JAVA_VER=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}' | cut -d. -f1)
+    if [ "${JAVA_VER:-0}" -lt 21 ]; then
+        echo "❌ Java version too old: $JAVA_VER (need 21+)"
+        echo "   Install with: brew install openjdk@21"
+        exit 1
+    fi
+    echo "✓ Java $JAVA_VER found"
 
-if ! command -v mvn &> /dev/null; then
-    echo "❌ Maven not found"
-    echo "   Maven 3.8+ is required for Lucille ETL ingest."
-    echo "   Install with: brew install maven"
-    exit 1
+    if ! command -v mvn &> /dev/null; then
+        echo "❌ Maven not found"
+        echo "   Maven 3.8+ is required for the native Lucille ETL path (LUCILLE_USE_DOCKER=false)."
+        echo "   Install with: brew install maven"
+        exit 1
+    fi
+    echo "✓ Maven found"
+else
+    echo "✓ Lucille ETL will run via Docker (no local Java/Maven needed)"
 fi
-echo "✓ Maven found"
 
 end_step
 

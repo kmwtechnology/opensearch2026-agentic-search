@@ -55,6 +55,33 @@ services:
       timeout: 10s
       retries: 10
 
+  # One-shot ingestion job, not a persistent service — gated behind the
+  # "ingest" profile so `docker compose up -d` never starts it. Invoked by
+  # scripts/lucille_ingest.sh via `docker compose run --rm lucille`, once for
+  # products and once for judgments, with env vars set per invocation.
+  lucille:
+    build:
+      context: .
+      dockerfile: docker/lucille/Dockerfile
+      args:
+        LUCILLE_VERSION: ${LUCILLE_VERSION:-0.11.1}
+    container_name: langchain-lucille
+    profiles: ["ingest"]
+    environment:
+      - LUCILLE_CONF
+      - LUCILLE_OPTS
+      - JAVA_OPTS
+      - OPENSEARCH_URL
+      - OPENSEARCH_INDEX
+      - PARQUET_PATH
+      - JUDGMENTS_PARQUET_PATH
+    volumes:
+      - ./langchain_agent/lucille-esci/conf:/lucille/conf:ro
+      - ./data:/lucille/data:ro
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
 volumes:
   postgres_data:
     driver: local

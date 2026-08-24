@@ -106,10 +106,10 @@ To bump the version: update `LUCILLE_VERSION` in `.env.example` (and your `.env`
 bash scripts/lucille_ingest.sh
 ```
 
-**What it does:**
+**What it does** (Docker path — default, `LUCILLE_USE_DOCKER=true`):
 
-1. Builds `lucille-esci` Maven module (cached after first run)
-2. Runs Lucille products ingest: `data/esci_products_sample_10000.parquet` → OpenSearch
+1. Builds the `lucille` Docker image (cached after first run; resolves Lucille from Maven Central via this module's `pom.xml`)
+2. Runs Lucille products ingest via `docker compose run --rm lucille`: `data/esci_products_sample_10000.parquet` → OpenSearch
    - Applies `conf/products.conf` transformations: title/brand/color copy, chunk_text build, collection_id set
    - ~10 s
 3. **Post-ingest enrichment** (Step 5b): `scripts/enrich_attribute_normalization.py`
@@ -147,10 +147,18 @@ Ingests products only.
 
 ## Environment Setup
 
-`lucille_ingest.sh` auto-detects Java/Maven and Lucille checkout:
+By default `lucille_ingest.sh` runs Lucille via Docker — only Docker Desktop
+is required:
 
 ```bash
-# Check prerequisites
+docker --version
+```
+
+Set `LUCILLE_USE_DOCKER=false` to use the native Java/Maven path instead
+(used by `reindex.yml` and `gcp-init.sh`, which target a remote hosted
+OpenSearch rather than the local compose stack):
+
+```bash
 java -version          # Java 21+
 mvn -version           # Maven 3.8+
 ls ~/github/kmwtechnology/lucille  # Lucille source (or set LUCILLE_DIR)
@@ -158,13 +166,18 @@ ls ~/github/kmwtechnology/lucille  # Lucille source (or set LUCILLE_DIR)
 
 ## Troubleshooting
 
-**Java not found:**
+**Docker path — image build fails:**
 ```bash
-brew install openjdk@21
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+docker compose build lucille --no-cache
 ```
 
-**Maven build fails:**
+**Native path (`LUCILLE_USE_DOCKER=false`) — Java not found:**
+```bash
+brew install openjdk@21
+export JAVA_HOME=$(/usr/libexec/java_home -v 21)
+```
+
+**Native path — Maven build fails:**
 ```bash
 mvn clean install -DskipTests
 ```
