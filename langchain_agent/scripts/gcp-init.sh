@@ -12,7 +12,7 @@
 #   - gcloud CLI installed and authenticated
 #   - Cloud SQL Auth Proxy installed (auto-downloaded if missing)
 #   - Python virtual environment with dependencies installed (.venv/)
-#   - Java 17+ and Maven, plus a Lucille checkout (LUCILLE_DIR, default
+#   - Java 21+ and Maven, plus a Lucille checkout (LUCILLE_DIR, default
 #     ~/github/kmwtechnology/lucille) — the ESCI ingest runs via Lucille ETL
 #   - Static ESCI parquets in data/ (shipped with the repo; no ../esci/ clone needed)
 #   - GOOGLE_API_KEY set in .env (LLM inference; embeddings are precomputed)
@@ -76,7 +76,7 @@ WHAT THIS SCRIPT DOES:
 
 PREREQUISITES:
     - Run deploy.sh first to create the Cloud SQL instance
-    - Java 17+ & Maven + a Lucille checkout (LUCILLE_DIR) for the ETL ingest
+    - Java 21+ & Maven + a Lucille checkout (LUCILLE_DIR) for the ETL ingest
     - Static ESCI parquets in data/ (shipped with repo; no ../esci/ clone needed)
     - GOOGLE_API_KEY set in .env (LLM inference; embeddings are precomputed)
     - Python venv with dependencies: source .venv/bin/activate
@@ -140,7 +140,7 @@ fi
 # here even though the Cloud Run container is Java-free.
 if ! $SKIP_DOCS; then
     if ! command -v java >/dev/null 2>&1; then
-        err "Java 17+ not found. Required for the Lucille ESCI ingest (brew install openjdk@17). Or re-run with --skip-docs to ingest data later."
+        err "Java 21+ not found. Required for the Lucille ESCI ingest (brew install openjdk@21). Or re-run with --skip-docs to ingest data later."
     fi
     if ! command -v mvn >/dev/null 2>&1; then
         err "Maven not found. Required for the Lucille ESCI ingest (brew install maven). Or re-run with --skip-docs to ingest data later."

@@ -74,7 +74,7 @@ bash scripts/lucille_ingest.sh --skip-products
 ## GCP Cloud Run
 
 When deploying to Cloud Run, `gcp-init.sh` re-ingests ESCI data by running `lucille_ingest.sh`
-on the GitHub Actions runner (Java 17+, Maven, Lucille checkout present). The runner reads
+on the GitHub Actions runner (Java 21+, Maven, Lucille checkout present). The runner reads
 `data/*.parquet` committed here and indexes into the hosted OpenSearch cluster.
 
 ## Troubleshooting

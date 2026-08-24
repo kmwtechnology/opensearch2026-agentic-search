@@ -95,7 +95,7 @@ gh run list --workflow reindex.yml --limit 1
 
 ### Option B: Manual (Workstation)
 
-Requires: Java 17+, Maven, local Lucille checkout at `~/github/kmwtechnology/lucille`.
+Requires: Java 21+, Maven, local Lucille checkout at `~/github/kmwtechnology/lucille`.
 
 From `langchain_agent/`:
 ```bash

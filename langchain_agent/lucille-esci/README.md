@@ -89,19 +89,13 @@ Field definitions for the product index:
 
 ## Versioning
 
-**CRITICAL:** Keep these in sync:
+The pinned Lucille version has a single source of truth: `LUCILLE_VERSION` in `langchain_agent/.env.example` (and your local `.env`). Everything else derives from it:
 
-1. `lucille-esci/pom.xml`:
-   ```xml
-   <lucille.version>1.0.0-SNAPSHOT</lucille.version>
-   ```
+- `scripts/lucille_ingest.sh` reads `LUCILLE_VERSION` from the environment (falling back to a default if unset) and exports it before invoking Maven.
+- `lucille-esci/pom.xml`'s `<lucille.version>` resolves via `${env.LUCILLE_VERSION}` — running `mvn` here directly (outside `lucille_ingest.sh`) requires `export LUCILLE_VERSION=...` first.
+- `.github/workflows/reindex.yml` reads the same value out of `.env.example` and clones Lucille pinned to that tag.
 
-2. `scripts/lucille_ingest.sh`:
-   ```bash
-   LUCILLE_VERSION="1.0.0-SNAPSHOT"
-   ```
-
-When the external Lucille repo's version bumps, update both files **in the same commit**.
+To bump the version: update `LUCILLE_VERSION` in `.env.example` (and your `.env`) — no other file needs a matching literal.
 
 ## Running Lucille Ingest
 
@@ -157,7 +151,7 @@ Ingests products only.
 
 ```bash
 # Check prerequisites
-java -version          # Java 17+
+java -version          # Java 21+
 mvn -version           # Maven 3.8+
 ls ~/github/kmwtechnology/lucille  # Lucille source (or set LUCILLE_DIR)
 ```
@@ -166,7 +160,7 @@ ls ~/github/kmwtechnology/lucille  # Lucille source (or set LUCILLE_DIR)
 
 **Java not found:**
 ```bash
-brew install openjdk@17
+brew install openjdk@21
 export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 ```
 

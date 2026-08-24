@@ -31,10 +31,10 @@ Before starting, ensure you have:
    - [Download Docker Desktop](https://www.docker.com/products/docker-desktop)
    - Required for local image build in `deploy.sh`
 
-4. **Java 17+ and Maven**
+4. **Java 21+ and Maven**
    ```bash
    # macOS
-   brew install openjdk@17
+   brew install openjdk@21
    brew install maven
    
    # Or download from https://www.oracle.com/java/technologies/downloads/

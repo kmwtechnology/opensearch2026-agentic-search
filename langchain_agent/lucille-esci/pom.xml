@@ -12,9 +12,12 @@
   <description>Lucille-based ETL for ingesting ESCI products and judgments into OpenSearch</description>
 
   <properties>
-    <lucille.version>1.0.0-SNAPSHOT</lucille.version>
-    <maven.compiler.source>17</maven.compiler.source>
-    <maven.compiler.target>17</maven.compiler.target>
+    <!-- Sourced from the LUCILLE_VERSION env var (see .env.example) — the single
+         source of truth. lucille_ingest.sh always exports it before invoking Maven;
+         a bare `mvn package` here requires `export LUCILLE_VERSION=...` first. -->
+    <lucille.version>${env.LUCILLE_VERSION}</lucille.version>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
   </properties>
 
   <dependencyManagement>
@@ -39,6 +42,16 @@
       <groupId>com.kmwllc</groupId>
       <artifactId>lucille-parquet</artifactId>
       <version>${lucille.version}</version>
+    </dependency>
+    <!-- JAXB was removed from the JDK in Java 11+. lucille-core's OpenSearchIndexer
+         pulls in jackson-module-jaxb-annotations, whose JaxbAnnotationIntrospector
+         imports the classic javax.xml.bind package — the jakarta.xml.bind-api jar
+         that resolves transitively uses the renamed jakarta.xml.bind package and
+         doesn't satisfy it. Add the javax namespace explicitly. -->
+    <dependency>
+      <groupId>javax.xml.bind</groupId>
+      <artifactId>jaxb-api</artifactId>
+      <version>2.3.1</version>
     </dependency>
   </dependencies>
 
