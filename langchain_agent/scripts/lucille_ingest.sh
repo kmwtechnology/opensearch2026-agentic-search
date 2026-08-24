@@ -4,16 +4,18 @@
 # Two ways to run the actual Lucille steps (5 and 6), chosen by LUCILLE_USE_DOCKER:
 #
 #   Docker (default, LUCILLE_USE_DOCKER unset/true) — runs Lucille via
-#   `docker compose run --rm lucille`, using the image built from
+#   `docker compose run --rm --no-deps lucille`, using the image built from
 #   docker/lucille/Dockerfile. No local Java/Maven/Lucille checkout needed.
-#   This path targets the local `opensearch` compose service — it is NOT used
-#   by reindex.yml or gcp-init.sh, which target a remote hosted OpenSearch and
-#   explicitly set LUCILLE_USE_DOCKER=false to keep using the native path below.
+#   Works against both a local OpenSearch (the compose service, targeted via
+#   its DNS name when OPENSEARCH_HOST=localhost) and a remote hosted OpenSearch
+#   (CI, a GCP workstation — targeted directly via OPENSEARCH_URL). This is the
+#   path used by local dev, reindex.yml, and gcp-init.sh alike.
 #
 #   Native (LUCILLE_USE_DOCKER=false) — the original path: builds lucille-esci
 #   locally against a Lucille source checkout and runs `java -cp ...`. Requires
 #   local Java 21+/Maven and LUCILLE_DIR pointed at (or defaulting to) a
-#   checkout of https://github.com/kmwtechnology/lucille.
+#   checkout of https://github.com/kmwtechnology/lucille. Kept as a fallback
+#   for environments without Docker.
 #
 # Steps:
 #   1. (native only) Install Lucille plugins to local Maven repo
@@ -115,6 +117,17 @@ else
 fi
 OPENSEARCH_INDEX="${OPENSEARCH_INDEX_NAME:-agentic_hybrid_search_docs}"
 DATA_DIR="$REPO_DIR/data"
+
+# Container-side OpenSearch target (Docker path only). "localhost" (the local-dev
+# default) doesn't resolve to the host machine from inside a container, so use
+# the compose service's DNS name instead. Any other host — CI or a GCP
+# workstation targeting the remote hosted OpenSearch — is reachable directly
+# from the container, so pass OPENSEARCH_URL through unchanged.
+if [[ "$OPENSEARCH_HOST" == "localhost" ]]; then
+  CONTAINER_OPENSEARCH_URL="http://opensearch:9200"
+else
+  CONTAINER_OPENSEARCH_URL="$OPENSEARCH_URL"
+fi
 # Single source of truth: LUCILLE_VERSION from .env (see .env.example). This
 # value is also what lucille-esci/pom.xml reads via ${env.LUCILLE_VERSION}.
 LUCILLE_VERSION="${LUCILLE_VERSION:-0.11.1}"
@@ -230,11 +243,13 @@ info "  Source: $PRODUCTS_PARQUET"
 info "  Target: $_DISPLAY_URL/$OPENSEARCH_INDEX"
 
 if [[ "$LUCILLE_USE_DOCKER" == "true" ]]; then
-  # Container talks to OpenSearch over the compose network, not localhost.
-  (cd "$REPO_DIR" && docker compose run --rm \
+  # --no-deps: don't let compose start/health-check the local `opensearch`
+  # service — irrelevant (and wasted work) when CONTAINER_OPENSEARCH_URL points
+  # at a remote hosted cluster instead (CI, GCP workstation).
+  (cd "$REPO_DIR" && docker compose run --rm --no-deps \
     -e LUCILLE_CONF=/lucille/conf/products.conf \
     -e PARQUET_PATH="/lucille/data/$(basename "$PRODUCTS_PARQUET")" \
-    -e OPENSEARCH_URL="http://opensearch:9200" \
+    -e OPENSEARCH_URL="$CONTAINER_OPENSEARCH_URL" \
     -e OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
     lucille)
 else
@@ -273,10 +288,10 @@ if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
   info "  Target: $_DISPLAY_URL/esci_judgments"
 
   if [[ "$LUCILLE_USE_DOCKER" == "true" ]]; then
-    (cd "$REPO_DIR" && docker compose run --rm \
+    (cd "$REPO_DIR" && docker compose run --rm --no-deps \
       -e LUCILLE_CONF=/lucille/conf/judgments.conf \
       -e JUDGMENTS_PARQUET_PATH="/lucille/data/$(basename "$JUDGMENTS_PARQUET")" \
-      -e OPENSEARCH_URL="http://opensearch:9200" \
+      -e OPENSEARCH_URL="$CONTAINER_OPENSEARCH_URL" \
       lucille)
   else
     JUDGMENTS_PARQUET_PATH="$JUDGMENTS_PARQUET" \

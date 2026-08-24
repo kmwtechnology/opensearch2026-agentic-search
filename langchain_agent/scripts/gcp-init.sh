@@ -12,8 +12,8 @@
 #   - gcloud CLI installed and authenticated
 #   - Cloud SQL Auth Proxy installed (auto-downloaded if missing)
 #   - Python virtual environment with dependencies installed (.venv/)
-#   - Java 21+ and Maven, plus a Lucille checkout (LUCILLE_DIR, default
-#     ~/github/kmwtechnology/lucille) — the ESCI ingest runs via Lucille ETL
+#   - Docker — the ESCI ingest runs via Lucille ETL in a container (LUCILLE_USE_DOCKER,
+#     default true; set to false to use a local Java 21+/Maven/Lucille checkout instead)
 #   - Static ESCI parquets in data/ (shipped with the repo; no ../esci/ clone needed)
 #   - GOOGLE_API_KEY set in .env (LLM inference; embeddings are precomputed)
 #   - deploy.sh already run (Cloud SQL instance must exist)
@@ -76,7 +76,7 @@ WHAT THIS SCRIPT DOES:
 
 PREREQUISITES:
     - Run deploy.sh first to create the Cloud SQL instance
-    - Java 21+ & Maven + a Lucille checkout (LUCILLE_DIR) for the ETL ingest
+    - Docker (or LUCILLE_USE_DOCKER=false plus Java 21+/Maven/a Lucille checkout)
     - Static ESCI parquets in data/ (shipped with repo; no ../esci/ clone needed)
     - GOOGLE_API_KEY set in .env (LLM inference; embeddings are precomputed)
     - Python venv with dependencies: source .venv/bin/activate
@@ -135,15 +135,19 @@ if [ ! -d "$PROJECT_DIR/.venv" ]; then
     err "Python virtual environment not found. Run: python3 -m venv .venv && pip install -r requirements.txt"
 fi
 
-# Check Java + Maven (required by the Lucille ETL ingest, run via setup.py).
-# gcp-init runs on a workstation, so the JDK/Maven/Lucille checkout are available
-# here even though the Cloud Run container is Java-free.
+# Check the Lucille ETL ingest's prerequisite (run via setup.py). Default is
+# the Docker path (LUCILLE_USE_DOCKER=true, unset here — see below); native
+# Java/Maven is only required if the caller explicitly opts out.
 if ! $SKIP_DOCS; then
-    if ! command -v java >/dev/null 2>&1; then
-        err "Java 21+ not found. Required for the Lucille ESCI ingest (brew install openjdk@21). Or re-run with --skip-docs to ingest data later."
-    fi
-    if ! command -v mvn >/dev/null 2>&1; then
-        err "Maven not found. Required for the Lucille ESCI ingest (brew install maven). Or re-run with --skip-docs to ingest data later."
+    if [ "${LUCILLE_USE_DOCKER:-true}" = "false" ]; then
+        if ! command -v java >/dev/null 2>&1; then
+            err "Java 21+ not found. Required for the Lucille ESCI ingest with LUCILLE_USE_DOCKER=false (brew install openjdk@21). Or re-run with --skip-docs to ingest data later."
+        fi
+        if ! command -v mvn >/dev/null 2>&1; then
+            err "Maven not found. Required for the Lucille ESCI ingest with LUCILLE_USE_DOCKER=false (brew install maven). Or re-run with --skip-docs to ingest data later."
+        fi
+    elif ! command -v docker >/dev/null 2>&1; then
+        err "Docker not found. Required for the Lucille ESCI ingest (or set LUCILLE_USE_DOCKER=false to use a local Java/Maven/Lucille checkout instead). Or re-run with --skip-docs to ingest data later."
     fi
 fi
 
@@ -265,10 +269,10 @@ export OPENSEARCH_PORT="9200"
 export OPENSEARCH_USE_SSL="true"
 export OPENSEARCH_VERIFY_CERTS="false"
 
-# This workstation targets the remote hosted OpenSearch above, not a local
-# compose stack — keep lucille_ingest.sh (called by setup.py below) on the
-# native Java/Maven path. (Local dev defaults to the Docker path.)
-export LUCILLE_USE_DOCKER="false"
+# lucille_ingest.sh (called by setup.py below) targets this hosted OpenSearch
+# directly from the container — LUCILLE_USE_DOCKER stays at its default
+# (true); set it to false here to use a local Java/Maven/Lucille checkout
+# instead.
 
 SETUP_ARGS=""
 if $SKIP_DOCS; then
@@ -362,8 +366,8 @@ echo "    /api/health"
 echo ""
 echo "  To re-ingest products + judgments into hosted OpenSearch later (Lucille ETL):"
 echo "    OPENSEARCH_HOST=34.138.97.13 OPENSEARCH_PORT=9200 OPENSEARCH_USE_SSL=true \\"
-echo "      LUCILLE_USE_DOCKER=false bash langchain_agent/scripts/lucille_ingest.sh"
+echo "      bash langchain_agent/scripts/lucille_ingest.sh"
 echo "    (the exported OPENSEARCH_* vars override .env, so it targets GCP not localhost;"
-echo "     LUCILLE_USE_DOCKER=false keeps this on the native Java/Maven path)"
+echo "     runs via Docker by default — set LUCILLE_USE_DOCKER=false for the native path)"
 echo ""
 echo "============================================================"
