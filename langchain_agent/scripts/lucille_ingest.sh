@@ -35,6 +35,10 @@
 # Optional env vars:
 #   LUCILLE_THREADS   (default: 2) — worker threads per pipeline
 #   LUCILLE_USE_DOCKER (default: true) — see path selection above
+#   LUCILLE_IMAGE     — Docker path only. Pre-built Lucille image (e.g. from GHCR).
+#                     If set, skips the docker compose build step and uses this
+#                     image directly. Used by CI (reindex.yml) to avoid rebuilding
+#                     on every run; leave unset for local dev (builds from Dockerfile).
 #   LUCILLE_DIR       — native path only. Path to an external Lucille checkout,
 #                     used in Step 1 to install the lucille-parquet plugin into
 #                     ~/.m2. Defaults to a sibling clone at
@@ -150,14 +154,25 @@ if [[ "$RESET_INDEX" == "true" ]]; then
 fi
 
 if [[ "$LUCILLE_USE_DOCKER" == "true" ]]; then
-  # ── Docker path: build the lucille image (fast no-op rebuild if unchanged) ──
+  # ── Docker path: build or use pre-built lucille image ──────────────────────
   if ! command -v docker &>/dev/null; then
     error "Docker not found. Install Docker Desktop, or set LUCILLE_USE_DOCKER=false to use the native Java/Maven path."
     exit 1
   fi
-  info "Building Lucille Docker image (LUCILLE_VERSION=$LUCILLE_VERSION)..."
-  (cd "$REPO_DIR" && docker compose build lucille)
-  info "Lucille image ready."
+
+  # If LUCILLE_IMAGE is set (e.g., by CI via reindex.yml), skip the build and
+  # use that pre-built/cached image directly. Otherwise, build from Dockerfile.
+  if [[ -n "${LUCILLE_IMAGE:-}" ]]; then
+    info "Using pre-built Lucille image: $LUCILLE_IMAGE"
+    # Ensure the image is available locally (pull if needed)
+    docker image inspect "$LUCILLE_IMAGE" >/dev/null 2>&1 || \
+      docker pull "$LUCILLE_IMAGE"
+    info "Image ready."
+  else
+    info "Building Lucille Docker image (LUCILLE_VERSION=$LUCILLE_VERSION)..."
+    (cd "$REPO_DIR" && docker compose build lucille)
+    info "Lucille image ready."
+  fi
 else
   # ── Prerequisite checks (native path only) ──────────────────────────────────
   if ! command -v java &>/dev/null; then
