@@ -172,7 +172,7 @@ make stop
 ./scripts/start.sh                        # Docker + backend + frontend
 ./scripts/stop.sh
 
-# ESCI ingestion — default path via Lucille ETL (Docker must be up, requires Java 17+ and Maven)
+# ESCI ingestion — default path via Lucille ETL (Docker must be up, requires Java 21+ and Maven)
 bash scripts/lucille_ingest.sh                                # products + judgments, no API calls
 
 # ESCI Relevancy Benchmarks (docker compose up -d required; see BENCHMARK_RESULTS.md for full docs)
@@ -249,7 +249,7 @@ data/
 
 Lucille config: `langchain_agent/lucille-esci/conf/`. `collection_id=esci_products` is set on every product doc — required by all search queries in `vector_store.py`.
 
-The custom `lucille-esci` Maven module (configs + mappings) lives in-repo; the **upstream Lucille source tree is external** (default `~/github/kmwtechnology/lucille`, override via `LUCILLE_DIR`). `lucille_ingest.sh` Step 1 builds `lucille-bom` + `lucille-parquet` (currently `1.0.0-SNAPSHOT`) from that checkout into `~/.m2` on first run only; after that the checkout isn't read again. Bump `lucille.version` in `lucille-esci/pom.xml` + `LUCILLE_VERSION` in the script together when the external repo's version moves.
+The custom `lucille-esci` Maven module (configs + mappings) lives in-repo; the **upstream Lucille source tree is external** (default `~/github/kmwtechnology/lucille`, override via `LUCILLE_DIR`). `lucille_ingest.sh` Step 1 builds `lucille-bom` + `lucille-parquet` from that checkout into `~/.m2` on first run only; after that the checkout isn't read again. The pinned version has a single source of truth — `LUCILLE_VERSION` in `langchain_agent/.env.example` — read by `lucille_ingest.sh`, `lucille-esci/pom.xml` (via `${env.LUCILLE_VERSION}`), and `reindex.yml`; bump it there only (see `lucille-esci/README.md` "Versioning").
 
 ### Ingest (Lucille ETL — `scripts/lucille_ingest.sh`)
 
@@ -266,7 +266,7 @@ Flags: `--reset-index` atomically deletes+recreates the index via `setup.py --re
 
 ## Scripts
 
-- `setup.sh` — one-time non-interactive: prereqs check (Docker, Python 3.14, Node, **Java 17+, Maven**), ESCI clone (~1GB), venv + deps, Docker up, `setup.py` (which calls `lucille_ingest.sh`). Creates `.env` from `.env.example` if missing; requires manual `GOOGLE_API_KEY`.
+- `setup.sh` — one-time non-interactive: prereqs check (Docker, Python 3.14, Node, **Java 21+, Maven**), ESCI clone (~1GB), venv + deps, Docker up, `setup.py` (which calls `lucille_ingest.sh`). Creates `.env` from `.env.example` if missing; requires manual `GOOGLE_API_KEY`.
 - `teardown.sh` — kills :8000/:5173, removes Docker containers + volumes, `.venv`, `node_modules`, logs. Keeps `.env` by default.
 - `start.sh` / `stop.sh` — start/stop Docker + backend + frontend (Vite proxies API to :8000).
 - `deploy.sh` — Cloud Run deploy with Cloud SQL + Secret Manager + autoscaling.

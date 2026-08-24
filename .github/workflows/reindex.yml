@@ -7,8 +7,9 @@ name: Re-Index OpenSearch
 # Flow:
 #   1. Authenticate with GCP via Workload Identity Federation
 #   2. Fetch OpenSearch credentials from Secret Manager
-#   3. Install Java 17 + Maven on the runner
-#   4. Clone Lucille from GitHub
+#   3. Install Java 21 + Maven on the runner
+#   4. Clone Lucille from GitHub, pinned to LUCILLE_VERSION (from .env.example —
+#      the single source of truth also read by lucille_ingest.sh / pom.xml)
 #   5. Run lucille_ingest.sh (products always; judgments optionally)
 #   6. Verify the rebuilt index via /api/admin/health
 
@@ -69,10 +70,10 @@ jobs:
           echo "os_user=${OS_USER}" >> "$GITHUB_OUTPUT"
           echo "os_pass=${OS_PASS}" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
           cache: 'maven'
 
@@ -90,8 +91,12 @@ jobs:
         if: ${{ github.event.inputs.reset_index == 'true' }}
         run: pip install -r langchain_agent/requirements.txt
 
-      - name: Clone Lucille
-        run: git clone --depth=1 https://github.com/kmwtechnology/lucille.git /tmp/lucille
+      - name: Clone Lucille (pinned to LUCILLE_VERSION)
+        run: |
+          LUCILLE_VERSION=$(grep '^LUCILLE_VERSION=' langchain_agent/.env.example | cut -d= -f2)
+          echo "Pinning Lucille checkout to tag $LUCILLE_VERSION"
+          echo "LUCILLE_VERSION=$LUCILLE_VERSION" >> "$GITHUB_ENV"
+          git clone --depth=1 --branch "$LUCILLE_VERSION" https://github.com/kmwtechnology/lucille.git /tmp/lucille
 
       - name: Run Lucille ingest
         env:

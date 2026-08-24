@@ -38,7 +38,7 @@ Verify each tool is installed. The **Why** column explains what it's used for.
 brew install docker
 brew install python@3.14
 brew install node
-brew install openjdk@17
+brew install openjdk@21
 brew install maven
 ```
 
@@ -59,7 +59,7 @@ sudo apt-get install maven
 - Docker Desktop: https://www.docker.com/products/docker-desktop
 - Python 3.14+: https://www.python.org/downloads/
 - Node.js 24+: https://nodejs.org/ (use LTS)
-- Java 17+: https://www.oracle.com/java/technologies/downloads/
+- Java 21+: https://www.oracle.com/java/technologies/downloads/
 - Maven: https://maven.apache.org/download.cgi
 
 ---
@@ -342,7 +342,7 @@ POSTGRES_PORT=5433
 
 **Fix:**
 ```bash
-brew install openjdk@17
+brew install openjdk@21
 brew install maven
 # Then re-run:
 ./scripts/setup.sh

@@ -171,4 +171,5 @@ esci/
 # Keep ignoring lucille/ as a guard against accidental in-repo clones.
 lucille/
 langchain_agent/lucille-esci/target/
+langchain_agent/log/
 .claude/settings.local.json
