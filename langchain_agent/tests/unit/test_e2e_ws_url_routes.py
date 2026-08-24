@@ -28,7 +28,11 @@ def _registered_ws_paths() -> set[str]:
         for route in routes:
             if "WebSocketRoute" in route.__class__.__name__:
                 paths.add(route.path)
-            inner = getattr(route, "routes", None)
+            # Starlette >=1.6 wraps included sub-apps in `_IncludedRouter`,
+            # which holds the real Router (with its flat `.routes` list) on
+            # `original_router` instead of exposing `.routes` directly.
+            original_router = getattr(route, "original_router", None)
+            inner = getattr(original_router, "routes", None) or getattr(route, "routes", None)
             if inner:
                 walk(inner)
 
