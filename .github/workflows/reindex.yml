@@ -6,13 +6,16 @@ name: Re-Index OpenSearch
 # checkout and writes to the remote hosted OpenSearch below.
 #
 # Flow:
-#   1. Authenticate with GCP via Workload Identity Federation
-#   2. Fetch OpenSearch credentials from Secret Manager
-#   3. Run lucille_ingest.sh (products always; judgments optionally) — it
+#   1. Check out the repo and pull the real data/*.parquet content — a plain
+#      checkout leaves Git LFS pointer files in place, not the binary data
+#      (mirrors build-deploy.yml's build-docker job)
+#   2. Authenticate with GCP via Workload Identity Federation
+#   3. Fetch OpenSearch credentials from Secret Manager
+#   4. Run lucille_ingest.sh (products always; judgments optionally) — it
 #      builds the Lucille image from docker/lucille/Dockerfile (pinned to
 #      LUCILLE_VERSION, resolved from Maven Central; no Java/Maven/Lucille
 #      checkout needed on the runner) and runs it via `docker compose run`
-#   4. Verify the rebuilt index via /api/admin/health
+#   5. Verify the rebuilt index via /api/admin/health
 
 on:
   workflow_dispatch:
@@ -50,6 +53,18 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Cache LFS objects
+        uses: actions/cache@v5
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.gitattributes') }}-${{ hashFiles('data/*.parquet') }}
+          restore-keys: lfs-${{ hashFiles('.gitattributes') }}-
+
+      - name: Fetch LFS objects
+        run: git lfs pull
 
       - name: Authenticate with GCP
         uses: google-github-actions/auth@v3
