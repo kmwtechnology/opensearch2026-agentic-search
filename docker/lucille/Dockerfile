@@ -1,48 +1,57 @@
 # syntax=docker/dockerfile:1
 #
-# Resolves Lucille (core + the parquet connector plugin) from Maven Central,
-# pinned to LUCILLE_VERSION — the same value used by lucille-esci/pom.xml and
-# lucille_ingest.sh — by reusing that same pom.xml as the dependency manifest.
-# No git clone or compile step: Lucille 0.11.1+ publishes real releases to
-# Maven Central, so this is a plain dependency resolution + flatten, the same
-# mechanism already verified end-to-end for the lucille-esci module.
+# Builds and containerizes the Lucille ETL pipeline with custom ESCI stages.
 #
-# Not extending the published kmwtechnology/lucille Docker Hub image because
-# that image is tagged <version>.<docker_revision> (e.g. 0.11.1.0) — a scheme
-# not algorithmically derivable from LUCILLE_VERSION — and is amd64-only, so
-# Apple Silicon would run it under emulation. Maven Central artifacts are
-# plain, architecture-independent jars and use the clean LUCILLE_VERSION tag.
+# Stage 1: Compile lucille-esci Java source code and resolve all runtime dependencies.
+# lucille-esci/src/ contains custom Lucille stages (e.g., AttributeNormalizerStage for
+# color/brand normalization); lucille-esci/pom.xml pins the Lucille version (via the
+# LUCILLE_VERSION build arg) and declares dependencies on lucille-core, lucille-parquet,
+# and JAXB compat. Maven compiles the custom stages and copies all runtime deps to
+# /app/lib/ for the final classpath.
 #
-# Runtime layout and entrypoint mirror upstream's own Dockerfile:
-# https://github.com/kmwtechnology/lucille/blob/main/Dockerfile
+# Stage 2: Runtime image — JRE with all compiled stages and dependencies.
+#
+# Note: lucille-esci/pom.xml + Maven Central resolution is enough — no Lucille source
+# checkout needed. All runtime jars (lucille-core, lucille-parquet, JAXB compat, and
+# custom stages) are resolved/compiled and layered into a minimal JRE image.
+#
+# Runtime entrypoint uses LUCILLE_CONF, LUCILLE_OPTS, and JAVA_OPTS env vars.
 
-FROM maven:3.9-eclipse-temurin-21 AS deps
+# Build stage: compile custom stages + resolve dependencies
 ARG LUCILLE_VERSION
-COPY langchain_agent/lucille-esci/pom.xml /build/pom.xml
-WORKDIR /build
+FROM maven:3.9-eclipse-temurin-21 AS build
+ARG LUCILLE_VERSION
+COPY langchain_agent/lucille-esci /build/lucille-esci
+WORKDIR /build/lucille-esci
 RUN --mount=type=cache,target=/root/.m2 \
+    mvn -B -q package \
+      -Dlucille.version="${LUCILLE_VERSION}" \
+      -DskipTests && \
     mvn -B -q dependency:copy-dependencies \
       -Dlucille.version="${LUCILLE_VERSION}" \
       -DincludeScope=runtime \
-      -DoutputDirectory=/deps
+      -DoutputDirectory=/app/lib
 
+# Runtime stage: minimal JRE with all compiled stages and dependencies
 FROM eclipse-temurin:21-jre
 
 LABEL maintainer="kmwtechnology"
-LABEL description="Lucille Search ETL image, resolved from Maven Central with the parquet connector"
+LABEL description="Lucille Search ETL with custom ESCI attribute normalizer stage"
 
 WORKDIR /lucille
 RUN mkdir -p /lucille/conf /lucille/lib
 
-COPY --from=deps /deps/*.jar /lucille/lib/
+# Copy compiled custom stages (AttributeNormalizerStage + classes)
+COPY --from=build /build/lucille-esci/target/lucille-esci-1.0.0.jar /lucille/lib/
+
+# Copy all resolved dependencies (lucille-core, lucille-parquet, JAXB compat, and transitive deps)
+COPY --from=build /app/lib/*.jar /lucille/lib/
 
 RUN groupadd -r lucille \
  && useradd -r -g lucille -d /lucille -s /usr/sbin/nologin lucille \
  && chown -R lucille:lucille /lucille
 
-# LUCILLE_CONF: path to the Lucille config file (required)
-# JAVA_OPTS: JVM flags such as heap size and GC settings
-# LUCILLE_OPTS: Lucille Runner CLI flags
+# Environment variables for Lucille Runner
 ENV LUCILLE_CONF=""
 ENV LUCILLE_OPTS=""
 ENV JAVA_OPTS=""

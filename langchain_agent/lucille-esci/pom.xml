@@ -57,6 +57,16 @@
 
   <build>
     <plugins>
+      <!-- Compile Java 21 source files -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.11.0</version>
+        <configuration>
+          <source>21</source>
+          <target>21</target>
+        </configuration>
+      </plugin>
       <!-- Copy all runtime deps to target/lib so the Runner can be launched with -cp 'target/lib/*' -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

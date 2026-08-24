@@ -264,23 +264,6 @@ fi
 
 info "Products ingest complete."
 
-# ── Step 5b: Enrich with normalized attributes ────────────────────────────────
-info "Enriching products with normalized color and brand attributes..."
-PYTHON="${AGENT_DIR}/.venv/bin/python"
-if [[ ! -x "$PYTHON" ]]; then
-  PYTHON="$(command -v python3)"
-fi
-
-OPENSEARCH_HOST="$OPENSEARCH_HOST" \
-OPENSEARCH_PORT="$OPENSEARCH_PORT" \
-OPENSEARCH_USE_SSL="${OPENSEARCH_SCHEME}" \
-OPENSEARCH_USER="$OPENSEARCH_USER" \
-OPENSEARCH_PASSWORD="$OPENSEARCH_PASSWORD" \
-OPENSEARCH_INDEX_NAME="$OPENSEARCH_INDEX" \
-  "$PYTHON" "$REPO_DIR/scripts/enrich_attribute_normalization.py"
-
-info "Attribute enrichment complete."
-
 # ── Step 6: Run judgments ingest ──────────────────────────────────────────────
 if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
   info "Running Lucille judgments ingest..."
