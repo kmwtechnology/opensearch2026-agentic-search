@@ -1,24 +1,24 @@
 # syntax=docker/dockerfile:1
 #
-# Builds and containerizes the Lucille ETL pipeline with custom ESCI stages.
+# Lucille ETL runtime with custom ESCI stages, layered onto the published image.
 #
-# Stage 1: Compile lucille-esci Java source code and resolve all runtime dependencies.
-# lucille-esci/src/ contains custom Lucille stages (e.g., AttributeNormalizerStage for
-# color/brand normalization); lucille-esci/pom.xml pins the Lucille version (via the
-# LUCILLE_VERSION build arg) and declares dependencies on lucille-core, lucille-parquet,
-# and JAXB compat. Maven compiles the custom stages and copies all runtime deps to
-# /app/lib/ for the final classpath.
+# Strategy: Use the prebuilt kmwtechnology/lucille image (published to Docker Hub)
+# as the base, and only compile + layer our custom stages. This avoids rebuilding
+# Lucille itself on every CI run.
 #
-# Stage 2: Runtime image — JRE with all compiled stages and dependencies.
+# Stage 1: Compile custom ESCI stages only (lucille-esci/src/ contains
+# AttributeNormalizerStage for color/brand normalization). Maven resolves
+# lucille-parquet and other deps from Maven Central via lucille-esci/pom.xml.
+# No Lucille source checkout needed.
 #
-# Note: lucille-esci/pom.xml + Maven Central resolution is enough — no Lucille source
-# checkout needed. All runtime jars (lucille-core, lucille-parquet, JAXB compat, and
-# custom stages) are resolved/compiled and layered into a minimal JRE image.
+# Stage 2: Layer compiled stages + dependencies onto the published base image.
+# The kmwtechnology/lucille image already has lucille-core and the runner;
+# we only add our custom stages and the lucille-parquet plugin it needs.
 #
 # Runtime entrypoint uses LUCILLE_CONF, LUCILLE_OPTS, and JAVA_OPTS env vars.
 
-# Build stage: compile custom stages + resolve dependencies
-# Uses lightweight Maven image to reduce build layer size (~400MB vs 800MB for full Maven)
+# Compile stage: custom stages + dependencies from Maven Central
+# (lucille-core is already in the base image, no need to re-resolve it)
 ARG LUCILLE_VERSION
 FROM maven:3.9-eclipse-temurin-21-alpine AS build
 ARG LUCILLE_VERSION
@@ -34,34 +34,19 @@ RUN --mount=type=cache,target=/root/.m2 \
       -DoutputDirectory=/app/lib && \
     rm -rf /build/lucille-esci/target/classes /build/lucille-esci/src
 
-# Runtime stage: minimal JRE with all compiled stages and dependencies
-FROM eclipse-temurin:21-jre-alpine
+# Runtime stage: layer onto published kmwtechnology/lucille image (not a bare JRE)
+# The published image already has lucille-core, Runner, and base config.
+ARG LUCILLE_VERSION
+FROM kmwtechnology/lucille:${LUCILLE_VERSION}
 
-LABEL maintainer="kmwtechnology"
 LABEL description="Lucille Search ETL with custom ESCI attribute normalizer stage"
 
-WORKDIR /lucille
-RUN mkdir -p /lucille/conf /lucille/lib
-
-# Copy compiled custom stages (AttributeNormalizerStage + classes)
+# Layer compiled custom stages into the existing /lucille/lib/
 COPY --from=build /build/lucille-esci/target/lucille-esci-1.0.0.jar /lucille/lib/
 
-# Copy all resolved dependencies (lucille-core, lucille-parquet, JAXB compat, and transitive deps)
+# Layer runtime dependencies (lucille-parquet + transitives)
+# The published image already has lucille-core, so we only add what's missing.
 COPY --from=build /app/lib/*.jar /lucille/lib/
 
-# Create non-root user for security
-RUN addgroup -g 1000 lucille \
- && adduser -D -u 1000 -G lucille lucille \
- && chown -R lucille:lucille /lucille
-
-# Environment variables for Lucille Runner
-ENV LUCILLE_CONF=""
-ENV LUCILLE_OPTS=""
-ENV JAVA_OPTS=""
-
-COPY docker/lucille/docker-entrypoint.sh /lucille/docker-entrypoint.sh
-RUN chmod +x /lucille/docker-entrypoint.sh
-
-USER lucille
-
-ENTRYPOINT ["/lucille/docker-entrypoint.sh"]
+# Ensure ownership is correct (published image may have different user)
+RUN chown -R lucille:lucille /lucille 2>/dev/null || true
