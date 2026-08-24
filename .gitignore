@@ -168,8 +168,9 @@ esci/
 # Lucille ETL source tree now lives in an external checkout
 # (default ~/github/kmwtechnology/lucille, override via LUCILLE_DIR).
 # The in-repo config module is at langchain_agent/lucille-esci/.
-# Keep ignoring lucille/ as a guard against accidental in-repo clones.
-lucille/
+# Keep ignoring a repo-root lucille/ as a guard against accidental in-repo
+# clones. Anchored (leading /) so it doesn't also swallow docker/lucille/.
+/lucille/
 langchain_agent/lucille-esci/target/
 langchain_agent/log/
 .claude/settings.local.json

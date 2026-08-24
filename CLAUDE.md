@@ -172,7 +172,8 @@ make stop
 ./scripts/start.sh                        # Docker + backend + frontend
 ./scripts/stop.sh
 
-# ESCI ingestion — default path via Lucille ETL (Docker must be up, requires Java 21+ and Maven)
+# ESCI ingestion — default path via Lucille ETL (runs Lucille itself via Docker;
+# no local Java/Maven needed. Set LUCILLE_USE_DOCKER=false for the native path.)
 bash scripts/lucille_ingest.sh                                # products + judgments, no API calls
 
 # ESCI Relevancy Benchmarks (docker compose up -d required; see BENCHMARK_RESULTS.md for full docs)
@@ -249,7 +250,7 @@ data/
 
 Lucille config: `langchain_agent/lucille-esci/conf/`. `collection_id=esci_products` is set on every product doc — required by all search queries in `vector_store.py`.
 
-The custom `lucille-esci` Maven module (configs + mappings) lives in-repo; the **upstream Lucille source tree is external** (default `~/github/kmwtechnology/lucille`, override via `LUCILLE_DIR`). `lucille_ingest.sh` Step 1 builds `lucille-bom` + `lucille-parquet` from that checkout into `~/.m2` on first run only; after that the checkout isn't read again. The pinned version has a single source of truth — `LUCILLE_VERSION` in `langchain_agent/.env.example` — read by `lucille_ingest.sh`, `lucille-esci/pom.xml` (via `${env.LUCILLE_VERSION}`), and `reindex.yml`; bump it there only (see `lucille-esci/README.md` "Versioning").
+The custom `lucille-esci` Maven module (configs + mappings) lives in-repo. **`lucille_ingest.sh` defaults to running Lucille via Docker** (`LUCILLE_USE_DOCKER=true`) — `docker/lucille/Dockerfile` resolves `lucille-core`/`lucille-parquet` from Maven Central using `lucille-esci/pom.xml` as the dependency manifest; no local Java/Maven/Lucille checkout needed. `LUCILLE_USE_DOCKER=false` switches to the native path (used by `reindex.yml`/`gcp-init.sh`, which target the remote hosted OpenSearch rather than the local compose stack): Step 1 builds `lucille-bom` + `lucille-parquet` from an external Lucille checkout (default `~/github/kmwtechnology/lucille`, override via `LUCILLE_DIR`) into `~/.m2` on first run only. The pinned version has a single source of truth — `LUCILLE_VERSION` in `langchain_agent/.env.example` — read by `lucille_ingest.sh`, `lucille-esci/pom.xml` (via `${env.LUCILLE_VERSION}`), `docker-compose.yml`'s `lucille` service build arg, and `reindex.yml`; bump it there only (see `lucille-esci/README.md` "Versioning").
 
 ### Ingest (Lucille ETL — `scripts/lucille_ingest.sh`)
 
@@ -266,11 +267,11 @@ Flags: `--reset-index` atomically deletes+recreates the index via `setup.py --re
 
 ## Scripts
 
-- `setup.sh` — one-time non-interactive: prereqs check (Docker, Python 3.14, Node, **Java 21+, Maven**), ESCI clone (~1GB), venv + deps, Docker up, `setup.py` (which calls `lucille_ingest.sh`). Creates `.env` from `.env.example` if missing; requires manual `GOOGLE_API_KEY`.
+- `setup.sh` — one-time non-interactive: prereqs check (Docker, Python 3.14, Node — **Java 21+/Maven only if `LUCILLE_USE_DOCKER=false`**), ESCI clone (~1GB), venv + deps, Docker up, `setup.py` (which calls `lucille_ingest.sh`). Creates `.env` from `.env.example` if missing; requires manual `GOOGLE_API_KEY`.
 - `teardown.sh` — kills :8000/:5173, removes Docker containers + volumes, `.venv`, `node_modules`, logs. Keeps `.env` by default.
 - `start.sh` / `stop.sh` — start/stop Docker + backend + frontend (Vite proxies API to :8000).
 - `deploy.sh` — Cloud Run deploy with Cloud SQL + Secret Manager + autoscaling.
-- `gcp-init.sh` — first-time GCP setup: Cloud SQL (PostgreSQL 16), schema + checkpoints table, product + judgment ingestion **via Lucille ETL** (runs on a workstation with Java/Maven + a Lucille checkout; reads static parquets from `data/`), API validation. It exports `OPENSEARCH_HOST`/`PORT`/`USE_SSL` for the hosted instance; `lucille_ingest.sh` loads `.env` with **non-override** semantics so those exports win (otherwise `.env`'s `localhost` would silently capture the ingest). **There is no in-container ingest** — the slim Cloud Run image has no Java; re-indexing is triggered via `reindex.yml` (Lucille on the Actions runner) or manually via `lucille_ingest.sh` with the hosted OpenSearch vars.
+- `gcp-init.sh` — first-time GCP setup: Cloud SQL (PostgreSQL 16), schema + checkpoints table, product + judgment ingestion **via Lucille ETL** (runs on a workstation with Java/Maven + a Lucille checkout — explicitly sets `LUCILLE_USE_DOCKER=false` since it targets the remote hosted OpenSearch, not the local compose stack; reads static parquets from `data/`), API validation. It exports `OPENSEARCH_HOST`/`PORT`/`USE_SSL` for the hosted instance; `lucille_ingest.sh` loads `.env` with **non-override** semantics so those exports win (otherwise `.env`'s `localhost` would silently capture the ingest). **There is no in-container ingest** — the slim Cloud Run image has no Java; re-indexing is triggered via `reindex.yml` (Lucille on the Actions runner) or manually via `lucille_ingest.sh` with the hosted OpenSearch vars.
 - `gcp-teardown.sh` — removes Cloud Run, Cloud SQL + backups, OpenSearch, Artifact Registry, Secrets.
 
 ## CI/CD — GitHub Actions

@@ -34,7 +34,9 @@ Path A also needs:
 - Docker Desktop
 - Python 3.14+
 - Node.js 24+
-- Java 21+ and Maven 3.8+ for the Lucille ETL ingest
+
+Java 21+ and Maven are only needed if you opt out of the default
+Docker-based Lucille ETL ingest (`LUCILLE_USE_DOCKER=false`).
 
 Path B also needs:
 
@@ -464,10 +466,10 @@ cp .env.example .env        # Fill in GOOGLE_API_KEY
 ./scripts/teardown.sh       # Full cleanup
 ```
 
-**Prerequisites:** Docker Desktop, Python 3.14+, Node.js 24+,
-Java 21+, Maven 3.8+, Google API key
+**Prerequisites:** Docker Desktop, Python 3.14+, Node.js 24+, Google API key
 ([get one](https://aistudio.google.com/apikey)), and ~1.5 GB disk for the
-ESCI dataset plus Docker volumes.
+ESCI dataset plus Docker volumes. (Java 21+/Maven only needed for
+`LUCILLE_USE_DOCKER=false`.)
 
 ### Path B: Deployment to GCP
 
