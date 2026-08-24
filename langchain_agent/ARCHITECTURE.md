@@ -147,7 +147,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
   ```
 
   Normalizes ranks from both methods, avoids probability calibration
-- **Candidate fetching**: `fetch_k=20` candidates (before deduplication/reranking)
+- **Candidate fetching**: `fetch_k=40` candidates (before deduplication/reranking)
 - **Product deduplication**: ESCI products may have multiple chunks; collapse to one per product
 - Emits `RetrievalProgressEvent` with candidate counts, top-K previews, OpenSearchQueryEvent with DSL details
 
@@ -204,6 +204,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 - **Intent-specific thresholds** (override the 0.50 default):
   - `comparison`: 0.55 (stricter, needs clear winner)
   - `attribute_filter`: 0.45 (looser, exact attribute match is easy)
+  - `refinement`: 0.45 (looser, narrowing scope is easy)
   - `search`, `follow_up`: 0.50 (standard)
 - Emits `QualityGateEvent` with pass/retry/accept decision and reasoning
 
@@ -231,10 +232,11 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 - **Document formatting**: Creates context window with product details
 - **LLM generation**: Gemini 3 Flash generates conversational response
 - **Citation building**:
-  - Extracts product IDs from metadata
-  - Constructs Amazon URLs: `https://www.amazon.com/dp/{product_id}`
+  - Extracts product titles from metadata (ESCI products have no ASIN; use title-based search for robustness)
+  - Constructs Amazon URLs: `https://www.amazon.com/s?k={title}` (search by title; ASIN-based `/dp/` links 404 frequently)
   - Filters by minimum reranker score (0.10 threshold)
   - Deduplicates by URL
+  - Post-processor strips any inline URLs/markdown the LLM emitted (agent prompt forbids inline URLs; belt-and-suspenders defense)
 - **Token-by-token streaming**: Emits `LLMResponseChunkEvent` with each token
 - **Link verification** (optional): Validates URLs before inclusion (60-min TTL cache)
 - Emits `AgentCompleteEvent` when done
