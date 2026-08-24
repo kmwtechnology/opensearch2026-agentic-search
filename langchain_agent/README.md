@@ -60,11 +60,11 @@ Path A needs:
 docker --version      # Docker Desktop
 python3 --version     # Python 3.14+
 node --version        # Node.js 24+
-java -version         # Java 21+ (for Lucille ETL ingest)
-mvn -version          # Maven 3.8+ (for Lucille ETL ingest)
 ```
 
-Install Java + Maven on macOS: `brew install openjdk@21 maven`
+Lucille ETL ingest runs via Docker by default (`LUCILLE_USE_DOCKER=true`) —
+no local Java/Maven needed. Set `LUCILLE_USE_DOCKER=false` to use the native
+path instead (requires Java 21+ and Maven: `brew install openjdk@21 maven`).
 
 Path B needs the Google Cloud SDK authenticated to the target project,
 permissions for Cloud Run, Cloud SQL, Artifact Registry, Secret Manager,

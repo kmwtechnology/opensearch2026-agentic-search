@@ -100,6 +100,10 @@ jobs:
 
       - name: Run Lucille ingest
         env:
+          # This workflow targets the remote hosted OpenSearch below, not a local
+          # compose stack — keep it on the native Java/Maven path built above.
+          # (Local dev defaults to the Docker path; see lucille_ingest.sh.)
+          LUCILLE_USE_DOCKER: "false"
           LUCILLE_DIR: /tmp/lucille
           OPENSEARCH_HOST: 34.138.97.13
           OPENSEARCH_PORT: "9200"
