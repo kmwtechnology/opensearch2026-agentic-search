@@ -371,7 +371,9 @@ def main():
                 docs_ingest_failed = True
                 print(f"      ✗ Lucille ingest failed (exit {e.returncode})")
                 print("      Check prerequisites: docker -v (default path), or")
-                print("      java -version (21+) and mvn -version (3.8+) if LUCILLE_USE_DOCKER=false")
+                print(
+                    "      java -version (21+) and mvn -version (3.8+) if LUCILLE_USE_DOCKER=false"
+                )
                 print("      Retry manually: bash langchain_agent/scripts/lucille_ingest.sh")
             except FileNotFoundError:
                 docs_ingest_failed = True
