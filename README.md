@@ -394,7 +394,7 @@ opensearch2026-agentic-search/
 │   ├── generate_embeddings.py    # Serial embedding fallback
 │   ├── benchmark_search.py       # Latency benchmarks
 │   ├── checkpoint_maintenance.py # Checkpoint GC
-│   ├── migrate_to_hnsw.py        # Index migration utility
+│   ├── checkpoint_optimizer.py   # Checkpoint optimization utility
 │   ├── api/                      # FastAPI backend — see api/README.md
 │   ├── web/                      # React frontend — see web/README.md
 │   ├── scripts/                  # Lifecycle scripts — see scripts/README.md
@@ -428,7 +428,7 @@ opensearch2026-agentic-search/
 | **For Contributors** | | |
 | [docs/contributing/README.md](docs/contributing/README.md) | Code patterns, testing, PR process | Contributors |
 | **For Claude Code sessions** | | |
-| [langchain_agent/CLAUDE.md](langchain_agent/CLAUDE.md) | Pipeline reference, commands, patterns, env vars — loaded automatically by Claude Code | AI/dev assistant |
+| [CLAUDE.md](CLAUDE.md) | Project guidance, GitHub Issues workflow, common commands, patterns, env vars — loaded automatically by Claude Code | AI/dev assistant |
 
 ## Search Optimization
 
@@ -438,18 +438,23 @@ opensearch2026-agentic-search/
 - **Dynamic α** — set per-query by the Query Evaluator
 - **Quality Gate** — automatic α ±0.3 retry when max reranker score < 0.5
 
-### Key Tunables (`langchain_agent/.env`)
+### Key Tunables
 
-```bash
-RETRIEVER_K=10                 # Final documents returned
-RETRIEVER_FETCH_K=40           # Candidates fetched before reranking
-RETRIEVER_ALPHA=0.25           # Default α (query evaluator usually overrides)
-RERANKER_FETCH_K=40            # Candidates reranked
-RERANKER_TOP_K=10              # Final top-K after reranking
-ENABLE_RERANKING=true
-ENABLE_QUERY_EVALUATION=true
-ESCI_INGEST_LIMIT=10000
+**Note:** Most retriever and reranker knobs are hardcoded in `langchain_agent/config.py` and cannot be changed via `.env`. To modify them, edit `config.py` directly and redeploy.
+
+```python
+# langchain_agent/config.py
+RETRIEVER_K = 10                 # Final documents returned
+RETRIEVER_FETCH_K = 40           # Candidates fetched before reranking
+RERANKER_FETCH_K = 40            # Candidates reranked
+RERANKER_TOP_K = 10              # Final top-K after reranking
+ENABLE_RERANKING = true
+ENABLE_QUERY_EVALUATION = true
+ESCI_INGEST_LIMIT = 10000
 ```
+
+Environment variables (in `.env`) that **do** affect behavior:
+- `RETRIEVER_ALPHA=0.25` — Default lexical/semantic balance (query evaluator usually overrides per-query)
 
 ## Operations
 
@@ -479,7 +484,12 @@ ESCI dataset plus Docker volumes. (Java 21+/Maven only needed for
 2. Builds the multi-stage Docker image (React frontend + Python backend)
 3. Pushes to Artifact Registry
 4. Deploys to Cloud Run with Cloud SQL proxy for checkpoints
-5. Wires secrets via Secret Manager (`GOOGLE_API_KEY`, `API_KEY`, OpenSearch creds)
+5. Wires secrets via Secret Manager:
+   - `GOOGLE_API_KEY` — LLM/embeddings API key
+   - `LOGIN_PASSWORD` — Web UI login password (if using SessionMiddleware auth)
+   - `SESSION_SECRET` — Cookie signing key (if using SessionMiddleware auth)
+   - `ADMIN_TOKEN` — Automation/CI token for `/api/admin/*` routes
+   - OpenSearch host/user/password credentials
 
 **Cost optimization:**
 
@@ -523,9 +533,10 @@ Set `OPENSEARCH_HOST` and `OPENSEARCH_PORT` in your environment before running `
   Artifact Registry (main only), Cloud Run deploy, and smoke tests. Strict
   linting is enforced — lint failures block the pipeline.
 - `.github/workflows/reindex.yml` — separate manual-dispatch workflow that
-  re-ingests ESCI data by running Lucille ETL directly on the Actions runner
-  (Java/Maven + Lucille checkout; reads `data/*.parquet`; targets GCP OpenSearch
-  via WIF-authenticated Secret Manager credentials).
+  re-ingests ESCI data via Lucille ETL (runs via Docker on the Actions runner,
+  which has Docker preinstalled; no Java/Maven/Lucille checkout needed).
+  Reads `data/*.parquet`, targets GCP OpenSearch via WIF-authenticated Secret
+  Manager credentials.
 
 Runners use Node.js 24. Authentication uses Workload Identity Federation
 (no long-lived keys).

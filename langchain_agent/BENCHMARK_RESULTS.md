@@ -51,23 +51,18 @@ curl -s http://localhost:9200/_cluster/health | python -m json.tool
 # Should return "status": "yellow" or "green"
 ```
 
-### 3. Ingest products (one-time)
+### 3. Ingest products and judgments (one-time via Lucille ETL)
 
 ```bash
 cd langchain_agent
-PYTHONPATH=. python ingest_esci_products.py --limit 1200000 --locale us
+bash scripts/lucille_ingest.sh
 ```
 
-Expected: ~10–15 minutes, ~1.2M products indexed to `agentic_hybrid_search_docs`.
+Expected: ~25 seconds, reads from precomputed `data/esci_products_sample_10000.parquet` and `data/esci_judgments_aggregated.parquet` (no API calls). Produces:
+- ~9,618 products indexed to `agentic_hybrid_search_docs`
+- ~97K queries with judgments in `esci_judgments` index
 
-### 4. Ingest judgments (one-time)
-
-```bash
-cd langchain_agent
-PYTHONPATH=. python ingest_esci_judgments.py --locale us --reset
-```
-
-Expected: ~5 minutes, ~1.8M judgments nested in `esci_judgments` index.
+**Note:** The older Python scripts (`ingest_esci_products.py`, `ingest_esci_judgments.py`) were removed in PR #48. Lucille ETL is now the only supported ingest path.
 
 Verify:
 

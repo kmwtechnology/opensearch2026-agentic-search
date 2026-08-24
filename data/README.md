@@ -22,26 +22,20 @@ Precomputed ESCI product and judgment parquets committed to the repo. Read direc
 
 ### Products
 
-To create a new product sample (different size or seed):
+To create a new product sample (different size or seed), you'll need to download the full ESCI dataset from GitHub and re-embed. The current `esci_products_sample_10000.parquet` was pre-embedded with `models/gemini-embedding-001`.
 
-```bash
-cd langchain_agent
-PYTHONPATH=. python ingest_esci_products.py --limit 50000 --resample
-# Outputs: esci/shopping_queries_dataset/esci_products_sample_50000.parquet
-# Requires re-embedding (calls GOOGLE_API_KEY for each product)
-```
-
-Then move it to `data/` and update `scripts/lucille_ingest.sh`:
-```bash
-cp esci/shopping_queries_dataset/esci_products_sample_50000.parquet data/
-# Edit lucille_ingest.sh to reference the new sample
-```
-
-For massive samples (1.2M+ products), use `bigquery_batch_embeddings.py`:
-```bash
-PYTHONPATH=. python bigquery_batch_embeddings.py --help
-# Parallelizes embedding across BigQuery ML
-```
+For regeneration:
+1. Clone the Amazon ESCI dataset: `git clone https://github.com/amazon-science/esci-data esci/`
+2. Re-embed products with Gemini:
+   ```bash
+   cd langchain_agent
+   PYTHONPATH=. python bigquery_batch_embeddings.py \
+     --project <GCP_PROJECT> \
+     --parquet-input ../esci/products.parquet \
+     --parquet-output data/esci_products_sample_<size>.parquet
+   ```
+   (Parallelizes embedding via BigQuery ML; ~15–30 min for 1.2M products)
+3. Update `scripts/lucille_ingest.sh` to reference the new file
 
 ### Judgments
 
@@ -53,10 +47,12 @@ PYTHONPATH=. python scripts/prepare_judgments_parquet.py --locale us --force
 # Outputs: data/esci_judgments_aggregated.parquet (overwrites existing)
 ```
 
-Then re-ingest:
+Then re-ingest via Lucille:
 ```bash
 bash scripts/lucille_ingest.sh --skip-products
 ```
+
+**Note:** The older standalone Python ingest scripts (`ingest_esci_products.py`, `ingest_esci_judgments.py`) were removed in PR #48. Lucille ETL is now the canonical ingest path.
 
 ## Storage Notes
 
@@ -73,9 +69,8 @@ bash scripts/lucille_ingest.sh --skip-products
 
 ## GCP Cloud Run
 
-When deploying to Cloud Run, `gcp-init.sh` re-ingests ESCI data by running `lucille_ingest.sh`
-on the GitHub Actions runner (Java 21+, Maven, Lucille checkout present). The runner reads
-`data/*.parquet` committed here and indexes into the hosted OpenSearch cluster.
+When deploying to Cloud Run, `gcp-init.sh` and `reindex.yml` re-ingest ESCI data by running `lucille_ingest.sh`
+on a workstation or GitHub Actions runner. The ingestion uses Docker (runners have Docker preinstalled; no Java/Maven/Lucille checkout needed). The runner reads `data/*.parquet` committed here and indexes into the hosted OpenSearch cluster.
 
 ## Troubleshooting
 
