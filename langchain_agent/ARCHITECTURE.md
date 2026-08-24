@@ -254,6 +254,51 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 
 ---
 
+### 7. LLM Judge (Hallucination Detection & Auto-Correction)
+
+**Input State**: `messages` (with the Agent's response appended), `retrieved_documents`, `user_query`
+
+**Trigger**: Runs **after Agent** only when both `optimizations.llm` and `optimizations.llm_judge` are enabled (configurable).
+
+**Process**:
+
+- **Blind A/B evaluation**: Gemini Flash Lite scores the response against the query + context, unaware of the original LLM's generation process (reduces inherent bias)
+- **Positional-bias randomization**: Shuffles doc order when presenting context to avoid ranking artifacts
+- **Produces `JudgmentResult`**: Pydantic model with:
+  - `pairwise_verdict` — boolean (is this response accurate?)
+  - `absolute_scores` (0.0–1.0 each):
+    - `faithfulness` — claims grounded in retrieved context
+    - `answer_relevance` — response answers the user's query
+    - `citation_accuracy` — cited products actually match claims
+    - `context_utilization` — uses available context, doesn't fabricate
+  - `List[FlaggedClaim]` — suspicious claims, each tagged with a `HallucinationCategory`:
+    - `fabrication` — claim unsupported by any retrieved doc (RETRY-ELIGIBLE)
+    - `cross_product_bleed` — claim from one product mistakenly applied to another (RETRY-ELIGIBLE)
+    - `inference` — plausible inference not explicitly stated (warning-only, no retry)
+    - `overreach` — overgeneralization or scope creep (warning-only, no retry)
+
+**Auto-Correction Retry (Layer 3a)**:
+
+- Triggers if **any flag has `category in {fabrication, cross_product_bleed}`** AND this is the first retry this turn
+- **Critically**: `hallucination_retry_used` flag is **reset to `False` at the start of every new user turn** in `intent_classifier_node` (issue #83) — without this reset, LangGraph's Postgres checkpoint persistence would permanently disable retry for all subsequent turns after the first flag
+- Regenerator receives **only retry-worthy claim text** (doesn't ask model to "fix" inference/overreach flags)
+- New response replaces the original in `messages` and UI (via `LLMResponseCorrectedEvent`)
+- Inference/overreach flags surface in observability panel but skip the ~20–30s retry tax
+
+**Output State**:
+
+- `hallucination_retry_used`: Boolean; set True if auto-correction retry fired this turn (reset to False at start of next turn)
+- `corrected_response`: If retry fired, the regenerated response text
+- `llm_judgment`: The full `JudgmentResult` object
+
+**CRITICAL Behaviors**:
+
+1. **`faithfulness` score is NOT the gate** (issue #77) — LLM can assign high faithfulness while simultaneously flagging fabrications; categorical classification is authoritative
+2. **All return paths in `agent_node` must include `"citations"` key** (issue #14) — observable_agent depends on consistent state shape; early returns (summary, clarify, no-info) return `"citations": []`
+3. **`_format_docs_for_prompt` default `max_chars=10000`** — raised progressively (360 → 1500 → 2500 → 10000) because ESCI products with prose descriptions + Amazon bullets can reach ~2498 chars, with key construction attributes appearing late (char 2039+); tight limits cause false-positive fabrication flags on grounded claims
+
+---
+
 ## State Management (CustomAgentState)
 
 ```python
@@ -336,6 +381,37 @@ emit_event(event) ──JSON─────────────────�
 
 If the two schemas diverge, WebSocket serialization will fail or frontend won't render the event.
 
+### WebSocket Security & Message Contract
+
+**Handshake**:
+- Frontend initiates `GET /ws/<thread_id>` (via `useWebSocket` hook)
+- Backend checks session cookie (or admin token) before upgrading to WebSocket
+- If auth fails, the backend closes with code **4401** — frontend interprets this as `markUnauthenticated()` and redirects to LoginScreen
+- Once upgraded, the connection is authenticated for its lifetime (session cookie persists across messages)
+
+**Inbound Message Contract** (frontend → backend):
+```typescript
+{
+  type: "chat_message",
+  message: string,
+  thread_id: string
+}
+```
+All messages must include these three fields; missing fields cause rejection. Thread ID must match the WebSocket URL path (prevents accidental cross-thread sends).
+
+**Outbound Event Contract** (backend → frontend):
+- All events are typed Pydantic models (see `api/schemas/events.py`)
+- Every event includes:
+  - `type: str` — event class name (must exist in `api/schemas/events.py`)
+  - `node: str` — pipeline stage that emitted it (intent_classifier, retriever, agent, etc.)
+  - Timestamp metadata
+- TypeScript types in `web/src/types/events.ts` must match Python schema exactly; CI-enforced by `test_frontend_backend_event_parity.py`
+
+**Critical Invariants**:
+- All agent return paths must include `"citations": []` or populated list (issue #14) — observable_agent depends on consistent state shape for WebSocket emission
+- No partial events — every message is complete JSON before transmission
+- No stream fragmentation — large responses (LLMResponseChunkEvent) stream token-by-token but each chunk is a complete, valid JSON event
+
 ---
 
 ## Typeahead Autocomplete (`GET /api/suggest`)
@@ -378,36 +454,23 @@ UI-assist path.
 
 ---
 
-## Admin Reindex API (`/api/admin/*`)
+## Re-Indexing
 
-Admin routes (`api/routes/admin.py`) provide operational control over the
-ESCI index without redeploying:
+The canonical re-indexing mechanism is the **GitHub Actions workflow** `.github/workflows/reindex.yml`, which runs **Lucille ETL via Docker** on the Actions runner to ingest ESCI products and (optionally) judgments into the remote OpenSearch cluster.
 
-```text
-GET /api/admin/reindex?reset_index=true&limit=10000
-   │
-   ├─► spawns background task (FastAPI BackgroundTasks)
-   │     1. optional index reset
-   │     2. run ingest_esci_products logic
-   │     3. update in-memory job state
-   │
-   └─► returns 200 with {"status":"started", "message":"..."} immediately
+**Workflow dispatch parameters**:
+- `reset_index` (default: `true`) — drop and recreate the products index before ingest
+- `reindex_judgments` (default: `false`) — also rebuild the esci_judgments (ground-truth) index
 
-GET /api/admin/reindex/status
-   └─► returns {"status": "queued"|"running"|"success"|"error",
-                 "started_at": "...", "finished_at": "...",
-                 "documents_ingested": N, "chunks_created": N,
-                 "limit": N, "reset_index": bool, "error": "..." | null}
+**For details**, see:
+- `.github/workflows/reindex.yml` — workflow file with WIF auth, Secret Manager credential fetch, and Lucille Docker invocation
+- `langchain_agent/scripts/lucille_ingest.sh` — orchestrates Lucille container with Docker Compose
+- `data/README.md` — data format and file descriptions
 
-GET /api/admin/health
-   └─► returns {"status": "healthy", "opensearch": {"connected": bool,
-                 "index": "...", "documents": N}}
-```
-
-A dedicated GitHub Actions workflow (`.github/workflows/reindex.yml`)
-exposes the flow as a manual dispatch — it calls `GET /api/admin/reindex`
-on the deployed Cloud Run instance and polls `/api/admin/reindex/status`
-until the job reaches a terminal state (`success` or `error`).
+**Admin API** (`api/routes/admin.py`):
+- `GET /api/admin/health` — index document count, service status
+- `GET /api/admin/ingest_judgments` — populate esci_judgments index (rarely used; primarily for local dev)
+- Protected by SessionMiddleware or Admin Token auth
 
 ---
 
