@@ -59,7 +59,13 @@ services:
   # "ingest" profile so `docker compose up -d` never starts it. Invoked by
   # scripts/lucille_ingest.sh via `docker compose run --rm lucille`, once for
   # products and once for judgments, with env vars set per invocation.
+  #
+  # Two modes:
+  #   1. Pre-built image (CI): LUCILLE_IMAGE env var points to a GHCR image,
+  #      skip the build (compose uses the image as-is)
+  #   2. Local dev: no LUCILLE_IMAGE, compose builds from docker/lucille/Dockerfile
   lucille:
+    image: ${LUCILLE_IMAGE:-}
     build:
       context: .
       dockerfile: docker/lucille/Dockerfile
