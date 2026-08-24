@@ -265,6 +265,11 @@ export OPENSEARCH_PORT="9200"
 export OPENSEARCH_USE_SSL="true"
 export OPENSEARCH_VERIFY_CERTS="false"
 
+# This workstation targets the remote hosted OpenSearch above, not a local
+# compose stack — keep lucille_ingest.sh (called by setup.py below) on the
+# native Java/Maven path. (Local dev defaults to the Docker path.)
+export LUCILLE_USE_DOCKER="false"
+
 SETUP_ARGS=""
 if $SKIP_DOCS; then
     SETUP_ARGS="--skip-docs"
@@ -357,7 +362,8 @@ echo "    /api/health"
 echo ""
 echo "  To re-ingest products + judgments into hosted OpenSearch later (Lucille ETL):"
 echo "    OPENSEARCH_HOST=34.138.97.13 OPENSEARCH_PORT=9200 OPENSEARCH_USE_SSL=true \\"
-echo "      bash langchain_agent/scripts/lucille_ingest.sh"
-echo "    (the exported OPENSEARCH_* vars override .env, so it targets GCP not localhost)"
+echo "      LUCILLE_USE_DOCKER=false bash langchain_agent/scripts/lucille_ingest.sh"
+echo "    (the exported OPENSEARCH_* vars override .env, so it targets GCP not localhost;"
+echo "     LUCILLE_USE_DOCKER=false keeps this on the native Java/Maven path)"
 echo ""
 echo "============================================================"
