@@ -1,6 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
-# Precomputed data files (shipped with repo, binary parquet)
-data/*.parquet binary
+# Precomputed data files (shipped with repo, binary parquet), tracked via Git LFS
 data/*.parquet filter=lfs diff=lfs merge=lfs -text
