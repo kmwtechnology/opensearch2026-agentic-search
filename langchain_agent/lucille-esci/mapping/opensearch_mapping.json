@@ -1,0 +1,208 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "knn": true,
+      "knn.algo_param.ef_search": 100
+    },
+    "analysis": {
+      "filter": {
+        "edge_ngram_filter": {
+          "type": "edge_ngram",
+          "min_gram": 2,
+          "max_gram": 20
+        },
+        "shingle_filter": {
+          "type": "shingle",
+          "min_shingle_size": 2,
+          "max_shingle_size": 3
+        },
+        "synonym_filter": {
+          "type": "synonym",
+          "synonyms": [
+            "headphones, earphones, earbuds, headset",
+            "laptop, notebook, chromebook",
+            "wireless, bluetooth",
+            "tv, television",
+            "phone, smartphone, mobile",
+            "smartwatch, smart watch",
+            "shoes, sneakers, trainers, footwear",
+            "charger, adapter, power adapter",
+            "monitor, display, screen",
+            "tablet, e-reader",
+            "camera, dslr, camcorder",
+            "speaker, speakers, soundbar",
+            "keyboard, mechanical keyboard",
+            "mouse, mice, trackpad"
+          ]
+        },
+        "phonetic_filter": {
+          "type": "phonetic",
+          "encoder": "double_metaphone",
+          "replace": false
+        }
+      },
+      "analyzer": {
+        "light_english_analyzer": {
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "synonym_filter",
+            "stop",
+            "kstem"
+          ]
+        },
+        "heavy_english_analyzer": {
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "stop",
+            "snowball"
+          ]
+        },
+        "english_shingle_analyzer": {
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "stop",
+            "shingle_filter"
+          ]
+        },
+        "english_phonetic_analyzer": {
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "phonetic_filter"
+          ]
+        },
+        "autocomplete_analyzer": {
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "edge_ngram_filter"
+          ]
+        },
+        "autocomplete_search_analyzer": {
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "embedding": {
+        "type": "knn_vector",
+        "dimension": 768,
+        "method": {
+          "name": "hnsw",
+          "space_type": "cosinesimil",
+          "engine": "lucene",
+          "parameters": {
+            "ef_construction": 512,
+            "m": 16
+          }
+        }
+      },
+      "chunk_text": {
+        "type": "text",
+        "analyzer": "light_english_analyzer",
+        "fields": {
+          "heavy": {
+            "type": "text",
+            "analyzer": "heavy_english_analyzer"
+          }
+        }
+      },
+      "document_id": {
+        "type": "keyword"
+      },
+      "chunk_index": {
+        "type": "integer"
+      },
+      "collection_id": {
+        "type": "keyword"
+      },
+      "source": {
+        "type": "keyword"
+      },
+      "title": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword"
+          }
+        }
+      },
+      "doc_type": {
+        "type": "keyword"
+      },
+      "url": {
+        "type": "keyword"
+      },
+      "product_id": {
+        "type": "keyword"
+      },
+      "product_brand": {
+        "type": "text",
+        "analyzer": "light_english_analyzer",
+        "fields": {
+          "keyword": {
+            "type": "keyword"
+          },
+          "heavy": {
+            "type": "text",
+            "analyzer": "heavy_english_analyzer"
+          }
+        }
+      },
+      "product_color": {
+        "type": "text",
+        "analyzer": "light_english_analyzer",
+        "fields": {
+          "keyword": {
+            "type": "keyword"
+          },
+          "heavy": {
+            "type": "text",
+            "analyzer": "heavy_english_analyzer"
+          }
+        }
+      },
+      "product_locale": {
+        "type": "keyword"
+      },
+      "esci_labels": {
+        "type": "keyword"
+      },
+      "collection": {
+        "type": "keyword"
+      },
+      "title_suggest": {
+        "type": "text",
+        "analyzer": "autocomplete_analyzer",
+        "search_analyzer": "autocomplete_search_analyzer"
+      },
+      "brand_suggest": {
+        "type": "text",
+        "analyzer": "autocomplete_analyzer",
+        "search_analyzer": "autocomplete_search_analyzer"
+      },
+      "title_phrase": {
+        "type": "text",
+        "analyzer": "english_shingle_analyzer"
+      },
+      "title_phonetic": {
+        "type": "text",
+        "analyzer": "english_phonetic_analyzer"
+      },
+      "brand_phonetic": {
+        "type": "text",
+        "analyzer": "english_phonetic_analyzer"
+      }
+    }
+  }
+}

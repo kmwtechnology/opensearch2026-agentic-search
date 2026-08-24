@@ -1,0 +1,574 @@
+openapi: 3.0.3
+info:
+  title: Agentic Hybrid Search API
+  version: 1.0.0
+  description: >-
+    Production-grade RAG agent for Amazon ESCI e-commerce product search.
+    Hybrid search (BM25 + vector via RRF), cross-encoder reranking with quality gate,
+    intent routing (7 classes), typeahead autocomplete with spell correction.
+    Deployed on GCP Cloud Run.
+
+    **Authentication:** Two layers: (1) Same-origin check, (2) Session cookie (LoginScreen)
+    OR X-Admin-Token header (automation).
+  contact:
+    name: KMW Technology
+    url: https://github.com/kmwtechnology/agentic-hybrid-search
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+  - url: https://agentic-hybrid-search-375500751528.us-central1.run.app
+    description: Production (GCP Cloud Run)
+
+tags:
+  - name: auth
+    description: Authentication (shared-password login gate with session cookies)
+  - name: health
+    description: System and index health probes
+  - name: suggest
+    description: Typeahead autocomplete with spell correction
+  - name: conversations
+    description: Conversation history CRUD
+  - name: admin
+    description: Admin health and diagnostics (reindex handled externally via Lucille ETL)
+  - name: chat
+    description: Real-time chat (WebSocket primary, REST fallback)
+
+# Security varies per endpoint — see individual endpoint definitions
+security: []
+
+paths:
+  /api/health:
+    get:
+      tags: [health]
+      summary: Comprehensive health check
+      description: Reports status of PostgreSQL, Google AI API key, and OpenSearch document count. Always returns 200 (fail-open for monitoring).
+      security: []
+      responses:
+        '200':
+          description: Health status (ok or degraded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                version: 1.1.0
+                postgres: true
+                google_ai: true
+                vector_store: true
+                document_count: 10000
+
+  /api/health/ready:
+    get:
+      tags: [health]
+      summary: Kubernetes readiness probe
+      description: Returns 200 if all critical services healthy, 503 otherwise.
+      security: []
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready: { type: boolean, example: true }
+        '503':
+          description: Not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready: { type: boolean, example: false }
+                  reason: { $ref: '#/components/schemas/HealthResponse' }
+
+  /api/config:
+    get:
+      tags: [health]
+      summary: Runtime frontend configuration
+      description: Returns the API base URL for the frontend to construct WebSocket/API URLs at runtime.
+      security: []
+      responses:
+        '200':
+          description: Frontend configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiUrl:
+                    type: string
+                    example: https://agentic-hybrid-search-375500751528.us-central1.run.app
+
+  /api/suggest:
+    get:
+      tags: [suggest]
+      summary: Typeahead autocomplete for product titles and brands
+      description: >-
+        Edge-ngram prefix matching against title_suggest / brand_suggest fields.
+        Optionally returns a spell_correction when the query looks like a
+        misspelling of a corpus token (distance >= 1, ratio >= 0.6,
+        confidence >= 0.5). Falls back to fuzzy=AUTO against title/product_brand
+        when edge-ngram yields zero hits (catches genuine typos like
+        "nikey" -> "nike", "samsong" -> "samsung").
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+          description: Query prefix for suggestions
+          example: son
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 8
+          description: Max suggestions to return
+      responses:
+        '200':
+          description: Suggestions (and optional spell correction)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestResponse'
+              examples:
+                prefix_match:
+                  summary: Prefix match for "son"
+                  value:
+                    suggestions:
+                      - title: "Sony WH-1000XM5 Wireless Noise Canceling Headphones"
+                        brand: "Sony"
+                        score: 1.0
+                        highlight: ["<mark data-th>Son</mark>y WH-1000XM5"]
+                      - title: "Sony SRS-XB13 Compact Bluetooth Speaker"
+                        brand: "Sony"
+                        score: 0.87
+                    spell_correction: null
+                spell_correction_sonie:
+                  summary: Misspelled "sonie" -> "sony"
+                  value:
+                    suggestions: []
+                    spell_correction:
+                      title: sony
+                      brand: Sony
+                      score: 0.667
+                fuzzy_fallback_nikey:
+                  summary: Fuzzy fallback "nikey" -> "nike"
+                  value:
+                    suggestions: []
+                    spell_correction:
+                      title: nike
+                      brand: Nike
+                      score: 0.889
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/conversations:
+    get:
+      tags: [conversations]
+      summary: List conversations
+      description: List all conversations, most recent first. Same-origin required.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: List of conversation summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ConversationSummary' }
+              example:
+                - thread_id: conversation_abc123
+                  title: Wireless Earbuds Comparison
+                  created_at: '2026-04-16T10:30:00Z'
+                  updated_at: '2026-04-16T11:45:00Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+    delete:
+      tags: [conversations]
+      summary: Delete ALL conversations
+      description: Destructive. Clears conversation_metadata, checkpoints, and checkpoint_blobs.
+      responses:
+        '204': { description: All conversations deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/conversations/{thread_id}:
+    get:
+      tags: [conversations]
+      summary: Get conversation detail (messages)
+      parameters:
+        - $ref: '#/components/parameters/ThreadIdPath'
+      responses:
+        '200':
+          description: Conversation detail with message history
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+    delete:
+      tags: [conversations]
+      summary: Delete a conversation
+      parameters:
+        - $ref: '#/components/parameters/ThreadIdPath'
+      responses:
+        '204': { description: Conversation deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/chat:
+    post:
+      tags: [chat]
+      summary: Non-streaming chat (REST fallback)
+      description: >-
+        Synchronous request/response. For real-time streaming and
+        observability events, use the WebSocket endpoint `/ws/chat` instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatRequest' }
+            example:
+              message: "What are the best gaming laptops under $1500?"
+              thread_id: conversation_abc123
+      responses:
+        '200':
+          description: Chat response
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatResponse' }
+              example:
+                thread_id: conversation_abc123
+                response: "Here are some excellent gaming laptops..."
+                duration_ms: 2450.5
+                citations:
+                  - label: "ASUS ROG Strix G15"
+                    url: "https://www.amazon.com/dp/B08X6XWRZL"
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /ws/chat:
+    get:
+      tags: [chat]
+      summary: WebSocket chat endpoint (primary)
+      description: >-
+        Upgrade an HTTP connection to WebSocket for real-time streaming chat
+        with observability events. Same-origin authentication enforced via
+        Origin header. Client sends `chat_message` or `stop_execution` JSON
+        payloads; server streams typed events (SearchProgressEvent,
+        OpenSearchQueryEvent — carries `body` (DSL with embedding scrubbed),
+        `index`, `params`, and `query_type` ∈ {hybrid, bm25_baseline,
+        quality_gate_retry} so the UI can show an eye-icon DSL viewer per
+        query — RerankerProgressEvent, LLMResponseChunkEvent,
+        AgentCompleteEvent, etc.) See `api/schemas/events.py` for full
+        event catalog.
+      security: []
+      parameters:
+        - name: Upgrade
+          in: header
+          required: true
+          schema: { type: string, enum: [websocket] }
+        - name: Connection
+          in: header
+          required: true
+          schema: { type: string, enum: [Upgrade] }
+        - name: thread_id
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[a-zA-Z][a-zA-Z0-9_-]{0,63}$'
+          description: Conversation thread ID. Auto-generated if omitted.
+      responses:
+        '101':
+          description: Switching Protocols - WebSocket connection established
+        '403':
+          description: Origin verification failed
+
+  /api/admin/health:
+    get:
+      tags: [admin]
+      summary: Admin index health
+      description: Verifies OpenSearch connectivity and reports document count.
+      security: []
+      responses:
+        '200':
+          description: Index health
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminHealthResponse' }
+              example:
+                status: healthy
+                opensearch:
+                  connected: true
+                  index: agentic_hybrid_search_docs
+                  documents: 10000
+
+  /api/admin/diagnose:
+    get:
+      tags: [admin]
+      summary: Diagnostic probe of index mapping and field counts
+      security: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, default: sony }
+      responses:
+        '200':
+          description: Field-level hit counts and mapping presence
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+components:
+  securitySchemes:
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: ahs_session
+      description: HttpOnly session cookie set by POST /api/auth/login (shared password authentication)
+    AdminTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Admin-Token
+      description: Admin token for machine-to-machine authentication (GitHub Actions, automation)
+
+  parameters:
+    ThreadIdPath:
+      name: thread_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-zA-Z0-9_-]{1,64}$'
+        maxLength: 64
+      description: Conversation thread ID (1-64 alphanumeric, underscore, hyphen)
+      example: conversation_abc123
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, version, postgres, google_ai, vector_store]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        version: { type: string, example: '1.1.0' }
+        postgres: { type: boolean }
+        postgres_error: { type: string, nullable: true }
+        google_ai: { type: boolean }
+        google_ai_error: { type: string, nullable: true }
+        vector_store: { type: boolean }
+        vector_store_error: { type: string, nullable: true }
+        document_count: { type: integer, nullable: true }
+
+    AdminHealthResponse:
+      type: object
+      required: [status, opensearch]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        opensearch:
+          type: object
+          properties:
+            connected: { type: boolean }
+            index: { type: string }
+            documents: { type: integer }
+            error: { type: string, nullable: true }
+
+    SuggestionItem:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, example: "Sony WH-1000XM5 Wireless Noise Canceling Headphones" }
+        brand: { type: string, nullable: true, example: "Sony" }
+        score:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+          maximum: 1
+          description: Normalized score (0..1). For spell_correction, this is a confidence value.
+          example: 0.87
+        highlight:
+          type: array
+          nullable: true
+          items: { type: string }
+          description: Raw highlight fragments with <mark data-th>...</mark> tags
+          example: ["<mark data-th>Son</mark>y WH-1000XM5"]
+
+    SuggestResponse:
+      type: object
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          items: { $ref: '#/components/schemas/SuggestionItem' }
+        spell_correction:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/SuggestionItem'
+          description: >-
+            Present when the query looks like a misspelling (e.g. sonie -> sony,
+            nikey -> nike). Null when the query already matches a corpus token
+            or is an in-progress prefix of a candidate.
+
+    ConversationSummary:
+      type: object
+      required: [thread_id, title, created_at]
+      properties:
+        thread_id: { type: string, example: conversation_abc123 }
+        title: { type: string, example: "Wireless Earbuds Comparison" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    ConversationDetail:
+      type: object
+      required: [thread_id, title, created_at, message_count, messages]
+      properties:
+        thread_id: { type: string }
+        title: { type: string }
+        created_at: { type: string, format: date-time }
+        message_count: { type: integer }
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string, enum: [human, ai] }
+              content: { type: string }
+
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          description: User message content
+        thread_id:
+          type: string
+          nullable: true
+          pattern: '^[a-zA-Z][a-zA-Z0-9_-]{0,63}$'
+          description: Optional conversation thread ID. Auto-generated if omitted.
+
+    Citation:
+      type: object
+      required: [label, url]
+      properties:
+        label: { type: string, example: "Sony WH-1000XM5" }
+        url: { type: string, format: uri, example: "https://www.amazon.com/dp/B09YLDRQ7L" }
+
+    ChatResponse:
+      type: object
+      required: [thread_id, response, duration_ms, citations]
+      properties:
+        thread_id: { type: string }
+        response: { type: string }
+        duration_ms: { type: number, format: float }
+        citations:
+          type: array
+          items: { $ref: '#/components/schemas/Citation' }
+
+    ReindexResponse:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [started, success, error]
+        message: { type: string }
+        documents_ingested: { type: integer, nullable: true }
+        chunks_created: { type: integer, nullable: true }
+        error: { type: string, nullable: true }
+
+    ReindexStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [idle, queued, running, success, error]
+        started_at: { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+        limit: { type: integer, nullable: true }
+        reset_index: { type: boolean, nullable: true }
+        documents_ingested: { type: integer, nullable: true }
+        chunks_created: { type: integer, nullable: true }
+        error: { type: string, nullable: true }
+
+    Error:
+      type: object
+      properties:
+        detail: { type: string }
+
+    ValidationErrorBody:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc: { type: array, items: { type: string } }
+              msg: { type: string }
+              type: { type: string }
+
+  responses:
+    BadRequest:
+      description: Invalid request (e.g. malformed thread_id)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { detail: "Invalid thread_id format. Must be 1-64 alphanumeric characters, underscores, or hyphens." }
+    Unauthorized:
+      description: Same-origin check failed OR session cookie/admin token invalid
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { detail: "Unauthorized" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { detail: "Conversation not found" }
+    ValidationError:
+      description: Request validation failed (FastAPI default)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationErrorBody' }
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { detail: "Rate limit exceeded: 30 per 1 minute" }
+    ServerError:
+      description: Internal server error (usually database/OpenSearch)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { detail: "Database error: connection refused" }

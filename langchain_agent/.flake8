@@ -1,0 +1,22 @@
+[flake8]
+max-line-length = 100
+exclude =
+    .venv,
+    venv,
+    node_modules,
+    build,
+    dist,
+    htmlcov,
+    .git,
+    __pycache__
+# Black compatibility + pragmatic suppressions:
+# E203: whitespace before ':' (black puts one)
+# W503: line break before binary operator (black prefers this)
+# E501: line too long (rare exceeding cases, black handles most)
+# E402: module level import not at top (tests set env vars before importing)
+# F401: unused imports (test files commonly have placeholder imports)
+# F541: f-string without placeholders (harmless, common in log messages)
+# F811: redefinition (tests redefine fixtures locally)
+# F841: local variable assigned but not used (test scaffolding)
+# E302: expected 2 blank lines (cosmetic)
+extend-ignore = E203, W503, E501, E402, F401, F541, F811, F841, E302

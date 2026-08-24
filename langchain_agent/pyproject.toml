@@ -1,0 +1,41 @@
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+extend-exclude = '''
+(
+    /(\.venv|venv|node_modules|build|dist|htmlcov|\.git)/
+)
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip = [".venv", "venv", "node_modules", "build", "dist", "htmlcov"]
+skip_glob = ["**/node_modules/**"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+exclude = [
+    "\\.venv/",
+    "venv/",
+    "node_modules/",
+    "build/",
+    "dist/",
+    "htmlcov/",
+    "tests/",
+]
+# Project is heavily Pydantic/LangChain; strict typing is not feasible.
+# Run in permissive mode — catch egregious issues only.
+disable_error_code = [
+    "arg-type",
+    "assignment",
+    "attr-defined",
+    "dict-item",
+    "index",
+    "misc",
+    "operator",
+    "truthy-function",
+    "union-attr",
+    "var-annotated",
+]

@@ -1,0 +1,14 @@
+# External dataset documentation (not maintained by this project)
+esci/
+
+# Node.js dependencies
+**/node_modules/
+
+# Python virtual environments
+**/.venv/
+
+# Test cache
+**/.pytest_cache/
+
+# Generated migration files
+langchain_agent/web/.github/

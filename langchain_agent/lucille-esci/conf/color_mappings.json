@@ -1,0 +1,357 @@
+{
+  "base_colors": {
+    "black": [
+      "black",
+      "jet",
+      "charcoal",
+      "ebony",
+      "onyx"
+    ],
+    "white": [
+      "white",
+      "ivory",
+      "cream",
+      "off-white",
+      "ecru",
+      "beige",
+      "bone"
+    ],
+    "blue": [
+      "blue",
+      "navy",
+      "cyan",
+      "turquoise",
+      "teal",
+      "aqua",
+      "indigo",
+      "cobalt",
+      "denim"
+    ],
+    "red": [
+      "red",
+      "crimson",
+      "scarlet",
+      "maroon",
+      "burgundy",
+      "wine",
+      "rust",
+      "brick"
+    ],
+    "green": [
+      "green",
+      "lime",
+      "emerald",
+      "sage",
+      "olive",
+      "mint",
+      "forest",
+      "moss",
+      "hunter"
+    ],
+    "yellow": [
+      "yellow",
+      "gold",
+      "amber",
+      "tan",
+      "khaki",
+      "mustard",
+      "champagne"
+    ],
+    "pink": [
+      "pink",
+      "rose",
+      "mauve",
+      "salmon",
+      "blush",
+      "coral",
+      "fuchsia",
+      "magenta"
+    ],
+    "purple": [
+      "purple",
+      "violet",
+      "lavender",
+      "plum",
+      "lilac",
+      "eggplant"
+    ],
+    "brown": [
+      "brown",
+      "chocolate",
+      "bronze",
+      "copper",
+      "cognac",
+      "taupe",
+      "mocha",
+      "espresso",
+      "coffee",
+      "caramel"
+    ],
+    "gray": [
+      "gray",
+      "grey",
+      "silver",
+      "ash",
+      "slate",
+      "pewter",
+      "graphite",
+      "nickel",
+      "chrome",
+      "titanium"
+    ],
+    "orange": [
+      "orange",
+      "coral",
+      "peach",
+      "tangerine",
+      "apricot"
+    ],
+    "clear": [
+      "clear",
+      "transparent",
+      "translucent",
+      "crystal"
+    ],
+    "multicolor": [
+      "multicolor",
+      "multicolored",
+      "multi-color",
+      "multi-colored",
+      "multi",
+      "rainbow",
+      "colorful"
+    ],
+    "natural": [
+      "natural",
+      "wood",
+      "natural wood",
+      "unfinished",
+      "raw"
+    ],
+    "mixed": [
+      "assorted",
+      "mixed",
+      "various",
+      "pattern"
+    ]
+  },
+  "statistics": {
+    "original_unique_colors": 2766,
+    "total_products": 6588,
+    "classified_products": 5233,
+    "unclassified_products": 1355,
+    "products_with_secondary": 351
+  },
+  "primary_distribution": {
+    "black": 1503,
+    "unclassified": 1355,
+    "white": 709,
+    "gray": 533,
+    "blue": 519,
+    "multicolor": 329,
+    "brown": 273,
+    "red": 271,
+    "yellow": 264,
+    "pink": 237,
+    "green": 192,
+    "clear": 137,
+    "purple": 96,
+    "orange": 74,
+    "natural": 56,
+    "mixed": 40
+  },
+  "secondary_distribution": {
+    "white": 59,
+    "gray": 58,
+    "black": 57,
+    "blue": 36,
+    "red": 28,
+    "yellow": 28,
+    "pink": 21,
+    "green": 17,
+    "brown": 12,
+    "purple": 12
+  },
+  "top_examples": [
+    {
+      "original": "Black",
+      "count": 994,
+      "primary": "black",
+      "secondary": NaN
+    },
+    {
+      "original": "White",
+      "count": 446,
+      "primary": "white",
+      "secondary": NaN
+    },
+    {
+      "original": "Blue",
+      "count": 185,
+      "primary": "blue",
+      "secondary": NaN
+    },
+    {
+      "original": "Multicolor",
+      "count": 155,
+      "primary": "multicolor",
+      "secondary": NaN
+    },
+    {
+      "original": "Red",
+      "count": 133,
+      "primary": "red",
+      "secondary": NaN
+    },
+    {
+      "original": "Silver",
+      "count": 129,
+      "primary": "gray",
+      "secondary": NaN
+    },
+    {
+      "original": "Brown",
+      "count": 115,
+      "primary": "brown",
+      "secondary": NaN
+    },
+    {
+      "original": "Pink",
+      "count": 103,
+      "primary": "pink",
+      "secondary": NaN
+    },
+    {
+      "original": "Green",
+      "count": 92,
+      "primary": "green",
+      "secondary": NaN
+    },
+    {
+      "original": "Grey",
+      "count": 85,
+      "primary": "gray",
+      "secondary": NaN
+    },
+    {
+      "original": "Clear",
+      "count": 85,
+      "primary": "clear",
+      "secondary": NaN
+    },
+    {
+      "original": "Gray",
+      "count": 81,
+      "primary": "gray",
+      "secondary": NaN
+    },
+    {
+      "original": "Multi",
+      "count": 64,
+      "primary": "multicolor",
+      "secondary": NaN
+    },
+    {
+      "original": "Gold",
+      "count": 62,
+      "primary": "yellow",
+      "secondary": NaN
+    },
+    {
+      "original": "Yellow",
+      "count": 59,
+      "primary": "yellow",
+      "secondary": NaN
+    },
+    {
+      "original": "black",
+      "count": 58,
+      "primary": "black",
+      "secondary": NaN
+    },
+    {
+      "original": "Purple",
+      "count": 58,
+      "primary": "purple",
+      "secondary": NaN
+    },
+    {
+      "original": "Navy",
+      "count": 40,
+      "primary": "blue",
+      "secondary": NaN
+    },
+    {
+      "original": "Orange",
+      "count": 39,
+      "primary": "orange",
+      "secondary": NaN
+    },
+    {
+      "original": "Stainless Steel",
+      "count": 29,
+      "primary": "unclassified",
+      "secondary": NaN
+    },
+    {
+      "original": "Beige",
+      "count": 26,
+      "primary": "white",
+      "secondary": NaN
+    },
+    {
+      "original": "Multicolored",
+      "count": 24,
+      "primary": "multicolor",
+      "secondary": NaN
+    },
+    {
+      "original": "Natural",
+      "count": 24,
+      "primary": "natural",
+      "secondary": NaN
+    },
+    {
+      "original": "Chrome",
+      "count": 21,
+      "primary": "gray",
+      "secondary": NaN
+    },
+    {
+      "original": "Rose Gold",
+      "count": 20,
+      "primary": "pink",
+      "secondary": NaN
+    },
+    {
+      "original": "Assorted",
+      "count": 18,
+      "primary": "mixed",
+      "secondary": NaN
+    },
+    {
+      "original": "Tan",
+      "count": 18,
+      "primary": "yellow",
+      "secondary": NaN
+    },
+    {
+      "original": "Multi-colored",
+      "count": 17,
+      "primary": "multicolor",
+      "secondary": NaN
+    },
+    {
+      "original": "Matte Black",
+      "count": 17,
+      "primary": "black",
+      "secondary": NaN
+    },
+    {
+      "original": "white",
+      "count": 16,
+      "primary": "white",
+      "secondary": NaN
+    }
+  ]
+}
