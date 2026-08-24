@@ -6,6 +6,23 @@ Guidance to Claude Code (claude.ai/code) when working with this repository.
 
 When a new work session begins (especially when picking up an issue, feature, or non-trivial fix), **suggest creating a feature branch before writing code**. Confirm `git status` is clean and `main` is up to date, then propose a branch name (e.g. `feat/issue-6-judge-categories`, `fix/citation-urls`). Do not start editing on `main`. Skip only for one-line typos or doc tweaks the user explicitly says to commit straight to `main`.
 
+## Working Session Skills (`/workflow-start`, `/workflow-check`, `/workflow-deploy`)
+
+These three skills are **global** (`~/.claude/skills/`), shared across every project on this machine, including the Nasuni/Hyrule (`HYR`), Thermo (`CAR`), and Tempo (`CUS`) Jira-tracked repos. Their written instructions default to that Jira/Hyrule world (Nasuni's Atlassian MCP connector, `#nasuni-int` Slack, `./run_app_tests.sh hyrule_api`, Jira ticket IDs and transitions). **None of that applies here.** This repo tracks work in **GitHub Issues** (`kmwtechnology/opensearch2026-agentic-search`) — every Jira-shaped step in those skills maps to a GitHub equivalent instead:
+
+| Skill step | Nasuni/Hyrule default (ignore here) | This project |
+|---|---|---|
+| Ticket lookup / "Done" check | `mcp__atlassian-nasuni__getJiraIssue`, statusCategory == Done | `gh issue view <N>` (already the skills' documented GitHub fallback); "done" = `state == CLOSED` |
+| Branch name | `TICKET-NNN-slug` | `feat/issue-N-slug` / `fix/issue-N-slug` (per New Session Checklist above) |
+| Commit / PR prefix | Jira ticket ID (e.g. `HYR-512:`) | Reference the issue number in the PR body (`Closes #N`); commit messages don't need a ticket prefix |
+| Local test commands (Discuss / self-review / pre-merge) | `./run_app_tests.sh hyrule_api`, `./run_package_tests.sh` (don't exist here) | This repo's own commands — see **Common Commands** below: `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` / `make smoke-local` |
+| Transition to "In Progress" | `mcp__atlassian-nasuni__transitionJiraIssue` | N/A — GitHub issues have no in-progress transition; optionally leave a `gh issue comment` noting work has started |
+| Ready-for-review / deploy-outcome announcement | Slack `#nasuni-int` (`C07UY85CBHD`) | **No Slack channel is configured for this project — skip these Slack-post steps entirely.** Don't post to `#nasuni-int`; that channel belongs to a different project |
+| Post-deploy close-out | Jira comment + transition to Done; Obsidian `#nasuni` archive tag | `gh issue close <N> --comment "..."` (or let `Closes #N` in the PR body auto-close on merge); if archiving to Obsidian, tag `#opensearch2026-agentic-search` instead of `#nasuni` |
+| CI / deploy watch (`/workflow-deploy`) | Hyrule's k8s `build`/`deploy` workflow names | This repo's actual workflows: `.github/workflows/test.yml` (PR CI) and `.github/workflows/build-deploy.yml` (main-branch build + Cloud Run deploy) — see **CI/CD** below |
+
+When one of these skills says "load `mcp__atlassian-nasuni__*`" or "post to `#nasuni-int`," treat it as inapplicable here and use the mapping above instead. If a step doesn't have a clean GitHub/Cloud-Run equivalent, say so and ask rather than silently skipping it.
+
 ## Recent Fixes & Status (2026-06-13)
 
 - **Issue #69** (PR #73 / commit 3950a4f) — Switched BM25 analyzer from `snowball` (aggressive) to `kstem` (light stemming) for precision. Added `.heavy` sub-fields (snowball) at ^0.3 boost for recall insurance. Improves brand name precision (Beats ≠ beat) and adjective distinction (wireless ≠ wire) while maintaining morphological recall via dense vectors. All 730 unit tests pass; local + remote OpenSearch reindexed.
