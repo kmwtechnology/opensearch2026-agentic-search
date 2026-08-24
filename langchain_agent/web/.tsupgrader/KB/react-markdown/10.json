@@ -1,0 +1,1 @@
+[[{"Pattern":"\u003CBrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}\u003E","Replacement":"\u003CBrowserRouter\u003E"},{"Pattern":"const scrollTimeoutRef = useRef\u003Cnumber\u003E\\(\\)","Replacement":"const scrollTimeoutRef = useRef\u003CReturnType\u003Ctypeof setTimeout\u003E | undefined\u003E(undefined)"}]]

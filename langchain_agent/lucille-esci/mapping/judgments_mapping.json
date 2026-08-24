@@ -1,0 +1,81 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "refresh_interval": "30s"
+    },
+    "analysis": {
+      "normalizer": {
+        "lowercase": {
+          "type": "custom",
+          "char_filter": [],
+          "filter": [
+            "lowercase"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "query_id": {
+        "type": "keyword"
+      },
+      "query": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "normalizer": "lowercase"
+          }
+        }
+      },
+      "locale": {
+        "type": "keyword"
+      },
+      "split": {
+        "type": "keyword"
+      },
+      "small_version": {
+        "type": "boolean"
+      },
+      "large_version": {
+        "type": "boolean"
+      },
+      "num_judgments": {
+        "type": "integer"
+      },
+      "label_counts": {
+        "properties": {
+          "E": {
+            "type": "integer"
+          },
+          "S": {
+            "type": "integer"
+          },
+          "C": {
+            "type": "integer"
+          },
+          "I": {
+            "type": "integer"
+          }
+        }
+      },
+      "judgments": {
+        "type": "nested",
+        "properties": {
+          "product_id": {
+            "type": "keyword"
+          },
+          "esci_label": {
+            "type": "keyword"
+          },
+          "relevance": {
+            "type": "float"
+          }
+        }
+      }
+    }
+  }
+}

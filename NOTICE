@@ -1,0 +1,25 @@
+Agentic Hybrid Search
+Copyright 2026 KMW Technology, LLC
+
+This product includes software developed by other parties:
+
+- LangChain (<https://github.com/langchain-ai/langchain>)
+  Licensed under the Apache License, Version 2.0
+
+- LangGraph (<https://github.com/langchain-ai/langgraph>)
+  Licensed under the Apache License, Version 2.0
+
+- FastAPI (<https://github.com/tiangolo/fastapi>)
+  Licensed under the MIT License
+
+- Pydantic (<https://github.com/pydantic/pydantic>)
+  Licensed under the MIT License
+
+- React (<https://github.com/facebook/react>)
+  Licensed under the MIT License
+
+- sentence-transformers (<https://github.com/UKPLab/sentence-transformers>)
+  Licensed under the Apache License, Version 2.0
+
+- opensearch-py (<https://github.com/opensearch-project/opensearch-py>)
+  Licensed under the Apache License, Version 2.0

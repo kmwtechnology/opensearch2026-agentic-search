@@ -1,0 +1,31 @@
+steps:
+  # Install dependencies and run judgments ingestion
+  - name: 'python:3.13'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        cd langchain_agent
+        pip install -q -r requirements.txt
+        PYTHONPATH=. python ingest_esci_judgments.py
+    env:
+      - 'GOOGLE_API_KEY=${_GOOGLE_API_KEY}'
+      - 'OPENSEARCH_HOST=34.138.97.13'
+      - 'OPENSEARCH_PORT=9200'
+      - 'OPENSEARCH_USE_SSL=true'
+      - 'OPENSEARCH_VERIFY_CERTS=false'
+    secretEnv:
+      - 'OPENSEARCH_USER'
+      - 'OPENSEARCH_PASSWORD'
+
+substitutions:
+  _GOOGLE_API_KEY: 'placeholder'
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/gen-lang-client-0250737934/secrets/agentic-hybrid-search-opensearch-user/versions/latest
+      env: 'OPENSEARCH_USER'
+    - versionName: projects/gen-lang-client-0250737934/secrets/agentic-hybrid-search-opensearch-password/versions/latest
+      env: 'OPENSEARCH_PASSWORD'
+
+timeout: '3600s'

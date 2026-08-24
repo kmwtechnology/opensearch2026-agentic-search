@@ -1,0 +1,129 @@
+name: Re-Index OpenSearch
+
+# Rebuild the product index (and optionally the judgments index) by running
+# Lucille ETL directly on the GitHub Actions runner. No in-container ingest;
+# Lucille reads the static parquets from data/ in the repo checkout.
+#
+# Flow:
+#   1. Authenticate with GCP via Workload Identity Federation
+#   2. Fetch OpenSearch credentials from Secret Manager
+#   3. Install Java 17 + Maven on the runner
+#   4. Clone Lucille from GitHub
+#   5. Run lucille_ingest.sh (products always; judgments optionally)
+#   6. Verify the rebuilt index via /api/admin/health
+
+on:
+  workflow_dispatch:
+    inputs:
+      reset_index:
+        description: 'Drop and recreate the products index before ingest (use true when mappings changed)'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      reindex_judgments:
+        description: 'Also rebuild the esci_judgments index (ground-truth NDCG/MRR data)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  SERVICE_URL: https://agentic-hybrid-search-375500751528.us-central1.run.app
+  PROJECT_ID: gen-lang-client-0250737934
+
+jobs:
+  reindex:
+    name: Re-index OpenSearch via Lucille
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate with GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Fetch OpenSearch credentials from Secret Manager
+        id: secrets
+        run: |
+          OS_USER=$(gcloud secrets versions access latest \
+            --secret=agentic-hybrid-search-opensearch-user \
+            --project="${{ env.PROJECT_ID }}")
+          OS_PASS=$(gcloud secrets versions access latest \
+            --secret=agentic-hybrid-search-opensearch-password \
+            --project="${{ env.PROJECT_ID }}")
+          echo "::add-mask::${OS_USER}"
+          echo "::add-mask::${OS_PASS}"
+          echo "os_user=${OS_USER}" >> "$GITHUB_OUTPUT"
+          echo "os_pass=${OS_PASS}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Install Maven
+        run: sudo apt-get install -y --no-install-recommends maven
+
+      - name: Set up Python (for index mapping recreation on --reset-index)
+        if: ${{ github.event.inputs.reset_index == 'true' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+
+      - name: Install Python dependencies (for index mapping recreation)
+        if: ${{ github.event.inputs.reset_index == 'true' }}
+        run: pip install -r langchain_agent/requirements.txt
+
+      - name: Clone Lucille
+        run: git clone --depth=1 https://github.com/kmwtechnology/lucille.git /tmp/lucille
+
+      - name: Run Lucille ingest
+        env:
+          LUCILLE_DIR: /tmp/lucille
+          OPENSEARCH_HOST: 34.138.97.13
+          OPENSEARCH_PORT: "9200"
+          OPENSEARCH_USE_SSL: "true"
+          OPENSEARCH_VERIFY_CERTS: "false"
+          OPENSEARCH_INDEX_NAME: agentic_hybrid_search_docs
+          OPENSEARCH_USER: ${{ steps.secrets.outputs.os_user }}
+          OPENSEARCH_PASSWORD: ${{ steps.secrets.outputs.os_pass }}
+          # API_KEY is required by the app lifespan but unused for setup --skip-docs --skip-models.
+          # Set a placeholder so setup.py doesn't fail its env-var validation during --reset-index.
+          API_KEY: placeholder
+        run: |
+          ARGS=()
+          [[ "${{ github.event.inputs.reset_index }}" == "true" ]] && ARGS+=(--reset-index)
+          [[ "${{ github.event.inputs.reindex_judgments }}" == "false" ]] && ARGS+=(--skip-judgments)
+          bash langchain_agent/scripts/lucille_ingest.sh "${ARGS[@]}"
+
+      - name: Verify index health
+        run: |
+          set -euo pipefail
+          echo "Service health (/api/health — public endpoint):"
+          curl -sS "${{ env.SERVICE_URL }}/api/health" | jq '{status, document_count}'
+          echo
+          echo "Typeahead probe (q=son):"
+          SUGGEST=$(curl -sS "${{ env.SERVICE_URL }}/api/suggest?q=son")
+          echo "$SUGGEST" | jq '{count: (.suggestions | length), top3: (.suggestions[0:3] | map({title, brand, score}))}'
+          COUNT=$(echo "$SUGGEST" | jq '.suggestions | length')
+          if [[ "$COUNT" -eq 0 ]]; then
+            echo "::error::Typeahead returned 0 results for q=son — title_suggest/brand_suggest fields may be missing"
+            exit 1
+          fi
+          echo "✓ Typeahead healthy ($COUNT suggestions)"

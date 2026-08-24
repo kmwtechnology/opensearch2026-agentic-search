@@ -1,0 +1,203 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  body {
+    @apply bg-gray-900 text-gray-100 antialiased;
+  }
+
+  /* Screen reader only text */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* Custom scrollbar styling */
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-800;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  /* Node status badges — PROJECTOR OPTIMIZED */
+  .node-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-sm font-medium;
+  }
+
+  .node-badge-running {
+    @apply bg-blue-500/30 text-blue-200 border border-blue-500/50;
+  }
+
+  .node-badge-complete {
+    @apply bg-emerald-500/30 text-emerald-200 border border-emerald-500/50;
+  }
+
+  .node-badge-error {
+    @apply bg-red-500/30 text-red-200 border border-red-500/50;
+  }
+
+  /* Score bar visualization — PROJECTOR OPTIMIZED */
+  .score-bar {
+    @apply h-3 rounded-full bg-gray-700 overflow-hidden;
+  }
+
+  .score-bar-fill {
+    @apply h-full rounded-full transition-all duration-300;
+  }
+
+  /* Card styles for observability panel — PROJECTOR OPTIMIZED */
+  .obs-card {
+    @apply bg-gray-800/50 border border-gray-700/50 rounded-lg p-4 backdrop-blur-sm;
+  }
+
+  .obs-card-header {
+    @apply flex items-center justify-between mb-3;
+  }
+
+  .obs-card-title {
+    @apply text-base font-medium text-gray-100;
+  }
+
+  /* Chat message styles */
+  .chat-message {
+    @apply rounded-lg px-4 py-3 max-w-[85%];
+  }
+
+  .chat-message-user {
+    @apply bg-blue-600 text-white ml-auto;
+  }
+
+  .chat-message-assistant {
+    @apply bg-gray-800 text-gray-100 mr-auto;
+  }
+
+  /* Markdown rendering */
+  .markdown-content {
+    @apply text-gray-100 leading-relaxed;
+  }
+
+  .markdown-content p {
+    @apply mb-3 leading-relaxed;
+  }
+
+  .markdown-content h1, .markdown-content h2, .markdown-content h3,
+  .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+    @apply font-semibold text-white mb-2 mt-4;
+  }
+
+  .markdown-content h1 {
+    @apply text-lg;
+  }
+
+  .markdown-content h2 {
+    @apply text-base;
+  }
+
+  .markdown-content h3, .markdown-content h4 {
+    @apply text-sm;
+  }
+
+  .markdown-content h5, .markdown-content h6 {
+    @apply text-xs;
+  }
+
+  .markdown-content pre {
+    @apply bg-gray-900 rounded-lg p-4 overflow-x-auto my-3 border border-gray-800;
+  }
+
+  .markdown-content code {
+    @apply bg-gray-700 px-1.5 py-0.5 rounded text-sm text-gray-100;
+  }
+
+  .markdown-content pre code {
+    @apply bg-transparent p-0 text-gray-100;
+  }
+
+  .markdown-content ul, .markdown-content ol {
+    @apply pl-5 mb-3 space-y-1;
+  }
+
+  .markdown-content li {
+    @apply mb-1 text-gray-100;
+  }
+
+  .markdown-content a {
+    @apply text-blue-400 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded;
+  }
+
+  .markdown-content blockquote {
+    @apply border-l-4 border-gray-600 pl-4 italic text-gray-300 my-3;
+  }
+
+  /* Table styling */
+  .markdown-content table {
+    @apply w-full border-collapse my-3 text-xs;
+  }
+
+  .markdown-content thead {
+    @apply bg-gray-800 border border-gray-700;
+  }
+
+  .markdown-content tbody {
+    @apply border border-gray-700;
+  }
+
+  .markdown-content tr {
+    @apply border-b border-gray-700 hover:bg-gray-800/50 transition-colors;
+  }
+
+  .markdown-content th {
+    @apply px-3 py-2 text-left font-semibold text-gray-200 border-r border-gray-700 bg-gray-800;
+  }
+
+  .markdown-content th:last-child {
+    @apply border-r-0;
+  }
+
+  .markdown-content td {
+    @apply px-3 py-2 text-gray-300 border-r border-gray-700;
+  }
+
+  .markdown-content td:last-child {
+    @apply border-r-0;
+  }
+
+  /* Horizontal rule */
+  .markdown-content hr {
+    @apply my-4 border-t border-gray-700;
+  }
+
+  /* Pulse animation for active nodes */
+  .node-active {
+    @apply relative;
+  }
+
+  .node-active::before {
+    content: '';
+    @apply absolute inset-0 rounded-lg animate-pulse-slow;
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1));
+  }
+}
+

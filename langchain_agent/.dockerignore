@@ -1,0 +1,15 @@
+.venv/
+node_modules/
+logs/
+.env
+.env.*
+web/.env
+web/.env.*
+__pycache__/
+.git/
+*.pyc
+.backend.pid
+.frontend.pid
+web/dist/
+scripts/
+tests/

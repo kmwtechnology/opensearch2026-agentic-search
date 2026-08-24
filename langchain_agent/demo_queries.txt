@@ -1,0 +1,95 @@
+# Curated demo query list for the Pipeline Quality Summary card.
+#
+# All queries here are present in the ESCI judgments index AND have at least
+# one judged-relevant product in the local 10K-product sample, so the card
+# shows the ground-truth layout (Stock BM25 → Your BM25 → Hybrid → Reranked).
+#
+# Use:
+#   PYTHONPATH=. python evaluate_pipeline.py --queries-file demo_queries.txt
+#
+# Lines starting with # are comments; blank lines are skipped.
+# Queries below are sorted by demo impact (start at the top).
+# Numbers below are real NDCG@10 from a measured run on 2026-04-27 with the
+# 10K-product index, alpha=0.25, gemini-3.1-flash-lite-preview reranker.
+# Yours will drift slightly run-to-run but the *direction* of each Δ is stable.
+
+
+# ==============================================================================
+# 🥇 Story 1: "Triple win" — every stage adds value
+#     Best single-query case for the full pipeline. Open the demo with this.
+# ==============================================================================
+
+# sd card                  BM25=0.139 → Hybrid=0.298 (+0.160) → Reranked=0.444 (+0.146)
+#   Acronym query — BM25 over-matches on the word "card" alone; vector
+#   embeddings narrow it to actual SD-card products; reranker picks the
+#   best ones. NDCG triples end-to-end (0.139 → 0.444).
+sd card
+
+# nyla bones for puppys    BM25=0.220 → Hybrid=0.444 (+0.224) → Reranked=0.469 (+0.025)
+#   Killer relatable demo: misspellings ("nyla" vs "nylabone", "puppys"
+#   vs "puppies"). Vector embeddings rescue what BM25 fumbles.
+nyla bones for puppys
+
+
+# ==============================================================================
+# 🥈 Story 2: "Reranker hero" — vector found something marginal, reranker
+#     lifted it to a genuinely useful answer
+# ==============================================================================
+
+# size 4 boys shoes        BM25=0.000 → Hybrid=0.073 (+0.073) → Reranked=0.249 (+0.175)
+#   Compound-attribute query; BM25 over-weights one term and finds nothing.
+#   Hybrid surfaces a couple judged products; reranker promotes them.
+#   Strongest reranker-only story.
+size 4 boys shoes
+
+
+# ==============================================================================
+# 🟢 Story 3: "Hybrid clearly beats BM25" — solid pipeline progressions
+# ==============================================================================
+
+# projector                BM25=0.220 → Hybrid=0.369 (+0.149) → Reranked=0.415 (+0.046)
+#   Single ambiguous noun. Vector resolves "projector" → "video projector".
+projector
+
+# magnified lighted mirror BM25=0.408 → Hybrid=0.489 (+0.080) → Reranked=0.494 (+0.005)
+#   Adjective-heavy descriptive query. Semantic > lexical.
+magnified lighted mirror
+
+# pre stretched canvas 10in BM25=0.359 → Hybrid=0.432 (+0.073) → Reranked=0.454 (+0.021)
+#   Multi-word descriptor with size constraint.
+pre stretched canvas 10in
+
+
+# ==============================================================================
+# 🟡 Story 4: "Pipeline saturated" — BM25 already nailed it
+#     Honest scorecard. The reranker isn't earning its 4 seconds.
+# ==============================================================================
+
+# tens unit muscle stimulator  BM25=Hybrid=Reranked=0.662 (NDCG-saturated)
+#   7/10 are Exact-judged at every stage. Different orderings, identical
+#   metrics — when relevance buckets collapse, NDCG can't tell.
+tens unit muscle stimulator
+
+# whisk silicone black     BM25=Hybrid=Reranked=0.554
+#   Attribute-heavy query; BM25 already finds the right products.
+whisk silicone black
+
+# surge protector power strip  BM25=0.444 → Hybrid=0.454 → Reranked=0.454
+#   Common-noun category query. Marginal +0.010 hybrid lift, no rerank value.
+surge protector power strip
+
+
+# ==============================================================================
+# 🔴 Story 5: "Stage actively hurts" — honest tradeoffs
+#     Use these when someone asks "is the pipeline always better?"
+# ==============================================================================
+
+# weighted blanket         BM25=0.415 → Hybrid=0.344 (-0.072) → Reranked=0.344
+#   Vector pulls in semantically-similar-but-wrong items. MRR also drops
+#   1.0 → 0.5: the top exact match gets demoted to position 2.
+weighted blanket
+
+# pants for women          BM25=0.000 → Hybrid=0.078 (+0.078) → Reranked=0.000 (-0.078)
+#   Hybrid surfaces the 1 judged-relevant product; reranker scores 10
+#   other candidates higher and drops it out of top-10. Reranker hurts.
+pants for women
