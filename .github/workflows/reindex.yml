@@ -86,45 +86,6 @@ jobs:
           echo "os_user=${OS_USER}" >> "$GITHUB_OUTPUT"
           echo "os_pass=${OS_PASS}" >> "$GITHUB_OUTPUT"
 
-      - name: Authenticate with GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build or pull Lucille image from GHCR
-        run: |
-          set -euo pipefail
-          LUCILLE_VERSION=0.11.1
-          IMAGE_TAG="ghcr.io/${{ github.repository }}/lucille-esci:${LUCILLE_VERSION}"
-
-          echo "Attempting to pull cached image from GHCR..."
-          if docker pull "${IMAGE_TAG}" 2>/dev/null; then
-            echo "✓ Using cached image: ${IMAGE_TAG}"
-            echo "LUCILLE_IMAGE=${IMAGE_TAG}" >> "$GITHUB_ENV"
-          else
-            echo "Image not in registry; building from Dockerfile..."
-            docker build \
-              --build-arg LUCILLE_VERSION="${LUCILLE_VERSION}" \
-              -t "${IMAGE_TAG}" \
-              -f docker/lucille/Dockerfile .
-
-            echo "Tagging for registry push..."
-            docker tag "${IMAGE_TAG}" "${IMAGE_TAG}"
-
-            echo "✓ Image built successfully"
-            echo "LUCILLE_IMAGE=${IMAGE_TAG}" >> "$GITHUB_ENV"
-            echo "LUCILLE_IMAGE_BUILT=true" >> "$GITHUB_ENV"
-          fi
-
-      - name: Push Lucille image to GHCR (if newly built)
-        if: env.LUCILLE_IMAGE_BUILT == 'true'
-        run: |
-          echo "Pushing new image to GHCR for future runs..."
-          docker push "${{ env.LUCILLE_IMAGE }}"
-          echo "✓ Image pushed to: ${{ env.LUCILLE_IMAGE }}"
-
       - name: Set up Python (for index mapping recreation on --reset-index)
         if: ${{ github.event.inputs.reset_index == 'true' }}
         uses: actions/setup-python@v5
@@ -140,8 +101,8 @@ jobs:
         env:
           # Docker path (LUCILLE_USE_DOCKER default true) — the runner has
           # Docker preinstalled, no Java/Maven/Lucille checkout needed here.
-          # LUCILLE_IMAGE: pre-built image from GHCR, passed by the build/pull step above
-          LUCILLE_IMAGE: ${{ env.LUCILLE_IMAGE }}
+          # Dockerfile is optimized to use prebuilt kmwtechnology/lucille image:
+          # only compiles + layers our custom stages, avoiding full rebuild.
           OPENSEARCH_HOST: 34.138.97.13
           OPENSEARCH_PORT: "9200"
           OPENSEARCH_USE_SSL: "true"
