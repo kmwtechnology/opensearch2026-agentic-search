@@ -100,7 +100,10 @@ else
 fi
 OPENSEARCH_INDEX="${OPENSEARCH_INDEX_NAME:-agentic_hybrid_search_docs}"
 DATA_DIR="$REPO_DIR/data"
-LUCILLE_VERSION="1.0.0-SNAPSHOT"
+# Single source of truth: LUCILLE_VERSION from .env (see .env.example). This
+# value is also what lucille-esci/pom.xml reads via ${env.LUCILLE_VERSION}.
+LUCILLE_VERSION="${LUCILLE_VERSION:-0.11.1}"
+export LUCILLE_VERSION
 
 # ── Step 4 (optional): Reset products index ──────────────────────────────────
 # Passes --reset-index to setup.py, which deletes and atomically recreates the
@@ -120,7 +123,7 @@ fi
 
 # ── Prerequisite checks ──────────────────────────────────────────────────────
 if ! command -v java &>/dev/null; then
-  error "Java not found. Install Java 17+ (brew install openjdk@17)."
+  error "Java not found. Install Java 21+ (brew install openjdk@21)."
   exit 1
 fi
 if ! command -v mvn &>/dev/null; then
@@ -129,8 +132,8 @@ if ! command -v mvn &>/dev/null; then
 fi
 
 JAVA_VER=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}' | cut -d. -f1)
-if [[ "$JAVA_VER" -lt 17 ]]; then
-  error "Java 17+ required, found: $JAVA_VER"
+if [[ "$JAVA_VER" -lt 21 ]]; then
+  error "Java 21+ required, found: $JAVA_VER"
   exit 1
 fi
 

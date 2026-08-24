@@ -22,7 +22,7 @@ Runbooks and operational guidance for running Agentic Hybrid Search in productio
 
 **Session authentication** — users log in via `POST /api/auth/login` and receive a signed HttpOnly cookie. Admin tasks (reindexing) use a long-lived `ADMIN_TOKEN` header.
 
-**Re-indexing** — triggered manually via GitHub Actions workflow `reindex.yml` or via `scripts/lucille_ingest.sh` (requires Java 17+ and a local Lucille checkout). Always use `--reset-index` to avoid race conditions.
+**Re-indexing** — triggered manually via GitHub Actions workflow `reindex.yml` or via `scripts/lucille_ingest.sh` (requires Java 21+ and a local Lucille checkout). Always use `--reset-index` to avoid race conditions.
 
 **Smoke tests** — run post-deployment against the live Cloud Run service. All 20 tests must pass before traffic is promoted. Covers auth, WebSocket, search pipeline, citations, and latency SLOs.
 

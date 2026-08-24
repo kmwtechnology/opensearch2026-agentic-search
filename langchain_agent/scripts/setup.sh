@@ -163,17 +163,17 @@ if [ "$NODE_MAJOR" -lt 24 ]; then
 fi
 echo "✓ Node.js $NODE_VERSION found"
 
-# Java 17+ and Maven required for Lucille ETL ingest (called by setup.py)
+# Java 21+ and Maven required for Lucille ETL ingest (called by setup.py)
 if ! command -v java &> /dev/null; then
     echo "❌ Java not found"
-    echo "   Java 17+ is required for Lucille ETL ingest."
-    echo "   Install with: brew install openjdk@17"
+    echo "   Java 21+ is required for Lucille ETL ingest."
+    echo "   Install with: brew install openjdk@21"
     exit 1
 fi
 JAVA_VER=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}' | cut -d. -f1)
-if [ "${JAVA_VER:-0}" -lt 17 ]; then
-    echo "❌ Java version too old: $JAVA_VER (need 17+)"
-    echo "   Install with: brew install openjdk@17"
+if [ "${JAVA_VER:-0}" -lt 21 ]; then
+    echo "❌ Java version too old: $JAVA_VER (need 21+)"
+    echo "   Install with: brew install openjdk@21"
     exit 1
 fi
 echo "✓ Java $JAVA_VER found"

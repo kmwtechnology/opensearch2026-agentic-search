@@ -351,7 +351,7 @@ def main():
         if not args.skip_docs:
             print("\n[6/7] Loading ESCI products and judgments via Lucille ETL...")
             print(
-                "      Requires Java 17+ and Maven. Embeddings are precomputed — no API calls needed."
+                "      Requires Java 21+ and Maven. Embeddings are precomputed — no API calls needed."
             )
             try:
                 import subprocess
