@@ -18,8 +18,9 @@
 # Runtime entrypoint uses LUCILLE_CONF, LUCILLE_OPTS, and JAVA_OPTS env vars.
 
 # Build stage: compile custom stages + resolve dependencies
+# Uses lightweight Maven image to reduce build layer size (~400MB vs 800MB for full Maven)
 ARG LUCILLE_VERSION
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-21-alpine AS build
 ARG LUCILLE_VERSION
 COPY langchain_agent/lucille-esci /build/lucille-esci
 WORKDIR /build/lucille-esci
@@ -30,10 +31,11 @@ RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -q dependency:copy-dependencies \
       -Dlucille.version="${LUCILLE_VERSION}" \
       -DincludeScope=runtime \
-      -DoutputDirectory=/app/lib
+      -DoutputDirectory=/app/lib && \
+    rm -rf /build/lucille-esci/target/classes /build/lucille-esci/src
 
 # Runtime stage: minimal JRE with all compiled stages and dependencies
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre-alpine
 
 LABEL maintainer="kmwtechnology"
 LABEL description="Lucille Search ETL with custom ESCI attribute normalizer stage"
@@ -47,8 +49,9 @@ COPY --from=build /build/lucille-esci/target/lucille-esci-1.0.0.jar /lucille/lib
 # Copy all resolved dependencies (lucille-core, lucille-parquet, JAXB compat, and transitive deps)
 COPY --from=build /app/lib/*.jar /lucille/lib/
 
-RUN groupadd -r lucille \
- && useradd -r -g lucille -d /lucille -s /usr/sbin/nologin lucille \
+# Create non-root user for security
+RUN addgroup -g 1000 lucille \
+ && adduser -D -u 1000 -G lucille lucille \
  && chown -R lucille:lucille /lucille
 
 # Environment variables for Lucille Runner
