@@ -93,9 +93,13 @@ fi
 
 echo "Running smoke tests against $HEALTH_URL ..."
 CLOUD_RUN_URL=http://127.0.0.1:$PORT \
-  PYTHONPATH=. "$VENV/pytest" \
+  PYTHONPATH=. \
+  PYTHONUNBUFFERED=1 \
+  "$VENV/pytest" \
     tests/e2e/test_deployment_smoke.py \
     -m "e2e and slow" \
     --timeout=240 \
     --asyncio-mode=auto \
+    -v \
+    --durations=0 \
     "$@"
