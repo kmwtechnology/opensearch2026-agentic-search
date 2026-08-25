@@ -108,25 +108,25 @@ bash scripts/lucille_ingest.sh
 
 **What it does** (Docker path — default, `LUCILLE_USE_DOCKER=true`):
 
-1. Builds the `lucille` Docker image (cached after first run; resolves Lucille from Maven Central via this module's `pom.xml`)
+1. Builds a derived `lucille` Docker image via `docker/lucille/Dockerfile`:
+   - Layers only our custom ESCI stages (AttributeNormalizerStage) onto the published `kmwtechnology/lucille:${LUCILLE_VERSION}` image
+   - Resolves `lucille-parquet` + dependencies from Maven Central via this module's `pom.xml` (no Lucille source checkout needed)
+   - Cache-efficient: only compiles our code (~1-2 GB disk), not the full Lucille framework (6-7 GB)
+   - Build time: ~2-3 min (first run); ~10 s (cached)
 2. Runs Lucille products ingest via `docker compose run --rm lucille`: `data/esci_products_sample_10000.parquet` → OpenSearch
    - Applies `conf/products.conf` transformations: title/brand/color copy, chunk_text build, collection_id set
+   - Runs `normalizeAttributes` stage (custom Java stage) for color/brand normalization during ingest
    - ~10 s
-3. **Post-ingest enrichment** (Step 5b): `scripts/enrich_attribute_normalization.py`
-   - Adds normalized color/brand fields to every product in OpenSearch
-   - `product_color_primary`, `product_color_secondary`, `product_brand_normalized`
-   - Uses search_after pagination; bulk-updates in batches of 250
-   - ~20 s (all 9,618 products)
-4. Runs Lucille judgments ingest: `data/esci_judgments_aggregated.parquet` → OpenSearch
+3. Runs Lucille judgments ingest: `data/esci_judgments_aggregated.parquet` → OpenSearch
    - ~5 s
 
-**Total:** ~30–40 s
+**Total:** ~30–40 s (including Docker build on first run)
 
 **Details:**
 - Reads `data/esci_products_sample_10000.parquet` (9,618 docs + embeddings)
 - Reads `data/esci_judgments_aggregated.parquet` (97,345 queries)
 - No embedding API calls needed (embeddings precomputed in parquet)
-- Attribute normalization is deterministic and reproducible (rules-only, no AI)
+- Attribute normalization happens during Lucille ingest via `AttributeNormalizerStage` (deterministic, reproducible, rules-only)
 
 ### With reset (atomically recreates index)
 
@@ -147,22 +147,21 @@ Ingests products only.
 
 ## Environment Setup
 
-By default `lucille_ingest.sh` runs Lucille via Docker — only Docker Desktop
-is required:
+**Default (Docker path):** `lucille_ingest.sh` runs Lucille via Docker. Only Docker Desktop is required:
 
 ```bash
-docker --version
+docker --version       # Docker 20.10+
 ```
 
-Set `LUCILLE_USE_DOCKER=false` to use the native Java/Maven path instead
-(used by `reindex.yml` and `gcp-init.sh`, which target a remote hosted
-OpenSearch rather than the local compose stack):
+**Optional native path:** Set `LUCILLE_USE_DOCKER=false` to use the native Java/Maven path instead. This is not recommended for local dev and only exists as a fallback for environments without Docker:
 
 ```bash
 java -version          # Java 21+
 mvn -version           # Maven 3.8+
 ls ~/github/kmwtechnology/lucille  # Lucille source (or set LUCILLE_DIR)
 ```
+
+The Docker path is production-safe (CI/CD, GCP deployments) and is the only path used by `.github/workflows/reindex.yml`.
 
 ## Troubleshooting
 
@@ -193,10 +192,10 @@ grep OPENSEARCH_PORT .env
 Check `conf/products.conf` — every product doc must have `collection_id=esci_products` set
 in `defaultFields`. If products are indexed without it, retrieval queries won't find them.
 
-## Attribute Normalization (Post-Ingest Enrichment)
+## Attribute Normalization
 
-**What:** After Lucille ingest completes, `scripts/enrich_attribute_normalization.py` runs as Step 5b.
-It adds normalized color and brand fields to every product, improving filter recall.
+**What:** Attribute normalization happens during Lucille ingest via the `AttributeNormalizerStage` custom Java stage.
+It normalizes product colors and brands, improving filter recall without needing a separate post-processing step.
 
 **Fields added:**
 - `product_color_primary` — canonical primary color ("black", "white", "blue", etc.)
@@ -207,20 +206,20 @@ It adds normalized color and brand fields to every product, improving filter rec
 Filter queries like "blue wireless headphones" now match all blue variants including "Navy", "Cyan", "Teal", etc.
 
 **How it works:**
-1. Fetches all products from OpenSearch using `search_after` pagination
-2. Applies `AttributeNormalizer` rules (16 canonical colors, synonym expansion, compound extraction)
-3. Bulk-updates all docs with the three new fields
-4. ~20 s for 9,618 products
+1. `AttributeNormalizerStage` is compiled into the Lucille Docker image via `docker/lucille/Dockerfile`
+2. Called by `conf/products.conf` as the `normalizeAttributes` stage during ingest
+3. Reads `conf/color_mappings.json` (16 canonical colors, synonym expansion, compound extraction)
+4. Adds the three normalized fields to every product in a single pass through the ingest pipeline
 
 **Configuration:**
-- Color mappings: `conf/color_mappings.json` (generated once via `analyze_color_attributes.py`)
-- Normalizer class: `attribute_normalizer.py` (reusable for tests and offline enrichment)
-- Script: `enrich_attribute_normalization.py` (called by `lucille_ingest.sh`)
+- Color mappings: `conf/color_mappings.json` (deterministic rules)
+- Normalizer stage: `src/main/java/com/kmwllc/esci/AttributeNormalizerStage.java` (Java stage implementation)
+- Pipeline config: `conf/products.conf` calls the stage as part of the ingest flow
 
 **Reproducibility:**
 - Deterministic: rules-only, no AI calls
 - Auditable: color mappings committed to git
-- Idempotent: safe to re-run `lucille_ingest.sh` on the same data
+- Single-pass: normalization happens during ingest, not as a separate post-processing step
 
 ## References
 
