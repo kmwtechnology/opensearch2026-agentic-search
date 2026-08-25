@@ -64,6 +64,7 @@ ingestConf {
 ```
 
 **Key points:**
+
 - `title_suggest` and `brand_suggest` are **edge-ngram** fields required by `/api/suggest` typeahead
 - `collection_id=esci_products` is set on every document (checked by all retrieval queries)
 - `knn_vector.dimension = 768` matches `VECTOR_DIMENSION` in `.env`
@@ -71,6 +72,7 @@ ingestConf {
 ### `conf/judgments.conf` (HOCON)
 
 Maps ESCI relevance labels to numeric scores:
+
 - `E` (Exact) → `4.0`
 - `S` (Substitute) → `1.0`
 - `C` (Complement) → `0.1`
@@ -81,6 +83,7 @@ Lookups via `OpenSearchVectorStore.lookup_judgments(query)` — exact keyword ma
 ### `mapping/products.json` (OpenSearch mappings)
 
 Field definitions for the product index:
+
 - `knn_vector` — HNSW index, 768-dim
 - `product_title`, `product_brand`, `product_color` — text + keyword dual mapping (faceting)
 - `title_suggest`, `brand_suggest` — edge-ngram analyzers for prefix matching
@@ -123,6 +126,7 @@ bash scripts/lucille_ingest.sh
 **Total:** ~30–40 s (including Docker build on first run)
 
 **Details:**
+
 - Reads `data/esci_products_sample_10000.parquet` (9,618 docs + embeddings)
 - Reads `data/esci_judgments_aggregated.parquet` (97,345 queries)
 - No embedding API calls needed (embeddings precomputed in parquet)
@@ -166,22 +170,26 @@ The Docker path is production-safe (CI/CD, GCP deployments) and is the only path
 ## Troubleshooting
 
 **Docker path — image build fails:**
+
 ```bash
 docker compose build lucille --no-cache
 ```
 
 **Native path (`LUCILLE_USE_DOCKER=false`) — Java not found:**
+
 ```bash
 brew install openjdk@21
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 ```
 
 **Native path — Maven build fails:**
+
 ```bash
 mvn clean install -DskipTests
 ```
 
 **OpenSearch DSN wrong:**
+
 ```bash
 # lucille_ingest.sh loads .env; check:
 grep OPENSEARCH_HOST .env
@@ -189,6 +197,7 @@ grep OPENSEARCH_PORT .env
 ```
 
 **Collection_id missing:**
+
 Check `conf/products.conf` — every product doc must have `collection_id=esci_products` set
 in `defaultFields`. If products are indexed without it, retrieval queries won't find them.
 
@@ -198,6 +207,7 @@ in `defaultFields`. If products are indexed without it, retrieval queries won't 
 It normalizes product colors and brands, improving filter recall without needing a separate post-processing step.
 
 **Fields added:**
+
 - `product_color_primary` — canonical primary color ("black", "white", "blue", etc.)
 - `product_color_secondary` — canonical secondary color if compound entry (e.g., "Black & Purple" → secondary: "purple")
 - `product_brand_normalized` — case-folded brand (e.g., "Sony" → "sony")
@@ -206,17 +216,20 @@ It normalizes product colors and brands, improving filter recall without needing
 Filter queries like "blue wireless headphones" now match all blue variants including "Navy", "Cyan", "Teal", etc.
 
 **How it works:**
+
 1. `AttributeNormalizerStage` is compiled into the Lucille Docker image via `docker/lucille/Dockerfile`
 2. Called by `conf/products.conf` as the `normalizeAttributes` stage during ingest
 3. Reads `conf/color_mappings.json` (16 canonical colors, synonym expansion, compound extraction)
 4. Adds the three normalized fields to every product in a single pass through the ingest pipeline
 
 **Configuration:**
+
 - Color mappings: `conf/color_mappings.json` (deterministic rules)
 - Normalizer stage: `src/main/java/com/kmwllc/esci/AttributeNormalizerStage.java` (Java stage implementation)
 - Pipeline config: `conf/products.conf` calls the stage as part of the ingest flow
 
 **Reproducibility:**
+
 - Deterministic: rules-only, no AI calls
 - Auditable: color mappings committed to git
 - Single-pass: normalization happens during ingest, not as a separate post-processing step
