@@ -12,9 +12,12 @@ name: Re-Index OpenSearch
 #   2. Authenticate with GCP via Workload Identity Federation
 #   3. Fetch OpenSearch credentials from Secret Manager
 #   4. Run lucille_ingest.sh (products always; judgments optionally) — it
-#      builds the Lucille image from docker/lucille/Dockerfile (pinned to
-#      LUCILLE_VERSION, resolved from Maven Central; no Java/Maven/Lucille
-#      checkout needed on the runner) and runs it via `docker compose run`
+#      builds the Lucille image from docker/lucille/Dockerfile: our custom
+#      stage compiles from Maven Central (pinned by LUCILLE_VERSION) and is
+#      layered onto the published kmwtechnology/lucille base image, pinned by
+#      LUCILLE_DOCKER_TAG + LUCILLE_DOCKER_DIGEST — a SEPARATE namespace from
+#      LUCILLE_VERSION, see docker/lucille/Dockerfile's header comment. No
+#      Java/Maven/Lucille checkout needed on the runner.
 #   5. Verify the rebuilt index via /api/admin/health
 
 on:
@@ -40,6 +43,10 @@ on:
 env:
   SERVICE_URL: https://agentic-hybrid-search-375500751528.us-central1.run.app
   PROJECT_ID: gen-lang-client-0250737934
+
+concurrency:
+  group: reindex-opensearch
+  cancel-in-progress: false
 
 jobs:
   reindex:
@@ -101,8 +108,10 @@ jobs:
         env:
           # Docker path (LUCILLE_USE_DOCKER default true) — the runner has
           # Docker preinstalled, no Java/Maven/Lucille checkout needed here.
-          # Dockerfile is optimized to use prebuilt kmwtechnology/lucille image:
-          # only compiles + layers our custom stages, avoiding full rebuild.
+          # Dockerfile layers our compiled custom stages onto the published
+          # kmwtechnology/lucille base image (pinned by LUCILLE_DOCKER_TAG +
+          # LUCILLE_DOCKER_DIGEST — separate from the LUCILLE_VERSION Maven
+          # coordinate, see docker/lucille/Dockerfile), avoiding a full rebuild.
           OPENSEARCH_HOST: 34.138.97.13
           OPENSEARCH_PORT: "9200"
           OPENSEARCH_USE_SSL: "true"
