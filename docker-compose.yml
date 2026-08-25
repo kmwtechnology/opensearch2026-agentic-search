@@ -71,10 +71,13 @@ services:
       dockerfile: docker/lucille/Dockerfile
       args:
         LUCILLE_VERSION: ${LUCILLE_VERSION:-0.11.1}
-        # Docker Hub tag, NOT the same as LUCILLE_VERSION above — see the
-        # namespace note at the top of docker/lucille/Dockerfile. Keep this
-        # default in sync with LUCILLE_DOCKER_TAG in langchain_agent/.env.example.
+        # Docker Hub tag + digest, NOT the same as LUCILLE_VERSION above — see
+        # the namespace note at the top of docker/lucille/Dockerfile. Digest
+        # pins the exact image content so local dev and GCP/CI build from the
+        # identical base regardless of any future retag upstream. Keep both
+        # defaults in sync with langchain_agent/.env.example.
         LUCILLE_DOCKER_TAG: ${LUCILLE_DOCKER_TAG:-0.11.1.0}
+        LUCILLE_DOCKER_DIGEST: ${LUCILLE_DOCKER_DIGEST:-sha256:cefa9a3b2b9ed4c3cdf92da9abb93da37dc8ba392cc64ef39b81e02387f81073}
     container_name: langchain-lucille
     profiles: ["ingest"]
     environment:

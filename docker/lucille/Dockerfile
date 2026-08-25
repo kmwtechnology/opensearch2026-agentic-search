@@ -19,6 +19,15 @@
 #                         debugging here. Verify actual tags at
 #                         https://hub.docker.com/r/kmwtechnology/lucille/tags
 #                         before bumping either variable.
+#   - LUCILLE_DOCKER_DIGEST  sha256 digest for LUCILLE_DOCKER_TAG's current
+#                         content, pinned via `FROM ...:TAG@DIGEST`. Local dev
+#                         and GCP/CI both resolve to this exact image content
+#                         — a tag alone is mutable if kmwtechnology ever
+#                         repushes it. Get the current digest with:
+#                           docker pull kmwtechnology/lucille:<TAG>
+#                           docker image inspect kmwtechnology/lucille:<TAG> \
+#                             --format '{{index .RepoDigests 0}}'
+#                         Re-run this whenever LUCILLE_DOCKER_TAG changes.
 #
 # Stage 1: Compile our custom ESCI stage (AttributeNormalizerStage for
 # color/brand normalization) and resolve its runtime deps — lucille-parquet
@@ -49,6 +58,7 @@
 
 ARG LUCILLE_VERSION
 ARG LUCILLE_DOCKER_TAG
+ARG LUCILLE_DOCKER_DIGEST
 
 # Build stage: our custom stage + lucille-parquet + lucille-core (compile-time),
 # resolved from Maven Central.
@@ -68,8 +78,9 @@ RUN --mount=type=cache,target=/root/.m2 \
 
 # Runtime stage: the published base already has lucille-core, the lucille
 # user, WORKDIR, env defaults, and this exact entrypoint script — only the
-# jars are new.
-FROM kmwtechnology/lucille:${LUCILLE_DOCKER_TAG}
+# jars are new. Pinned by digest (not just tag) so local dev and GCP/CI are
+# guaranteed to build from byte-identical base image content.
+FROM kmwtechnology/lucille:${LUCILLE_DOCKER_TAG}@${LUCILLE_DOCKER_DIGEST}
 
 LABEL description="Lucille Search ETL with custom ESCI attribute normalizer stage"
 
