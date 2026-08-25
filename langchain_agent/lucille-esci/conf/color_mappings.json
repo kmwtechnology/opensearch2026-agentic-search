@@ -177,181 +177,181 @@
       "original": "Black",
       "count": 994,
       "primary": "black",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "White",
       "count": 446,
       "primary": "white",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Blue",
       "count": 185,
       "primary": "blue",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Multicolor",
       "count": 155,
       "primary": "multicolor",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Red",
       "count": 133,
       "primary": "red",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Silver",
       "count": 129,
       "primary": "gray",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Brown",
       "count": 115,
       "primary": "brown",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Pink",
       "count": 103,
       "primary": "pink",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Green",
       "count": 92,
       "primary": "green",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Grey",
       "count": 85,
       "primary": "gray",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Clear",
       "count": 85,
       "primary": "clear",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Gray",
       "count": 81,
       "primary": "gray",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Multi",
       "count": 64,
       "primary": "multicolor",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Gold",
       "count": 62,
       "primary": "yellow",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Yellow",
       "count": 59,
       "primary": "yellow",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "black",
       "count": 58,
       "primary": "black",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Purple",
       "count": 58,
       "primary": "purple",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Navy",
       "count": 40,
       "primary": "blue",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Orange",
       "count": 39,
       "primary": "orange",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Stainless Steel",
       "count": 29,
       "primary": "unclassified",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Beige",
       "count": 26,
       "primary": "white",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Multicolored",
       "count": 24,
       "primary": "multicolor",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Natural",
       "count": 24,
       "primary": "natural",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Chrome",
       "count": 21,
       "primary": "gray",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Rose Gold",
       "count": 20,
       "primary": "pink",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Assorted",
       "count": 18,
       "primary": "mixed",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Tan",
       "count": 18,
       "primary": "yellow",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Multi-colored",
       "count": 17,
       "primary": "multicolor",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "Matte Black",
       "count": 17,
       "primary": "black",
-      "secondary": NaN
+      "secondary": null
     },
     {
       "original": "white",
       "count": 16,
       "primary": "white",
-      "secondary": NaN
+      "secondary": null
     }
   ]
 }
