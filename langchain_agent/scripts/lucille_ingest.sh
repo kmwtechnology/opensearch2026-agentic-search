@@ -141,6 +141,11 @@ export LUCILLE_VERSION
 # docker/lucille/Dockerfile and .env.example before changing either.
 LUCILLE_DOCKER_TAG="${LUCILLE_DOCKER_TAG:-0.11.1.0}"
 export LUCILLE_DOCKER_TAG
+# sha256 digest pinning LUCILLE_DOCKER_TAG's exact content — local dev and
+# GCP/CI both build from this byte-identical image. See .env.example for how
+# to refresh it when LUCILLE_DOCKER_TAG changes.
+LUCILLE_DOCKER_DIGEST="${LUCILLE_DOCKER_DIGEST:-sha256:cefa9a3b2b9ed4c3cdf92da9abb93da37dc8ba392cc64ef39b81e02387f81073}"
+export LUCILLE_DOCKER_DIGEST
 
 # ── Step 4 (optional): Reset products index ──────────────────────────────────
 # Passes --reset-index to setup.py, which deletes and atomically recreates the
