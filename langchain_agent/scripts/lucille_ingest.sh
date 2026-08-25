@@ -136,6 +136,11 @@ fi
 # value is also what lucille-esci/pom.xml reads via ${env.LUCILLE_VERSION}.
 LUCILLE_VERSION="${LUCILLE_VERSION:-0.11.1}"
 export LUCILLE_VERSION
+# Docker Hub tag for the kmwtechnology/lucille base image — a SEPARATE
+# namespace from LUCILLE_VERSION (Maven coordinate). See the note in
+# docker/lucille/Dockerfile and .env.example before changing either.
+LUCILLE_DOCKER_TAG="${LUCILLE_DOCKER_TAG:-0.11.1.0}"
+export LUCILLE_DOCKER_TAG
 
 # ── Step 4 (optional): Reset products index ──────────────────────────────────
 # Passes --reset-index to setup.py, which deletes and atomically recreates the

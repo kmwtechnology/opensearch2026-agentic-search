@@ -71,6 +71,10 @@ services:
       dockerfile: docker/lucille/Dockerfile
       args:
         LUCILLE_VERSION: ${LUCILLE_VERSION:-0.11.1}
+        # Docker Hub tag, NOT the same as LUCILLE_VERSION above — see the
+        # namespace note at the top of docker/lucille/Dockerfile. Keep this
+        # default in sync with LUCILLE_DOCKER_TAG in langchain_agent/.env.example.
+        LUCILLE_DOCKER_TAG: ${LUCILLE_DOCKER_TAG:-0.11.1.0}
     container_name: langchain-lucille
     profiles: ["ingest"]
     environment:

@@ -42,6 +42,16 @@
       <groupId>com.kmwllc</groupId>
       <artifactId>lucille-parquet</artifactId>
       <version>${lucille.version}</version>
+      <exclusions>
+        <!-- hadoop-aws (and its ~680MB software.amazon.awssdk:bundle fat jar) only
+             backs the s3a:// filesystem scheme. Our ParquetConnector always reads
+             local files (fsUri: "file:///" in products.conf/judgments.conf), so this
+             is dead weight — and its size alone blew the CI runner's disk budget. -->
+        <exclusion>
+          <groupId>org.apache.hadoop</groupId>
+          <artifactId>hadoop-aws</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <!-- JAXB was removed from the JDK in Java 11+. lucille-core's OpenSearchIndexer
          pulls in jackson-module-jaxb-annotations, whose JaxbAnnotationIntrospector
