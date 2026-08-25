@@ -92,13 +92,14 @@ Field definitions for the product index:
 
 ## Versioning
 
-The pinned Lucille version has a single source of truth: `LUCILLE_VERSION` in `langchain_agent/.env.example` (and your local `.env`). Everything else derives from it:
+Two **separate** version namespaces — do not conflate them (a prior bug that reused one for the other broke every Docker-path ingest, local and CI, until 2026-08-25):
 
-- `scripts/lucille_ingest.sh` reads `LUCILLE_VERSION` from the environment (falling back to a default if unset) and exports it before invoking Maven.
-- `lucille-esci/pom.xml`'s `<lucille.version>` resolves via `${env.LUCILLE_VERSION}` — running `mvn` here directly (outside `lucille_ingest.sh`) requires `export LUCILLE_VERSION=...` first.
-- `.github/workflows/reindex.yml` reads the same value out of `.env.example` and clones Lucille pinned to that tag.
+- **`LUCILLE_VERSION`** — the Maven artifact version (e.g. `0.11.1`), single source of truth in `langchain_agent/.env.example` (and your local `.env`). Resolves `com.kmwllc:lucille-core`/`-parquet`/`-bom` from Maven Central.
+  - `scripts/lucille_ingest.sh` reads it from the environment (falling back to a default if unset) and exports it before invoking Maven.
+  - `lucille-esci/pom.xml`'s `<lucille.version>` resolves via `${env.LUCILLE_VERSION}` — running `mvn` here directly (outside `lucille_ingest.sh`) requires `export LUCILLE_VERSION=...` first.
+- **`LUCILLE_DOCKER_TAG`** — the Docker Hub tag for the `kmwtechnology/lucille` base image (e.g. `0.11.1.0`), also in `.env.example`. [kmwtechnology/lucille's own `release-to-docker.yml`](https://github.com/kmwtechnology/lucille/blob/main/.github/workflows/release-to-docker.yml) appends a `docker_revision` suffix (`${release_version}.${docker_revision}`) that has **no Maven equivalent** and isn't safely derivable from `LUCILLE_VERSION` by string concatenation — the revision can be nonzero on a Dockerfile-only re-cut. Using the bare Maven version as the image tag 404s. Check actual published tags at <https://hub.docker.com/r/kmwtechnology/lucille/tags> before bumping either variable.
 
-To bump the version: update `LUCILLE_VERSION` in `.env.example` (and your `.env`) — no other file needs a matching literal.
+To bump the Maven version: update `LUCILLE_VERSION` in `.env.example` (and your `.env`). To bump the Docker base image: update `LUCILLE_DOCKER_TAG` separately, after confirming the tag actually exists on Docker Hub.
 
 ## Running Lucille Ingest
 
@@ -112,10 +113,10 @@ bash scripts/lucille_ingest.sh
 **What it does** (Docker path — default, `LUCILLE_USE_DOCKER=true`):
 
 1. Builds a derived `lucille` Docker image via `docker/lucille/Dockerfile`:
-   - Layers only our custom ESCI stages (AttributeNormalizerStage) onto the published `kmwtechnology/lucille:${LUCILLE_VERSION}` image
-   - Resolves `lucille-parquet` + dependencies from Maven Central via this module's `pom.xml` (no Lucille source checkout needed)
-   - Cache-efficient: only compiles our code (~1-2 GB disk), not the full Lucille framework (6-7 GB)
-   - Build time: ~2-3 min (first run); ~10 s (cached)
+   - Layers only our custom ESCI stages (AttributeNormalizerStage) onto the published `kmwtechnology/lucille:${LUCILLE_DOCKER_TAG}` image (note: `LUCILLE_DOCKER_TAG`, not `LUCILLE_VERSION` — see Versioning above)
+   - Resolves `lucille-parquet` + dependencies from Maven Central via this module's `pom.xml` (no Lucille source checkout needed); `hadoop-aws` is excluded (only backs `s3a://`, unused here — cuts ~680MB)
+   - Cache-efficient: only compiles our code (~256 MB on top of the ~318 MB base image), not the full Lucille framework
+   - Build time: ~1 min (first run); ~10 s (cached)
 2. Runs Lucille products ingest via `docker compose run --rm lucille`: `data/esci_products_sample_10000.parquet` → OpenSearch
    - Applies `conf/products.conf` transformations: title/brand/color copy, chunk_text build, collection_id set
    - Runs `normalizeAttributes` stage (custom Java stage) for color/brand normalization during ingest
