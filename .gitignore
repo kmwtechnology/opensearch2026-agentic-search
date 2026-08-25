@@ -162,8 +162,11 @@ cython_debug/
 # Claude Code — note: CLAUDE.md and .claude/memory/ are tracked; local state in .claude/state/ is ignored
 .claude/state/
 
-# esci directory — raw ESCI dataset (external, not tracked)
-esci/
+# esci directory — raw ESCI dataset (external, not tracked). Anchored (leading
+# /) so it doesn't also swallow langchain_agent/lucille-esci/src/main/java/com/kmwllc/esci/
+# — an unanchored pattern silently untracked our custom Lucille stage source
+# tree from PR #6 onward (AttributeNormalizerStage.java was never committed).
+/esci/
 
 # Lucille ETL source tree now lives in an external checkout
 # (default ~/github/kmwtechnology/lucille, override via LUCILLE_DIR).
@@ -172,5 +175,8 @@ esci/
 # clones. Anchored (leading /) so it doesn't also swallow docker/lucille/.
 /lucille/
 langchain_agent/lucille-esci/target/
+# Native-path Lucille runtime logs (com.kmwllc.lucille*.log, heartbeat.log,
+# failed-documents.jsonl), written to the CWD when running the Runner directly.
+/log/
 langchain_agent/log/
 .claude/settings.local.json
