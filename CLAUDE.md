@@ -23,8 +23,9 @@ These three skills are **global** (`~/.claude/skills/`), shared across every pro
 
 When one of these skills says "load `mcp__atlassian-nasuni__*`" or "post to `#nasuni-int`," treat it as inapplicable here and use the mapping above instead. If a step doesn't have a clean GitHub/Cloud-Run equivalent, say so and ask rather than silently skipping it.
 
-## Recent Fixes & Status (2026-06-13)
+## Recent Fixes & Status (2026-08-25)
 
+- **Lucille ETL disk bottleneck** (commit e4610cc / 2026-08-25) — Resolved via Option 3: prebuilt image layering. Problem: reindex.yml rebuilding entire Lucille from scratch consumed 6-7GB disk, causing GitHub Actions "No space left on device" failures. Solution: layer only our custom ESCI stages onto `kmwtechnology/lucille:0.11.1` prebuilt image. Result: 2-3 min ingest (was 15-20 min), ~1.2GB disk (was 6-7GB), reindex workflow now completes reliably. PRs #9 (Alpine optimization, mitigation), #11 (registry caching, explored), #12 (GHCR auth, prerequisite). Issue #10 closed as superseded.
 - **Issue #69** (PR #73 / commit 3950a4f) — Switched BM25 analyzer from `snowball` (aggressive) to `kstem` (light stemming) for precision. Added `.heavy` sub-fields (snowball) at ^0.3 boost for recall insurance. Improves brand name precision (Beats ≠ beat) and adjective distinction (wireless ≠ wire) while maintaining morphological recall via dense vectors. All 730+ unit tests pass; local + remote OpenSearch reindexed.
 - **Issue #3** (PRs #4, #6, #7 / 2026-08-24) — Hardened Lucille ETL integration: pinned `LUCILLE_VERSION=0.11.1` as single source of truth, containerized local ingest via `docker-compose` (removed Java/Maven prereq for dev), extended Docker path to CI/GCP, fixed `setup.py` silent ingest failure, resolved stale `products.conf` config. All 3 PRs merged and live-deployed.
 - **Issue #28** (PR #29 / commit be236e7) — Fixed Swagger page iframe hardcoding localhost URL in production, breaking browser back button. Now uses smart origin detection (localhost → :8000, else → window.location.origin).
