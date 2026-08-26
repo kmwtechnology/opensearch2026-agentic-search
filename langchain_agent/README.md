@@ -29,7 +29,7 @@ vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 
 - **Backend:** Python 3.14+, FastAPI, LangGraph, LangChain
 - **Frontend:** React 18, TypeScript, Tailwind, Zustand
-- **Data layer:** OpenSearch 2.19.1 (HNSW + BM25) · PostgreSQL 16
+- **Data layer:** OpenSearch 3.8.0 (HNSW + BM25) · PostgreSQL 16
   (LangGraph checkpoints only)
 - **LLM:** Google Gemini 3 Flash (generation) + Gemini 3.1 Flash Lite
   (classify/rerank) · `models/gemini-embedding-001` (embeddings)

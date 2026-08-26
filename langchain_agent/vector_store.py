@@ -101,11 +101,6 @@ INDEX_MAPPING = {
                         "mouse, mice, trackpad",
                     ],
                 },
-                "phonetic_filter": {
-                    "type": "phonetic",
-                    "encoder": "double_metaphone",
-                    "replace": False,
-                },
             },
             "analyzer": {
                 "light_english_analyzer": {
@@ -119,10 +114,6 @@ INDEX_MAPPING = {
                 "english_shingle_analyzer": {
                     "tokenizer": "standard",
                     "filter": ["lowercase", "stop", "shingle_filter"],
-                },
-                "english_phonetic_analyzer": {
-                    "tokenizer": "standard",
-                    "filter": ["lowercase", "phonetic_filter"],
                 },
                 "autocomplete_analyzer": {
                     "tokenizer": "standard",
@@ -200,14 +191,6 @@ INDEX_MAPPING = {
                 "analyzer": "english_shingle_analyzer",
             },
             # Phonetic matching fields (handles sound-alike typos in brand/title)
-            "title_phonetic": {
-                "type": "text",
-                "analyzer": "english_phonetic_analyzer",
-            },
-            "brand_phonetic": {
-                "type": "text",
-                "analyzer": "english_phonetic_analyzer",
-            },
         }
     },
 }
@@ -411,8 +394,7 @@ class OpenSearchVectorStore:
         """
         Build a multi_match clause that respects per-feature optimization toggles.
 
-        Toggle semantics (all default True when key missing):
-          - phonetic: include `title_phonetic`/`brand_phonetic` fields
+        Toggle semantics (default True when key missing, except phonetic which defaults False):
           - phrase_boost: include `title_phrase` field
           - field_boost: keep per-field `^N` weights; when False, all fields equal
           - fuzzy: include `"fuzziness": "AUTO"` on the multi_match
@@ -427,7 +409,7 @@ class OpenSearchVectorStore:
         # Truncate query to prevent maxClauseCount errors (issue #85)
         query = OpenSearchVectorStore._truncate_query_terms(query)
         opts = optimizations or {}
-        phonetic = opts.get("phonetic", True)
+        phonetic = opts.get("phonetic", False)
         phrase_boost = opts.get("phrase_boost", True)
         field_boost = opts.get("field_boost", True)
         fuzzy = opts.get("fuzzy", True)
