@@ -167,7 +167,7 @@ jobs:
           - 5432:5432
 
       opensearch:
-        image: opensearchproject/opensearch:2.11.0
+        image: opensearchproject/opensearch:3.8.0
         env:
           discovery.type: single-node
           OPENSEARCH_INITIAL_ADMIN_PASSWORD: TestPassword123!

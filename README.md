@@ -251,7 +251,7 @@ retries with an opposite-direction α adjustment.
 | **LLM (classify/eval)** | Gemini 3.1 Flash Lite (preview) | Intent classification, query evaluation, reranking fallback |
 | **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder) | Default reranker (~10ms/query); Gemini Flash Lite fallback (~500ms) |
 | **Embeddings** | `models/gemini-embedding-001` | 768-dim vectors |
-| **Vector Database** | OpenSearch 2.19.1 | HNSW `knn_vector` + BM25 |
+| **Vector Database** | OpenSearch 3.8.0 | HNSW `knn_vector` + BM25 |
 | **Search Fusion** | Reciprocal Rank Fusion (k=60) | Hybrid score fusion |
 | **Checkpoints** | PostgreSQL 16 | LangGraph state persistence |
 | **Agent Framework** | LangGraph + LangChain | Graph-based pipeline with typed state |
