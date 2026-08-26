@@ -17,12 +17,7 @@ services:
       retries: 5
 
   opensearch:
-    build:
-      context: .
-      dockerfile: docker/opensearch/Dockerfile
-      args:
-        OPENSEARCH_VERSION: "3.8.0"
-        OPENSEARCH_DIGEST: "sha256:bcc1797519726ceb6d651d4a3e60b7c30da91793914a8dfe75fd441d4f641509"
+    image: opensearchproject/opensearch:3.8.0@sha256:bcc1797519726ceb6d651d4a3e60b7c30da91793914a8dfe75fd441d4f641509
     container_name: langchain-opensearch
     environment:
       - discovery.type=single-node

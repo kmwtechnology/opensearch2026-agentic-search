@@ -37,11 +37,6 @@
             "mouse, mice, trackpad"
           ]
         },
-        "phonetic_filter": {
-          "type": "phonetic",
-          "encoder": "double_metaphone",
-          "replace": false
-        }
       },
       "analyzer": {
         "light_english_analyzer": {
@@ -67,13 +62,6 @@
             "lowercase",
             "stop",
             "shingle_filter"
-          ]
-        },
-        "english_phonetic_analyzer": {
-          "tokenizer": "standard",
-          "filter": [
-            "lowercase",
-            "phonetic_filter"
           ]
         },
         "autocomplete_analyzer": {
@@ -195,14 +183,6 @@
         "type": "text",
         "analyzer": "english_shingle_analyzer"
       },
-      "title_phonetic": {
-        "type": "text",
-        "analyzer": "english_phonetic_analyzer"
-      },
-      "brand_phonetic": {
-        "type": "text",
-        "analyzer": "english_phonetic_analyzer"
-      }
     }
   }
 }
