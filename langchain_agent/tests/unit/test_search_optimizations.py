@@ -54,7 +54,7 @@ def _make_store() -> OpenSearchVectorStore:
 
 
 class TestBuildMultiMatchDefaults:
-    """All flags default to True when key is missing or `optimizations` is None."""
+    """All flags default to True when key is missing (except phonetic defaults False)."""
 
     @pytest.mark.parametrize("opts", [None, {}, {"unknown_flag": True}])
     def test_full_field_set_with_fuzziness(self, opts):
@@ -67,8 +67,6 @@ class TestBuildMultiMatchDefaults:
             "title_phrase^2.5",
             "product_brand^2.0",
             "product_color^1.5",
-            "title_phonetic^1.5",
-            "brand_phonetic^1.5",
             "chunk_text.heavy^0.3",
             "product_brand.heavy^0.3",
             "product_color.heavy^0.3",
@@ -82,7 +80,6 @@ class TestBuildMultiMatchIndividualFlags:
         clause = _multi_match({"fuzzy": False})
         assert "fuzziness" not in clause
         # Other features unchanged
-        assert "title_phonetic^1.5" in clause["fields"]
         assert "title_phrase^2.5" in clause["fields"]
 
     def test_synonyms_off_forces_standard_analyzer(self):
@@ -117,8 +114,6 @@ class TestBuildMultiMatchIndividualFlags:
             "title_phrase",
             "product_brand",
             "product_color",
-            "title_phonetic",
-            "brand_phonetic",
             "chunk_text.heavy",
             "product_brand.heavy",
             "product_color.heavy",
@@ -178,10 +173,11 @@ class TestBuildMultiMatchCombinations:
         # Fuzzy still on
         assert clause["fuzziness"] == "AUTO"
 
-    def test_only_field_boost_off_keeps_phonetic_fields(self):
-        clause = _multi_match({"field_boost": False})
-        assert "title_phonetic" in clause["fields"]
-        assert "brand_phonetic" in clause["fields"]
+    def test_phonetic_off_by_default(self):
+        """Phonetic disabled by default (removed analysis-phonetic plugin)."""
+        clause = _multi_match(None)
+        assert "title_phonetic" not in clause["fields"]
+        assert "brand_phonetic" not in clause["fields"]
 
 
 class TestBuildMultiMatchInvariants:
