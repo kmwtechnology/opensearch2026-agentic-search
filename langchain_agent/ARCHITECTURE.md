@@ -485,7 +485,6 @@ of vanilla BM25:
 | **Fuzzy matching** | Auto-edit-distance on longer tokens catches typos |
 | **Phrase boosting** | Exact multi-word matches outrank loose token matches |
 | **Field boosting** | Title/brand fields weighted above generic content |
-| **Phonetic matching** | `double_metaphone` analyzer (from the `analysis-phonetic` OpenSearch plugin) matches "fone" to "phone" |
 
 These are surfaced in the observability panel via the
 `SearchOptimizationDetails` component

@@ -53,7 +53,7 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 | LLM (classify/rerank/eval) | Gemini 3.1 Flash Lite (preview) |
 | Embeddings | `models/gemini-embedding-001` (768-dim) |
 | Agent framework | LangGraph + LangChain |
-| Vector DB | OpenSearch 2.19.1 (HNSW knn + BM25) |
+| Vector DB | OpenSearch 3.8.0 (HNSW knn + BM25) |
 | Checkpoints | PostgreSQL 16 |
 | API | FastAPI + WebSocket |
 | Frontend | React 18 + TypeScript + Tailwind + Zustand |

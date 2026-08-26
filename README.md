@@ -113,8 +113,7 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   automation). Re-indexing is triggered via the `reindex.yml` workflow
   (Lucille ETL on the runner), not an HTTP endpoint
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
-  boosting, field boosting, and phonetic matching (double_metaphone via the
-  `analysis-phonetic` plugin), displayed in the observability panel's
+  boosting, and field boosting, displayed in the observability panel's
   "Search Optimizations" card
 - **Pipeline Quality Summary** — every turn ends with a per-stage scorecard.
   With ESCI ground truth: NDCG@10 / MRR / Recall@20 / Precision@10 across
@@ -252,7 +251,7 @@ retries with an opposite-direction α adjustment.
 | **LLM (classify/eval)** | Gemini 3.1 Flash Lite (preview) | Intent classification, query evaluation, reranking fallback |
 | **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder) | Default reranker (~10ms/query); Gemini Flash Lite fallback (~500ms) |
 | **Embeddings** | `models/gemini-embedding-001` | 768-dim vectors |
-| **Vector Database** | OpenSearch 2.19.1 | HNSW `knn_vector` + BM25 |
+| **Vector Database** | OpenSearch 3.8.0 | HNSW `knn_vector` + BM25 |
 | **Search Fusion** | Reciprocal Rank Fusion (k=60) | Hybrid score fusion |
 | **Checkpoints** | PostgreSQL 16 | LangGraph state persistence |
 | **Agent Framework** | LangGraph + LangChain | Graph-based pipeline with typed state |
