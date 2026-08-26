@@ -113,8 +113,7 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   automation). Re-indexing is triggered via the `reindex.yml` workflow
   (Lucille ETL on the runner), not an HTTP endpoint
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
-  boosting, field boosting, and phonetic matching (double_metaphone via the
-  `analysis-phonetic` plugin), displayed in the observability panel's
+  boosting, and field boosting, displayed in the observability panel's
   "Search Optimizations" card
 - **Pipeline Quality Summary** — every turn ends with a per-stage scorecard.
   With ESCI ground truth: NDCG@10 / MRR / Recall@20 / Precision@10 across

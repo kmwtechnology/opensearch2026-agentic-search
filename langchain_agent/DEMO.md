@@ -286,8 +286,7 @@ Then immediately: `Make them waterproof` (refinement)
 6. **LLM Response Chunk Event**: Token-by-token generation (streaming)
 7. **Search Optimizations card**: expandable panel showing BM25
    enhancements applied to this query — synonyms, fuzzy matching, phrase
-   boosting, field boosting, and phonetic matching (`double_metaphone`
-   via the `analysis-phonetic` OpenSearch plugin)
+   boosting, and field boosting
 
 **Narration**:
 
