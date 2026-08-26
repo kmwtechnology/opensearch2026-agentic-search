@@ -20,6 +20,9 @@ services:
     build:
       context: .
       dockerfile: docker/opensearch/Dockerfile
+      args:
+        OPENSEARCH_VERSION: "3.8.0"
+        OPENSEARCH_DIGEST: "sha256:bcc1797519726ceb6d651d4a3e60b7c30da91793914a8dfe75fd441d4f641509"
     container_name: langchain-opensearch
     environment:
       - discovery.type=single-node
@@ -38,7 +41,7 @@ services:
       retries: 10
 
   opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:2.19.1
+    image: opensearchproject/opensearch-dashboards:3.8.0@sha256:ca28e40a095f7f03c5c02b4aa159fbf09638bc4b3af16f9d556bf6721a0783b1
     container_name: langchain-opensearch-dashboards
     environment:
       - OPENSEARCH_HOSTS=["http://opensearch:9200"]
