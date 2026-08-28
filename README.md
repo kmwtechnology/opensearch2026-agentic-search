@@ -453,6 +453,7 @@ ESCI_INGEST_LIMIT = 10000
 ```
 
 Environment variables (in `.env`) that **do** affect behavior:
+
 - `RETRIEVER_ALPHA=0.25` — Default lexical/semantic balance (query evaluator usually overrides per-query)
 
 ## Operations
