@@ -1152,15 +1152,31 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         reranker_skipped = opts.get("reranking", True) is False
         llm_off = opts.get("llm", True) is False
 
-        if (
-            quality_gate_retried
-            and max_relevance < MIN_RELEVANCE_THRESHOLD
-            and not reranker_skipped
-            and not llm_off
-        ):
+        # Two distinct ways retrieval can "fail" here, both needing to be
+        # caught for the enrichment gap signal:
+        #   1. Documents WERE retrieved but scored poorly even after a
+        #      quality-gate retry (the original condition).
+        #   2. An attribute_filter query's hard filter excluded EVERYTHING
+        #      on the very first pass — quality_gate_node deliberately never
+        #      retries this case (retrying with adjusted alpha can't fix an
+        #      exact-match filter that's excluding everything; see
+        #      quality_gate_node's "No documents to evaluate" branch), so
+        #      quality_gate_retried never becomes True. This is exactly the
+        #      scenario an unrecognized color/material term produces —
+        #      without this branch, the enrichment tool would never be
+        #      offered for the case it exists to fix. Confirmed via a live
+        #      rehearsal: "show me camel colored coats" hit this path
+        #      (0 documents retrieved, quality_gate_retried stayed False)
+        #      rather than the retry path.
+        retry_exhausted_gap = quality_gate_retried and max_relevance < MIN_RELEVANCE_THRESHOLD
+        zero_result_filter_gap = intent == "attribute_filter" and not retrieved_documents
+
+        if (retry_exhausted_gap or zero_result_filter_gap) and not reranker_skipped and not llm_off:
             logger.info(
-                f"Agent: retrieval failed after quality gate retry "
-                f"(max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD})"
+                f"Agent: retrieval failed "
+                f"(retry_exhausted_gap={retry_exhausted_gap}, "
+                f"zero_result_filter_gap={zero_result_filter_gap}, "
+                f"max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD})"
             )
 
             from config import ENABLE_ENRICHMENT_TOOL
