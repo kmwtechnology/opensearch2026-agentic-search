@@ -499,18 +499,24 @@ the resulting search genuinely fails, `agent_node` offers the LLM a
 new mapping to OpenSearch, regenerates the Lucille ingest config, and
 triggers a real full reindex — not a scoped patch, not a mock.
 
-Color and material trigger this differently: color's unresolved-term
-filter is a hard exact match (excluded from the retriever's filter-relaxation
-safety net), so it reliably produces a genuine zero-result query — proven
-live end-to-end (e.g. "camel" as an unmapped color → "brown"). Material's
-fallback is a deliberately soft lexical match (protecting legitimate
-non-material feature words like "waterproof"), and material/size filters
-*are* subject to relaxation, so no material term reliably triggers the gap
-signal through natural conversation — that path is instead exercised
-directly via `POST /api/admin/enrich`, using the identical underlying
-mechanism. See `ARCHITECTURE.md`'s "Attribute Detection" / "Enrichment
-Flywheel" sections for the full mechanism and `DEMO.md` for the live
-walkthrough.
+Color and material trigger this differently *by default*: color's
+unresolved-term filter is a hard exact match (excluded from the
+retriever's filter-relaxation safety net), so it reliably produces a
+genuine zero-result query — proven live end-to-end (e.g. "camel" as an
+unmapped color → "brown"). Material's fallback is, by default, a
+deliberately soft lexical match (protecting legitimate non-material
+feature words like "waterproof"), and material/size filters *are*
+subject to relaxation, so no material term reliably triggers the gap
+signal through natural conversation with the flag off — that used to
+mean material could only trigger via `POST /api/admin/enrich` directly.
+`STRICT_MATERIAL_FILTER_DEMO` (config.py, default off, real users
+unaffected) fixes this for the conference demo: it swaps an unresolved
+material term's fallback to the same hard exact-match pattern color
+uses, so material now triggers live through chat too — proven end-to-end
+(e.g. "chrome" as an unmapped material → "metal"), with identical
+observability-panel visibility to the color act. See `ARCHITECTURE.md`'s
+"Attribute Detection" / "Enrichment Flywheel" sections for the full
+mechanism and `DEMO.md` for the live walkthrough.
 
 ### Observable events
 

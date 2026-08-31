@@ -88,7 +88,7 @@ A search agent becomes genuinely agentic in two distinct ways. First, it can imp
 * Hybrid search & alpha weighting: show dynamic α selection for a comparison/attribute-filter/search query.  
 * Quality gate retry: run a deliberately niche, low-confidence query and watch the alpha-adjusted retry fire.  
 * **The enrichment flywheel (centerpiece)**: run a query with an unrecognized color or material term, watch the agent recognize the gap and call its own tool to grow the taxonomy, watch a real \~15–20s Lucille re-index run live, then re-ask the same question and get a correct, cited answer.  
-* Use a second flywheel act (material, triggered via the admin API rather than live chat — see Section 6 for why) if time allows.
+* Use a second flywheel act (material — triggers live through chat identically to color, see Section 6 for why they needed different handling under the hood) if time allows.
 
 ## **28–33 minutes — Observability debrief**
 
@@ -139,7 +139,7 @@ A search agent becomes genuinely agentic in two distinct ways. First, it can imp
 
 * When an `attribute_filter` query's hard color/brand filter excludes every product on the first pass — the exact shape an unrecognized color term produces — the quality gate correctly doesn't retry (adjusting alpha can't fix an exclusionary filter), so a second, explicit gap-detection check offers the agent a real tool: `trigger_enrichment(attribute_type, variant, canonical)`.  
 * If the agent recognizes the term as a genuine color/material and calls the tool, it writes the new mapping to OpenSearch, regenerates the Lucille config, and triggers a real full re-index (\~15–20s) — then the same question, asked again, resolves correctly.  
-* **Why the demo shows this two ways**: color's fallback filter is hard and excluded from relaxation, so an unrecognized color term reliably produces the zero-result signal live, through ordinary conversation. Material's fallback is deliberately soft (protecting legitimate non-material feature words like "waterproof"), and material filters *are* subject to relaxation — so no material term, however rare, reliably triggers the signal through natural language. The second act is triggered directly via the admin API instead, exercising the identical mechanism. This isn't a demo shortcut; it's an honest reflection of a real, deliberate design tradeoff, and it's worth narrating as one.
+* **Why color and material needed different handling**: color's fallback filter is hard and excluded from relaxation, so an unrecognized color term reliably produces the zero-result signal live, through ordinary conversation. Material's fallback is *by default* soft (protecting legitimate non-material feature words like "waterproof"), and material filters *are*, by default, subject to relaxation — so with the default config, no material term reliably triggers the signal through natural language. A demo-only, env-gated flag (`STRICT_MATERIAL_FILTER_DEMO`, off everywhere except this environment) swaps an unresolved material term's fallback to the same hard pattern color uses, so both acts now trigger identically live through chat — same mechanism, same observability-panel visibility, same narrative beat. Worth narrating the *tradeoff* even though both acts now look the same on stage: the flag exists specifically because making this the default behavior would hard-exclude real feature-word queries.
 
 # **7\. Live observability panel**
 
@@ -230,11 +230,12 @@ The quality gate compares the reranker's max score against an intent-specific th
 * Generic `AttributeDetectorStage` (Java, parameterized by attribute type) replaced two retired dedicated stages; `config_generator.py` regenerates the Lucille pipeline config before every run from whatever attribute types are registered in OpenSearch.  
 * `enrichment_service.py` classifies a new variant, writes the mapping, ensures the index has the right fields, regenerates the config, and triggers a real `lucille_ingest.sh` subprocess — a genuine full re-index, not a scoped patch.  
 * `trigger_enrichment`, a real LangChain tool bound via a manual two-call loop, is offered to the agent from a dedicated gap-detection check in `agent_node` — added after a live rehearsal surfaced a real bug: the quality gate deliberately never retries a zero-document first pass, so the original retry-based gap signal could never fire for exactly the case the tool exists to handle.  
-* `POST /api/admin/enrich` exposes the identical mechanism directly, used for the material act of the demo (see Section 6, Stage 6, for why).
+* `POST /api/admin/enrich` exposes the identical mechanism directly (used for automation/CI or ops, not the live demo — both acts now trigger through chat, see below).
+* `STRICT_MATERIAL_FILTER_DEMO` (config.py, off by default): swaps an unresolved material term's fallback to a hard exact-match filter, the same pattern color's fallback already uses — this is what makes the material act trigger live through chat instead of needing the admin endpoint (see Section 6, Stage 6, for why the two attribute types needed different handling).
 
 ## **Improve the live UI**
 
-* A new emerald-badged card renders when `enrichment_triggered` is set — attribute type, variant, canonical bucket, re-index status.  
+* Three layers of enrichment visibility, from most to least prominent — a persistent emerald banner in the panel header (visible instantly, regardless of which step is being viewed), an inline badge in the LLM Agent step's collapsed header, and a dedicated bordered card in that step's expanded detail. All three were needed: the dedicated event type existed and was typed on both ends, but was never actually wired into the rendered panel (dead frontend code) until this pass.  
 * Show the quality-gate pass/retry verdict and the alpha delta.  
 * Show citations and the LLM-judge verdict (and auto-correction, when it fires).
 
@@ -243,8 +244,10 @@ The quality gate compares the reranker's max score against an intent-specific th
 ## **P0 — Required for the LangGraph live demo (done)**
 
 * Quality-gate retry on typed state, with an integration test proving a real retry executes.  
-* Enrichment flywheel: generic detection stage, config generation, real-reindex trigger, agent tool, admin endpoint, WebSocket event and UI card — built, and proven live end-to-end for the color act (natural conversation) and the material act (admin endpoint) this session.  
+* Enrichment flywheel: generic detection stage, config generation, real-reindex trigger, agent tool, admin endpoint, WebSocket event and UI card — built, and proven live end-to-end through natural chat for **both** the color act and the material act this session.  
 * Gap-detection fix so the enrichment tool is actually offered for the zero-document-on-first-pass case (see Section 10).  
+* Observability-panel visibility fix: the enrichment event was emitted but never actually rendered anywhere in the live UI (dead frontend code) — fixed with a persistent header banner, a step badge, and a dedicated expanded-detail card (see Section 10).  
+* `STRICT_MATERIAL_FILTER_DEMO` flag so the material act triggers live through chat too, with identical panel visibility to color (see Section 10).  
 * Stream the complete decision trace — intent, α, retrieval, rerank, quality gate, enrichment — to the observability panel.
 
 ## **P1 — Independent Workbench feature setup**
@@ -286,7 +289,7 @@ The quality gate compares the reranker's max score against an intent-specific th
 # **14\. Decisions to lock**
 
 * The primary and backup queries for each act: intent classification, quality-gate retry, and both enrichment-flywheel gap terms.  
-* Whether to show the material act live at all given it requires the admin API rather than chat — or narrate it verbally and show only color live if time is tight.  
+* Both acts now trigger identically live through chat — whether to show both in the allotted time, or narrate the second verbally and show only color live if time is tight.  
 * The acceptable latency budget for the quality-gate retry (~1–2s) and each re-index (~15–20s, narrate through it).  
 * The exact observability panels visible during the live demo, including whether the enrichment card gets its own dedicated moment on screen.  
 * The Workbench features included in the 30-minute and 45-minute versions.  

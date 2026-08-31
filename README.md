@@ -118,10 +118,12 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   it phrased wrong), it can call `trigger_enrichment` to write a new
   variant→canonical mapping to OpenSearch and trigger a genuine full
   Lucille reindex (~15–20s), gated by `ENABLE_ENRICHMENT_TOOL`. Proven live
-  end-to-end for color; material's live-chat trigger is structurally
-  protected against ever firing (deliberate lexical fallback + filter
-  relaxation), so it's exercised via `POST /api/admin/enrich` instead — see
-  `langchain_agent/ARCHITECTURE.md` and `langchain_agent/DEMO.md`
+  end-to-end through real chat for both color and material — material's
+  live-chat trigger is off by default (deliberate lexical fallback +
+  filter relaxation protect real feature-word queries like "waterproof"),
+  gated behind the demo-only `STRICT_MATERIAL_FILTER_DEMO` flag, off
+  everywhere else — see `langchain_agent/ARCHITECTURE.md` and
+  `langchain_agent/DEMO.md`
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
   boosting, and field boosting, displayed in the observability panel's
   "Search Optimizations" card

@@ -279,9 +279,16 @@ the agent noticing the *catalog itself* is missing a real color or material
 term, teaching the search system about it, and re-indexing the whole
 catalog live — genuinely, not simulated.
 
-**Setup requirement**: `ENABLE_ENRICHMENT_TOOL=true` must be set in the
-environment before starting the backend (default is `false`). Restart
-`make dev-api` after setting it if the backend was already running.
+**Setup requirement**: both must be set in the environment before starting
+the backend (both default to `false`):
+```bash
+ENABLE_ENRICHMENT_TOOL=true
+STRICT_MATERIAL_FILTER_DEMO=true
+```
+Restart `make dev-api` after setting them if the backend was already
+running. `STRICT_MATERIAL_FILTER_DEMO` is what makes Act 2 trigger live
+through chat instead of needing the admin endpoint — see "Why this
+needed a fix" under Act 2 below.
 
 **Mechanism** (for your own understanding, not to narrate verbatim):
 Both color and material are detected live from product text
@@ -290,15 +297,16 @@ taxonomy stored in OpenSearch — not a static file. When `attribute_filter`
 intent extracts a **color** term that isn't in the taxonomy yet, the
 exact-match filter against it returns nothing on the first pass, which
 triggers the agent's gap-detection and offers `trigger_enrichment`. An
-unrecognized **material** term instead falls back to a soft lexical match
-and can also get relaxed away by the retriever's own "no dead-end results"
-safety net — so material's gap can't reliably surface through natural
-conversation (see Act 2 below); it's triggered directly via the admin
-endpoint instead, exercising the identical underlying mechanism. Either
+unrecognized **material** term's fallback is normally a soft lexical
+match (protecting real non-material feature words like "waterproof") and
+gets relaxed away by the retriever's own "no dead-end results" safety
+net — so by default, material's gap can't surface through natural
+conversation. `STRICT_MATERIAL_FILTER_DEMO` swaps that fallback for a
+hard exact-match filter, same as color's, for exactly this demo. Either
 way, `trigger_enrichment(attribute_type, variant, canonical)` — a real
-tool/endpoint, not a canned response — writes the new mapping to
-OpenSearch and triggers an actual full Lucille reindex of the whole
-9,618-product catalog (~15–20s, measured — not a mock, not a scoped patch).
+tool, not a canned response — writes the new mapping to OpenSearch and
+triggers an actual full Lucille reindex of the whole 9,618-product
+catalog (~15–20s, measured — not a mock, not a scoped patch).
 
 **Both taxonomies are genuinely gap-tested and rehearsed** (this session,
 2026-08-31) against the real dataset — the exact wording below reflects
@@ -337,54 +345,54 @@ it with `attribute_type="color", variant="camel", canonical="brown"`.
 **"Calvin Klein Women's Classic Cashmere Wool Blend Coat, CAMEL, 6"** should
 appear, correctly tagged `product_color_primary: brown`.
 
-### Act 2 — Material: "chrome" (triggered via admin endpoint, not live chat)
+### Act 2 — Material: "chrome"
 
-**Why this act is triggered differently than Act 1**: material's
-attribute-filter fallback is deliberately *soft* — an unrecognized
-material term falls back to a lexical `multi_match` instead of an
-exact-match filter, because the same code path also has to handle
-non-material feature words users type ("waterproof", "noise canceling")
-that would otherwise get hard-excluded incorrectly. On top of that, the
-retriever has a **separate, deliberate filter-relaxation safety net**
-(`main.py`, "filter relaxation if <3 results" — see `CLAUDE.md`) that
-always drops material/size constraints and retries broader whenever the
-fully-filtered count is under 3, specifically to avoid dead-end
-"no results" screens. Confirmed live this session: even a material term
-with **zero** corpus occurrences (`malachite`) still gets relaxed to 40
-returned documents — `Retriever: filter relaxation — 0 doc(s) with full
-filters, retrying without material/size constraints`. Between the two
-mechanisms, no material term, however rare, can produce a genuine
-zero-document `attribute_filter` result through natural conversation. Color
-has neither protection (hard exact-match fallback, excluded from
-relaxation) — that's exactly why "camel" works live in Act 1 and no
-material term ever will, as currently architected.
+**Why this needed a fix**: material's attribute-filter fallback is
+deliberately *soft* by default — an unrecognized material term falls back
+to a lexical `multi_match` instead of an exact-match filter, because the
+same code path also has to handle non-material feature words users type
+("waterproof", "noise canceling") that would otherwise get hard-excluded
+incorrectly. On top of that, the retriever has a **separate, deliberate
+filter-relaxation safety net** (`main.py`, "filter relaxation if <3
+results" — see `CLAUDE.md`) that always drops material/size constraints
+and retries broader whenever the fully-filtered count is under 3,
+specifically to avoid dead-end "no results" screens. Confirmed live this
+session: even a material term with **zero** corpus occurrences
+(`malachite`) still got relaxed to 40 returned documents. Between the two
+mechanisms, no material term could produce a genuine zero-document
+`attribute_filter` result through natural conversation — Act 2 originally
+had to be triggered via `POST /api/admin/enrich` instead of live chat, with
+no observability-panel visibility.
 
-Rather than compromise material's real-world filtering behavior (which
-correctly protects legitimate non-material queries) just to force a demo
-moment, Act 2 triggers the same real mechanism directly via the
-now-working `/api/admin/enrich` endpoint — still a genuine reindex, still
-live on stage, just invoked by you instead of by the LLM's own tool-call
-judgment.
+**The fix**: `STRICT_MATERIAL_FILTER_DEMO=true` (see Setup requirement
+above) swaps an *unresolved* material term's fallback for a hard
+exact-match filter — the same pattern color's unresolved fallback already
+uses. This also automatically exempts it from filter relaxation (which
+only relaxes `multi_match` filters), without touching that logic at all.
+Real users are unaffected: this flag is off everywhere except the demo
+environment, and it only changes behavior for *unresolved* terms — a
+material already in the taxonomy always used a hard filter regardless.
 
-**Trigger** (run this live, e.g. from a second terminal or Swagger UI at
-`/swagger`):
+**Send**: `show me a chrome material humidifier`
 
-```bash
-curl -s -b <session-cookie-jar> -X POST http://localhost:8000/api/admin/enrich \
-  -H "Content-Type: application/json" -H "Origin: http://localhost:8000" \
-  -d '{"attribute_type": "material", "variant": "chrome", "canonical": "metal"}'
-```
+**Expected**: Same shape as Act 1 — `attribute_filter` intent extracts
+`material_or_feature: "chrome"`. "chrome" isn't in the material taxonomy
+(34 variants, none of them "chrome") — with the strict flag on, the exact
+filter on `product_material_primary="chrome"` matches nothing (confirmed
+live: `0 documents retrieved`), quality gate shows "No documents to
+evaluate", the agent gets offered `trigger_enrichment` and calls it with
+`attribute_type="material", variant="chrome", canonical="metal"`.
 
-`canonical` is required here — the admin endpoint classifies
-dictionary-only (no LLM fallback), so an unrecognized term like "chrome"
-needs the bucket supplied explicitly, the same way the live agent tool
-supplies its own LLM-classified canonical.
+**Observe**: Identical to Act 1 — the same panel header banner, the same
+"Enrichment: material 'chrome' → 'metal'" step badge, the same expanded
+banner in the LLM Agent step. Real reindex, ~15–25s (measured this
+session: 24.4s).
 
-**Expected**: `{"success": true, "reindex_triggered": true,
-"reindex_success": true, "docs_processed": 9618, ...}` after ~15–20s
-(measured this session: 21.16s).
-
-**Then send in chat**: `chrome bar table`
+**Then, in a new conversation** (click **New Chat** — sending the
+follow-up in the *same* thread as the trigger query works too, but the
+query rewriter expands and merges it with the prior humidifier ask,
+which is an extra moving part you don't need for a clean "it worked"
+moment): send `show me a bar table made of chrome material`
 
 **Expected**: Real hero product **"Global Furniture Bar Table,
 Clear/Black/Chrome"** appears as the top citation, correctly tagged
@@ -399,11 +407,10 @@ Clear/Black/Chrome"** appears as the top citation, correctly tagged
 > to 20 seconds — genuinely reprocessing every product, not a shortcut.
 > Watch — if I ask the same question again, it works now."
 >
-> **Act 2**: "Same mechanism, same real reindex — this time triggered
-> directly rather than through the chat turn, since material's filter is
-> deliberately more forgiving than color's so it doesn't wrongly reject
-> legitimate feature words like 'waterproof'. The underlying fix — new
-> taxonomy entry, full catalog reindex — is identical."
+> **Act 2**: "Same mechanism, same real reindex — this time for a
+> material instead of a color. The agent recognized 'chrome' wasn't in
+> the material taxonomy, taught the system, and re-indexed live — just
+> like it did for camel a moment ago."
 
 ### Verified this session (2026-08-31), not hypothetical
 
@@ -417,20 +424,35 @@ Clear/Black/Chrome"** appears as the top citation, correctly tagged
   reindex ran, and a follow-up identical query returned the correctly
   cited, correctly tagged hero product. This required a bug fix — see
   below.
-- **Act 2 (material) fully proven end-to-end via the admin endpoint**, not
-  live chat — confirmed structurally impossible to trigger through natural
-  conversation (see above). Real 21.16s reindex, `docs_processed: 9618`,
-  hero product citation confirmed correct afterward.
-- **Bug found and fixed this session**: the agent's enrichment-gap check
-  originally only fired when `quality_gate_retried and max_relevance <
-  threshold`. But `quality_gate_node` deliberately never retries when the
-  *first* retrieval pass already returns zero documents (adjusting alpha
-  can't fix an exclusionary filter) — so for the exact "unrecognized
-  attribute term → hard filter excludes everything on pass one" scenario
-  the whole feature exists to address, `quality_gate_retried` never became
-  `True` and the tool was never offered. Fixed in `main.py`'s `agent_node`
-  by adding a second, OR'd condition (`intent == "attribute_filter" and not
-  retrieved_documents`). Full unit suite (813 passed) unaffected.
+- **Act 2 (material) fully proven end-to-end through real live chat**,
+  same as Act 1 — this was NOT possible earlier the same session (confirmed
+  structurally impossible: even a zero-corpus-occurrence material term
+  still got relaxed to 40 results) and had to go through the admin
+  endpoint instead. `STRICT_MATERIAL_FILTER_DEMO` (see Setup requirement)
+  fixed this: sent "show me a chrome material humidifier", the LLM
+  recognized the gap and called `trigger_enrichment(attribute_type=
+  "material", variant="chrome", canonical="metal")` on its own judgment, a
+  real 24.4s reindex ran, and a follow-up query returned the correctly
+  cited, correctly tagged hero product — same observability-panel banner
+  as Act 1.
+- **Two bugs found and fixed this session**:
+  1. The agent's enrichment-gap check originally only fired when
+     `quality_gate_retried and max_relevance < threshold`. But
+     `quality_gate_node` deliberately never retries when the *first*
+     retrieval pass already returns zero documents (adjusting alpha can't
+     fix an exclusionary filter) — so for the exact "unrecognized
+     attribute term → hard filter excludes everything on pass one"
+     scenario the whole feature exists to address, `quality_gate_retried`
+     never became `True` and the tool was never offered. Fixed in
+     `main.py`'s `agent_node` by adding a second, OR'd condition
+     (`intent == "attribute_filter" and not retrieved_documents`).
+  2. `EnrichmentTriggeredEvent` was emitted by the backend and typed on
+     the frontend, but was never actually rendered in the live UI —
+     `EventCard.tsx` had rendering logic for it, but was never imported
+     into `ObservabilityPanel`. Fixed with three layers of visibility: a
+     persistent panel-header banner, an inline step-header badge, and a
+     dedicated expanded-detail card — see `ARCHITECTURE.md`.
+  Full test suites (backend + frontend) unaffected by either fix.
 - The full mechanism (classify → write mapping → ensure index fields →
   regenerate Lucille config → real reindex subprocess → verify field
   population → verify query improvement) was run for real, for both acts,
@@ -440,7 +462,7 @@ Clear/Black/Chrome"** appears as the top citation, correctly tagged
 
 ### Troubleshooting this part specifically
 
-- **Act 1 tool never gets called / agent just gives the canned "no
+- **Either act's tool never gets called / agent just gives the canned "no
   results" response**: Confirm `ENABLE_ENRICHMENT_TOOL=true` is actually
   set for the running backend process (`echo $ENABLE_ENRICHMENT_TOOL` in
   the shell that started `make dev-api`, or check `/api/admin/enrich`
@@ -448,15 +470,16 @@ Clear/Black/Chrome"** appears as the top citation, correctly tagged
   still doesn't call the tool, confirm intent classified as
   `attribute_filter` in the observability panel and that the retriever log
   shows `hybrid=0 docs` on the first pass — that's the exact signal the
-  gap-detection fix above depends on.
-- **Act 2 admin curl returns 403**: same `ENABLE_ENRICHMENT_TOOL` check as
-  above. If it returns 422, the request body is missing `attribute_type`,
-  `variant`, or (for an unrecognized term) `canonical`.
-- **Act 2 admin curl returns `success: false`**: the `canonical` value
-  isn't one of the material taxonomy's known buckets (`leather`, `cotton`,
-  `wool`, `synthetic`, `denim`, `canvas`, `wood`, `metal`, `glass_ceramic`,
-  `rubber` — see `MATERIAL_CANONICALS` in `attribute_discovery.py`), or the
-  variant is already mapped (check `reason` in the response body).
+  gap-detection fix depends on.
+- **Act 2 specifically shows a nonzero document count** (e.g. "40
+  documents retrieved" instead of 0): `STRICT_MATERIAL_FILTER_DEMO=true`
+  isn't set for the running backend process, or the backend hasn't
+  restarted since it was set — `.env` changes aren't picked up by
+  uvicorn's `--reload` file watcher (it only watches `.py` files), so a
+  bare `.env` edit needs a manual restart:
+  `pkill -f "uvicorn api.main:app" && make dev-api`. Confirm with
+  `python3 -c "import config; print(config.STRICT_MATERIAL_FILTER_DEMO)"`
+  from `langchain_agent/` before going live.
 - **Reindex takes noticeably longer than ~20s live**: Docker image layer
   cache may be cold (first run after a restart rebuilds a Maven layer,
   ~1–4s extra) — acceptable, but if it's dramatically slower, check

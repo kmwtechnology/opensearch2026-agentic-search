@@ -135,10 +135,11 @@ This document provides a deep-dive into the system design, pipeline flow, state 
     - `product_color_primary`/`_secondary`, `product_material_primary`/`_secondary` — canonical
       values (keyword), populated during ingest by `AttributeDetectorStage`
     - `product_brand_normalized` — case-folded brand, e.g., "sony", "apple"
-  - Color's unresolved-term fallback is a **hard** exact-match filter; material's is a **soft**
-    lexical `multi_match` (protects legitimate non-material feature words like "waterproof") —
-    see **Attribute Detection** section below for the full mechanism and why this asymmetry
-    matters for the enrichment flywheel
+  - Color's unresolved-term fallback is a **hard** exact-match filter; material's is, by default, a
+    **soft** lexical `multi_match` (protects legitimate non-material feature words like
+    "waterproof") — `STRICT_MATERIAL_FILTER_DEMO` swaps material to the same hard pattern for the
+    conference demo (off, so unaffected, everywhere else) — see **Attribute Detection** section
+    below for the full mechanism and why this asymmetry matters for the enrichment flywheel
   - **Filter relaxation**: If fetch returns < 3 results with all filters, drops multi-match
     (material/size) filters but keeps color + brand exact-match filters (user explicitly named
     them) — this can retry all the way down to 0 fully-filtered results
@@ -702,10 +703,14 @@ way to get added without a code deploy or manual data migration.
 **Mechanism:**
 1. `attribute_filter` intent extracts a color/material term via
    `_extract_attributes()`. Color's fallback for an unresolved term is a
-   hard exact-match filter; material's is a soft `multi_match` against
-   `title`/`chunk_text` — deliberately softer, since the same code path
-   also has to handle non-material feature words ("waterproof", "noise
-   canceling") that a hard filter would wrongly exclude.
+   hard exact-match filter; material's is, by default, a soft
+   `multi_match` against `title`/`chunk_text` — deliberately softer,
+   since the same code path also has to handle non-material feature
+   words ("waterproof", "noise canceling") that a hard filter would
+   wrongly exclude. `STRICT_MATERIAL_FILTER_DEMO` (config.py, off by
+   default, real users unaffected) swaps material's unresolved fallback
+   to the same hard exact-match pattern as color, for the conference
+   demo only — see below.
 2. If the query genuinely returns nothing, `agent_node` offers the LLM a
    `trigger_enrichment(attribute_type, variant, canonical)` tool (a real
    `@tool`, bound via a manual two-call loop — bind → invoke → if the LLM
@@ -730,27 +735,39 @@ never retries a zero-document first pass (adjusting alpha can't fix an
 exclusionary filter) — without it, the tool would never be offered for
 exactly the scenario it exists to fix.
 
-**Color and material trigger this differently in practice.** Color's
-hard fallback filter, combined with color/brand being excluded from the
-retriever's filter-relaxation safety net (below), reliably produces a
-genuine zero-document result for an unrecognized term — this is provably
-verified live. Material has two independent layers protecting against
-ever returning zero documents (the soft `multi_match` fallback above, plus
-filter relaxation), so no material term — however rare in the corpus —
-reliably triggers the gap signal through natural conversation; growing
-the material taxonomy is instead demonstrated via `POST
-/api/admin/enrich` directly (see `docs/integration/rest-api.md`), which
-exercises the identical `enrich_attribute` mechanism.
+**Color and material trigger this differently by default — this is why
+`STRICT_MATERIAL_FILTER_DEMO` exists.** Color's hard fallback filter,
+combined with color/brand being excluded from the retriever's
+filter-relaxation safety net (below), reliably produces a genuine
+zero-document result for an unrecognized term. Material, by default, has
+two independent layers protecting against ever returning zero documents
+(the soft `multi_match` fallback above, plus filter relaxation), so no
+material term — however rare in the corpus — reliably triggers the gap
+signal through natural conversation with the flag off. Confirmed live: a
+material term with **zero** corpus occurrences still got relaxed to 40
+returned documents. With `STRICT_MATERIAL_FILTER_DEMO=true`, an
+unresolved material term's filter becomes a `match` clause (see step 1),
+which is structurally identical to color's — it produces the same
+zero-document result and, per the filter-relaxation rule below, is
+excluded from relaxation for the same reason color's `match` filters
+are. No change to the relaxation logic itself was needed; only which
+filter *shape* material's fallback produces changed. Verified live:
+"show me a chrome material humidifier" → `0 documents retrieved` →
+`trigger_enrichment` called → real ~24s reindex → follow-up query
+resolves correctly, with the identical observability-panel visibility
+Act 1 (color) gets.
 
 **Filter relaxation** (`main.py` retriever, pre-existing, unrelated to the
 enrichment flywheel but load-bearing for the asymmetry above): when an
 `attribute_filter`/`refinement` query's fully-filtered result count is
 under 3, the retriever automatically retries without `multi_match`
-filters (material, size) and keeps the relaxed results only if they
-outnumber the original — `match` filters (color, brand) are never
-relaxed, since the user named those explicitly. This is why a material
-term with even zero corpus occurrences still returns results after
-relaxation, while a color term does not.
+filters (material, size, or an unresolved material term with
+`STRICT_MATERIAL_FILTER_DEMO` off) and keeps the relaxed results only if
+they outnumber the original — `match` filters (color, brand, or an
+unresolved material term with `STRICT_MATERIAL_FILTER_DEMO` on) are
+never relaxed, since the user named those explicitly (or, for the demo
+flag's case, since a hard filter is what makes the gap-detection signal
+work at all).
 
 ### Search Pipeline (OpenSearch DSL)
 
