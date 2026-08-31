@@ -98,6 +98,11 @@ const eventTypeConfig: Record<string, { label: string; color: string; bgColor: s
     color: 'text-purple-400',
     bgColor: 'bg-purple-500/5 border-purple-500/20',
   },
+  enrichment_triggered: {
+    label: 'Enrichment Triggered',
+    color: 'text-emerald-400',
+    bgColor: 'bg-emerald-500/5 border-emerald-500/20',
+  },
   response_grading: {
     label: 'Response Grade',
     color: 'text-pink-400',
@@ -357,6 +362,20 @@ function EventDetails({ event }: { event: AgentEvent }) {
             <div className="bg-black/30 p-2 rounded text-gray-300 text-xs font-mono max-h-32 overflow-y-auto">
               {JSON.stringify((event as any).tool_args, null, 2)}
             </div>
+          </div>
+        </div>
+      )
+
+    case 'enrichment_triggered':
+      return (
+        <div className="space-y-1 text-xs text-gray-300">
+          <div><span className="text-gray-500">Attribute:</span> {(event as any).attribute_type}</div>
+          <div><span className="text-gray-500">Variant:</span> "{(event as any).variant}"</div>
+          {(event as any).canonical && (
+            <div><span className="text-gray-500">Resolved to:</span> {(event as any).canonical}</div>
+          )}
+          <div className="mt-2 pt-1 border-t border-gray-700/30 text-emerald-400/80">
+            Live catalog re-index triggered
           </div>
         </div>
       )
