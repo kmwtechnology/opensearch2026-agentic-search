@@ -1,169 +1,286 @@
 """
-Integration tests for enrichment_service — the synchronous flow the live
-agent enrichment tool calls: classify -> write mapping -> scoped
-update_by_query.
+Integration tests for enrichment_service.enrich_attribute — the generic
+(color/material/any future type) synchronous flow the live agent enrichment
+tool calls: classify -> write mapping -> ensure index fields -> regenerate
+config -> trigger a real Lucille reindex.
 
-Uses dedicated test indices for both the attribute mapping store and the
-product documents, so these tests never touch real material taxonomy data
-(including the actual demo gap term reserved for the live on-stage trigger).
+Most tests mock the reindex subprocess call (subprocess.run) so they stay
+fast and don't require a full ~20s Lucille run for every assertion — the
+classification/mapping/mapping-field logic is what's under test there. One
+test (TestRealReindexEndToEnd) exercises the actual subprocess trigger
+end-to-end and is slow (~20s) by nature; it uses a disposable test attribute
+type/variant, cleaned up after, so it never touches real color/material data
+or the demo's reserved gap terms.
+
+Uses a dedicated test index for the attribute mapping store so these tests
+never touch real taxonomy data.
 
 Requires a live local OpenSearch (docker compose up -d).
 """
 
+import subprocess
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 import attribute_mapping_store as store_module
-import config
 import enrichment_service
 from attribute_mapping_store import AttributeMappingStore
 
 pytestmark = pytest.mark.integration
 
-MAPPING_TEST_INDEX = "test_attribute_mappings_enrichment"
-DOCS_TEST_INDEX = "test_enrichment_products"
-
-DOCS_MAPPING = {
-    "mappings": {
-        "properties": {
-            "title": {"type": "text"},
-            "chunk_text": {"type": "text"},
-            "product_material": {"type": "keyword"},
-            "product_material_primary": {"type": "keyword"},
-        }
-    }
-}
+MAPPING_TEST_INDEX = "test_attribute_mappings_enrichment_v2"
 
 
 @pytest.fixture
 def store(monkeypatch):
     monkeypatch.setattr(store_module, "INDEX_NAME", MAPPING_TEST_INDEX)
-    monkeypatch.setattr(config, "OPENSEARCH_INDEX_NAME", DOCS_TEST_INDEX)
-
     s = AttributeMappingStore()
     s.client.indices.delete(index=MAPPING_TEST_INDEX, ignore=[404])
-    s.client.indices.delete(index=DOCS_TEST_INDEX, ignore=[404])
-    s.client.indices.create(index=DOCS_TEST_INDEX, body=DOCS_MAPPING)
-
     yield s
-
     s.client.indices.delete(index=MAPPING_TEST_INDEX, ignore=[404])
-    s.client.indices.delete(index=DOCS_TEST_INDEX, ignore=[404])
 
 
-def _index_doc(store: AttributeMappingStore, doc_id: str, title: str, chunk_text: str) -> None:
-    store.client.index(
-        index=DOCS_TEST_INDEX,
-        id=doc_id,
-        body={"title": title, "chunk_text": chunk_text},
-        refresh=True,
-    )
+def _mock_successful_subprocess():
+    result = MagicMock()
+    result.returncode = 0
+    result.stdout = "esciProductsConnector: complete. 9618 docs succeeded. 0 docs failed."
+    result.stderr = ""
+    return result
 
 
-class TestEnrichMaterial:
-    def test_dictionary_match_succeeds_without_llm(self, store):
-        _index_doc(store, "1", "Wallet", "Genuine Cowhide Wallet for Men")
+class TestEnrichAttributeClassification:
+    """Classification/mapping logic, subprocess mocked."""
 
-        result = enrichment_service.enrich_material("cowhide", store=store)
+    @patch("enrichment_service.write_generated_conf")
+    @patch("subprocess.run")
+    def test_dictionary_match_succeeds_without_llm(self, mock_run, mock_write_conf, store):
+        mock_run.return_value = _mock_successful_subprocess()
+
+        result = enrichment_service.enrich_attribute("material", "cowhide", store=store)
 
         assert result.success is True
         assert result.canonical == "leather"
-        assert result.docs_updated == 1
+        assert result.reindex_success is True
+        assert result.docs_processed == 9618
 
-    def test_llm_fallback_invoked_for_novel_term(self, store):
-        _index_doc(store, "1", "Faucet", "Unobtainium Bathroom Faucet Fixture")
+    @patch("enrichment_service.write_generated_conf")
+    @patch("subprocess.run")
+    def test_color_attribute_type_works_too(self, mock_run, mock_write_conf, store):
+        mock_run.return_value = _mock_successful_subprocess()
+
+        result = enrichment_service.enrich_attribute("color", "charcoal", store=store)
+
+        assert result.success is True
+        assert result.canonical == "black"
+
+    @patch("enrichment_service.write_generated_conf")
+    @patch("subprocess.run")
+    def test_llm_fallback_invoked_for_novel_term(self, mock_run, mock_write_conf, store):
+        mock_run.return_value = _mock_successful_subprocess()
 
         def fake_llm(term, canonicals):
             assert term == "unobtainium"
             return "metal"
 
-        result = enrichment_service.enrich_material(
-            "unobtainium", llm_classify_fn=fake_llm, store=store
+        result = enrichment_service.enrich_attribute(
+            "material", "unobtainium", llm_classify_fn=fake_llm, store=store
         )
 
         assert result.success is True
         assert result.canonical == "metal"
-        assert result.docs_updated == 1
 
-    def test_unclassifiable_term_fails_gracefully(self, store):
-        result = enrichment_service.enrich_material(
-            "xyznonsense", llm_classify_fn=lambda t, c: None, store=store
+    def test_unknown_attribute_type_fails_without_touching_reindex(self, store):
+        result = enrichment_service.enrich_attribute("pattern", "polka-dot", store=store)
+
+        assert result.success is False
+        assert "unknown attribute_type" in result.reason
+        assert result.reindex_triggered is False
+
+    def test_unclassifiable_term_fails_gracefully_without_reindex(self, store):
+        result = enrichment_service.enrich_attribute(
+            "material", "xyznonsense", llm_classify_fn=lambda t, c: None, store=store
         )
 
         assert result.success is False
-        assert result.reason == "could not classify to a known material bucket"
-        assert result.docs_updated == 0
+        assert result.reindex_triggered is False
 
     def test_already_mapped_term_is_idempotent(self, store):
         store.add_mapping("material", "cowhide", "leather", source="seed")
 
-        result = enrichment_service.enrich_material("cowhide", store=store)
+        result = enrichment_service.enrich_attribute("material", "cowhide", store=store)
 
         assert result.success is False
         assert result.reason == "already mapped"
-        assert result.canonical == "leather"
+        assert result.reindex_triggered is False
 
     def test_empty_term_fails_gracefully(self, store):
-        result = enrichment_service.enrich_material("", store=store)
+        result = enrichment_service.enrich_attribute("material", "", store=store)
         assert result.success is False
         assert result.reason == "empty term"
 
-    def test_writes_mapping_to_store(self, store):
-        _index_doc(store, "1", "Wallet", "Genuine Cowhide Wallet")
-
-        enrichment_service.enrich_material("cowhide", store=store)
-
-        lookup = store.get_lookup_table("material")
-        assert lookup.get("cowhide") == "leather"
-
-    def test_only_updates_matching_untagged_documents(self, store):
-        _index_doc(store, "1", "Cowhide Boots", "Genuine Cowhide Leather Boots")
-        _index_doc(store, "2", "Unrelated", "Plastic Phone Case")
-        _index_doc(store, "3", "Already Tagged", "Cowhide Belt")
-        store.client.update(
-            index=DOCS_TEST_INDEX,
-            id="3",
-            body={"doc": {"product_material_primary": "leather"}},
-            refresh=True,
-        )
-
-        result = enrichment_service.enrich_material("cowhide", store=store)
-
-        # doc 1 (matching, untagged) updated; doc 2 (no match) and doc 3
-        # (matching but already tagged) are not touched.
-        assert result.docs_updated == 1
-
-        doc1 = store.client.get(index=DOCS_TEST_INDEX, id="1")["_source"]
-        assert doc1["product_material_primary"] == "leather"
-        assert doc1["product_material"] == "cowhide"
-
-        doc2 = store.client.get(index=DOCS_TEST_INDEX, id="2")["_source"]
-        assert "product_material_primary" not in doc2
-
-    def test_no_matching_documents_returns_zero_updated(self, store):
-        result = enrichment_service.enrich_material("cowhide", store=store)
-
-        assert result.success is True
-        assert result.canonical == "leather"
-        assert result.docs_updated == 0
-
-    def test_explicit_canonical_bypasses_classification(self, store):
-        _index_doc(store, "1", "Faucet", "Chrome Bathroom Faucet Fixture")
+    @patch("enrichment_service.write_generated_conf")
+    @patch("subprocess.run")
+    def test_explicit_canonical_bypasses_classification(self, mock_run, mock_write_conf, store):
+        mock_run.return_value = _mock_successful_subprocess()
 
         def failing_classify(term, canonicals):
             raise AssertionError("classification should be skipped when explicit_canonical is set")
 
-        result = enrichment_service.enrich_material(
-            "chrome", llm_classify_fn=failing_classify, store=store, explicit_canonical="metal"
+        result = enrichment_service.enrich_attribute(
+            "material",
+            "chrome",
+            llm_classify_fn=failing_classify,
+            store=store,
+            explicit_canonical="metal",
         )
 
         assert result.success is True
         assert result.canonical == "metal"
-        assert result.docs_updated == 1
 
     def test_explicit_canonical_rejects_unknown_bucket(self, store):
-        result = enrichment_service.enrich_material(
-            "chrome", store=store, explicit_canonical="unobtainium_bucket"
+        result = enrichment_service.enrich_attribute(
+            "material", "chrome", store=store, explicit_canonical="unobtainium_bucket"
         )
 
         assert result.success is False
         assert "not a known canonical" in result.reason
+
+    @patch("enrichment_service.write_generated_conf")
+    @patch("subprocess.run")
+    def test_writes_mapping_before_triggering_reindex(self, mock_run, mock_write_conf, store):
+        mock_run.return_value = _mock_successful_subprocess()
+
+        enrichment_service.enrich_attribute("material", "cowhide", store=store)
+
+        lookup = store.get_lookup_table("material")
+        assert lookup.get("cowhide") == "leather"
+        mock_write_conf.assert_called_once()
+        mock_run.assert_called_once()
+
+
+class TestReindexFailureHandling:
+    @patch("enrichment_service.write_generated_conf")
+    @patch("subprocess.run")
+    def test_nonzero_exit_code_reports_reindex_failure_not_overall_failure(
+        self, mock_run, mock_write_conf, store
+    ):
+        """Mapping was still written (real taxonomy growth) even if the
+        triggered reindex itself failed — success=True, reindex_success=False."""
+        result = MagicMock()
+        result.returncode = 1
+        result.stdout = ""
+        result.stderr = "some lucille error"
+        mock_run.return_value = result
+
+        outcome = enrichment_service.enrich_attribute("material", "cowhide", store=store)
+
+        assert outcome.success is True  # mapping write succeeded
+        assert outcome.reindex_triggered is True
+        assert outcome.reindex_success is False
+        assert outcome.docs_processed == 0
+
+        # Mapping was still persisted despite the reindex failure
+        assert store.get_lookup_table("material").get("cowhide") == "leather"
+
+    @patch("enrichment_service.write_generated_conf")
+    @patch("subprocess.run")
+    def test_timeout_reports_reindex_failure(self, mock_run, mock_write_conf, store):
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="lucille_ingest.sh", timeout=180)
+
+        outcome = enrichment_service.enrich_attribute("material", "cowhide", store=store)
+
+        assert outcome.success is True
+        assert outcome.reindex_success is False
+
+
+_MINIMAL_ANALYSIS_SETTINGS = {
+    "settings": {
+        "analysis": {
+            "analyzer": {
+                "light_english_analyzer": {"tokenizer": "standard", "filter": ["lowercase"]},
+                "heavy_english_analyzer": {"tokenizer": "standard", "filter": ["lowercase"]},
+            }
+        }
+    }
+}
+
+
+class TestEnsureAttributeFieldsMapped:
+    def test_adds_fields_when_missing(self, store):
+        # Use a throwaway index (with the same custom analyzers the real
+        # product index already has configured) so this test doesn't depend
+        # on the real product index's current mapping state.
+        test_docs_index = "test_enrichment_mapping_fields"
+        store.client.indices.delete(index=test_docs_index, ignore=[404])
+        store.client.indices.create(index=test_docs_index, body=_MINIMAL_ANALYSIS_SETTINGS)
+
+        with patch("config.OPENSEARCH_INDEX_NAME", test_docs_index):
+            enrichment_service._ensure_attribute_fields_mapped(store, "pattern")
+
+            mapping = store.client.indices.get_mapping(index=test_docs_index)
+            props = mapping[test_docs_index]["mappings"]["properties"]
+            assert "product_pattern" in props
+            assert "product_pattern_primary" in props
+            assert "product_pattern_secondary" in props
+
+        store.client.indices.delete(index=test_docs_index, ignore=[404])
+
+    def test_noop_when_fields_already_present(self, store):
+        test_docs_index = "test_enrichment_mapping_fields_existing"
+        store.client.indices.delete(index=test_docs_index, ignore=[404])
+        store.client.indices.create(
+            index=test_docs_index,
+            body={"mappings": {"properties": {"product_material_primary": {"type": "keyword"}}}},
+        )
+
+        with patch("config.OPENSEARCH_INDEX_NAME", test_docs_index):
+            # Should not raise, should not error on an existing field
+            enrichment_service._ensure_attribute_fields_mapped(store, "material")
+
+        store.client.indices.delete(index=test_docs_index, ignore=[404])
+
+
+class TestParseDocsSucceeded:
+    def test_parses_real_lucille_output(self):
+        output = (
+            "esciProductsConnector: complete. 9618 docs succeeded. 0 docs failed. 0 docs dropped."
+        )
+        assert enrichment_service._parse_docs_succeeded(output) == 9618
+
+    def test_returns_zero_when_no_match(self):
+        assert enrichment_service._parse_docs_succeeded("some unrelated output") == 0
+
+
+class TestRealReindexEndToEnd:
+    """The one test that triggers an actual Lucille reindex (~20s). Uses a
+    disposable attribute type + variant so it never touches real color/
+    material taxonomy or the demo's reserved live-gap term.
+
+    Note: the reindex subprocess is a separate Python process — it doesn't
+    see the store fixture's monkeypatched test index, so it regenerates
+    products.generated.conf from and reindexes against the REAL production
+    attribute types/index. That's fine here: this test validates the
+    subprocess-orchestration mechanism (wait, capture output, parse doc
+    count, measure duration), not that the disposable type is reflected in
+    that specific run."""
+
+    @pytest.mark.slow
+    def test_real_reindex_completes_and_reports_docs_processed(self, store):
+        # Register a throwaway attribute type's canonical seed just for this
+        # test, since enrich_attribute validates against known types.
+        enrichment_service._CANONICAL_SEEDS_BY_TYPE["_test_only"] = {
+            "test_bucket": ["zzz_test_variant"]
+        }
+        try:
+            result = enrichment_service.enrich_attribute(
+                "_test_only", "zzz_test_variant", store=store
+            )
+
+            assert result.success is True
+            assert result.reindex_triggered is True
+            assert result.reindex_success is True
+            assert result.docs_processed > 9000  # full catalog reindexed
+            assert result.duration_seconds > 0
+        finally:
+            del enrichment_service._CANONICAL_SEEDS_BY_TYPE["_test_only"]

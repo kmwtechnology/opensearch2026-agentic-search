@@ -1,156 +1,244 @@
 """
-Synchronous material enrichment service — the mechanism the live agent
-enrichment tool calls when a query mentions a material term that isn't in
-the taxonomy yet.
+Attribute enrichment service — the mechanism the live agent enrichment tool
+calls when a query mentions a color or material term that isn't in its
+taxonomy yet. Generic over attribute_type (color, material, or any future
+type), not material-specific.
 
-Flow (all in seconds, no GitHub/CI involved):
-  1. Classify the gap term against the canonical material buckets
+Flow (real, not mocked — measured ~17-20s locally, fast enough for a live
+on-stage trigger):
+  1. Classify the gap term against the attribute type's canonical buckets
      (attribute_discovery.single_term_classify, with an optional LLM
-     fallback for terms that don't dictionary-match).
+     fallback for terms that don't dictionary-match), or accept an
+     explicit_canonical override.
   2. Write the new variant->canonical mapping to the OS-backed attribute
      mapping store (AttributeMappingStore.add_mapping).
-  3. Scoped update_by_query: find documents whose chunk_text actually
-     contains the new variant term and don't yet have
-     product_material_primary set, and set it (and product_material,
-     product_material_secondary where applicable) directly — mirrors what
-     the Lucille MaterialNormalizerStage does at ingest time, but scoped to
-     only the newly-relevant documents instead of a full reindex.
+  3. Ensure the OpenSearch index mapping has product_<attribute_type>
+     (dual-mapped text) + product_<attribute_type>_primary/_secondary
+     (keyword) fields — additive, only when the attribute type is new.
+  4. Regenerate products.generated.conf (config_generator) so the next
+     Lucille run picks up the new mapping.
+  5. Trigger a REAL full Lucille reindex (scripts/lucille_ingest.sh) as a
+     subprocess and measure it.
 
-Lucille + reindex.yml remains the batch/full-reindex path (off-stage); this
-service is purely for the live, synchronous on-stage trigger.
+This supersedes an earlier scoped update_by_query design — a real reindex
+was measured fast enough (~17-20s) to run live, so there's no need for a
+narrower, faster-but-less-authentic patch mechanism.
 """
 
 import logging
+import re
+import subprocess
+import time
 from dataclasses import dataclass
-from typing import Callable, Optional
+from pathlib import Path
+from typing import Callable, Dict, Optional
 
-from attribute_discovery import MATERIAL_CANONICALS, single_term_classify
+from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, single_term_classify
 from attribute_mapping_store import AttributeMappingStore
+from config_generator import write_generated_conf
 
 logger = logging.getLogger(__name__)
+
+LANGCHAIN_AGENT_DIR = Path(__file__).parent
+
+# Canonical bucket vocabularies by attribute type. Add an entry here when a
+# new attribute type gets a discovery seed dict in attribute_discovery.py.
+_CANONICAL_SEEDS_BY_TYPE: Dict[str, Dict[str, list]] = {
+    "color": COLOR_CANONICALS,
+    "material": MATERIAL_CANONICALS,
+}
 
 
 @dataclass
 class EnrichmentResult:
-    """Result of a material enrichment attempt."""
+    """Result of an attribute enrichment attempt."""
 
     success: bool
+    attribute_type: str
     variant: str
     canonical: Optional[str] = None
-    docs_updated: int = 0
     reason: Optional[str] = None  # set when success=False
+    reindex_triggered: bool = False
+    reindex_success: bool = False
+    docs_processed: int = 0
+    duration_seconds: float = 0.0
 
 
-def enrich_material(
+def enrich_attribute(
+    attribute_type: str,
     variant: str,
     llm_classify_fn: Optional[Callable[[str, list], Optional[str]]] = None,
     store: Optional[AttributeMappingStore] = None,
     explicit_canonical: Optional[str] = None,
 ) -> EnrichmentResult:
     """
-    Classify a new material variant, write it to the mapping store, and
-    apply it to matching documents already in the index.
+    Classify a new attribute variant, write it to the mapping store, ensure
+    the index mapping supports it, and trigger a real Lucille reindex.
 
     Args:
-        variant: the unmapped material term (e.g. "chrome")
+        attribute_type: "color", "material", or any future registered type
+        variant: the unmapped term (e.g. "chrome")
         llm_classify_fn: optional callable(term, canonical_names) -> canonical
             or None, used only when dictionary matching can't classify the
             term. This is where the agent's own LLM gets plugged in.
         store: AttributeMappingStore instance (constructed from env if None)
         explicit_canonical: skip classification entirely and use this
-            canonical directly, e.g. for admin/ops use where a human already
-            knows the right bucket. Still validated against
-            MATERIAL_CANONICALS — an unknown canonical is rejected the same
-            as a classification failure, keeping the taxonomy bounded.
+            canonical directly (e.g. admin/ops use). Still validated against
+            the attribute type's canonical buckets.
 
     Returns:
-        EnrichmentResult — success=False with a `reason` if the term can't
-        be classified, is already mapped, or no documents match.
+        EnrichmentResult — success=False with a `reason` if the attribute
+        type is unknown, the term can't be classified, or it's already mapped.
+        reindex_success reflects whether the triggered Lucille run completed
+        cleanly; a classification/mapping success with a failed reindex is
+        still success=True (the taxonomy grew) but reindex_success=False.
     """
+    canonical_seeds = _CANONICAL_SEEDS_BY_TYPE.get(attribute_type)
+    if canonical_seeds is None:
+        return EnrichmentResult(
+            success=False,
+            attribute_type=attribute_type,
+            variant=variant,
+            reason=f"unknown attribute_type '{attribute_type}' (known: {list(_CANONICAL_SEEDS_BY_TYPE)})",
+        )
+
     store = store or AttributeMappingStore()
     variant_lower = variant.lower().strip()
 
     if not variant_lower:
-        return EnrichmentResult(success=False, variant=variant, reason="empty term")
+        return EnrichmentResult(
+            success=False, attribute_type=attribute_type, variant=variant, reason="empty term"
+        )
 
-    existing_lookup = store.get_lookup_table("material")
+    existing_lookup = store.get_lookup_table(attribute_type)
 
     if variant_lower in existing_lookup:
         return EnrichmentResult(
             success=False,
+            attribute_type=attribute_type,
             variant=variant,
             canonical=existing_lookup[variant_lower],
             reason="already mapped",
         )
 
     if explicit_canonical is not None:
-        if explicit_canonical not in MATERIAL_CANONICALS:
+        if explicit_canonical not in canonical_seeds:
             return EnrichmentResult(
                 success=False,
+                attribute_type=attribute_type,
                 variant=variant,
-                reason=f"'{explicit_canonical}' is not a known canonical material bucket",
+                reason=f"'{explicit_canonical}' is not a known canonical {attribute_type} bucket",
             )
         canonical = explicit_canonical
     else:
         canonical = single_term_classify(
             variant_lower,
-            MATERIAL_CANONICALS,
+            canonical_seeds,
             existing_lookup=existing_lookup,
             llm_classify_fn=llm_classify_fn,
         )
 
     if canonical is None:
         return EnrichmentResult(
-            success=False, variant=variant, reason="could not classify to a known material bucket"
+            success=False,
+            attribute_type=attribute_type,
+            variant=variant,
+            reason=f"could not classify to a known {attribute_type} bucket",
         )
 
-    store.add_mapping("material", variant_lower, canonical, source="agent")
-    logger.info("Enrichment: mapped '%s' -> '%s'", variant_lower, canonical)
+    store.add_mapping(attribute_type, variant_lower, canonical, source="agent")
+    logger.info("Enrichment: mapped '%s' (%s) -> '%s'", variant_lower, attribute_type, canonical)
 
-    docs_updated = _apply_to_matching_documents(store, variant_lower, canonical)
+    _ensure_attribute_fields_mapped(store, attribute_type)
+    write_generated_conf()
+
+    reindex_success, docs_processed, duration = _trigger_reindex()
 
     return EnrichmentResult(
-        success=True, variant=variant, canonical=canonical, docs_updated=docs_updated
+        success=True,
+        attribute_type=attribute_type,
+        variant=variant,
+        canonical=canonical,
+        reindex_triggered=True,
+        reindex_success=reindex_success,
+        docs_processed=docs_processed,
+        duration_seconds=duration,
     )
 
 
-def _apply_to_matching_documents(store: AttributeMappingStore, variant: str, canonical: str) -> int:
+def _ensure_attribute_fields_mapped(store: AttributeMappingStore, attribute_type: str) -> None:
     """
-    Scoped update: find documents whose chunk_text mentions the new variant
-    but don't yet have product_material_primary set, and populate it.
-
-    Scoped by an actual text match (never an unscoped update_by_query) —
-    both for speed and to avoid touching unrelated documents.
+    Additively PUT the OpenSearch index mapping fields for a new attribute
+    type (product_<type> dual-mapped text + product_<type>_primary/_secondary
+    keyword), mirroring product_material's mapping. No-op if already present
+    — safe to call every time.
     """
     from config import OPENSEARCH_INDEX_NAME
 
     client = store.client
+    current_mapping = client.indices.get_mapping(index=OPENSEARCH_INDEX_NAME)
+    index_key = next(iter(current_mapping))
+    properties = current_mapping[index_key].get("mappings", {}).get("properties", {})
 
-    query = {
-        "bool": {
-            "must": [{"match_phrase": {"chunk_text": variant}}],
-            "must_not": [{"exists": {"field": "product_material_primary"}}],
-        }
-    }
+    primary_field = f"product_{attribute_type}_primary"
+    if primary_field in properties:
+        return  # Already mapped, nothing to do.
 
-    response = client.update_by_query(
+    client.indices.put_mapping(
         index=OPENSEARCH_INDEX_NAME,
         body={
-            "query": query,
-            "script": {
-                "source": (
-                    "ctx._source.product_material = params.variant; "
-                    "ctx._source.product_material_primary = params.canonical;"
-                ),
-                "lang": "painless",
-                "params": {"variant": variant, "canonical": canonical},
-            },
+            "properties": {
+                f"product_{attribute_type}": {
+                    "type": "text",
+                    "analyzer": "light_english_analyzer",
+                    "fields": {
+                        "keyword": {"type": "keyword"},
+                        "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
+                    },
+                },
+                f"product_{attribute_type}_primary": {"type": "keyword"},
+                f"product_{attribute_type}_secondary": {"type": "keyword"},
+            }
         },
-        refresh=True,
     )
+    logger.info("Enrichment: added index mapping fields for attribute_type '%s'", attribute_type)
 
-    updated = response.get("updated", 0)
+
+def _trigger_reindex() -> tuple:
+    """
+    Run a real Lucille products reindex as a subprocess. Returns (success,
+    docs_processed, duration_seconds).
+    """
+    start = time.monotonic()
+    try:
+        result = subprocess.run(
+            ["bash", "scripts/lucille_ingest.sh", "--skip-judgments"],
+            cwd=LANGCHAIN_AGENT_DIR,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired:
+        duration = time.monotonic() - start
+        logger.error("Enrichment: reindex timed out after %.1fs", duration)
+        return False, 0, duration
+
+    duration = time.monotonic() - start
+
+    if result.returncode != 0:
+        logger.error(
+            "Enrichment: reindex failed (exit %d): %s", result.returncode, result.stderr[-2000:]
+        )
+        return False, 0, duration
+
+    docs_processed = _parse_docs_succeeded(result.stdout)
     logger.info(
-        "Enrichment: applied '%s' -> '%s' to %d matching document(s)", variant, canonical, updated
+        "Enrichment: reindex complete, %d docs processed in %.1fs", docs_processed, duration
     )
-    return updated
+    return True, docs_processed, duration
+
+
+def _parse_docs_succeeded(lucille_output: str) -> int:
+    """Extract the doc count from Lucille's 'N docs succeeded' summary line."""
+    match = re.search(r"(\d+)\s+docs succeeded", lucille_output)
+    return int(match.group(1)) if match else 0
