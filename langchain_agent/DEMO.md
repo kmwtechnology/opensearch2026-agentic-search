@@ -454,14 +454,14 @@ Clear/Black/Chrome"** appears as the top citation, correctly tagged
   cache may be cold (first run after a restart rebuilds a Maven layer,
   ~1–4s extra) — acceptable, but if it's dramatically slower, check
   `docker ps` / OpenSearch health before going live.
-- **Gap terms already resolved (from a prior rehearsal)**: Re-run the
-  revert procedure — delete the `color#camel` / `material#chrome` mapping
-  docs from `agentic_hybrid_search_attribute_mappings`, clear
-  `product_color`/`product_color_primary` (or the material equivalents)
-  from the affected documents via `update_by_query`, then run
-  `bash scripts/lucille_ingest.sh --skip-judgments` once more. See this
-  session's transcript or `enrichment_service.py`'s test file for the exact
-  Painless scripts used.
+- **Gap terms already resolved (from a prior rehearsal)**: Delete the
+  `color#camel` / `material#chrome` mapping docs from
+  `agentic_hybrid_search_attribute_mappings`, then run
+  `bash scripts/lucille_ingest.sh --skip-judgments` once more — the
+  detector stage only emits fields for variants currently registered in
+  the mapping store, so the reindex alone clears the affected documents'
+  `product_color_primary`/`product_material_primary` fields; no separate
+  `update_by_query` step is needed.
 
 ---
 

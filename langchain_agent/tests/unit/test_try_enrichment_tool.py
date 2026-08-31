@@ -9,7 +9,7 @@ or trigger a real reindex.
 
 from unittest.mock import MagicMock, patch
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from enrichment_service import EnrichmentResult
 from main import EcommerceSearchAgent
@@ -138,3 +138,62 @@ class TestTryEnrichmentTool:
 
         assert result is not None
         assert result["enrichment_triggered"] is True
+
+
+class TestAgentNodeGapDetection:
+    """agent_node's gap-signal gate: whether _try_enrichment_tool gets
+    offered a chance at all. quality_gate_node deliberately never retries
+    when the first retrieval pass already returns zero documents (adjusting
+    alpha can't fix an exclusionary filter), so quality_gate_retried never
+    becomes True for that case -- exactly the scenario an unrecognized
+    attribute_filter term produces. zero_result_filter_gap exists to catch
+    that case; these tests guard both that it fires, and that it stays
+    scoped to attribute_filter intent (a naive `not retrieved_documents`
+    would fire for every empty-result search, not just attribute gaps)."""
+
+    def _agent_for_gap_check(self):
+        agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
+        agent._try_enrichment_tool = MagicMock(
+            return_value={"messages": [AIMessage(content="handled")], "citations": []}
+        )
+        # spec=[...] omits "stream" so agent_node's hasattr(self.llm, "stream")
+        # check is False, taking the plain .invoke() path instead of
+        # _stream_llm_response_simple -- only exercised when the gap gate
+        # doesn't short-circuit (the "not triggered" case falls through to
+        # real response generation).
+        agent.llm = MagicMock(spec=["invoke", "bind_tools"])
+        agent.llm.invoke.return_value = AIMessage(content="Here's what I found instead.")
+        return agent
+
+    def _base_state(self, intent, retrieved_documents, quality_gate_retried):
+        return {
+            "messages": [HumanMessage(content="show me camel colored coats")],
+            "retrieved_documents": retrieved_documents,
+            "intent": intent,
+            "quality_gate_retried": quality_gate_retried,
+        }
+
+    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    def test_zero_result_attribute_filter_triggers_enrichment_offer(self):
+        agent = self._agent_for_gap_check()
+        state = self._base_state("attribute_filter", [], quality_gate_retried=False)
+
+        result = agent.agent_node(state)
+
+        agent._try_enrichment_tool.assert_called_once_with("show me camel colored coats")
+        assert result["messages"][0].content == "handled"
+
+    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    def test_zero_result_non_attribute_filter_does_not_trigger(self):
+        """A plain search intent with no results is a real 'nothing found'
+        case, not an attribute-taxonomy gap -- must not offer the tool.
+        Neither retry_exhausted_gap nor zero_result_filter_gap fires here
+        (quality_gate_retried=False, intent != attribute_filter), so
+        agent_node falls through to normal response generation rather than
+        the canned no-info message -- that's expected, not what's tested."""
+        agent = self._agent_for_gap_check()
+        state = self._base_state("search", [], quality_gate_retried=False)
+
+        agent.agent_node(state)
+
+        agent._try_enrichment_tool.assert_not_called()
