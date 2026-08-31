@@ -314,7 +314,13 @@ real product titles and real timing, not hypothetical numbers.
 
 ### Act 1 — Color: "camel"
 
-**Send**: `camel coat`
+**Send**: `show me camel colored coats` (**not** the shorter `camel coat` —
+confirmed live this session that the shorter phrasing intermittently
+classifies as `search` intent rather than `attribute_filter` and finds
+the CAMEL-titled coat via plain lexical match, skipping the flywheel
+entirely. The longer, explicit phrasing has classified as
+`attribute_filter` with 100% confidence on every run tested this
+session — use it for the live demo.)
 
 **Expected**: `attribute_filter` intent extracts `color: "camel"`. "camel"
 isn't in the color taxonomy (102 variants, none of them "camel") — the
@@ -339,11 +345,16 @@ it with `attribute_type="color", variant="camel", canonical="brown"`.
   time, so the wait no longer reads as dead air on its own; narrate
   alongside it rather than instead of it.
 
-**Then re-send**: `camel coat`
+**Then re-send**: `show me camel colored coats`
 
-**Expected**: Now resolves via the exact filter. Real hero product:
-**"Calvin Klein Women's Classic Cashmere Wool Blend Coat, CAMEL, 6"** should
-appear, correctly tagged `product_color_primary: brown`.
+**Expected**: Now resolves. Real hero product: **"Calvin Klein Women's
+Classic Cashmere Wool Blend Coat, CAMEL, 6"** should appear, correctly
+tagged `product_color_primary: brown` — confirmed live this session both
+as a same-conversation follow-up (classifies as `refinement`, reranker
+score 0.886) and as a fresh conversation (would classify as
+`attribute_filter` again). Either way works; a fresh conversation is
+simplest if you want a clean second act with no intent-routing nuance to
+explain.
 
 ### Act 2 — Material: "chrome"
 
