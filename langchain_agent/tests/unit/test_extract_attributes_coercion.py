@@ -98,6 +98,7 @@ class TestExtractAttributesCoercion:
         # Every supplied attribute should have produced a clause.
         assert len(filters) == 4
 
+    @patch("config.STRICT_MATERIAL_FILTER_DEMO", False)
     def test_array_material_collapsed_to_string(self) -> None:
         # The exact shape that crashed prod: material_or_feature as a
         # single-element JSON array.
@@ -108,6 +109,7 @@ class TestExtractAttributesCoercion:
         mm = filters[0]["multi_match"]
         assert mm["query"] == "noise canceling"
 
+    @patch("config.STRICT_MATERIAL_FILTER_DEMO", False)
     def test_multi_element_array_joined_with_space(self) -> None:
         agent = _agent_returning_attributes(
             {"material_or_feature": ["noise canceling", "wireless"]}
@@ -146,6 +148,7 @@ class TestExtractAttributesCoercion:
         filters = agent._extract_attributes("vague refinement query here")
         assert filters == []
 
+    @patch("config.STRICT_MATERIAL_FILTER_DEMO", False)
     def test_array_with_nulls_filtered(self) -> None:
         # Defensive: if the LLM emits [null, "noise canceling"], drop the null.
         agent = _agent_returning_attributes({"material_or_feature": [None, "noise canceling", ""]})
