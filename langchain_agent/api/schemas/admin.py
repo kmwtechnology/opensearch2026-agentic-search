@@ -20,6 +20,14 @@ class EnrichmentRequest(BaseModel):
     variant: str = Field(
         ..., min_length=1, max_length=100, description="The unmapped term, e.g. 'chrome'"
     )
+    canonical: Optional[str] = Field(
+        None,
+        description=(
+            "Skip dictionary classification and use this canonical bucket directly "
+            "(e.g. 'metal'), the same way the live agent tool supplies its own "
+            "LLM-classified canonical. Required for terms the dictionary can't match."
+        ),
+    )
 
 
 class EnrichmentResponse(BaseModel):

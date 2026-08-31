@@ -169,11 +169,11 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
 
     Gated by ``ENABLE_ENRICHMENT_TOOL`` (default off) — returns 403 when disabled.
 
-    Classification here is dictionary-only (no LLM fallback) — a term that
-    doesn't match an existing variant in the given attribute_type's taxonomy
-    returns ``success: false`` with a reason. The live agent tool supplies
-    its own LLM-classified canonical directly (via explicit_canonical) for
-    terms that can't be dictionary-matched.
+    Classification is dictionary-only by default (no LLM fallback) — a term
+    that doesn't match an existing variant in the given attribute_type's
+    taxonomy returns ``success: false`` with a reason. Pass ``canonical`` to
+    skip dictionary classification and supply the bucket directly, the same
+    way the live agent tool supplies its own LLM-classified canonical.
     """
     await verify_same_origin(request)
     try:
@@ -190,7 +190,9 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
 
     from enrichment_service import enrich_attribute
 
-    result = enrich_attribute(body.attribute_type, body.variant)
+    result = enrich_attribute(
+        body.attribute_type, body.variant, explicit_canonical=body.canonical
+    )
 
     return EnrichmentResponse(
         success=result.success,

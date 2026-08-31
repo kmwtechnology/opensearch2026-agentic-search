@@ -17,11 +17,20 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
+from api.routes.auth import limiter as auth_limiter
 from enrichment_service import EnrichmentResult
 
 
 @pytest.fixture
 def client() -> TestClient:
+    # Each test logs in once; the login rate limiter (5/min) is in-memory
+    # and shared across the whole pytest process via the module-level `app`
+    # singleton, so it must be reset per test rather than left to expire.
+    # Note: api/routes/auth.py constructs its own Limiter() rather than
+    # reusing api.main's (registered as app.state.limiter) — the login
+    # route's @limiter.limit(...) decorator is bound to this separate
+    # instance, so it's the one that actually needs resetting.
+    auth_limiter.reset()
     return TestClient(app, base_url="https://testserver")
 
 
@@ -69,7 +78,7 @@ def test_successful_enrichment_returns_200(mock_enrich, client) -> None:
         "docs_processed": 9618,
         "duration_seconds": 18.3,
     }
-    mock_enrich.assert_called_once_with("material", "chrome")
+    mock_enrich.assert_called_once_with("material", "chrome", explicit_canonical=None)
 
 
 @patch("config.ENABLE_ENRICHMENT_TOOL", True)
@@ -115,7 +124,29 @@ def test_color_attribute_type_works_too(mock_enrich, client) -> None:
 
     assert r.status_code == 200
     assert r.json()["canonical"] == "brown"
-    mock_enrich.assert_called_once_with("color", "camel")
+    mock_enrich.assert_called_once_with("color", "camel", explicit_canonical=None)
+
+
+@patch("config.ENABLE_ENRICHMENT_TOOL", True)
+@patch("enrichment_service.enrich_attribute")
+def test_explicit_canonical_is_passed_through(mock_enrich, client) -> None:
+    """A term the dictionary can't classify (e.g. 'chrome' for material) needs
+    an explicit canonical supplied, the same way the live agent tool does."""
+    mock_enrich.return_value = EnrichmentResult(
+        success=True, attribute_type="material", variant="chrome", canonical="metal"
+    )
+
+    with client:
+        _login(client)
+        r = client.post(
+            "/api/admin/enrich",
+            json={"attribute_type": "material", "variant": "chrome", "canonical": "metal"},
+            headers={"Host": "localhost:8000"},
+        )
+
+    assert r.status_code == 200
+    assert r.json()["canonical"] == "metal"
+    mock_enrich.assert_called_once_with("material", "chrome", explicit_canonical="metal")
 
 
 @patch("config.ENABLE_ENRICHMENT_TOOL", False)
