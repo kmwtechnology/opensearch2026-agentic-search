@@ -51,7 +51,7 @@ from pydantic import BaseModel
 
 # Import extracted modules
 from agent_state import CustomAgentState
-from attribute_discovery import MATERIAL_CANONICALS, single_term_classify
+from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, single_term_classify
 from doc_replacer import DocumentReplacer
 from exceptions import LLMError, SearchTimeoutError
 from judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
@@ -61,6 +61,14 @@ from vector_store import OpenSearchVectorStore
 
 # Setup logging
 logger = logging.getLogger(__name__)
+
+# Canonical bucket vocabularies for _classify_attribute, by attribute type.
+# Mirrors enrichment_service._CANONICAL_SEEDS_BY_TYPE — add an entry here
+# when a new attribute type gets a discovery seed dict in attribute_discovery.py.
+_CANONICAL_SEEDS_BY_TYPE = {
+    "color": COLOR_CANONICALS,
+    "material": MATERIAL_CANONICALS,
+}
 
 # Suppress Pydantic V1 compatibility warning on Python 3.14+
 # langchain-core imports pydantic.v1 for backward compatibility, but we use Pydantic V2
@@ -1655,13 +1663,15 @@ Query: "{query}" """
         return False
 
     @staticmethod
-    def _classify_material(term: str) -> Optional[str]:
+    def _classify_attribute(attribute_type: str, term: str) -> Optional[str]:
         """
-        Classify an LLM-extracted material_or_feature term against the
-        product_material taxonomy (OS-backed, grown by the live enrichment
-        flywheel). Returns None (not just an empty match) for non-material
-        features like "waterproof" so the caller falls back to the prior
-        lexical multi_match instead of an always-empty exact filter.
+        Classify an LLM-extracted color or material_or_feature term against
+        the corresponding taxonomy (OS-backed, grown by the live enrichment
+        flywheel). Returns None for terms that don't resolve — for material
+        this includes non-material features like "waterproof", so the caller
+        falls back to the prior lexical multi_match instead of an
+        always-empty exact filter; for color the caller falls back to using
+        the raw term directly (matching pre-existing behavior).
 
         No LLM fallback here — this is the query-time read path, called on
         every attribute_filter query; the LLM-assisted classification (for a
@@ -1669,15 +1679,19 @@ Query: "{query}" """
         live enrichment tool, triggered deliberately on a detected gap, not
         on every lookup.
         """
+        canonical_seeds = _CANONICAL_SEEDS_BY_TYPE.get(attribute_type)
+        if canonical_seeds is None:
+            return None
+
         try:
             from attribute_mapping_store import AttributeMappingStore
 
-            lookup = AttributeMappingStore().get_lookup_table("material")
+            lookup = AttributeMappingStore().get_lookup_table(attribute_type)
         except Exception as exc:  # noqa: BLE001 - OS unreachable falls back to lexical
-            logger.debug(f"Material taxonomy lookup unavailable, using lexical fallback: {exc}")
+            logger.debug(f"'{attribute_type}' taxonomy lookup unavailable, using fallback: {exc}")
             lookup = {}
 
-        return single_term_classify(term, MATERIAL_CANONICALS, existing_lookup=lookup)
+        return single_term_classify(term, canonical_seeds, existing_lookup=lookup)
 
     def _extract_attributes(self, query: str) -> list:
         """
@@ -1748,9 +1762,18 @@ Return ONLY a JSON object (use null for missing attributes):
             if brand:
                 filters.append({"match": {"product_brand_normalized": {"query": brand}}})
 
+            # Classify against the OS-backed color taxonomy first (fixes
+            # variant spellings like "grey" not matching an index that
+            # normalized to "gray"); an unresolved term falls back to using
+            # the raw LLM-extracted value directly, matching pre-existing
+            # behavior — colors don't need the lexical-fallback semantics
+            # material does, since a color term is rarely a red herring.
             color = _coerce(attributes.get("color"))
             if color:
-                filters.append({"match": {"product_color_primary": {"query": color}}})
+                color_canonical = self._classify_attribute("color", color)
+                filters.append(
+                    {"match": {"product_color_primary": {"query": color_canonical or color}}}
+                )
 
             # material_or_feature covers both actual materials ("leather",
             # "vegan leather") and non-material features ("waterproof",
@@ -1762,7 +1785,7 @@ Return ONLY a JSON object (use null for missing attributes):
             # falls back to the prior lexical multi_match unchanged.
             material = _coerce(attributes.get("material_or_feature"))
             if material:
-                material_canonical = self._classify_material(material)
+                material_canonical = self._classify_attribute("material", material)
                 if material_canonical:
                     filters.append(
                         {"match": {"product_material_primary": {"query": material_canonical}}}
