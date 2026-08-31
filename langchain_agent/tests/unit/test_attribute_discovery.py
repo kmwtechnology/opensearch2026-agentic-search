@@ -2,7 +2,12 @@
 
 import pytest
 
-from attribute_discovery import MATERIAL_CANONICALS, bulk_discover, single_term_classify
+from attribute_discovery import (
+    COLOR_CANONICALS,
+    MATERIAL_CANONICALS,
+    bulk_discover,
+    single_term_classify,
+)
 
 
 @pytest.fixture
@@ -128,3 +133,23 @@ class TestMaterialCanonicals:
     def test_known_canonical_buckets_present(self):
         for expected in ["leather", "cotton", "wool", "metal"]:
             assert expected in MATERIAL_CANONICALS
+
+
+class TestColorCanonicals:
+    def test_seed_dict_has_expected_shape(self):
+        assert isinstance(COLOR_CANONICALS, dict)
+        assert len(COLOR_CANONICALS) > 0
+        for canonical, variants in COLOR_CANONICALS.items():
+            assert isinstance(canonical, str)
+            assert isinstance(variants, list)
+            assert len(variants) > 0
+
+    def test_known_canonical_buckets_present(self):
+        for expected in ["black", "white", "blue", "red", "gray"]:
+            assert expected in COLOR_CANONICALS
+
+    def test_bulk_discover_works_with_color_seeds(self):
+        texts = ["Charcoal Wool Sweater", "Navy Blue Cotton Shirt"]
+        result = bulk_discover(texts, COLOR_CANONICALS)
+        assert result.get("charcoal") == "black"
+        assert result.get("navy") == "blue"

@@ -40,6 +40,60 @@ MATERIAL_CANONICALS: Dict[str, List[str]] = {
     "rubber": ["rubber", "silicone", "latex"],
 }
 
+# Seed vocabulary for color discovery. Carried over from the retired
+# color_mappings.json (used, until this rework, as the migrated taxonomy
+# source of record for the old AttributeNormalizerStage) — here it's
+# downgraded to exactly what MATERIAL_CANONICALS already is: a bootstrap
+# seed for bulk_discover, not the taxonomy itself. Color's real taxonomy is
+# rebuilt from scratch by discovery against chunk_text, same as material.
+COLOR_CANONICALS: Dict[str, List[str]] = {
+    "black": ["black", "jet", "charcoal", "ebony", "onyx"],
+    "white": ["white", "ivory", "cream", "off-white", "ecru", "beige", "bone"],
+    "blue": ["blue", "navy", "cyan", "turquoise", "teal", "aqua", "indigo", "cobalt", "denim"],
+    "red": ["red", "crimson", "scarlet", "maroon", "burgundy", "wine", "rust", "brick"],
+    "green": ["green", "lime", "emerald", "sage", "olive", "mint", "forest", "moss", "hunter"],
+    "yellow": ["yellow", "gold", "amber", "tan", "khaki", "mustard", "champagne"],
+    "pink": ["pink", "rose", "mauve", "salmon", "blush", "coral", "fuchsia", "magenta"],
+    "purple": ["purple", "violet", "lavender", "plum", "lilac", "eggplant"],
+    "brown": [
+        "brown",
+        "chocolate",
+        "bronze",
+        "copper",
+        "cognac",
+        "taupe",
+        "mocha",
+        "espresso",
+        "coffee",
+        "caramel",
+    ],
+    "gray": [
+        "gray",
+        "grey",
+        "silver",
+        "ash",
+        "slate",
+        "pewter",
+        "graphite",
+        "nickel",
+        "chrome",
+        "titanium",
+    ],
+    "orange": ["orange", "coral", "peach", "tangerine", "apricot"],
+    "clear": ["clear", "transparent", "translucent", "crystal"],
+    "multicolor": [
+        "multicolor",
+        "multicolored",
+        "multi-color",
+        "multi-colored",
+        "multi",
+        "rainbow",
+        "colorful",
+    ],
+    "natural": ["natural", "wood", "natural wood", "unfinished", "raw"],
+    "mixed": ["assorted", "mixed", "various", "pattern"],
+}
+
 
 def bulk_discover(
     texts: List[str],

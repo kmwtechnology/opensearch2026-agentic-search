@@ -19,77 +19,94 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Lucille stage for detecting and normalizing product material from
- * unstructured text.
+ * Generic Lucille stage for detecting and normalizing a discovered
+ * variant->canonical attribute (color, material, or any future attribute
+ * type) from unstructured text — one parameterized class instead of a
+ * dedicated Java class per attribute type.
  *
- * <p>Unlike color/brand (which normalize an existing structured field),
- * there's no pre-existing {@code product_material} field on ESCI products —
- * this stage performs detection AND normalization in one step, scanning
- * {@code chunk_text} (title + description + bullet_point, built by an
- * earlier pipeline stage) for known material variant terms.
+ * <p>Unlike a hypothetical "normalize an existing structured field" stage,
+ * there's no pre-existing raw field for a discovered attribute — this stage
+ * performs detection AND normalization in one step, scanning {@code
+ * chunk_text} (title + description + bullet_point, built by an earlier
+ * pipeline stage) for known variant terms.
  *
- * <p>Sources the material variant→canonical lookup from the same
- * OpenSearch-backed attribute mapping store as color
- * ({@code agentic_hybrid_search_attribute_mappings}, {@code
- * attribute_type: "material"}) — this is also where the live agent
- * enrichment flywheel writes newly discovered material variants, so a full
- * reindex always reflects the latest agent learning. There is no bundled-
- * file fallback for material (it was seeded OS-native from the start, via
- * scripts/seed_material_taxonomy.py) — if OpenSearch is unreachable at
- * start(), this stage logs a warning and produces no material fields for
- * that run rather than hard-failing ingestion.
+ * <p>Sources its variant->canonical lookup from the OpenSearch-backed
+ * attribute mapping store ({@code agentic_hybrid_search_attribute_mappings},
+ * filtered by {@code attribute_type: <attributeType>}) — this is also where
+ * the live agent enrichment flywheel writes newly discovered variants, so a
+ * full reindex always reflects the latest agent learning. There is no
+ * bundled-file fallback (attribute taxonomies are OS-native, built via
+ * discovery, not hand-authored) — if OpenSearch is unreachable at start(),
+ * this stage logs a warning and produces no fields for that run rather than
+ * hard-failing ingestion.
  *
- * <p>Configuration (in products.conf):
+ * <p>The generated products.conf emits one stage entry per attribute type
+ * currently registered in the mapping store — e.g. a "detectColor" stage and
+ * a "detectMaterial" stage, each an independent instance of this same class
+ * with a different {@code attributeType} parameter (see config_generator.py).
+ *
+ * <p>Configuration (in generated products.conf):
  * <pre>{@code
  * {
- *   name: "normalizeMaterial"
- *   class: "com.kmwllc.esci.MaterialNormalizerStage"
+ *   name: "detectMaterial"
+ *   class: "com.kmwllc.esci.AttributeDetectorStage"
+ *   attributeType: "material"
  *   openSearchUrl: ${OPENSEARCH_URL}
  * }
  * }</pre>
  *
- * <p>Outputs (per document):
- * - product_material: raw matched text snippet (e.g. "Genuine Leather"),
- *   original casing preserved — for scored full-text search, dual-mapped in
- *   opensearch_mapping.json like product_brand/product_color.
- * - product_material_primary: normalized canonical material (or absent)
- * - product_material_secondary: normalized secondary material if a second,
- *   distinct material is also detected (or absent)
+ * <p>Outputs (per document, field names built from {@code attributeType}):
+ * - product_&lt;attributeType&gt;: raw matched text snippet, original casing
+ *   preserved — for scored full-text search, dual-mapped in the index mapping.
+ * - product_&lt;attributeType&gt;_primary: normalized canonical value (or absent)
+ * - product_&lt;attributeType&gt;_secondary: second distinct value if detected (or absent)
  */
-public class MaterialNormalizerStage extends Stage {
-  private static final Logger log = LoggerFactory.getLogger(MaterialNormalizerStage.class);
+public class AttributeDetectorStage extends Stage {
+  private static final Logger log = LoggerFactory.getLogger(AttributeDetectorStage.class);
   private static final String MAPPING_INDEX = "agentic_hybrid_search_attribute_mappings";
 
-  public static final Spec SPEC = SpecBuilder.stage().optionalString("openSearchUrl").build();
+  public static final Spec SPEC =
+      SpecBuilder.stage().requiredString("attributeType").optionalString("openSearchUrl").build();
 
-  protected Map<String, String> materialLookup;
+  protected String attributeType;
+  protected Map<String, String> lookup;
   private Pattern variantPattern;
+  private String rawFieldName;
+  private String primaryFieldName;
+  private String secondaryFieldName;
 
-  public MaterialNormalizerStage(com.typesafe.config.Config config) {
+  public AttributeDetectorStage(com.typesafe.config.Config config) {
     super(config);
   }
 
   @Override
   public void start() {
-    this.materialLookup = new HashMap<>();
+    this.attributeType = config.getString("attributeType");
+    this.rawFieldName = "product_" + attributeType;
+    this.primaryFieldName = "product_" + attributeType + "_primary";
+    this.secondaryFieldName = "product_" + attributeType + "_secondary";
+
+    this.lookup = new HashMap<>();
 
     if (!config.hasPath("openSearchUrl")) {
-      log.warn("No openSearchUrl configured for MaterialNormalizerStage — material detection disabled for this run.");
+      log.warn(
+          "No openSearchUrl configured for AttributeDetectorStage(attributeType={}) — detection disabled for this run.",
+          attributeType);
       buildVariantPattern();
       return;
     }
 
     String openSearchUrl = config.getString("openSearchUrl");
     try {
-      materialLookup = loadMaterialLookupFromOpenSearch(openSearchUrl);
+      lookup = loadLookupFromOpenSearch(openSearchUrl);
       log.info(
-          "Loaded {} material mappings from OpenSearch ({}/{})",
-          materialLookup.size(), openSearchUrl, MAPPING_INDEX);
+          "Loaded {} '{}' mappings from OpenSearch ({}/{})",
+          lookup.size(), attributeType, openSearchUrl, MAPPING_INDEX);
     } catch (Exception e) {
       log.warn(
-          "Failed to load material mappings from OpenSearch at {}: {} — material detection disabled for this run.",
-          openSearchUrl, e.getMessage());
-      materialLookup = new HashMap<>();
+          "Failed to load '{}' mappings from OpenSearch at {}: {} — detection disabled for this run.",
+          attributeType, openSearchUrl, e.getMessage());
+      lookup = new HashMap<>();
     }
 
     buildVariantPattern();
@@ -102,12 +119,12 @@ public class MaterialNormalizerStage extends Stage {
    * match at the same starting position.
    */
   private void buildVariantPattern() {
-    if (materialLookup.isEmpty()) {
+    if (lookup.isEmpty()) {
       variantPattern = null;
       return;
     }
 
-    List<String> variants = new ArrayList<>(materialLookup.keySet());
+    List<String> variants = new ArrayList<>(lookup.keySet());
     variants.sort((a, b) -> b.length() - a.length());
 
     StringBuilder patternBuilder = new StringBuilder("\\b(?:");
@@ -123,16 +140,17 @@ public class MaterialNormalizerStage extends Stage {
   }
 
   /**
-   * Query the OpenSearch-backed attribute mapping store for all material
-   * variant→canonical documents ({@code attribute_type: "material"}).
+   * Query the OpenSearch-backed attribute mapping store for all
+   * variant->canonical documents matching this stage's attributeType.
    *
    * @param openSearchUrl base URL, e.g. http://localhost:9200
-   * @return variant (lowercase) → canonical lookup map
+   * @return variant (lowercase) -> canonical lookup map
    * @throws Exception on any HTTP/parse failure
    */
-  private Map<String, String> loadMaterialLookupFromOpenSearch(String openSearchUrl) throws Exception {
+  private Map<String, String> loadLookupFromOpenSearch(String openSearchUrl) throws Exception {
     String searchUrl = openSearchUrl.replaceAll("/$", "") + "/" + MAPPING_INDEX + "/_search";
-    String requestBody = "{\"query\":{\"term\":{\"attribute_type\":\"material\"}},\"size\":10000}";
+    String requestBody =
+        "{\"query\":{\"term\":{\"attribute_type\":\"" + attributeType + "\"}},\"size\":10000}";
 
     HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     HttpRequest.Builder requestBuilder =
@@ -162,17 +180,17 @@ public class MaterialNormalizerStage extends Stage {
     JsonNode root = mapper.readTree(response.body());
     JsonNode hits = root.path("hits").path("hits");
 
-    Map<String, String> lookup = new HashMap<>();
+    Map<String, String> result = new HashMap<>();
     for (JsonNode hit : hits) {
       JsonNode source = hit.path("_source");
       String variant = source.path("variant").asText(null);
       String canonical = source.path("canonical").asText(null);
       if (variant != null && canonical != null) {
-        lookup.put(variant.toLowerCase(), canonical);
+        result.put(variant.toLowerCase(), canonical);
       }
     }
 
-    return lookup;
+    return result;
   }
 
   @Override
@@ -191,17 +209,17 @@ public class MaterialNormalizerStage extends Stage {
         return null;
       }
 
-      DetectedMaterial[] detected = detectMaterials(text);
+      DetectedAttribute[] detected = detectAttributes(text);
 
       if (detected[0] != null) {
-        doc.setField("product_material", detected[0].rawText);
-        doc.setField("product_material_primary", detected[0].canonical);
+        doc.setField(rawFieldName, detected[0].rawText);
+        doc.setField(primaryFieldName, detected[0].canonical);
       }
       if (detected[1] != null) {
-        doc.setField("product_material_secondary", detected[1].canonical);
+        doc.setField(secondaryFieldName, detected[1].canonical);
       }
     } catch (Exception e) {
-      log.warn("Failed to detect material for doc {}: {}", doc.getId(), e.getMessage());
+      log.warn("Failed to detect '{}' for doc {}: {}", attributeType, doc.getId(), e.getMessage());
     }
 
     return null; // No child documents
@@ -209,39 +227,39 @@ public class MaterialNormalizerStage extends Stage {
 
   // Package-private (not `private`) so tests in this package can inspect
   // matches directly instead of only asserting the doc fields processDocument sets.
-  static class DetectedMaterial {
+  static class DetectedAttribute {
     final String rawText;
     final String canonical;
 
-    DetectedMaterial(String rawText, String canonical) {
+    DetectedAttribute(String rawText, String canonical) {
       this.rawText = rawText;
       this.canonical = canonical;
     }
   }
 
   /**
-   * Scan text for material variant matches, in order of first appearance.
+   * Scan text for variant matches, in order of first appearance.
    *
    * @param text combined chunk_text (title + description + bullet_point)
    * @return [primary, secondary] — either or both may be null. Secondary is
    *     only populated when it resolves to a canonical distinct from primary.
    */
-  DetectedMaterial[] detectMaterials(String text) {
+  DetectedAttribute[] detectAttributes(String text) {
     Matcher matcher = variantPattern.matcher(text);
-    List<DetectedMaterial> found = new ArrayList<>();
+    List<DetectedAttribute> found = new ArrayList<>();
     Set<String> seenCanonicals = new LinkedHashSet<>();
 
     while (matcher.find() && found.size() < 2) {
       String rawMatch = matcher.group();
-      String canonical = materialLookup.get(rawMatch.toLowerCase());
+      String canonical = lookup.get(rawMatch.toLowerCase());
       if (canonical != null && !seenCanonicals.contains(canonical)) {
         seenCanonicals.add(canonical);
-        found.add(new DetectedMaterial(rawMatch, canonical));
+        found.add(new DetectedAttribute(rawMatch, canonical));
       }
     }
 
-    DetectedMaterial primary = found.size() > 0 ? found.get(0) : null;
-    DetectedMaterial secondary = found.size() > 1 ? found.get(1) : null;
-    return new DetectedMaterial[] {primary, secondary};
+    DetectedAttribute primary = found.size() > 0 ? found.get(0) : null;
+    DetectedAttribute secondary = found.size() > 1 ? found.get(1) : null;
+    return new DetectedAttribute[] {primary, secondary};
   }
 }
