@@ -232,6 +232,7 @@ The quality gate compares the reranker's max score against an intent-specific th
 * `trigger_enrichment`, a real LangChain tool bound via a manual two-call loop, is offered to the agent from a dedicated gap-detection check in `agent_node` — added after a live rehearsal surfaced a real bug: the quality gate deliberately never retries a zero-document first pass, so the original retry-based gap signal could never fire for exactly the case the tool exists to handle.  
 * `POST /api/admin/enrich` exposes the identical mechanism directly (used for automation/CI or ops, not the live demo — both acts now trigger through chat, see below).
 * `STRICT_MATERIAL_FILTER_DEMO` (config.py, off by default): swaps an unresolved material term's fallback to a hard exact-match filter, the same pattern color's fallback already uses — this is what makes the material act trigger live through chat instead of needing the admin endpoint (see Section 6, Stage 6, for why the two attribute types needed different handling).
+* Full replay of both acts back-to-back, after every fix above had landed together (not just tested in isolation) — this is what caught a real query-reliability issue: the shorter, more natural "camel coat" phrasing intermittently classified as `search` intent instead of `attribute_filter` and found the hero product via plain lexical match, skipping the flywheel entirely. `DEMO.md` now specifies the exact confirmed-reliable phrasing for both acts.
 
 ## **Improve the live UI**
 
@@ -288,7 +289,7 @@ The quality gate compares the reranker's max score against an intent-specific th
 
 # **14\. Decisions to lock**
 
-* The primary and backup queries for each act: intent classification, quality-gate retry, and both enrichment-flywheel gap terms.  
+* The primary and backup queries for each act: intent classification, quality-gate retry, and both enrichment-flywheel gap terms. For the flywheel acts specifically, use the exact phrasing confirmed live this session ("show me camel colored coats" / "show me a chrome material humidifier") — the shorter, more natural-sounding "camel coat" intermittently classified as `search` intent instead of `attribute_filter` and skipped the flywheel entirely.  
 * Both acts now trigger identically live through chat — whether to show both in the allotted time, or narrate the second verbally and show only color live if time is tight.  
 * The acceptable latency budget for the quality-gate retry (~1–2s) and each re-index (~15–20s, narrate through it).  
 * The exact observability panels visible during the live demo, including whether the enrichment card gets its own dedicated moment on screen.  

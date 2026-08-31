@@ -470,6 +470,13 @@ Clear/Black/Chrome"** appears as the top citation, correctly tagged
   this session — not mocked. Both gap terms were reverted afterward
   (mapping deleted, affected documents' fields cleared, one more full
   reindex run) specifically so they'd be fresh for the actual demo.
+- **Full replay, both acts back-to-back, after all fixes landed**: re-ran
+  the entire Part 4.5 script fresh (not just each fix in isolation) to
+  confirm nothing regressed when combined — both acts triggered live,
+  both showed correct panel/badge/card visibility, both resolved
+  correctly on the follow-up query. This is also what caught the "camel
+  coat" query-reliability finding above — a bug the isolated fix-by-fix
+  testing hadn't surfaced.
 
 ### Troubleshooting this part specifically
 
