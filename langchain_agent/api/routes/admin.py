@@ -158,21 +158,22 @@ async def admin_health(request: Request) -> dict:
 @router.post("/enrich", response_model=EnrichmentResponse)
 async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentResponse:
     """
-    Enrich the product_material taxonomy with a new variant term, applying
-    it to matching documents already in the index. This is the same
-    discover -> write -> scoped update_by_query mechanism the live agent
-    enrichment tool uses (enrichment_service.enrich_material), exposed here
-    so it can be exercised and verified independently of the LLM loop.
+    Enrich a color or material taxonomy with a new variant term: write the
+    mapping, ensure the index has the right fields, regenerate the Lucille
+    config, and trigger a real full reindex. This is the same
+    discover -> write -> reindex mechanism the live agent enrichment tool
+    uses (enrichment_service.enrich_attribute), exposed here so it can be
+    exercised and verified independently of the LLM loop.
 
     **Authentication:** Requires session (user login) OR X-Admin-Token header (automation).
 
     Gated by ``ENABLE_ENRICHMENT_TOOL`` (default off) — returns 403 when disabled.
 
     Classification here is dictionary-only (no LLM fallback) — a term that
-    doesn't match an existing variant in the product_material taxonomy
-    returns ``success: false`` with a reason. The live agent tool layers an
-    LLM classification step on top of this same service for terms that
-    can't be dictionary-matched.
+    doesn't match an existing variant in the given attribute_type's taxonomy
+    returns ``success: false`` with a reason. The live agent tool supplies
+    its own LLM-classified canonical directly (via explicit_canonical) for
+    terms that can't be dictionary-matched.
     """
     await verify_same_origin(request)
     try:
@@ -187,14 +188,18 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
             status_code=403, detail="Enrichment is disabled (ENABLE_ENRICHMENT_TOOL=false)"
         )
 
-    from enrichment_service import enrich_material
+    from enrichment_service import enrich_attribute
 
-    result = enrich_material(body.variant)
+    result = enrich_attribute(body.attribute_type, body.variant)
 
     return EnrichmentResponse(
         success=result.success,
+        attribute_type=result.attribute_type,
         variant=result.variant,
         canonical=result.canonical,
-        docs_updated=result.docs_updated,
         reason=result.reason,
+        reindex_triggered=result.reindex_triggered,
+        reindex_success=result.reindex_success,
+        docs_processed=result.docs_processed,
+        duration_seconds=result.duration_seconds,
     )

@@ -12,10 +12,13 @@ from pydantic import BaseModel, Field
 
 
 class EnrichmentRequest(BaseModel):
-    """Request to enrich the product_material taxonomy with a new variant."""
+    """Request to enrich a color or material taxonomy with a new variant."""
 
+    attribute_type: str = Field(
+        ..., description="Which taxonomy the variant belongs to: 'color' or 'material'"
+    )
     variant: str = Field(
-        ..., min_length=1, max_length=100, description="The unmapped material term, e.g. 'chrome'"
+        ..., min_length=1, max_length=100, description="The unmapped term, e.g. 'chrome'"
     )
 
 
@@ -23,9 +26,13 @@ class EnrichmentResponse(BaseModel):
     """Result of an enrichment attempt."""
 
     success: bool
+    attribute_type: str
     variant: str
     canonical: Optional[str] = Field(
-        None, description="Canonical material bucket the variant resolved to, if successful"
+        None, description="Canonical bucket the variant resolved to, if successful"
     )
-    docs_updated: int = Field(0, description="Number of documents updated with the new mapping")
     reason: Optional[str] = Field(None, description="Why the attempt failed, when success=False")
+    reindex_triggered: bool = False
+    reindex_success: bool = False
+    docs_processed: int = Field(0, description="Documents processed by the triggered reindex")
+    duration_seconds: float = Field(0.0, description="Wall-clock time of the triggered reindex")

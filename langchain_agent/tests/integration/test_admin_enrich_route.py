@@ -2,7 +2,7 @@
 Integration tests for POST /api/admin/enrich — request/response contract,
 ENABLE_ENRICHMENT_TOOL gating, and delegation to enrichment_service.
 
-enrichment_service.enrich_material is mocked; auth via a real session
+enrichment_service.enrich_attribute is mocked; auth via a real session
 login. Note: TestClient must use an https:// base_url — SessionMiddleware's
 https_only flag (from SESSION_COOKIE_SECURE, default true) is baked in at
 app-construction time, and a Secure cookie set over the default
@@ -35,44 +35,60 @@ def _login(client: TestClient) -> None:
 
 
 @patch("config.ENABLE_ENRICHMENT_TOOL", True)
-@patch("enrichment_service.enrich_material")
+@patch("enrichment_service.enrich_attribute")
 def test_successful_enrichment_returns_200(mock_enrich, client) -> None:
     mock_enrich.return_value = EnrichmentResult(
-        success=True, variant="chrome", canonical="metal", docs_updated=30
-    )
-
-    with client:
-        _login(client)
-        r = client.post(
-            "/api/admin/enrich", json={"variant": "chrome"}, headers={"Host": "localhost:8000"}
-        )
-
-    assert r.status_code == 200
-    body = r.json()
-    assert body == {
-        "success": True,
-        "variant": "chrome",
-        "canonical": "metal",
-        "docs_updated": 30,
-        "reason": None,
-    }
-    mock_enrich.assert_called_once_with("chrome")
-
-
-@patch("config.ENABLE_ENRICHMENT_TOOL", True)
-@patch("enrichment_service.enrich_material")
-def test_classification_failure_returns_200_with_reason(mock_enrich, client) -> None:
-    """A failed classification is a normal (non-exceptional) result, not an
-    HTTP error — the caller checks `success` in the body."""
-    mock_enrich.return_value = EnrichmentResult(
-        success=False, variant="unobtainium", reason="could not classify to a known material bucket"
+        success=True,
+        attribute_type="material",
+        variant="chrome",
+        canonical="metal",
+        reindex_triggered=True,
+        reindex_success=True,
+        docs_processed=9618,
+        duration_seconds=18.3,
     )
 
     with client:
         _login(client)
         r = client.post(
             "/api/admin/enrich",
-            json={"variant": "unobtainium"},
+            json={"attribute_type": "material", "variant": "chrome"},
+            headers={"Host": "localhost:8000"},
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {
+        "success": True,
+        "attribute_type": "material",
+        "variant": "chrome",
+        "canonical": "metal",
+        "reason": None,
+        "reindex_triggered": True,
+        "reindex_success": True,
+        "docs_processed": 9618,
+        "duration_seconds": 18.3,
+    }
+    mock_enrich.assert_called_once_with("material", "chrome")
+
+
+@patch("config.ENABLE_ENRICHMENT_TOOL", True)
+@patch("enrichment_service.enrich_attribute")
+def test_classification_failure_returns_200_with_reason(mock_enrich, client) -> None:
+    """A failed classification is a normal (non-exceptional) result, not an
+    HTTP error — the caller checks `success` in the body."""
+    mock_enrich.return_value = EnrichmentResult(
+        success=False,
+        attribute_type="material",
+        variant="unobtainium",
+        reason="could not classify to a known material bucket",
+    )
+
+    with client:
+        _login(client)
+        r = client.post(
+            "/api/admin/enrich",
+            json={"attribute_type": "material", "variant": "unobtainium"},
             headers={"Host": "localhost:8000"},
         )
 
@@ -82,12 +98,34 @@ def test_classification_failure_returns_200_with_reason(mock_enrich, client) -> 
     assert body["reason"] == "could not classify to a known material bucket"
 
 
+@patch("config.ENABLE_ENRICHMENT_TOOL", True)
+@patch("enrichment_service.enrich_attribute")
+def test_color_attribute_type_works_too(mock_enrich, client) -> None:
+    mock_enrich.return_value = EnrichmentResult(
+        success=True, attribute_type="color", variant="camel", canonical="brown"
+    )
+
+    with client:
+        _login(client)
+        r = client.post(
+            "/api/admin/enrich",
+            json={"attribute_type": "color", "variant": "camel"},
+            headers={"Host": "localhost:8000"},
+        )
+
+    assert r.status_code == 200
+    assert r.json()["canonical"] == "brown"
+    mock_enrich.assert_called_once_with("color", "camel")
+
+
 @patch("config.ENABLE_ENRICHMENT_TOOL", False)
 def test_disabled_flag_returns_403(client) -> None:
     with client:
         _login(client)
         r = client.post(
-            "/api/admin/enrich", json={"variant": "chrome"}, headers={"Host": "localhost:8000"}
+            "/api/admin/enrich",
+            json={"attribute_type": "material", "variant": "chrome"},
+            headers={"Host": "localhost:8000"},
         )
 
     assert r.status_code == 403
@@ -98,7 +136,9 @@ def test_empty_variant_rejected_by_schema_validation(client) -> None:
     with client:
         _login(client)
         r = client.post(
-            "/api/admin/enrich", json={"variant": ""}, headers={"Host": "localhost:8000"}
+            "/api/admin/enrich",
+            json={"attribute_type": "material", "variant": ""},
+            headers={"Host": "localhost:8000"},
         )
 
     assert r.status_code == 422
@@ -108,6 +148,23 @@ def test_empty_variant_rejected_by_schema_validation(client) -> None:
 def test_missing_variant_field_rejected(client) -> None:
     with client:
         _login(client)
-        r = client.post("/api/admin/enrich", json={}, headers={"Host": "localhost:8000"})
+        r = client.post(
+            "/api/admin/enrich",
+            json={"attribute_type": "material"},
+            headers={"Host": "localhost:8000"},
+        )
+
+    assert r.status_code == 422
+
+
+@patch("config.ENABLE_ENRICHMENT_TOOL", True)
+def test_missing_attribute_type_field_rejected(client) -> None:
+    with client:
+        _login(client)
+        r = client.post(
+            "/api/admin/enrich",
+            json={"variant": "chrome"},
+            headers={"Host": "localhost:8000"},
+        )
 
     assert r.status_code == 422
