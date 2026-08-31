@@ -200,6 +200,61 @@ Response includes hit counts per field (product_title, product_brand, product_co
 }
 ```
 
+### Enrich Attribute Taxonomy
+
+Grows the live color/material taxonomy with a new variant term and triggers a
+real full Lucille reindex of the catalog (~15-20s) — the same mechanism the
+agent's own `trigger_enrichment` tool uses when it recognizes a taxonomy gap
+during a chat turn (see `ARCHITECTURE.md`'s "Enrichment Flywheel" section).
+Disabled by default; requires `ENABLE_ENRICHMENT_TOOL=true` on the backend.
+
+```bash
+curl -X POST http://localhost:8000/api/admin/enrich \
+  -H "X-Admin-Token: your_admin_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{"attribute_type": "material", "variant": "chrome", "canonical": "metal"}'
+```
+
+`canonical` is optional — omit it to let dictionary-only classification
+resolve the term (fails with `success: false` if it can't); pass it directly
+to skip classification, the same way the live agent tool supplies its own
+LLM-classified canonical for terms the dictionary can't match.
+
+Response (200 OK):
+```json
+{
+  "success": true,
+  "attribute_type": "material",
+  "variant": "chrome",
+  "canonical": "metal",
+  "reason": null,
+  "reindex_triggered": true,
+  "reindex_success": true,
+  "docs_processed": 9618,
+  "duration_seconds": 21.16
+}
+```
+
+`success: false` (still HTTP 200 — this is a normal outcome, not an error)
+when the term can't be classified, is already mapped, or `attribute_type`
+isn't `color`/`material`:
+```json
+{
+  "success": false,
+  "attribute_type": "material",
+  "variant": "unobtainium",
+  "canonical": null,
+  "reason": "could not classify to a known material bucket",
+  "reindex_triggered": false,
+  "reindex_success": false,
+  "docs_processed": 0,
+  "duration_seconds": 0.0
+}
+```
+
+Returns 403 when `ENABLE_ENRICHMENT_TOOL` is unset/false, 422 on a missing
+`attribute_type`/`variant` or an empty `variant`.
+
 ---
 
 ## Logout

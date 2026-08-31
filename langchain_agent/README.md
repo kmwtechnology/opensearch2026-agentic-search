@@ -471,16 +471,46 @@ Implementation:
 
 [psc]: web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx
 
-### Admin reindex API
+### Admin API
 
-`GET /api/admin/reindex?reset_index=true&limit=10000` kicks off a
-background ESCI re-ingestion. `GET /api/admin/reindex/status` returns
-`idle` / `queued` / `running` / `success` / `error` with detail.
-`GET /api/admin/health` returns index health and document count. Add
-`reindex_judgments=true` when the ESCI judgment index also needs a rebuild.
-A dedicated GitHub Actions
-workflow (`.github/workflows/reindex.yml`) exposes the flow as a manual
-dispatch against a deployed Cloud Run instance.
+`GET /api/admin/health` returns index health and document count.
+`GET /api/admin/diagnose` probes field-level hit counts and mapping
+presence per field. `POST /api/admin/enrich` grows the color/material
+taxonomy with a new variant and triggers a real full Lucille reindex
+(~15-20s) — see "Agentic Enrichment Flywheel" below and
+`docs/integration/rest-api.md` for the request/response shape. All three
+require session auth (UI login) or `X-Admin-Token` header (GitHub Actions
+automation).
+
+Routine full re-ingestion (not tied to a specific taxonomy change) is
+handled by a dedicated GitHub Actions workflow
+(`.github/workflows/reindex.yml`, manual dispatch against a deployed Cloud
+Run instance, or `bash scripts/lucille_ingest.sh` locally) rather than an
+HTTP endpoint — add `reindex_judgments=true` to that workflow's inputs when
+the ESCI judgment index also needs a rebuild.
+
+### Agentic Enrichment Flywheel
+
+The agent can grow its own catalog taxonomy live: when `attribute_filter`
+intent extracts a color/material term the taxonomy doesn't recognize and
+the resulting search genuinely fails, `agent_node` offers the LLM a
+`trigger_enrichment(attribute_type, variant, canonical)` tool
+(gated by `ENABLE_ENRICHMENT_TOOL`, default off). Calling it writes the
+new mapping to OpenSearch, regenerates the Lucille ingest config, and
+triggers a real full reindex — not a scoped patch, not a mock.
+
+Color and material trigger this differently: color's unresolved-term
+filter is a hard exact match (excluded from the retriever's filter-relaxation
+safety net), so it reliably produces a genuine zero-result query — proven
+live end-to-end (e.g. "camel" as an unmapped color → "brown"). Material's
+fallback is a deliberately soft lexical match (protecting legitimate
+non-material feature words like "waterproof"), and material/size filters
+*are* subject to relaxation, so no material term reliably triggers the gap
+signal through natural conversation — that path is instead exercised
+directly via `POST /api/admin/enrich`, using the identical underlying
+mechanism. See `ARCHITECTURE.md`'s "Attribute Detection" / "Enrichment
+Flywheel" sections for the full mechanism and `DEMO.md` for the live
+walkthrough.
 
 ### Observable events
 
@@ -497,6 +527,7 @@ WebSocket:
 | `reranker_start` / `reranker_progress` / `reranker_result` | Per-doc 0.0–1.0 |
 | `quality_gate` | pass / retry / α adjusted |
 | `llm_response_start` / `llm_response_chunk` | Token streaming |
+| `enrichment_triggered` | Agent called `trigger_enrichment`; carries `attribute_type`/`variant`/`canonical` |
 | `agent_complete` | Final response + citations |
 | `pipeline_summary` | Per-stage NDCG/MRR/Recall/Precision (or confidence proxy) + latency cost-benefit |
 
@@ -555,6 +586,7 @@ TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
 | Reranker | `reranker_max_score`, `reranked_documents`, `reranker_latency_ms` |
 | Quality Gate | `quality_gate_retried`, `alpha_adjusted_value` |
 | Pipeline Summary | `pre_rerank_documents`, `bm25_documents`, `judgments`, `bm25_latency_ms`, `retriever_latency_ms` |
+| Agent (enrichment) | `enrichment_triggered`, `enrichment_attribute_type`, `enrichment_variant`, `enrichment_canonical` |
 | Other | `thread_id`, `current_node`, `retrieved_products`, `citations` |
 
 ---

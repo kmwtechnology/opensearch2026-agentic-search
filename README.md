@@ -110,8 +110,18 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
 - **Admin diagnostics** — `GET /api/admin/health` reports index health and
   doc count; `GET /api/admin/diagnose` probes field-level hit counts.
   Requires session auth (UI login) or `X-Admin-Token` header (GitHub Actions
-  automation). Re-indexing is triggered via the `reindex.yml` workflow
-  (Lucille ETL on the runner), not an HTTP endpoint
+  automation). Routine full re-indexing is triggered via the `reindex.yml`
+  workflow (Lucille ETL on the runner); `POST /api/admin/enrich` also
+  triggers a real reindex directly, as part of the enrichment flywheel below
+- **Agentic enrichment flywheel** — the agent can grow its own catalog
+  taxonomy: when it recognizes a real color/material gap (not just a query
+  it phrased wrong), it can call `trigger_enrichment` to write a new
+  variant→canonical mapping to OpenSearch and trigger a genuine full
+  Lucille reindex (~15–20s), gated by `ENABLE_ENRICHMENT_TOOL`. Proven live
+  end-to-end for color; material's live-chat trigger is structurally
+  protected against ever firing (deliberate lexical fallback + filter
+  relaxation), so it's exercised via `POST /api/admin/enrich` instead — see
+  `langchain_agent/ARCHITECTURE.md` and `langchain_agent/DEMO.md`
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
   boosting, and field boosting, displayed in the observability panel's
   "Search Optimizations" card
@@ -412,6 +422,8 @@ opensearch2026-agentic-search/
 | [README.md](README.md) (this file) | Architecture, deployment paths, tech stack | Everyone |
 | **For Developers** | | |
 | [langchain_agent/README.md](langchain_agent/README.md) | Day-to-day development, API usage, config, troubleshooting | Backend/Frontend devs |
+| [langchain_agent/ARCHITECTURE.md](langchain_agent/ARCHITECTURE.md) | Deep pipeline reference — every node, state, index design, attribute detection & enrichment flywheel mechanism | Backend devs |
+| [langchain_agent/DEMO.md](langchain_agent/DEMO.md) | Live conference demo walkthrough, including the enrichment flywheel's two acts | Presenters |
 | [langchain_agent/api/README.md](langchain_agent/api/README.md) | FastAPI backend layers (routes, middleware, schemas, services) | Backend devs |
 | [langchain_agent/scripts/README.md](langchain_agent/scripts/README.md) | Lifecycle scripts (setup, dev, deploy, CI hooks) | All devs |
 | [langchain_agent/web/README.md](langchain_agent/web/README.md) | React frontend (components, stores, hooks, testing) | Frontend devs |

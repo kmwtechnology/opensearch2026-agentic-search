@@ -71,7 +71,9 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 - **Hybrid search** — RRF fusion (k=60); `alpha` ∈ [0,1] weights lexical→semantic.
 
-- **Attribute normalization** — integrated into Lucille ETL via `AttributeNormalizerStage` (custom Java stage in `langchain_agent/lucille-esci/src/main/java`). Outputs: `product_color_primary`, `product_color_secondary`, `product_brand_normalized` as keyword fields. Rules-based (16 canonical colors), auditable, no AI.
+- **Attribute detection** — integrated into Lucille ETL via `AttributeDetectorStage`, one generic Java stage (`langchain_agent/lucille-esci/src/main/java`) parameterized per attribute type (color, material). Outputs `product_<type>_primary`/`_secondary` keyword fields. Taxonomy lives in OpenSearch, not a committed file — rules-based detection, auditable, no AI at ingest time. `BrandNormalizerStage` handles brand separately (fixed transform).
+
+- **Agentic enrichment flywheel** — the agent can grow the live color/material taxonomy itself: `trigger_enrichment(attribute_type, variant, canonical)` tool (gated by `ENABLE_ENRICHMENT_TOOL`, default off) writes the new mapping to OpenSearch and triggers a real Lucille reindex (~15–20s). Color's unresolved-term filter is hard (reliably triggers the gap signal live); material's is soft + subject to filter relaxation (structurally can't trigger via chat — use `POST /api/admin/enrich` instead). See `langchain_agent/ARCHITECTURE.md`'s "Enrichment Flywheel" section and `langchain_agent/DEMO.md`.
 
 - **Auth** — two layers:
   1. **Same-origin** (`origin_auth.py`) — allow-list of localhost ports + Cloud Run `*.run.app`. Disallowed Origin always 403s.
