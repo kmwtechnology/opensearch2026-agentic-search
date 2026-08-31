@@ -81,6 +81,54 @@ class TestTriggerEnrichmentTool:
         assert "re-index failed" in result
         assert "mapping is saved" in result
 
+    @patch("tools.enrichment_tool.enrich_attribute")
+    def test_correction_reports_was_now_not_added(self, mock_enrich):
+        """When enrich_attribute reports corrected_from (a genuinely
+        different canonical replacing a wrong one), the message must say
+        "Corrected ... from X to Y" -- never "Added", which would falsely
+        imply the taxonomy previously had no opinion at all."""
+        mock_enrich.return_value = EnrichmentResult(
+            success=True,
+            attribute_type="color",
+            variant="tan",
+            canonical="brown",
+            corrected_from="yellow",
+            reindex_triggered=True,
+            reindex_success=True,
+            docs_processed=9618,
+            duration_seconds=21.4,
+        )
+
+        result = trigger_enrichment.invoke(
+            {"attribute_type": "color", "variant": "tan", "canonical": "brown"}
+        )
+
+        assert "Corrected" in result
+        assert "yellow" in result
+        assert "brown" in result
+        assert "Added" not in result
+
+    @patch("tools.enrichment_tool.enrich_attribute")
+    def test_fresh_addition_still_says_added_not_corrected(self, mock_enrich):
+        mock_enrich.return_value = EnrichmentResult(
+            success=True,
+            attribute_type="material",
+            variant="chrome",
+            canonical="metal",
+            corrected_from=None,
+            reindex_triggered=True,
+            reindex_success=True,
+            docs_processed=9618,
+            duration_seconds=18.3,
+        )
+
+        result = trigger_enrichment.invoke(
+            {"attribute_type": "material", "variant": "chrome", "canonical": "metal"}
+        )
+
+        assert "Added" in result
+        assert "Corrected" not in result
+
     def test_tool_has_expected_schema(self):
         schema = trigger_enrichment.args_schema.model_json_schema()
         assert set(schema["required"]) == {"attribute_type", "variant", "canonical"}

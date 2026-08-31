@@ -114,6 +114,60 @@ class TestEnrichAttributeClassification:
         assert result.reason == "already mapped"
         assert result.reindex_triggered is False
 
+    def test_already_mapped_with_same_explicit_canonical_is_still_idempotent(self, store):
+        """Re-requesting the SAME canonical the variant is already mapped to
+        (not a real correction) stays a no-op, even with explicit_canonical
+        set -- only a genuinely DIFFERENT canonical should trigger the
+        correction path."""
+        store.add_mapping("color", "tan", "yellow", source="seed")
+
+        result = enrichment_service.enrich_attribute(
+            "color", "tan", store=store, explicit_canonical="yellow"
+        )
+
+        assert result.success is False
+        assert result.reason == "already mapped"
+        assert result.reindex_triggered is False
+        assert result.corrected_from is None
+
+    @patch("enrichment_service.write_generated_conf")
+    @patch("subprocess.run")
+    def test_explicit_canonical_differing_from_existing_corrects_the_mapping(
+        self, mock_run, mock_write_conf, store
+    ):
+        """The real bug this exists for: 'tan' was mis-seeded to 'yellow'.
+        Supplying a different explicit_canonical overwrites the wrong
+        mapping instead of bouncing off the 'already mapped' guard --
+        without this, a wrong mapping could never be corrected."""
+        mock_run.return_value = _mock_successful_subprocess()
+        store.add_mapping("color", "tan", "yellow", source="seed")
+
+        result = enrichment_service.enrich_attribute(
+            "color", "tan", store=store, explicit_canonical="brown"
+        )
+
+        assert result.success is True
+        assert result.canonical == "brown"
+        assert result.corrected_from == "yellow"
+        assert result.reindex_triggered is True
+        # The store itself must reflect the correction, not just the result.
+        assert store.get_lookup_table("color")["tan"] == "brown"
+
+    @patch("enrichment_service.write_generated_conf")
+    @patch("subprocess.run")
+    def test_fresh_mapping_has_no_corrected_from(self, mock_run, mock_write_conf, store):
+        """A genuinely new (not previously mapped) variant is an addition,
+        not a correction -- corrected_from must stay None so callers don't
+        say "corrected" for something that was never wrong."""
+        mock_run.return_value = _mock_successful_subprocess()
+
+        result = enrichment_service.enrich_attribute(
+            "material", "chrome", store=store, explicit_canonical="metal"
+        )
+
+        assert result.success is True
+        assert result.corrected_from is None
+
     def test_empty_term_fails_gracefully(self, store):
         result = enrichment_service.enrich_attribute("material", "", store=store)
         assert result.success is False

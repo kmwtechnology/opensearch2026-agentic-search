@@ -1135,6 +1135,29 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 user_query = _flatten_llm_content(msg)
                 break
 
+        # Taxonomy CORRECTION signal — the shopper disputing a tag from a
+        # prior turn (e.g. "that's not tan, it's yellow"), distinct from
+        # this turn's own retrieval quality. Checked before the gap-detection
+        # block below since it's independent of whether THIS turn's search
+        # found anything: the thing being fixed is a prior turn's tag. Only
+        # meaningful when there's prior conversation to dispute — the cheap
+        # keyword gate combined with intent already scoped to continuation
+        # turns keeps this from firing on a fresh, standalone query.
+        from config import ENABLE_ENRICHMENT_TOOL as _correction_flag
+
+        if (
+            _correction_flag
+            and intent in ("refinement", "follow_up")
+            and self._detect_correction_signal(user_query)
+        ):
+            correction_result = self._try_correction_tool(messages, user_query)
+            if correction_result is not None:
+                logger.info("Agent: taxonomy correction triggered via trigger_enrichment")
+                return correction_result
+            # LLM declined (not confident this was a real correction) — this
+            # isn't a search failure, so fall through to normal response
+            # generation below rather than the "no info" canned response.
+
         # Check if retrieval failed even after quality gate retry
         # If quality gate retried and max relevance is still very low, return honest acknowledgment
         MIN_RELEVANCE_THRESHOLD = 0.10  # Same as citation suppression threshold
@@ -1394,11 +1417,16 @@ CITATION & STYLE:
 
         return {"messages": [response], "citations": citations}
 
-    def _try_enrichment_tool(self, user_query: Optional[str]) -> Optional[Dict[str, Any]]:
+    def _try_enrichment_tool(
+        self, user_query: Optional[str], prompt: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Give the LLM a chance to use trigger_enrichment before falling back
         to the canned "no results" response, when a search-quality gap was
-        detected (quality_gate_retried and max_relevance still very low).
+        detected (quality_gate_retried and max_relevance still very low) --
+        or, when called with an explicit `prompt`, for any other scenario
+        that offers the same tool (e.g. the shopper disputing a taxonomy
+        tag on a prior turn; see _try_correction_tool).
 
         Kept as a manual two-call loop (bind tools -> invoke -> execute tool
         + append ToolMessage -> invoke again without tools for the final
@@ -1412,7 +1440,7 @@ CITATION & STYLE:
         """
         from tools.enrichment_tool import trigger_enrichment
 
-        gap_prompt = f"""A shopper searched for "{user_query or 'their query'}" and the catalog \
+        gap_prompt = prompt or f"""A shopper searched for "{user_query or 'their query'}" and the catalog \
 search returned no strong matches, even after retrying with adjusted search weighting.
 
 If the query plausibly mentions a COLOR or MATERIAL term that a product catalog should \
@@ -1456,6 +1484,89 @@ the query looks like a color/material gap, don't call the tool; just say so brie
             "citations": [],
             **enrichment_state,
         }
+
+    # Cheap, local pre-filter for "this message might be disputing a
+    # taxonomy tag" — deliberately broad (false positives just cost one
+    # extra LLM decision that declines to call the tool; false negatives
+    # silently drop a real correction, which is worse). Not meant to be
+    # exhaustive NLU — the actual judgment call is the LLM's, in
+    # _try_correction_tool's tool-offer prompt below.
+    _CORRECTION_SIGNAL_PHRASES = (
+        "that's not",
+        "thats not",
+        "that isn't",
+        "that is not",
+        "isn't really",
+        "isn't actually",
+        "doesn't look",
+        "does not look",
+        "not really",
+        "actually",
+        "mistag",
+        "miscategor",
+        "incorrectly tagged",
+        "wrong color",
+        "wrong material",
+        "should be tagged",
+        "tagged wrong",
+        "that's wrong",
+        "thats wrong",
+        "not correct",
+    )
+
+    def _detect_correction_signal(self, user_query: Optional[str]) -> bool:
+        """
+        Cheap keyword gate: does the latest message plausibly dispute a
+        color/material tag from a prior turn? Runs before any LLM call so
+        ordinary follow-ups ("show me cheaper ones") never pay for the
+        extra correction-offer prompt.
+        """
+        if not user_query:
+            return False
+        q = user_query.lower()
+        return any(phrase in q for phrase in self._CORRECTION_SIGNAL_PHRASES)
+
+    def _try_correction_tool(
+        self, messages: Sequence[BaseMessage], user_query: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Offer trigger_enrichment for a taxonomy CORRECTION rather than a
+        gap-fill: the shopper is disputing a color/material tag the catalog
+        assigned to a product shown in a prior turn (e.g. "that's not tan,
+        it's clearly yellow" after a mistagged product surfaced). Unlike
+        the zero-result gap path, this fires regardless of this turn's own
+        retrieval results — the thing being fixed is a PRIOR turn's tag,
+        not this turn's search.
+
+        Reuses _try_enrichment_tool's manual two-call loop with a
+        correction-framed prompt; enrich_attribute already supports
+        overwriting an existing mapping when the LLM supplies a different
+        canonical than the one on file (see enrichment_service.py).
+        """
+        history = self._build_recent_context(messages, limit=8)
+
+        correction_prompt = f"""A shopper is following up on a previous product search. Their \
+latest message may be disputing or correcting a color or material tag the catalog assigned to \
+a product you showed them earlier in this conversation.
+
+Recent conversation:
+{history}
+
+Latest message: "{user_query}"
+
+If the shopper is pointing out that a color or material tag looks wrong (for example, "that's \
+not tan, that's yellow" or "that boot isn't really brown" or "the color tag is wrong"), and you \
+can tell from the conversation which term is mistagged and what the correct canonical bucket \
+should be, call trigger_enrichment with:
+- attribute_type: "color" or "material"
+- variant: the term that's currently mistagged (e.g. "tan")
+- canonical: the CORRECT canonical bucket it should map to instead
+
+Only call the tool if you're genuinely confident this is a real tagging correction — not a \
+typo, a brand-new search, or an unrelated complaint. If you're not sure, don't call the tool; \
+just respond to the shopper normally."""
+
+        return self._try_enrichment_tool(user_query, prompt=correction_prompt)
 
     def _build_recent_context(self, messages: Sequence[BaseMessage], limit: int = 6) -> str:
         """

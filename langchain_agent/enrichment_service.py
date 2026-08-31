@@ -62,6 +62,11 @@ class EnrichmentResult:
     reindex_success: bool = False
     docs_processed: int = 0
     duration_seconds: float = 0.0
+    # Set when this replaced an existing (wrong) mapping rather than adding a
+    # new one — e.g. correcting the shipped "tan"->"yellow" mis-mapping to
+    # "tan"->"brown". Lets callers say "corrected X: was A, now B" instead of
+    # the misleading "added X".
+    corrected_from: Optional[str] = None
 
 
 def enrich_attribute(
@@ -111,15 +116,23 @@ def enrich_attribute(
         )
 
     existing_lookup = store.get_lookup_table(attribute_type)
+    existing_canonical = existing_lookup.get(variant_lower)
 
-    if variant_lower in existing_lookup:
-        return EnrichmentResult(
-            success=False,
-            attribute_type=attribute_type,
-            variant=variant,
-            canonical=existing_lookup[variant_lower],
-            reason="already mapped",
-        )
+    # A variant already in the taxonomy is only a no-op if it maps where the
+    # caller wants it to. If the caller explicitly asks for a *different*
+    # canonical, that's a correction of a wrong mapping — the whole point of
+    # the flywheel when a taxonomy is mis-modelled rather than incomplete
+    # (e.g. the shipped "tan"->"yellow", which makes "tan coat" return a
+    # yellow raincoat). Without this, a wrong mapping could never be fixed.
+    if existing_canonical is not None:
+        if explicit_canonical is None or explicit_canonical == existing_canonical:
+            return EnrichmentResult(
+                success=False,
+                attribute_type=attribute_type,
+                variant=variant,
+                canonical=existing_canonical,
+                reason="already mapped",
+            )
 
     if explicit_canonical is not None:
         if explicit_canonical not in canonical_seeds:
@@ -147,7 +160,18 @@ def enrich_attribute(
         )
 
     store.add_mapping(attribute_type, variant_lower, canonical, source="agent")
-    logger.info("Enrichment: mapped '%s' (%s) -> '%s'", variant_lower, attribute_type, canonical)
+    if existing_canonical is not None:
+        logger.info(
+            "Enrichment: CORRECTED '%s' (%s) -> '%s' (was '%s')",
+            variant_lower,
+            attribute_type,
+            canonical,
+            existing_canonical,
+        )
+    else:
+        logger.info(
+            "Enrichment: mapped '%s' (%s) -> '%s'", variant_lower, attribute_type, canonical
+        )
 
     _ensure_attribute_fields_mapped(store, attribute_type)
     write_generated_conf()
@@ -163,6 +187,7 @@ def enrich_attribute(
         reindex_success=reindex_success,
         docs_processed=docs_processed,
         duration_seconds=duration,
+        corrected_from=existing_canonical,
     )
 
 

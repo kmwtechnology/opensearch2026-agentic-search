@@ -41,30 +41,42 @@ class TriggerEnrichmentInput(BaseModel):
 @tool("trigger_enrichment", args_schema=TriggerEnrichmentInput)
 def trigger_enrichment(attribute_type: str, variant: str, canonical: str) -> str:
     """
-    Add a new color or material variant to the product search taxonomy and
-    re-index the catalog so the fix takes effect immediately. Use this when
-    a shopper's query mentions a color or material term that isn't
-    recognized by the current search filters — for example, the search
-    quality gate failed and the query mentions a plausible color/material
-    word not covered by existing canonical categories. This performs a
-    REAL, live catalog re-index (takes about 15-25 seconds) — only call it
-    when you're confident the term is a genuine color or material the
-    catalog should recognize, not for typos or unrelated query terms.
+    Add a new color or material variant to the product search taxonomy, OR
+    correct one that's already mapped to the wrong canonical bucket, and
+    re-index the catalog so the fix takes effect immediately.
+
+    Two distinct situations call this the same way:
+    1. GAP: a shopper's query mentions a color/material term not yet
+       recognized by the current search filters (search quality gate
+       failed, term isn't in the taxonomy at all).
+    2. CORRECTION: a shopper points out that a term IS in the taxonomy but
+       mapped to the wrong bucket (e.g. "that's not tan, it's yellow" —
+       the catalog currently thinks tan means yellow). Pass the variant
+       and its CORRECT canonical; the existing wrong mapping is replaced.
+
+    This performs a REAL, live catalog re-index (takes about 15-25
+    seconds) — only call it when you're confident the term is a genuine
+    color or material and you know what the correct bucket should be, not
+    for typos or unrelated query terms.
     """
     result = enrich_attribute(attribute_type, variant, explicit_canonical=canonical)
 
     if not result.success:
         return f"Could not enrich '{variant}' as {attribute_type}: {result.reason}"
 
+    action = (
+        f"Corrected '{variant}' from '{result.corrected_from}' to '{result.canonical}'"
+        if result.corrected_from
+        else f"Added '{variant}' as a '{result.canonical}' {attribute_type}"
+    )
+
     if not result.reindex_success:
         return (
-            f"Added '{variant}' as a '{result.canonical}' {attribute_type} to the taxonomy, "
-            f"but the catalog re-index failed to complete — the mapping is saved and will "
-            f"take effect on the next successful re-index."
+            f"{action} in the taxonomy, but the catalog re-index failed to complete — "
+            f"the mapping is saved and will take effect on the next successful re-index."
         )
 
     return (
-        f"Added '{variant}' as a '{result.canonical}' {attribute_type}. "
-        f"Re-indexed {result.docs_processed} products in {result.duration_seconds:.1f}s — "
-        f"the fix is now live."
+        f"{action}. Re-indexed {result.docs_processed} products in "
+        f"{result.duration_seconds:.1f}s — the fix is now live."
     )

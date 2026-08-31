@@ -9,6 +9,7 @@ or trigger a real reindex.
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from enrichment_service import EnrichmentResult
@@ -197,3 +198,131 @@ class TestAgentNodeGapDetection:
         agent.agent_node(state)
 
         agent._try_enrichment_tool.assert_not_called()
+
+
+class TestDetectCorrectionSignal:
+    """Cheap keyword pre-filter for 'this message might be disputing a
+    taxonomy tag'. Deliberately broad: false positives just cost one
+    extra LLM decision that declines to call the tool; false negatives
+    silently drop a real correction, which is worse."""
+
+    def _agent(self):
+        return EcommerceSearchAgent.__new__(EcommerceSearchAgent)
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "that's not tan, that's yellow",
+            "Actually I think the color tag is wrong",
+            "that boot isn't really brown",
+            "the color tag is mistagged",
+            "hmm, that's tagged wrong",
+            "this is incorrectly tagged as yellow",
+        ],
+    )
+    def test_dispute_phrasings_detected(self, message):
+        agent = self._agent()
+        assert agent._detect_correction_signal(message) is True
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "show me camel colored coats",
+            "cheaper ones please",
+            "only in leather",
+            None,
+            "",
+        ],
+    )
+    def test_ordinary_messages_not_flagged(self, message):
+        agent = self._agent()
+        assert agent._detect_correction_signal(message) is False
+
+
+class TestAgentNodeCorrectionDetection:
+    """agent_node's taxonomy-correction gate: distinct from the zero-result
+    gap path above -- fires when the shopper disputes a tag from a PRIOR
+    turn, regardless of this turn's own retrieval results, and only on
+    conversation-continuation intents (refinement/follow_up) so a fresh
+    standalone query is never misread as a correction."""
+
+    def _agent_for_correction_check(self):
+        agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
+        agent._try_correction_tool = MagicMock(
+            return_value={"messages": [AIMessage(content="corrected")], "citations": []}
+        )
+        agent.llm = MagicMock(spec=["invoke", "bind_tools"])
+        agent.llm.invoke.return_value = AIMessage(content="Here's what I found instead.")
+        return agent
+
+    def _base_state(self, intent, message, retrieved_documents=None):
+        return {
+            "messages": [HumanMessage(content=message)],
+            "retrieved_documents": retrieved_documents or [],
+            "intent": intent,
+            "quality_gate_retried": False,
+        }
+
+    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    def test_dispute_on_refinement_turn_triggers_correction_offer(self):
+        agent = self._agent_for_correction_check()
+        state = self._base_state("refinement", "that's not tan, that's yellow")
+
+        result = agent.agent_node(state)
+
+        agent._try_correction_tool.assert_called_once()
+        assert result["messages"][0].content == "corrected"
+
+    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    def test_dispute_on_follow_up_turn_triggers_correction_offer(self):
+        agent = self._agent_for_correction_check()
+        state = self._base_state("follow_up", "actually that tag looks wrong")
+
+        agent.agent_node(state)
+
+        agent._try_correction_tool.assert_called_once()
+
+    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    def test_dispute_on_fresh_search_intent_does_not_trigger(self):
+        """A standalone search/attribute_filter turn can't be disputing a
+        prior tag -- there's no established conversation to dispute. Even
+        with dispute-shaped language, this must not fire."""
+        agent = self._agent_for_correction_check()
+        state = self._base_state("search", "that's not tan, that's yellow")
+
+        agent.agent_node(state)
+
+        agent._try_correction_tool.assert_not_called()
+
+    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    def test_ordinary_refinement_without_dispute_language_does_not_trigger(self):
+        agent = self._agent_for_correction_check()
+        state = self._base_state("refinement", "only show me the waterproof ones")
+
+        agent.agent_node(state)
+
+        agent._try_correction_tool.assert_not_called()
+
+    @patch("config.ENABLE_ENRICHMENT_TOOL", False)
+    def test_disabled_flag_never_triggers_even_with_dispute_language(self):
+        agent = self._agent_for_correction_check()
+        state = self._base_state("refinement", "that's not tan, that's yellow")
+
+        agent.agent_node(state)
+
+        agent._try_correction_tool.assert_not_called()
+
+    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    def test_llm_declining_falls_through_to_normal_response_not_canned_message(self):
+        """When the LLM isn't confident this is a real correction,
+        _try_correction_tool returns None -- agent_node must fall through
+        to ordinary response generation, not the zero-result "no info"
+        canned message (this isn't a search failure)."""
+        agent = self._agent_for_correction_check()
+        agent._try_correction_tool.return_value = None
+        state = self._base_state("refinement", "that's not tan, that's yellow")
+
+        result = agent.agent_node(state)
+
+        agent._try_correction_tool.assert_called_once()
+        assert result["messages"][0].content == "Here's what I found instead."
