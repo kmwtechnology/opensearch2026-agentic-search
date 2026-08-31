@@ -1162,6 +1162,14 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 f"Agent: retrieval failed after quality gate retry "
                 f"(max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD})"
             )
+
+            from config import ENABLE_ENRICHMENT_TOOL
+
+            if ENABLE_ENRICHMENT_TOOL:
+                enrichment_result = self._try_enrichment_tool(user_query)
+                if enrichment_result is not None:
+                    return enrichment_result
+
             no_info_response = (
                 f"I searched for \"{user_query or 'your question'}\" but didn't find a strong "
                 "match in the catalog. A few things that usually help:\n\n"
@@ -1369,6 +1377,69 @@ CITATION & STYLE:
         logger.info(f"Agent: generated response ({response_length} chars) in {elapsed:.3f}s")
 
         return {"messages": [response], "citations": citations}
+
+    def _try_enrichment_tool(self, user_query: Optional[str]) -> Optional[Dict[str, Any]]:
+        """
+        Give the LLM a chance to use trigger_enrichment before falling back
+        to the canned "no results" response, when a search-quality gap was
+        detected (quality_gate_retried and max_relevance still very low).
+
+        Kept as a manual two-call loop (bind tools -> invoke -> execute tool
+        + append ToolMessage -> invoke again without tools for the final
+        response) rather than a ToolNode/graph-topology change — lower risk
+        to the existing quality_gate retry / llm_judge wiring, and this only
+        ever needs to call at most one tool once per turn.
+
+        Returns None if the LLM didn't call the tool (caller falls through
+        to the existing canned response), or a full agent_node return dict
+        (messages, citations, enrichment_* state fields) if it did.
+        """
+        from tools.enrichment_tool import trigger_enrichment
+
+        gap_prompt = f"""A shopper searched for "{user_query or 'their query'}" and the catalog \
+search returned no strong matches, even after retrying with adjusted search weighting.
+
+If the query plausibly mentions a COLOR or MATERIAL term that a product catalog should \
+recognize but might not have in its current taxonomy (e.g. an unusual color name, a \
+material synonym), you may call trigger_enrichment to add it and re-index the catalog live.
+
+Only call the tool if you're genuinely confident the query contains a real color or \
+material term worth adding — not for typos, brand names, or unrelated words. If nothing in \
+the query looks like a color/material gap, don't call the tool; just say so briefly."""
+
+        llm_with_tools = self.llm.bind_tools([trigger_enrichment])
+        tool_messages = [HumanMessage(content=gap_prompt)]
+        response = llm_with_tools.invoke(tool_messages)
+
+        tool_calls = getattr(response, "tool_calls", None)
+        if not tool_calls:
+            return None
+
+        call = tool_calls[0]
+        logger.info(f"Agent: trigger_enrichment called with args={call['args']}")
+
+        tool_result = trigger_enrichment.invoke(call["args"])
+        tool_messages.append(response)
+        tool_messages.append(ToolMessage(content=tool_result, tool_call_id=call["id"]))
+
+        final_response = self.llm.invoke(tool_messages)
+
+        # Best-effort state population — the tool's return string is the
+        # source of truth shown to the user; these fields are for
+        # observability (WebSocket event, frontend badge), so a parsing
+        # miss shouldn't break the turn.
+        enrichment_state: Dict[str, Any] = {
+            "enrichment_triggered": True,
+            "enrichment_attribute_type": call["args"].get("attribute_type"),
+            "enrichment_variant": call["args"].get("variant"),
+            "enrichment_canonical": call["args"].get("canonical"),
+        }
+
+        return {
+            "messages": [final_response],
+            "citations": [],
+            **enrichment_state,
+        }
 
     def _build_recent_context(self, messages: Sequence[BaseMessage], limit: int = 6) -> str:
         """

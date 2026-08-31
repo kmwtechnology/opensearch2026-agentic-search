@@ -168,3 +168,18 @@ class CustomAgentState(TypedDict, total=False):
     original_judgment: Optional[Dict[str, object]]
     corrected_response: Optional[str]
     hallucination_retry_used: bool
+
+    # Citations returned by agent_node alongside messages. Always present in
+    # practice (agent_node's every return path includes it, empty list if
+    # none) but was never formally declared here until now.
+    citations: List[Dict[str, str]]
+
+    # Agentic enrichment flywheel (set by agent_node when the
+    # trigger_enrichment tool fires on a detected search-quality gap).
+    # Defaults: enrichment_triggered=False
+    enrichment_triggered: bool
+    enrichment_attribute_type: Optional[str]
+    enrichment_variant: Optional[str]
+    enrichment_canonical: Optional[str]
+    enrichment_docs_processed: int
+    enrichment_duration_seconds: float
