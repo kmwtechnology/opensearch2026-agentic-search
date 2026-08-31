@@ -316,13 +316,20 @@ gate retries, still nothing (max_relevance < 0.10). The agent gets offered
 it with `attribute_type="color", variant="camel", canonical="brown"`.
 
 **Observe**:
-- Observability panel: new emerald **Enrichment Triggered** card
-  (`attribute_type: color`, `variant: "camel"`, `canonical: brown`)
+- A bright emerald banner appears immediately at the top of the
+  observability panel — **"Catalog Enrichment Triggered — live re-index
+  in progress"** with a spinning icon, visible without expanding
+  anything, the moment the LLM decides to call the tool. It switches to
+  "complete" when the reindex finishes. The **LLM Agent** step in the
+  timeline also shows an inline "Enrichment: color 'camel' → 'brown'"
+  badge in its collapsed header.
 - Agent's response references the fix (e.g. "I've added 'camel' as a
   brown color and updated the catalog...")
 - **This takes ~15–20s** (measured: 19.98s and 16.48s across two real runs
   this session) — the agent's response won't appear until the reindex
-  completes. Narrate through the wait; don't leave dead air.
+  completes, but the header banner and step badge are visible the whole
+  time, so the wait no longer reads as dead air on its own; narrate
+  alongside it rather than instead of it.
 
 **Then re-send**: `camel coat`
 
