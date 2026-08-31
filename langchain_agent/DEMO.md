@@ -347,10 +347,17 @@ product's own title says "Tan", but the indexed field the filter
 actually matched against is `product_color_primary: yellow`. This is
 the moment to ask the audience: "does this look right to you?"
 
-**Then send** (same conversation, as a follow-up): something in the
-shape of `that's not tan, that's tagged yellow — that's wrong` (any
-natural dispute phrasing works; `_detect_correction_signal` matches on
-words like "wrong", "mistagged", "not right", "actually").
+**Then send** (same conversation, as a follow-up): `that's not tan,
+that's tagged yellow which is wrong` — this exact phrasing is the one
+confirmed live this session to correctly trigger the correction branch
+end-to-end (the LLM actually calling `trigger_enrichment` with the right
+args, not just the keyword pre-filter matching). Other natural dispute
+phrasings should also work in principle — `_detect_correction_signal`
+matches broadly on words like "wrong", "mistagged", "not right",
+"actually" — but per the earlier "camel coat" lesson in this project
+(small phrasing differences can change LLM tool-calling behavior even
+when a human would read them as equivalent), prefer the exact verified
+string for the live demo rather than an ad-libbed paraphrase.
 
 **Expected**: Classifies as `refinement`. The correction-detection
 branch fires, offers `trigger_enrichment` to the LLM with the recent

@@ -291,7 +291,7 @@ The quality gate compares the reranker's max score against an intent-specific th
 
 # **14\. Decisions to lock**
 
-* The primary and backup queries for each act: intent classification, quality-gate retry, and the taxonomy-correction demo's exact two-turn phrasing ("show me tan boots", then a dispute phrase like "that's not tan, that's tagged yellow — that's wrong") — use "show me tan boots" specifically, not "show me tan colored boots" (the longer phrasing adds a spurious second filter that dilutes the result set).  
+* The primary and backup queries for each act: intent classification, quality-gate retry, and the taxonomy-correction demo's exact two-turn phrasing — "show me tan boots" (not "show me tan colored boots"; the longer phrasing adds a spurious second filter that dilutes the result set), then the exact dispute phrase confirmed live this cycle to trigger the correction end-to-end: "that's not tan, that's tagged yellow which is wrong".  
 * The taxonomy-correction demo is a single act by design — simpler and, because it's built on a real bug rather than a planted gap, a stronger claim than a two-act version would be.  
 * The acceptable latency budget for the quality-gate retry (~1–2s) and each re-index (~19–20s, narrate through it).  
 * The exact observability panels visible during the live demo, including whether the enrichment card gets its own dedicated moment on screen.  
