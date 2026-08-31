@@ -12,9 +12,9 @@ Attendees will gain a blueprint for building search systems that think end-to-en
 
 # **1\. Talk thesis**
 
-A search agent becomes genuinely agentic when it can improve results on the fly: try a bounded set of retrieval strategies, score them with real judgments, choose the best evidence, recover once when needed, and verify the final answer.
+A search agent becomes genuinely agentic in two distinct ways. First, it can improve results on the fly: classify intent, weight hybrid retrieval dynamically per query, retry once with an adjusted lexical/semantic balance when confidence is low, and check its own generated answer for hallucinations before the user sees it. Second — and this is the part most agentic-search systems don't do — it can recognize when the *catalog itself* is the problem, not the query, and fix that: teach the index a color or material term it doesn't recognize, and trigger a real re-index, live, as part of the conversation. The second capability is the talk's centerpiece.
 
-**The only shared element is the authoritative judgment list: Search Relevance Workbench can import it for its feature demonstration, while LangGraph reads the same judgments directly at runtime to score attempts and steer the agent. Workbench results, experiments, and configurations do not feed the LangGraph application.**
+**The only shared element is the authoritative judgment list: Search Relevance Workbench can import it for its feature demonstration, while LangGraph looks up the same judgments opportunistically at runtime — purely as a post-hoc diagnostic metric shown in the observability panel, never as an input to retry, routing, or ranking decisions, which are driven entirely by reranker confidence. Workbench results, experiments, and configurations do not feed the LangGraph application.**
 
 # **2\. Two independent demonstrations**
 
@@ -24,11 +24,11 @@ A search agent becomes genuinely agentic when it can improve results on the fly:
 
 ## **Demo A — Live LangGraph agentic search**
 
-* Uses the product index and esci\_judgments directly at runtime.  
-* Accepts only exact judged queries for the conference demo.  
-* Runs multiple retrieval strategies, computes metrics, selects a winner, and optionally recovers once.  
-* Curates evidence, generates an answer, critiques it, and optionally repairs it once.  
-* Explains the full run through the application’s observability panel.
+* Uses the product index directly at runtime; accepts **any natural-language query**, not just pre-vetted ones — `esci_judgments` is consulted opportunistically for NDCG@10/MRR/Recall@20/Precision@10 when a query has an exact judgment match, and the panel falls back to a self-referential confidence proxy (top-1 score, score gap, variance, rank churn) when it doesn't.  
+* Classifies intent (6 classes), sets hybrid retrieval balance (α) per query, and retries once with an adjusted α when the reranker's confidence is low.  
+* Generates a cited answer from reranked evidence; an LLM-judge pass checks it for hallucination and can auto-correct once for the categories it's confident about.  
+* **Also**: when a query's color/material term isn't in the catalog's taxonomy, the agent can recognize the gap, teach the taxonomy the new term, and trigger a real Lucille re-index live — the talk's centerpiece, not a query-adjustment.  
+* Explains the full run through the application's observability panel.
 
 ## **Demo B — OpenSearch Relevance Workbench feature showcase**
 
@@ -45,21 +45,20 @@ A search agent becomes genuinely agentic when it can improve results on the fly:
 * Do not compare Workbench experiment output with the final LLM answer.  
 * Treat the two segments as separate examples of what can be built with and around OpenSearch.
 
-# **3\. Lucille Ingestion and Data Augmentation**
+# **3\. Lucille Ingestion, Attribute Detection, and the Enrichment Flywheel**
 
-* Lucille pipeline: Ingests raw fields (title, brand, color, etc.) via products.conf.  
-* Data Augmentation: A separate Python script performs normalization previously removed in PR1.  
-* Process:  
-  * Fetches products from OpenSearch via search\_after pagination.  
-  * Applies deterministic rules: 16 canonical colors, synonym expansion (e.g., "grey" \-\> "gray"), compound color extraction (e.g., "Black & Purple" \-\> primary "black", secondary "purple"), and brand case-folding.  
-  * Bulk-updates docs in batches of 250 (rewriting \~9,600 docs in \~40 batches) to add derived fields: product\_color\_primary, product\_color\_secondary, and product\_brand\_normalized.  
-* Result: Enables filter queries like "blue backpacks" to match "Navy" or "Cyan" variants.
+* Lucille pipeline: ingests raw fields (title, brand, description, etc.) via a **generated** HOCON config (`products.generated.conf`, not a static committed file) — regenerated fresh before every run.  
+* Attribute detection happens **inside the ingest pipeline itself**, not as a separate post-processing script: `AttributeDetectorStage`, one generic Java stage parameterized by attribute type, scans product text for known color/material variants and writes canonical fields (`product_color_primary`/`_secondary`, `product_material_primary`/`_secondary`) in a single pass. `BrandNormalizerStage` handles brand case-folding separately.  
+* The taxonomy those stages detect against — which color/material terms map to which canonical bucket — lives in **OpenSearch**, not a committed JSON file. The config generator queries it and emits one detection-stage instance per registered attribute type (currently `detectColor`, `detectMaterial`) — a new attribute type needs zero new Java code and zero hand-edited config.  
+* **The flywheel**: the agent can grow that taxonomy itself, live, during a conversation. When it recognizes a real color/material gap — not a query it phrased wrong — it writes the new mapping to OpenSearch and triggers a genuine full Lucille re-index (\~15–20s for 9,618 products), then answers the original query correctly. This is Demo A's centerpiece: the agent reshaping what gets indexed, not just how it searches.  
+* Result: filter queries like "blue backpacks" match "Navy" or "Cyan" variants out of the box, *and* a genuinely new term the taxonomy has never seen (e.g. an unmapped color like "camel") becomes searchable within a single conversation turn.
 
 # **4\. Audience outcomes**
 
-* Understand the progression from BM25 to vector, hybrid fusion, reranking, and bounded agentic selection.  
-* See judgments used directly by a LangGraph application to improve one search and its answer at runtime.  
-* See the agent’s path, metrics, decisions, evidence, and latency in a live observability panel.  
+* Understand the progression from BM25 to vector, hybrid fusion, reranking, and a bounded, alpha-adjusting retry.  
+* See judgments used opportunistically by a LangGraph application to score one search and its answer at runtime — and see the system work just as well on a query with no ground truth at all.  
+* **See an agent fix the catalog, not just the query** — the talk's central, differentiating claim: watch it recognize a real taxonomy gap, teach the system a new term, and trigger a live re-index, then get a correct answer to the exact question that failed a moment earlier.  
+* See the agent's path, metrics, decisions, evidence, and latency in a live observability panel.  
 * Discover the latest Search Relevance Workbench capabilities as a separate OpenSearch feature tour.  
 * Leave with a practical architecture that avoids unconstrained retries and unnecessary dependencies.
 
@@ -74,20 +73,22 @@ A search agent becomes genuinely agentic when it can improve results on the fly:
 ## **5–10 minutes — Corpus, judgments, and scope**
 
 * Explain the ESCI corpus and Exact, Substitute, Complement, and Irrelevant labels.  
-* State that the live demo accepts only exact judged queries.  
-* Explain the evaluation-assisted nature of the demo and the bounded recovery budget.
+* State that the live demo runs on any natural-language query; judgments are consulted opportunistically for quality metrics, not required as a precondition.  
+* Introduce the confidence-proxy fallback used when a query has no ground truth.
 
 ## **10–15 minutes — LangGraph architecture**
 
-* Introduce the strategy tournament, selector, recovery gate, evidence curator, generator, critic, and typed state.  
+* Introduce the pipeline: intent classifier → query evaluator (dynamic α) → retriever (hybrid BM25 \+ vector, RRF fusion) → reranker (cross-encoder) → quality gate (bounded, alpha-adjusting retry) → agent (cited generation) → LLM judge (hallucination check, bounded auto-correct).  
+* Introduce the enrichment flywheel as a distinct capability layered on top: the agent can also decide the *catalog* needs fixing, not just the query.  
 * Make clear that every decision is made inside the application without Workbench.
 
 ## **15–28 minutes — Live LangGraph demo**
 
-* Run one primary judged query end to end.  
-* Show the retrieval attempts, measured winner, and one targeted recovery if the query reliably triggers it.  
-* Show evidence curation, final answer generation, and the critic decision.  
-* Use a second judged query only when time and demo stability allow.
+* Intent classification: show how a query routes to one of six intents.  
+* Hybrid search & alpha weighting: show dynamic α selection for a comparison/attribute-filter/search query.  
+* Quality gate retry: run a deliberately niche, low-confidence query and watch the alpha-adjusted retry fire.  
+* **The enrichment flywheel (centerpiece)**: run a query with an unrecognized color or material term, watch the agent recognize the gap and call its own tool to grow the taxonomy, watch a real \~15–20s Lucille re-index run live, then re-ask the same question and get a correct, cited answer.  
+* Use a second flywheel act (material, triggered via the admin API rather than live chat — see Section 6 for why) if time allows.
 
 ## **28–33 minutes — Observability debrief**
 
@@ -107,47 +108,49 @@ A search agent becomes genuinely agentic when it can improve results on the fly:
 
 # **6\. Live LangGraph experience**
 
-## **Stage 1 — Validate and understand the query**
+## **Stage 1 — Classify intent**
 
-* Require an exact match in the curated judged-query set.  
-* Normalize the query, infer constraints, and load its ESCI labels directly from OpenSearch.  
-* Do not inject judged product IDs into retrieval; each strategy must earn its ranking.
+* Keyword fast-path with an LLM fallback, into six classes: `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary`.  
+* Confidence below 0.7 triggers a clarifying question instead of a guess.  
+* For a follow-up turn, the query rewriter resolves pronouns and comparatives against conversation history first.
 
-## **Stage 2 — Run a bounded strategy tournament**
+## **Stage 2 — Evaluate and weight the query (dynamic α)**
 
-* Run optimized BM25, balanced hybrid, lexical-heavy hybrid, and semantic-heavy hybrid in parallel.  
-* Use the same index, filters, candidate budget, and reranker for a fair comparison.  
-* Preserve every pre-rerank and post-rerank attempt in an append-only history.
+* Sets the hybrid retrieval balance per query — α=0.0 for lexical exact matches (e.g. an attribute filter), α closer to 1.0 for semantic/exploratory queries.  
+* Fast-path defaults per intent (comparison, attribute\_filter, refinement); LLM-assessed for `search`/`follow_up`.
 
-## **Stage 3 — Score and select**
+## **Stage 3 — Retrieve (hybrid, single pass)**
 
-* Use NDCG@10 as the primary objective.  
-* Use MRR, Recall@20, Precision@10, and latency as tie-breakers and diagnostics.  
-* Select the best measured attempt rather than relying on model confidence.
+* One hybrid vector \+ BM25 retrieval, fused with Reciprocal Rank Fusion (k=60) — not a parallel multi-strategy tournament.  
+* For `attribute_filter` intent, applies brand/color/material/size filters classified against the OpenSearch-backed attribute taxonomy; a soft (material/size) filter that returns too few results gets automatically relaxed, a hard (color/brand) filter never does — that asymmetry is exactly what makes the flywheel demo's two acts trigger differently (see below).
 
-## **Stage 4 — Recover once**
+## **Stage 4 — Rerank and gate quality**
 
-* Low Recall@20: rewrite or expand candidates.  
-* Good recall but weak NDCG@10: adjust fusion or reranking.  
-* Too many Irrelevant results near the top: tighten the query or filters.  
-* Run one additional tournament at most, then choose the best attempt across both rounds.
+* Cross-encoder reranker scores every candidate 0.0–1.0.  
+* Quality gate compares the max score against an intent-specific threshold (0.45–0.55); below it, retries **once** with alpha adjusted in the opposite direction, then accepts whatever the retry returns.  
+* This is a bounded, single retry — not an open-ended recovery loop.
 
 ## **Stage 5 — Generate and verify**
 
-* Build context from Exact and Substitute results first; use Complement only as support and exclude Irrelevant results.  
-* Generate a cited answer from the selected evidence.  
-* Critique faithfulness, answer relevance, citation accuracy, and judged-context coverage.  
-* Regenerate once only when the critic identifies a repairable unsupported claim.
+* Build grounded context strictly from each retrieved product's own facts; generate a cited answer.  
+* An LLM-judge pass checks the answer for hallucination categories (fabrication, cross-product attribute bleed, unsupported inference, overreach); fabrication and cross-product-bleed get one bounded auto-correction retry, the others surface as-is.
+
+## **Stage 6 — The enrichment flywheel**
+
+* When an `attribute_filter` query's hard color/brand filter excludes every product on the first pass — the exact shape an unrecognized color term produces — the quality gate correctly doesn't retry (adjusting alpha can't fix an exclusionary filter), so a second, explicit gap-detection check offers the agent a real tool: `trigger_enrichment(attribute_type, variant, canonical)`.  
+* If the agent recognizes the term as a genuine color/material and calls the tool, it writes the new mapping to OpenSearch, regenerates the Lucille config, and triggers a real full re-index (\~15–20s) — then the same question, asked again, resolves correctly.  
+* **Why the demo shows this two ways**: color's fallback filter is hard and excluded from relaxation, so an unrecognized color term reliably produces the zero-result signal live, through ordinary conversation. Material's fallback is deliberately soft (protecting legitimate non-material feature words like "waterproof"), and material filters *are* subject to relaxation — so no material term, however rare, reliably triggers the signal through natural language. The second act is triggered directly via the admin API instead, exercising the identical mechanism. This isn't a demo shortcut; it's an honest reflection of a real, deliberate design tradeoff, and it's worth narrating as one.
 
 # **7\. Live observability panel**
 
-The observability panel belongs exclusively to the LangGraph application. It explains how the live request changed and why.
+The observability panel belongs exclusively to the LangGraph application. It explains how the live request changed and why, streamed as typed events over the same WebSocket as the chat response.
 
-* Graph path: nodes executed, branches taken, and budgets remaining.  
-* Strategy comparison: candidates, relevance metrics, reranker movement, and latency.  
-* Decision trace: selected strategy, recovery action, reason, and measured delta.  
-* Generation trace: selected evidence labels, citations, critic result, and answer repair.  
-* Operational view: end-to-end latency and time spent in retrieval, reranking, and generation.
+* Graph path: intent, confidence, assigned α, and which nodes ran.  
+* Retrieval detail: the full OpenSearch DSL query (hybrid, BM25 baseline, and quality-gate retry variants each viewable), applied filters, candidate counts.  
+* Reranker and quality gate: per-document scores, max score, pass/retry verdict and the reasoning behind it.  
+* Pipeline Quality Summary: NDCG@10/MRR/Recall@20/Precision@10 across BM25 → Hybrid → Reranked when ESCI judgments exist for the query; a self-referential confidence proxy (top-1 score, score gap, variance, rank churn) when they don't.  
+* **Enrichment card**: when the flywheel fires, a dedicated card shows the attribute type, the new term, the canonical bucket it resolved to, and the live re-index in progress.  
+* Operational view: end-to-end latency and time spent per stage.
 
 # **8\. Search Relevance Workbench feature showcase**
 
@@ -190,7 +193,7 @@ This segment exists to demonstrate current OpenSearch relevance features. It is 
 
 ## **Suggested transition**
 
-*“That was our custom LangGraph application improving a judged search in real time. Separately, the latest OpenSearch release provides Search Relevance Workbench features for relevance engineers working in Dashboards. Let’s take a short tour.”*
+*“That was our custom LangGraph application improving a search — and fixing its own catalog — in real time. Separately, the latest OpenSearch release provides Search Relevance Workbench features for relevance engineers working in Dashboards. Let’s take a short tour.”*
 
 # **9\. Lucille ETL Integration and Implementation Summary**
 
@@ -203,43 +206,46 @@ This segment exists to demonstrate current OpenSearch relevance features. It is 
 * Infrastructure fixes: Resolved missing GCP deploy credentials (Workload Identity Federation) and fixed a Git LFS bug in the reindex workflow.  
 * Status: Main is clean, CI green, live service verified at 9,618 documents, Issue \#3 closed.
 
-# **10\. Codebase changes for the LangGraph demo**
+# **10\. What actually shipped (supersedes the original tournament design)**
 
-## **Fix the current retry route**
+*An earlier draft of this outline planned a four-strategy retrieval tournament with explicit `SearchPlan`/`RetrievalAttempt`/`AgentDecision`/`AnswerEvaluation` state contracts and a critic/regenerate-once loop. That architecture was not built. What shipped instead is simpler and, for the flywheel narrative, better: a single hybrid retrieval per pass with a bounded, alpha-adjusting quality-gate retry — plus the enrichment flywheel, which the tournament design didn't include at all.*
 
-The quality gate emits the typed status retry, but the router currently looks for different wording in the human-readable reason. Route on the typed status, not reason text, and add an integration test proving that a real retry executes.
+## **Quality gate retry (shipped)**
 
-## **Add explicit state contracts**
+The quality gate compares the reranker's max score against an intent-specific threshold and retries once, alpha adjusted toward the opposite end of the lexical/semantic spectrum, when it's below threshold. `quality_gate_retried` is a typed state field the agent node checks directly — no reason-text parsing.
 
-* SearchPlan: normalized query, constraints, filters, candidate budget, and strategy list.  
-* RetrievalAttempt: strategy, result IDs, scores, metrics, latency, round, and action.  
-* AgentDecision: selected attempt, reason, recovery action, and remaining budget.  
-* AnswerEvaluation: faithfulness, relevance, citation accuracy, coverage, and repair instruction.
+## **Real state contracts (shipped, simpler than planned)**
+
+`CustomAgentState` (a `total=False` TypedDict) carries `intent`/`confidence`, `alpha`, `retrieved_documents`, `reranker_max_score`, `quality_gate_retried`, and — new this cycle — `enrichment_triggered`/`enrichment_attribute_type`/`enrichment_variant`/`enrichment_canonical`. No separate strategy-history or attempt-scoring contracts were needed.
 
 ## **Keep Workbench out of the application**
 
-* Do not add Workbench API calls, experiment IDs, or configuration handoffs to LangGraph state.  
-* Do not make Workbench availability a startup or preflight requirement.  
-* Keep the live metric computation, selection policy, recovery, and answer evaluation inside the application.  
-* Prepare Workbench assets separately as conference-demo setup.
+* No Workbench API calls, experiment IDs, or configuration handoffs in LangGraph state.  
+* Workbench availability is never a startup or preflight requirement.  
+* Live metric computation, retry policy, and answer evaluation stay inside the application.  
+* Workbench assets are prepared separately as conference-demo setup.
+
+## **The enrichment flywheel (shipped, new this cycle)**
+
+* Generic `AttributeDetectorStage` (Java, parameterized by attribute type) replaced two retired dedicated stages; `config_generator.py` regenerates the Lucille pipeline config before every run from whatever attribute types are registered in OpenSearch.  
+* `enrichment_service.py` classifies a new variant, writes the mapping, ensures the index has the right fields, regenerates the config, and triggers a real `lucille_ingest.sh` subprocess — a genuine full re-index, not a scoped patch.  
+* `trigger_enrichment`, a real LangChain tool bound via a manual two-call loop, is offered to the agent from a dedicated gap-detection check in `agent_node` — added after a live rehearsal surfaced a real bug: the quality gate deliberately never retries a zero-document first pass, so the original retry-based gap signal could never fire for exactly the case the tool exists to handle.  
+* `POST /api/admin/enrich` exposes the identical mechanism directly, used for the material act of the demo (see Section 6, Stage 6, for why).
 
 ## **Improve the live UI**
 
-* Display one strategy card per retrieval attempt with metrics and latency.  
-* Highlight the winner and explain any recovery.  
-* Show the evidence labels that reach generation.  
-* Show the answer-critic result and whether regeneration ran.
+* A new emerald-badged card renders when `enrichment_triggered` is set — attribute type, variant, canonical bucket, re-index status.  
+* Show the quality-gate pass/retry verdict and the alpha delta.  
+* Show citations and the LLM-judge verdict (and auto-correction, when it fires).
 
 # **11\. Implementation plan**
 
-## **P0 — Required for the LangGraph live demo**
+## **P0 — Required for the LangGraph live demo (done)**
 
-* Fix typed retry routing and add an end-to-end retry test.  
-* Add exact judged-query preflight.  
-* Add typed attempt history and four bounded retrieval strategies.  
-* Implement metric-based selection and one evidence-driven recovery.  
-* Curate generation context by ESCI label and add one bounded answer repair.  
-* Stream the complete decision trace to the observability panel.
+* Quality-gate retry on typed state, with an integration test proving a real retry executes.  
+* Enrichment flywheel: generic detection stage, config generation, real-reindex trigger, agent tool, admin endpoint, WebSocket event and UI card — built, and proven live end-to-end for the color act (natural conversation) and the material act (admin endpoint) this session.  
+* Gap-detection fix so the enrichment tool is actually offered for the zero-document-on-first-pass case (see Section 10).  
+* Stream the complete decision trace — intent, α, retrieval, rerank, quality gate, enrichment — to the observability panel.
 
 ## **P1 — Independent Workbench feature setup**
 
@@ -251,16 +257,17 @@ The quality gate emits the typed status retry, but the router currently looks fo
 
 ## **P2 — Rehearsal and polish**
 
-* Pin primary and backup judged queries for LangGraph.  
+* Pin primary and backup queries for each LangGraph act (see Section 12).  
 * Add a deterministic application preflight that does not depend on Workbench.  
-* Optimize parallel latency and extract graph nodes into focused modules.  
+* Extract graph nodes into focused modules; confirm re-index timing stays comfortably in the ~15–20s range.  
 * Prepare a timed Workbench feature carousel and appendix screenshots.
 
 # **12\. Rehearsal and fallback plan**
 
-* Use one primary judged LangGraph query with a repeatable measured improvement.  
-* Keep one backup query for retrieval recovery and one for answer repair.  
-* Record a short backup of the LangGraph demo and capture observability screenshots.  
+* Pin the enrichment flywheel's gap terms before each rehearsal (color: "camel"→"brown"; material: "chrome"→"metal") and confirm both are genuinely absent from the taxonomy immediately beforehand — a stale prior run silently resolves the "gap" and the demo moment falls flat.  
+* Revert procedure between rehearsals: delete the `color#camel` / `material#chrome` mapping docs, run `lucille_ingest.sh --skip-judgments` once more for a clean baseline (the re-index alone clears the stale fields — see `langchain_agent/DEMO.md`).  
+* Keep one backup query for the quality-gate retry act, and one backup color/material term pair for the flywheel act.  
+* Record a short backup of the LangGraph demo and capture observability screenshots, including the enrichment card mid-reindex.  
 * Rehearse the Workbench feature tour as a separate browser sequence with no transition that implies integration.  
 * For the 30-minute version, show three Workbench highlights: pointwise evaluation, hybrid optimization, and dashboards or monitoring.  
 * For the 45-minute version, add query comparison and the optional experimental relevance-agent preview.
@@ -269,19 +276,19 @@ The quality gate emits the typed status retry, but the router currently looks fo
 
 * The audience understands that LangGraph improves results at runtime without Workbench.  
 * The audience understands that Workbench is a separate showcase of native OpenSearch relevance features.  
-* Every LangGraph demo query has an exact match in esci\_judgments.  
-* The selected attempt improves NDCG@10 or MRR over the initial strategy for the chosen query.  
-* No Irrelevant-labeled document reaches generation context.  
-* Recovery and answer-regeneration budgets are always enforced.  
-* The observability panel explains the winner, recovery, answer evaluation, and latency.  
-* No slide, diagram, transition, or demo step implies any flow between Workbench and LangGraph beyond their independent reuse of esci\_judgments.
+* **The audience leaves able to state, in their own words, the difference between adjusting a query and fixing the catalog** — the flywheel demo's whole point.  
+* The quality-gate retry demo shows a real reranker-score improvement between the first and retried pass for the chosen query.  
+* The flywheel demo shows, live: a genuine zero-result query, the agent recognizing the gap and calling a real tool, a real re-index completing, and the same question resolving correctly afterward.  
+* The quality-gate retry budget (one retry, never more) and the enrichment tool's gate (`ENABLE_ENRICHMENT_TOOL`) are always enforced.  
+* The observability panel explains intent, α, the retry verdict, and — when it fires — the enrichment card's attribute type, term, and re-index status.  
+* No slide, diagram, transition, or demo step implies any flow between Workbench and LangGraph beyond their independent reuse of `esci_judgments`.
 
 # **14\. Decisions to lock**
 
-* The primary and backup judged LangGraph queries.  
-* The NDCG@10 threshold that triggers recovery.  
-* The acceptable latency budget for one and two tournament rounds.  
-* The exact observability panels visible during the live demo.  
+* The primary and backup queries for each act: intent classification, quality-gate retry, and both enrichment-flywheel gap terms.  
+* Whether to show the material act live at all given it requires the admin API rather than chat — or narrate it verbally and show only color live if time is tight.  
+* The acceptable latency budget for the quality-gate retry (~1–2s) and each re-index (~15–20s, narrate through it).  
+* The exact observability panels visible during the live demo, including whether the enrichment card gets its own dedicated moment on screen.  
 * The Workbench features included in the 30-minute and 45-minute versions.  
 * Whether the experimental relevance agent is stable enough for a prepared preview.
 
