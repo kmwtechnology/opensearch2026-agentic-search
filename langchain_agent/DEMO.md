@@ -21,6 +21,7 @@ Open browser to **<http://localhost:5173>** and keep DevTools hidden (press `F12
 - **Intent Classification** (2 min): Show 6 intents with different queries
 - **Hybrid Search** (2 min): Demonstrate α (alpha) weighting
 - **Quality Gate Retry** (2 min): Trigger low-confidence → retry
+- **Agentic Enrichment Flywheel** (2–3 min): Agent fixes a real data gap live, twice
 - **Observable Events** (1 min): Real-time pipeline visualization
 - **Q&A** (balance of time)
 
@@ -270,6 +271,138 @@ Then immediately: `Make them waterproof` (refinement)
 
 ---
 
+## Part 4.5: The Agentic Enrichment Flywheel (2–3 min) — THE centerpiece
+
+**This is the "agents fix data quality, not just adjust queries" moment.**
+Unlike the quality gate retry (which adjusts *how* we search), this shows
+the agent noticing the *catalog itself* is missing a real color or material
+term, teaching the search system about it, and re-indexing the whole
+catalog live — genuinely, not simulated.
+
+**Setup requirement**: `ENABLE_ENRICHMENT_TOOL=true` must be set in the
+environment before starting the backend (default is `false`). Restart
+`make dev-api` after setting it if the backend was already running.
+
+**Mechanism** (for your own understanding, not to narrate verbatim):
+Both color and material are detected live from product text
+(`chunk_text`) by one generic Lucille stage, with the variant→canonical
+taxonomy stored in OpenSearch — not a static file. When a query's
+`attribute_filter` intent extracts a color/material term that isn't in
+that taxonomy yet, the exact-match filter against it returns nothing;
+after the quality gate retries and still finds nothing, the agent gets a
+chance to call `trigger_enrichment(attribute_type, variant, canonical)` —
+a real tool, not a canned response. The tool writes the new mapping to
+OpenSearch and triggers an actual full Lucille reindex of the whole
+9,618-product catalog (~15–20s, measured — not a mock, not a scoped patch).
+
+**Both taxonomies are genuinely gap-tested and rehearsed** (this session,
+2026-08-31) against the real dataset — the exact wording below reflects
+real product titles and real timing, not hypothetical numbers.
+
+### Act 1 — Color: "camel"
+
+**Send**: `camel coat`
+
+**Expected**: `attribute_filter` intent extracts `color: "camel"`. "camel"
+isn't in the color taxonomy (102 variants, none of them "camel") — the
+exact filter on `product_color_primary="camel"` matches nothing, quality
+gate retries, still nothing (max_relevance < 0.10). The agent gets offered
+`trigger_enrichment` and — if it recognizes "camel" as a real color — calls
+it with `attribute_type="color", variant="camel", canonical="brown"`.
+
+**Observe**:
+- Observability panel: new emerald **Enrichment Triggered** card
+  (`attribute_type: color`, `variant: "camel"`, `canonical: brown`)
+- Agent's response references the fix (e.g. "I've added 'camel' as a
+  brown color and updated the catalog...")
+- **This takes ~15–20s** (measured: 19.98s and 16.48s across two real runs
+  this session) — the agent's response won't appear until the reindex
+  completes. Narrate through the wait; don't leave dead air.
+
+**Then re-send**: `camel coat`
+
+**Expected**: Now resolves via the exact filter. Real hero product:
+**"Calvin Klein Women's Classic Cashmere Wool Blend Coat, CAMEL, 6"** should
+appear, correctly tagged `product_color_primary: brown`.
+
+### Act 2 — Material: "chrome"
+
+**Send**: `chrome bar table` (or `chrome vanity mirror`)
+
+**Expected**: Same shape, `attribute_type="material"`,
+`variant="chrome"`, `canonical="metal"`. Material taxonomy has 34 variants,
+none of them "chrome" (note: "chrome" *is* already a valid color variant,
+mapping to gray — that's a separate, correctly-functioning taxonomy; this
+gap is specifically about *material*).
+
+**Observe**: Same as Act 1. Real hero product: **"Global Furniture Bar
+Table, Clear/Black/Chrome"** (measured timing: 19.66s and included in the
+15.47s products-ingest step of the final rehearsal run this session).
+
+**Then re-send the same query** — the bar table (or the Decobros vanity
+mirror, also a valid hero) now appears, correctly tagged
+`product_material_primary: metal`.
+
+### Narration
+
+> "Notice this isn't the agent adjusting *how* it searches — like the
+> quality gate retry we just saw. The catalog itself was missing this
+> color. The agent recognized a real gap, taught the system about it, and
+> re-indexed the whole 9,618-product catalog live. That took about 15 to 20
+> seconds — genuinely reprocessing every product, not a shortcut. Watch —
+> if I ask the same question again, it works now."
+
+### Verified this session (2026-08-31), not hypothetical
+
+- Both taxonomies (102 color variants, 34 material variants) were rebuilt
+  from scratch via discovery against real product text — not migrated from
+  a hand-authored file.
+- Both gap terms ("camel", "chrome") were confirmed absent from their
+  respective taxonomies immediately before writing this section, and the
+  hero products confirmed genuinely untagged (`product_color_primary`/
+  `product_material_primary` both null) on the current index.
+- The full mechanism (classify → write mapping → ensure index fields →
+  regenerate Lucille config → real reindex subprocess → verify field
+  population → verify query improvement) was run for real, for both acts,
+  this session — not mocked. Both gap terms were reverted afterward
+  (mapping deleted, affected documents' fields cleared, one more full
+  reindex run) specifically so they'd be fresh for the actual demo.
+- **Not yet verified this session**: the full conversational path through
+  the live chat UI — does the LLM reliably recognize "camel"/"chrome" as
+  color/material terms and choose to call the tool with the right
+  arguments, when actually prompted via a real WebSocket conversation
+  turn? The tool-calling *loop* itself is unit-tested (mocked LLM), and the
+  *mechanism* the tool invokes is fully validated end-to-end — what hasn't
+  been exercised is the live LLM's own judgment in the actual chat flow.
+  **Do at least one live rehearsal through the real UI before presenting**,
+  and have a fallback ready (see Troubleshooting below) in case the model's
+  behavior differs from the mocked tests.
+
+### Troubleshooting this part specifically
+
+- **Tool never gets called / agent just gives the canned "no results"
+  response**: Confirm `ENABLE_ENRICHMENT_TOOL=true` is actually set for the
+  running backend process (`echo $ENABLE_ENRICHMENT_TOOL` in the shell that
+  started `make dev-api`, or check `/api/admin/enrich` returns something
+  other than 403). If it's set correctly but the LLM still doesn't call the
+  tool, the query may not be scoring low enough to trigger the gap signal —
+  confirm intent classified as `attribute_filter` in the observability
+  panel, and that quality gate shows a retry with still-low `max_score`.
+- **Reindex takes noticeably longer than ~20s live**: Docker image layer
+  cache may be cold (first run after a restart rebuilds a Maven layer,
+  ~1–4s extra) — acceptable, but if it's dramatically slower, check
+  `docker ps` / OpenSearch health before going live.
+- **Gap terms already resolved (from a prior rehearsal)**: Re-run the
+  revert procedure — delete the `color#camel` / `material#chrome` mapping
+  docs from `agentic_hybrid_search_attribute_mappings`, clear
+  `product_color`/`product_color_primary` (or the material equivalents)
+  from the affected documents via `update_by_query`, then run
+  `bash scripts/lucille_ingest.sh --skip-judgments` once more. See this
+  session's transcript or `enrichment_service.py`'s test file for the exact
+  Painless scripts used.
+
+---
+
 ## Part 5: Observable Events (1 min)
 
 **Narration**:
@@ -322,6 +455,18 @@ A: Typical flow: Intent (10–500ms) → Query Eval (10–500ms) → Retrieval (
 
 A: We use Amazon ESCI dataset (~1.2M US products). Demo often uses a 10K sample for faster setup, but can scale to full million.
 
+**Q: Is the reindex you just showed actually processing the whole catalog, or just the affected products?**
+
+A: The whole catalog — a real, full Lucille pipeline run (~15–20s for 9,618 products), not a scoped patch. We measured that a full reindex is fast enough to run live, so there's no need for a narrower, faster-but-less-authentic mechanism. The Lucille pipeline config itself is generated fresh before every run from whatever attribute types are currently registered in OpenSearch — a brand-new attribute type (not just color/material) would need zero hand-edited config to be picked up.
+
+**Q: What stops the agent from writing garbage into the taxonomy?**
+
+A: A few guardrails: the canonical bucket the agent chooses is validated against a fixed, bounded list per attribute type (it can't invent a new category on the fly); the mapping write is idempotent (won't duplicate or corrupt an existing entry); and the tool is gated behind an explicit `ENABLE_ENRICHMENT_TOOL` flag, off by default.
+
+**Q: Does this work for attributes beyond color and material?**
+
+A: Architecturally, yes — the detection stage is one generic, parameterized Lucille class, not a dedicated class per attribute type. Adding a new attribute type is a matter of registering it in the OpenSearch-backed mapping store; the next reindex picks it up automatically. This demo only wires up color and material end-to-end, though.
+
 **Q: Does this work for non-e-commerce domains?**
 
 A: Absolutely. Replace ESCI products with your own documents (news articles, internal wiki, research papers). The RAG pipeline is domain-agnostic.
@@ -341,7 +486,8 @@ A: The current reranker uses LLM-based scoring (no fine-tuning needed). But you 
 > 1. **Intent routing** — tailors search strategy to query type
 > 2. **Dynamic alpha** — adapts semantic/lexical balance
 > 3. **Quality gates** — automatically retries if confidence is low
-> 4. **Observable events** — gives visibility into every decision
+> 4. **Agentic enrichment** — the agent fixes real catalog gaps live, not just query-side workarounds
+> 5. **Observable events** — gives visibility into every decision
 >
 > The architecture is fully documented in the GitHub repo: comprehensive docstrings, ARCHITECTURE.md for deep-dives, and CONTRIBUTING.md for extending it.
 >
@@ -397,6 +543,7 @@ make dev
 ### Quick Demo (5–8 min)
 
 - Intent: search + comparison + quality gate retry
+- **Agentic enrichment flywheel — Act 1 only (color)**, if time allows
 - Focus on hybrid search & quality gate
 
 ### Full Demo (15–20 min)
@@ -404,6 +551,7 @@ make dev
 - All 6 intents
 - Hybrid search
 - Quality gate retry
+- **Agentic enrichment flywheel — both acts**
 
 ### Deep-Dive Demo (30+ min)
 
