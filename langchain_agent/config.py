@@ -189,7 +189,6 @@ __all__ = [
     "CHECKPOINT_COMPACTION_DAYS",
     # Agentic Enrichment Flywheel
     "ENABLE_ENRICHMENT_TOOL",
-    "STRICT_MATERIAL_FILTER_DEMO",
 ]
 
 # ============================================================================
@@ -559,17 +558,3 @@ CHECKPOINT_COMPACTION_DAYS = 7
 # OpenSearch-backed attribute mapping store, so it's kept opt-in outside the
 # conference demo environment.
 ENABLE_ENRICHMENT_TOOL = os.getenv("ENABLE_ENRICHMENT_TOOL", "false").lower() == "true"
-
-# Off by default — real users typing "waterproof jacket" rely on material's
-# soft multi_match fallback (see _extract_attributes in main.py) not
-# hard-excluding legitimate non-material feature words. When on, an
-# unresolved material term instead uses a hard exact-match filter, the same
-# pattern color already uses — this is what lets the enrichment flywheel's
-# material act trigger live through actual chat (instead of only via
-# POST /api/admin/enrich) for the conference demo, with the same
-# observability-panel visibility as the color act. Never enable outside the
-# demo environment: it will hard-exclude real material_or_feature queries
-# for any word the taxonomy hasn't seen.
-STRICT_MATERIAL_FILTER_DEMO = (
-    os.getenv("STRICT_MATERIAL_FILTER_DEMO", "false").lower() == "true"
-)

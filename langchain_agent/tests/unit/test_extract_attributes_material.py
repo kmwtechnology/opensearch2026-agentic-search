@@ -56,7 +56,6 @@ class TestMaterialClassification:
 
         assert filters == [{"match": {"product_material_primary": {"query": "leather"}}}]
 
-    @patch("config.STRICT_MATERIAL_FILTER_DEMO", False)
     @patch("attribute_mapping_store.AttributeMappingStore")
     def test_non_material_feature_falls_back_to_lexical(self, mock_store_cls) -> None:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
@@ -111,55 +110,3 @@ class TestMaterialClassification:
         assert {"match": {"product_color_primary": {"query": "black"}}} in filters
         assert {"match": {"product_material_primary": {"query": "leather"}}} in filters
         assert len(filters) == 3
-
-
-@pytest.mark.unit
-@pytest.mark.phase1
-class TestStrictMaterialFilterDemo:
-    """STRICT_MATERIAL_FILTER_DEMO (off by default) swaps the unresolved-term
-    fallback from a soft multi_match to a hard exact-match filter, mirroring
-    color's unresolved fallback -- this is what lets the enrichment
-    flywheel's material act trigger live through chat for the conference
-    demo. Must never change behavior when the flag is off (the default in
-    every environment except the demo)."""
-
-    @patch("config.STRICT_MATERIAL_FILTER_DEMO", False)
-    @patch("attribute_mapping_store.AttributeMappingStore")
-    def test_off_by_default_unresolved_term_still_uses_multi_match(self, mock_store_cls) -> None:
-        mock_store_cls.return_value.get_lookup_table.return_value = {}
-        agent = _agent_returning_attributes({"material_or_feature": "chrome"})
-
-        filters = agent._extract_attributes("chrome bar table")
-
-        assert filters == [
-            {
-                "multi_match": {
-                    "query": "chrome",
-                    "fields": ["title", "chunk_text"],
-                    "type": "best_fields",
-                }
-            }
-        ]
-
-    @patch("config.STRICT_MATERIAL_FILTER_DEMO", True)
-    @patch("attribute_mapping_store.AttributeMappingStore")
-    def test_enabled_unresolved_term_uses_hard_exact_match(self, mock_store_cls) -> None:
-        mock_store_cls.return_value.get_lookup_table.return_value = {}
-        agent = _agent_returning_attributes({"material_or_feature": "chrome"})
-
-        filters = agent._extract_attributes("chrome bar table")
-
-        assert filters == [{"match": {"product_material_primary": {"query": "chrome"}}}]
-
-    @patch("config.STRICT_MATERIAL_FILTER_DEMO", True)
-    @patch("attribute_mapping_store.AttributeMappingStore")
-    def test_enabled_resolved_term_is_unaffected(self, mock_store_cls) -> None:
-        """The flag only changes the *unresolved* fallback -- a term that
-        already classifies against the taxonomy keeps the same exact-match
-        filter it always used, flag or no flag."""
-        mock_store_cls.return_value.get_lookup_table.return_value = {}
-        agent = _agent_returning_attributes({"material_or_feature": "leather"})
-
-        filters = agent._extract_attributes("leather boots")
-
-        assert filters == [{"match": {"product_material_primary": {"query": "leather"}}}]

@@ -1867,22 +1867,9 @@ Return ONLY a JSON object (use null for missing attributes):
             # "noise canceling") — only the former has a normalized field to
             # filter on. Classify against the material taxonomy first; a
             # resolved term gets an exact filter against
-            # product_material_primary (like brand/color above).
-            #
-            # An unresolved term (a feature, or a material outside the
-            # taxonomy) normally falls back to a soft lexical multi_match —
-            # deliberately, so a real query like "waterproof jacket" doesn't
-            # get hard-excluded just because "waterproof" isn't a material.
-            # STRICT_MATERIAL_FILTER_DEMO (off by default) swaps that for a
-            # hard exact-match filter instead, mirroring color's unresolved
-            # fallback — this is what lets the enrichment flywheel's material
-            # act trigger live through chat for the conference demo (it also
-            # excludes it from the retriever's filter-relaxation safety net,
-            # which only relaxes multi_match filters). Never enable outside
-            # the demo: it hard-excludes real feature-word queries the
-            # taxonomy doesn't recognize.
-            from config import STRICT_MATERIAL_FILTER_DEMO
-
+            # product_material_primary (like brand/color above), an
+            # unresolved one (a feature, or a material outside the taxonomy)
+            # falls back to the prior lexical multi_match unchanged.
             material = _coerce(attributes.get("material_or_feature"))
             if material:
                 material_canonical = self._classify_attribute("material", material)
@@ -1890,8 +1877,6 @@ Return ONLY a JSON object (use null for missing attributes):
                     filters.append(
                         {"match": {"product_material_primary": {"query": material_canonical}}}
                     )
-                elif STRICT_MATERIAL_FILTER_DEMO:
-                    filters.append({"match": {"product_material_primary": {"query": material}}})
                 else:
                     filters.append(
                         {
