@@ -436,16 +436,25 @@ Clear/Black/Chrome"** appears as the top citation, correctly tagged
   cited, correctly tagged hero product. This required a bug fix — see
   below.
 - **Act 2 (material) fully proven end-to-end through real live chat**,
-  same as Act 1 — this was NOT possible earlier the same session (confirmed
-  structurally impossible: even a zero-corpus-occurrence material term
-  still got relaxed to 40 results) and had to go through the admin
-  endpoint instead. `STRICT_MATERIAL_FILTER_DEMO` (see Setup requirement)
-  fixed this: sent "show me a chrome material humidifier", the LLM
-  recognized the gap and called `trigger_enrichment(attribute_type=
-  "material", variant="chrome", canonical="metal")` on its own judgment, a
-  real 24.4s reindex ran, and a follow-up query returned the correctly
-  cited, correctly tagged hero product — same observability-panel banner
-  as Act 1.
+  same trigger mechanism and panel visibility as Act 1 — this was NOT
+  possible earlier the same session (confirmed structurally impossible:
+  even a zero-corpus-occurrence material term still got relaxed to 40
+  results) and had to go through the admin endpoint instead.
+  `STRICT_MATERIAL_FILTER_DEMO` (see Setup requirement) fixed this: sent
+  "show me a chrome material humidifier", the LLM recognized the gap and
+  called `trigger_enrichment(attribute_type="material", variant="chrome",
+  canonical="metal")` on its own judgment, a real 24.4s reindex ran. **Unlike
+  Act 1, verification could not use the same query**: "chrome material
+  humidifier" was deliberately picked because no humidifier in the corpus
+  has any chrome-related text, which is exactly why it produces the 0-doc
+  trigger signal — but that same property means re-asking it after
+  enrichment still finds no chrome humidifier (there isn't one to find).
+  Verification instead used a different query in a fresh conversation,
+  "show me a bar table made of chrome material" — an unrelated category
+  chosen specifically because it *does* have real chrome products in the
+  corpus — which correctly resolved to the Global Furniture Bar Table,
+  proving the new "chrome"→"metal" mapping works generally, not proving
+  anything about humidifiers specifically.
 - **Two bugs found and fixed this session**:
   1. The agent's enrichment-gap check originally only fired when
      `quality_gate_retried and max_relevance < threshold`. But
