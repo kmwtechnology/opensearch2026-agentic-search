@@ -374,12 +374,19 @@ agent's response is warm and specific about what changed (e.g. "You're
 right — that was tagged yellow, which was wrong. I've corrected it to
 brown and re-indexed the catalog.").
 
-**Then prove it stuck** — ask (new message, or check the panel
-directly): `what color is that boot tagged as now?` — or simply
-re-open the citation/DSL detail for the same product. **The field
-itself changed**: `product_color_primary` for the affected boot goes
-from `yellow` to `brown`, permanently, for every shopper from now on —
-not just for this conversation.
+**Then prove it stuck**: click **New Chat** and send the identical
+first-turn query, `show me tan boots`, in a fresh conversation. **Do
+this in a new conversation, not as a same-thread follow-up** — confirmed
+live this session that a same-thread follow-up gets the query rewriter
+to expand it (e.g. into "show me tan boots that are not yellow"), which
+routes through a different, lexical `multi_match` code path instead of
+the same exact-filter `attribute_filter` path turn 1 used — not a clean
+comparison. In a fresh conversation, the DSL viewer shows the identical
+query shape as turn 1, but `product_color_primary` now reads `"brown"`
+instead of `"yellow"` — open it side-by-side with a screenshot of turn
+1's DSL for a direct, undeniable before/after. **The field itself
+changed**: permanently, for every shopper from now on — not just for
+this conversation.
 
 **A note on ranking**: don't over-promise a dramatic before/after
 reshuffling of the result *list* — confirmed this session that because
