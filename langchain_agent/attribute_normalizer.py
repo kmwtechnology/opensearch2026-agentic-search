@@ -5,13 +5,23 @@ Provides deterministic, rules-based normalization for product attributes:
 - Colors: normalize to 16 canonical forms with primary/secondary extraction
 - Brands: normalize case and consolidate generic placeholders
 
-Used at index time (Lucille) and query time (LangGraph filters).
+The color lookup is sourced from the OpenSearch-backed attribute mapping
+store (agentic_hybrid_search_attribute_mappings) so it stays in sync with
+whatever the live agent enrichment flywheel has learned. Falls back to the
+bundled color_mappings.json if OpenSearch is unavailable or the index/data
+doesn't exist yet (e.g. unit tests, a fresh environment before migration).
+
+Used at index time (Lucille, mirrored in the Java stage) and available for
+query-time normalization (LangGraph filters).
 """
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class AttributeNormalizer:
@@ -28,28 +38,66 @@ class AttributeNormalizer:
         "not specified",
     }
 
-    def __init__(self, color_mappings_path: Optional[str] = None):
+    def __init__(
+        self,
+        color_mappings_path: Optional[str] = None,
+        use_opensearch: bool = True,
+    ):
         """
         Initialize normalizer.
 
         Args:
-            color_mappings_path: path to color_mappings.json (auto-detected if None)
+            color_mappings_path: path to the fallback color_mappings.json
+                (auto-detected if None)
+            use_opensearch: try the OpenSearch-backed mapping store first.
+                Set False to force the bundled-JSON path (e.g. in tests that
+                shouldn't depend on a live OpenSearch instance).
         """
         if color_mappings_path is None:
             # Auto-detect path relative to this file
             default_path = Path(__file__).parent / "lucille-esci" / "conf" / "color_mappings.json"
             color_mappings_path = str(default_path)
 
+        self.color_lookup: Dict[str, str] = {}
+
+        if use_opensearch:
+            self.color_lookup = self._load_from_opensearch()
+
+        if not self.color_lookup:
+            self.color_lookup = self._load_from_file(color_mappings_path)
+
+    @staticmethod
+    def _load_from_opensearch() -> Dict[str, str]:
+        """Attempt to load the color lookup from the OS-backed mapping store."""
+        try:
+            from attribute_mapping_store import AttributeMappingStore
+
+            store = AttributeMappingStore()
+            lookup = store.get_lookup_table("color")
+            if lookup:
+                logger.info("Loaded %d color mappings from OpenSearch", len(lookup))
+            return lookup
+        except Exception as exc:  # noqa: BLE001 - any failure falls back to JSON
+            logger.warning("Failed to load color mappings from OpenSearch: %s", exc)
+            return {}
+
+    @staticmethod
+    def _load_from_file(color_mappings_path: str) -> Dict[str, str]:
+        """Fallback: build the color lookup from the bundled JSON file."""
         with open(color_mappings_path) as f:
             mappings = json.load(f)
 
-        self.base_colors: Dict[str, list] = mappings["base_colors"]
+        base_colors: Dict[str, list] = mappings["base_colors"]
 
-        # Build reverse lookup: variant -> canonical
-        self.color_lookup: Dict[str, str] = {}
-        for canonical, variants in self.base_colors.items():
+        lookup: Dict[str, str] = {}
+        for canonical, variants in base_colors.items():
             for variant in variants:
-                self.color_lookup[variant.lower()] = canonical
+                lookup[variant.lower()] = canonical
+
+        logger.info(
+            "Loaded %d color mappings from bundled file %s", len(lookup), color_mappings_path
+        )
+        return lookup
 
     def normalize_color(self, color_str: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
         """

@@ -51,6 +51,7 @@ from pydantic import BaseModel
 
 # Import extracted modules
 from agent_state import CustomAgentState
+from attribute_discovery import MATERIAL_CANONICALS, single_term_classify
 from doc_replacer import DocumentReplacer
 from exceptions import LLMError, SearchTimeoutError
 from judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
@@ -1653,6 +1654,31 @@ Query: "{query}" """
                 return True
         return False
 
+    @staticmethod
+    def _classify_material(term: str) -> Optional[str]:
+        """
+        Classify an LLM-extracted material_or_feature term against the
+        product_material taxonomy (OS-backed, grown by the live enrichment
+        flywheel). Returns None (not just an empty match) for non-material
+        features like "waterproof" so the caller falls back to the prior
+        lexical multi_match instead of an always-empty exact filter.
+
+        No LLM fallback here — this is the query-time read path, called on
+        every attribute_filter query; the LLM-assisted classification (for a
+        term that genuinely can't be dictionary-matched) belongs to the
+        live enrichment tool, triggered deliberately on a detected gap, not
+        on every lookup.
+        """
+        try:
+            from attribute_mapping_store import AttributeMappingStore
+
+            lookup = AttributeMappingStore().get_lookup_table("material")
+        except Exception as exc:  # noqa: BLE001 - OS unreachable falls back to lexical
+            logger.debug(f"Material taxonomy lookup unavailable, using lexical fallback: {exc}")
+            lookup = {}
+
+        return single_term_classify(term, MATERIAL_CANONICALS, existing_lookup=lookup)
+
     def _extract_attributes(self, query: str) -> list:
         """
         Extract product attributes from attribute_filter queries.
@@ -1726,18 +1752,31 @@ Return ONLY a JSON object (use null for missing attributes):
             if color:
                 filters.append({"match": {"product_color_primary": {"query": color}}})
 
-            # material_or_feature → multi_match against title + content
+            # material_or_feature covers both actual materials ("leather",
+            # "vegan leather") and non-material features ("waterproof",
+            # "noise canceling") — only the former has a normalized field to
+            # filter on. Classify against the material taxonomy first; a
+            # resolved term gets an exact filter against
+            # product_material_primary (like brand/color above), an
+            # unresolved one (a feature, or a material outside the taxonomy)
+            # falls back to the prior lexical multi_match unchanged.
             material = _coerce(attributes.get("material_or_feature"))
             if material:
-                filters.append(
-                    {
-                        "multi_match": {
-                            "query": material,
-                            "fields": ["title", "chunk_text"],
-                            "type": "best_fields",
+                material_canonical = self._classify_material(material)
+                if material_canonical:
+                    filters.append(
+                        {"match": {"product_material_primary": {"query": material_canonical}}}
+                    )
+                else:
+                    filters.append(
+                        {
+                            "multi_match": {
+                                "query": material,
+                                "fields": ["title", "chunk_text"],
+                                "type": "best_fields",
+                            }
                         }
-                    }
-                )
+                    )
 
             # size → multi_match against title + content
             size = _coerce(attributes.get("size"))

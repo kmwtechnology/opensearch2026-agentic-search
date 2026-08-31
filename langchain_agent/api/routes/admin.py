@@ -1,5 +1,6 @@
 """
-Admin routes for operational tasks: health checks and index diagnostics.
+Admin routes for operational tasks: health checks, index diagnostics, and
+the live material enrichment flywheel.
 
 Re-indexing is handled externally by ``lucille_ingest.sh`` (local dev) or the
 ``reindex.yml`` GitHub Actions workflow (Lucille ETL on the runner). There is no
@@ -18,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from api.middleware.origin_auth import verify_same_origin
 from api.middleware.session_auth import verify_admin_token, verify_session
+from api.schemas.admin import EnrichmentRequest, EnrichmentResponse
 
 logger = logging.getLogger(__name__)
 
@@ -151,3 +153,48 @@ async def admin_health(request: Request) -> dict:
                 "error": str(e),
             },
         }
+
+
+@router.post("/enrich", response_model=EnrichmentResponse)
+async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentResponse:
+    """
+    Enrich the product_material taxonomy with a new variant term, applying
+    it to matching documents already in the index. This is the same
+    discover -> write -> scoped update_by_query mechanism the live agent
+    enrichment tool uses (enrichment_service.enrich_material), exposed here
+    so it can be exercised and verified independently of the LLM loop.
+
+    **Authentication:** Requires session (user login) OR X-Admin-Token header (automation).
+
+    Gated by ``ENABLE_ENRICHMENT_TOOL`` (default off) — returns 403 when disabled.
+
+    Classification here is dictionary-only (no LLM fallback) — a term that
+    doesn't match an existing variant in the product_material taxonomy
+    returns ``success: false`` with a reason. The live agent tool layers an
+    LLM classification step on top of this same service for terms that
+    can't be dictionary-matched.
+    """
+    await verify_same_origin(request)
+    try:
+        await verify_session(request)
+    except HTTPException:
+        await verify_admin_token(request)
+
+    from config import ENABLE_ENRICHMENT_TOOL
+
+    if not ENABLE_ENRICHMENT_TOOL:
+        raise HTTPException(
+            status_code=403, detail="Enrichment is disabled (ENABLE_ENRICHMENT_TOOL=false)"
+        )
+
+    from enrichment_service import enrich_material
+
+    result = enrich_material(body.variant)
+
+    return EnrichmentResponse(
+        success=result.success,
+        variant=result.variant,
+        canonical=result.canonical,
+        docs_updated=result.docs_updated,
+        reason=result.reason,
+    )

@@ -7,8 +7,10 @@ from attribute_normalizer import AttributeNormalizer
 
 @pytest.fixture
 def normalizer():
-    """Load normalizer with generated mappings."""
-    return AttributeNormalizer()
+    """Load normalizer from the bundled JSON fallback — unit tests must not
+    depend on a live OpenSearch instance (see tests/integration/ for the
+    OpenSearch-backed path)."""
+    return AttributeNormalizer(use_opensearch=False)
 
 
 class TestColorNormalization:

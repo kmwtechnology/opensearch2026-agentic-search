@@ -3,8 +3,16 @@ package com.kmwllc.esci;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.sun.net.httpserver.HttpServer;
 import com.typesafe.config.Config;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -251,5 +259,129 @@ class AttributeNormalizerStageTest {
     assertEquals("generic", stage.normalizeBrand("multiple"));
     assertEquals("generic", stage.normalizeBrand("not specified"));
     assertEquals("generic", stage.normalizeBrand("unbranded"));
+  }
+
+  // ── start() sourcing tests: OpenSearch-backed lookup + fallback ─────────
+
+  /**
+   * Exercises start() end-to-end against a real HttpClient call, using an
+   * embedded JDK HttpServer to stand in for OpenSearch's _search endpoint —
+   * verifies the actual HTTP + JSON parsing path, not just the pure
+   * normalization logic covered above.
+   */
+  static class StartBehaviorTests {
+    private HttpServer fakeOpenSearch;
+    private int port;
+
+    void startFakeOpenSearch(int statusCode, String responseBody) throws IOException {
+      fakeOpenSearch = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+      port = fakeOpenSearch.getAddress().getPort();
+      fakeOpenSearch.createContext(
+          "/agentic_hybrid_search_attribute_mappings/_search",
+          exchange -> {
+            byte[] bytes = responseBody.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(statusCode, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+              os.write(bytes);
+            }
+          });
+      fakeOpenSearch.start();
+    }
+
+    void stopFakeOpenSearch() {
+      if (fakeOpenSearch != null) {
+        fakeOpenSearch.stop(0);
+      }
+    }
+  }
+
+  @Test
+  void testStartLoadsColorLookupFromOpenSearch() throws Exception {
+    StartBehaviorTests helper = new StartBehaviorTests();
+    String osSearchResponse =
+        "{\"hits\":{\"hits\":["
+            + "{\"_source\":{\"attribute_type\":\"color\",\"variant\":\"jet black\",\"canonical\":\"black\"}},"
+            + "{\"_source\":{\"attribute_type\":\"color\",\"variant\":\"navy\",\"canonical\":\"blue\"}}"
+            + "]}}";
+    helper.startFakeOpenSearch(200, osSearchResponse);
+    try {
+      Config mockConfig = mock(Config.class);
+      when(mockConfig.hasPath("openSearchUrl")).thenReturn(true);
+      when(mockConfig.getString("openSearchUrl")).thenReturn("http://localhost:" + helper.port);
+      when(mockConfig.hasPath("colorMappingsPath")).thenReturn(false);
+
+      AttributeNormalizerStage s = new AttributeNormalizerStage(mockConfig);
+      s.start();
+
+      assertEquals("black", s.colorLookup.get("jet black"));
+      assertEquals("blue", s.colorLookup.get("navy"));
+      assertEquals(2, s.colorLookup.size());
+    } finally {
+      helper.stopFakeOpenSearch();
+    }
+  }
+
+  @Test
+  void testStartFallsBackToFileWhenOpenSearchUnreachable(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws Exception {
+    Path mappingsFile = tempDir.resolve("color_mappings.json");
+    Files.writeString(
+        mappingsFile,
+        "{\"base_colors\":{\"black\":[\"black\",\"jet\"],\"blue\":[\"blue\",\"navy\"]}}");
+
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.hasPath("openSearchUrl")).thenReturn(true);
+    // Port 1 is a reserved/unroutable port — connection will fail fast.
+    when(mockConfig.getString("openSearchUrl")).thenReturn("http://localhost:1");
+    when(mockConfig.hasPath("colorMappingsPath")).thenReturn(true);
+    when(mockConfig.getString("colorMappingsPath")).thenReturn(mappingsFile.toString());
+
+    AttributeNormalizerStage s = new AttributeNormalizerStage(mockConfig);
+    s.start();
+
+    assertEquals("black", s.colorLookup.get("jet"));
+    assertEquals("blue", s.colorLookup.get("navy"));
+  }
+
+  @Test
+  void testStartFallsBackToFileWhenOpenSearchReturnsError(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws Exception {
+    StartBehaviorTests helper = new StartBehaviorTests();
+    helper.startFakeOpenSearch(404, "{\"error\":\"index_not_found_exception\"}");
+
+    Path mappingsFile = tempDir.resolve("color_mappings.json");
+    Files.writeString(mappingsFile, "{\"base_colors\":{\"red\":[\"red\",\"crimson\"]}}");
+
+    try {
+      Config mockConfig = mock(Config.class);
+      when(mockConfig.hasPath("openSearchUrl")).thenReturn(true);
+      when(mockConfig.getString("openSearchUrl")).thenReturn("http://localhost:" + helper.port);
+      when(mockConfig.hasPath("colorMappingsPath")).thenReturn(true);
+      when(mockConfig.getString("colorMappingsPath")).thenReturn(mappingsFile.toString());
+
+      AttributeNormalizerStage s = new AttributeNormalizerStage(mockConfig);
+      s.start();
+
+      assertEquals("red", s.colorLookup.get("crimson"));
+    } finally {
+      helper.stopFakeOpenSearch();
+    }
+  }
+
+  @Test
+  void testStartUsesFileWhenOpenSearchUrlNotConfigured(@org.junit.jupiter.api.io.TempDir Path tempDir)
+      throws Exception {
+    Path mappingsFile = tempDir.resolve("color_mappings.json");
+    Files.writeString(mappingsFile, "{\"base_colors\":{\"green\":[\"green\",\"lime\"]}}");
+
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.hasPath("openSearchUrl")).thenReturn(false);
+    when(mockConfig.hasPath("colorMappingsPath")).thenReturn(true);
+    when(mockConfig.getString("colorMappingsPath")).thenReturn(mappingsFile.toString());
+
+    AttributeNormalizerStage s = new AttributeNormalizerStage(mockConfig);
+    s.start();
+
+    assertEquals("green", s.colorLookup.get("lime"));
   }
 }

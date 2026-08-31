@@ -48,6 +48,15 @@ def test_app() -> FastAPI:
             await verify_admin_token(request)
         return {"status": "healthy"}
 
+    @app.post("/api/admin/enrich")
+    async def admin_enrich(request: Request):
+        await verify_same_origin(request)
+        try:
+            await verify_session(request)
+        except HTTPException:
+            await verify_admin_token(request)
+        return {"success": True}
+
     return app
 
 
@@ -149,3 +158,55 @@ def test_admin_routes_enforce_origin_check(client: TestClient, endpoint: str, mo
     assert (
         response.status_code == 403
     ), f"{endpoint} should reject disallowed Origin even with valid token, got {response.status_code}"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/enrich — same contract, different HTTP method
+# ---------------------------------------------------------------------------
+
+
+def test_admin_enrich_rejects_unauthenticated_access(client: TestClient) -> None:
+    # The module-scoped client may carry a session cookie set by an earlier
+    # test (e.g. test_admin_routes_accept_valid_session) — clear it so this
+    # test genuinely exercises the unauthenticated path.
+    client.cookies.clear()
+    response = client.post("/api/admin/enrich", headers={"Host": "localhost:8000"})
+    assert response.status_code in (401, 403), (
+        f"/api/admin/enrich should reject unauthenticated access (no session, no token), "
+        f"got {response.status_code}"
+    )
+
+
+def test_admin_enrich_accepts_valid_session(client: TestClient) -> None:
+    with client:
+        login_resp = client.post("/test/login", headers={"Host": "localhost:8000"})
+        assert login_resp.status_code == 200
+
+        response = client.post("/api/admin/enrich", headers={"Host": "localhost:8000"})
+        assert response.status_code == 200
+
+
+def test_admin_enrich_accepts_admin_token_when_session_missing(
+    client: TestClient, monkeypatch
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "test-admin-token-12345")
+
+    response = client.post(
+        "/api/admin/enrich",
+        headers={"Host": "localhost:8000", "X-Admin-Token": "test-admin-token-12345"},
+    )
+    assert response.status_code == 200
+
+
+def test_admin_enrich_enforces_origin_check(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "test-admin-token-12345")
+
+    response = client.post(
+        "/api/admin/enrich",
+        headers={
+            "Host": "evil.example.com",
+            "Origin": "https://evil.example.com",
+            "X-Admin-Token": "test-admin-token-12345",
+        },
+    )
+    assert response.status_code == 403
