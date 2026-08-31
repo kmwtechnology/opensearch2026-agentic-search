@@ -341,11 +341,20 @@ Leather Boot) scores **~0.56** against a 0.45 threshold for
 **confidently wrong**, not empty-handed. Nothing about this response
 looks broken.
 
-**Observe / narrate**: Open the observability panel's citation/DSL
-detail for the top result and point out the mismatch directly — the
-product's own title says "Tan", but the indexed field the filter
-actually matched against is `product_color_primary: yellow`. This is
-the moment to ask the audience: "does this look right to you?"
+**Observe / narrate**: The agent's own response now leads with the
+mismatch — no DSL panel click required. It opens with a note like "while
+all of these products are listed as 'Tan,' they are currently indexed in
+the 'yellow' color category. This appears to be a data-tagging issue,"
+and every product line reads "Listed as Tan (indexed as yellow)." This
+comes from `_build_grounded_context` (`main.py`) including both the raw
+`product_color` and the derived `product_color_primary` as separate
+FACTS lines, plus a grounding rule instructing the agent to flag a
+mismatch between them when the indexed category isn't a plausible family
+for the listed color (see `ARCHITECTURE.md`). The observability panel's
+citation/DSL detail (`product_color_primary: yellow`) is still there as
+a secondary, technical backup if you want to show the raw filter too —
+but the chat text alone is now the primary reveal. This is the moment to
+ask the audience: "does this look right to you?"
 
 **Then send** (same conversation, as a follow-up): `that's not tan,
 that's tagged yellow which is wrong` — this exact phrasing is the one
@@ -362,11 +371,21 @@ string for the live demo rather than an ad-libbed paraphrase.
 **Expected**: Classifies as `refinement`. The correction-detection
 branch fires, offers `trigger_enrichment` to the LLM with the recent
 conversation as context. The LLM calls it with
-`attribute_type="color", variant="tan", canonical="brown"`. Because
-`tan` is already mapped (to `yellow`), `enrich_attribute` recognizes
-this as a **correction**, not a fresh addition — `corrected_from`
-comes back as `"yellow"`. A real reindex runs (~19–20s, measured this
-session: 19.71s).
+`attribute_type="color", variant="tan", canonical="brown"`. Before the
+tool actually executes, a second, independent LLM call
+(`EnrichmentValueJudge`, gated in `main.py`'s `_try_enrichment_tool` —
+see `ARCHITECTURE.md`) evaluates whether this specific change would
+genuinely improve search quality, not just whether the first call's
+category choice is defensible — confirmed live this session it approves
+the real tan→brown correction (`is_meaningful=True`) in ~1s, and
+separately confirmed it correctly *declines* a nonsense/idiosyncratic
+proposed mapping in testing, so this is a real gate, not a rubber stamp.
+Because `tan` is already mapped (to `yellow`), `enrich_attribute`
+recognizes this as a **correction**, not a fresh addition —
+`corrected_from` comes back as `"yellow"`. A real reindex runs (~19–20s,
+measured this session: 19.71s). This adds roughly 1s of latency before
+the reindex starts — not perceptible against the ~20s reindex itself, so
+no change to the demo's pacing.
 
 **Observe**: Same panel visibility as any enrichment event — a header
 banner while the reindex runs, an inline step badge on completion. The
@@ -409,12 +428,14 @@ value live** — not a reshuffled leaderboard. Lead with that.
 >
 > So let's tell it. [sends the correction] The agent doesn't just
 > apologize — it calls the same tool it would use to learn a brand-new
-> color, except this time to fix an existing one. That's a real write
-> to the taxonomy and a real re-index of all 9,618 products, about 20
-> seconds. And now — [shows the citation detail again] — that exact
-> field, for every shopper, from now on, says brown. Not just for me,
-> not just for this session. The catalog itself got smarter because
-> someone bothered to point out it was wrong."
+> color, except this time to fix an existing one. Before it commits to
+> that, a second, independent model double-checks that this is actually
+> a worthwhile change, not just a knee-jerk agreement — then it's a real
+> write to the taxonomy and a real re-index of all 9,618 products, about
+> 20 seconds. And now — [new chat, same query] — that exact field, for
+> every shopper, from now on, says brown. Not just for me, not just for
+> this session. The catalog itself got smarter because someone bothered
+> to point out it was wrong."
 
 ### Verified this session (2026-08-31), not hypothetical
 
@@ -442,6 +463,45 @@ value live** — not a reshuffled leaderboard. Lead with that.
   repository is back in the genuine bug state, ready for the live
   demo — confirmed via a direct post-revert query that the same boot
   document is back to `product_color_primary: yellow`.
+- **Full rehearsal replayed live in a real browser session** (Chrome,
+  actual dev servers, actual observability panel — not just direct
+  pipeline invocation): confirmed the quality-gate PASS banner, the DSL
+  viewer showing the wrong `yellow` filter, the "Catalog Enrichment
+  Triggered" header banner and step badge during the real ~20s reindex,
+  and — using a fresh "New Chat" for the follow-up, per the fix below —
+  the identical query's DSL now reading `brown`.
+- **Found and fixed a real gap this same rehearsal surfaced**: sending
+  the "did it work" follow-up in the *same* conversation thread gets the
+  query rewriter to expand "show me tan boots" into something like "show
+  me tan boots that are not yellow," which routes through a different,
+  lexical `multi_match` path instead of the clean `attribute_filter`
+  exact-match path turn 1 used — not a valid before/after comparison.
+  Fixed by scripting a fresh conversation for the proof-it-stuck step
+  (see above) — confirmed live to reproduce the identical DSL shape with
+  only the filter value changed.
+- **Added: the raw-vs-indexed color mismatch is now flagged directly in
+  the agent's own chat response**, not just the DSL panel — confirmed
+  live via direct pipeline invocation that turn 1's response leads with
+  an explicit note ("these products are listed as 'Tan,' but... indexed
+  in the 'yellow' color category... a data-tagging issue") and
+  per-product "Listed as Tan (indexed as yellow)" lines, and that after
+  correction the same query is silent about it (no mismatch to flag).
+  This required two fixes beyond the grounded-context change itself:
+  `vector_store.py`'s `_hit_to_document` wasn't including
+  `product_color_primary` in the metadata handed to the agent at all
+  (silently empty, not just unused); and `judge.py`'s `_format_docs_for_prompt`
+  builds a *separate* doc rendering for the LLM-judge pass that didn't
+  include the new fact lines either, causing the judge to flag the
+  grounded mismatch note as an unsupported fabrication and the
+  auto-correction retry to silently strip it back out — confirmed fixed
+  live (`faithfulness: 1.0`, zero hallucinations flagged, no retry).
+- **Added: a second, independent AI evaluation gates every
+  `trigger_enrichment` call** (`EnrichmentValueJudge`) before it's
+  allowed to write a mapping and trigger a real reindex — confirmed live
+  with the real model that the genuine tan→brown correction is approved
+  (`is_meaningful=True`, ~1s) and that a deliberately nonsense proposed
+  mapping is correctly declined, so this is a real check, not a rubber
+  stamp. Adds ~1s of latency, imperceptible against the ~20s reindex.
 - 834 unit + 205 integration tests pass, including new coverage added
   for the correction path specifically: `EnrichmentResult.corrected_from`
   tracking, the "already mapped, different canonical → correction, not

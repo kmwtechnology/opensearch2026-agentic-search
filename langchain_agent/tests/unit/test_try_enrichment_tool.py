@@ -13,13 +13,20 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from enrichment_service import EnrichmentResult
+from enrichment_value_judge import EnrichmentValueAssessment
 from main import EcommerceSearchAgent
 
 
-def _agent_with_llm(bound_llm_response, final_response=None):
+def _agent_with_llm(bound_llm_response, final_response=None, enrichment_assessment=None):
     """Build a minimal agent whose bind_tools(...).invoke(...) returns
     bound_llm_response, and whose plain .invoke(...) (the second, tool-less
-    call) returns final_response."""
+    call) returns final_response.
+
+    enrichment_value_judge is pre-set to a mock that approves by default
+    (is_meaningful=True) -- tests exercising the decline path pass their
+    own enrichment_assessment. Callers that reach the real gate must also
+    patch attribute_mapping_store.AttributeMappingStore, since
+    _try_enrichment_tool constructs it directly to fetch current_mapping."""
     agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
     llm_with_tools = MagicMock()
     llm_with_tools.invoke.return_value = bound_llm_response
@@ -27,6 +34,11 @@ def _agent_with_llm(bound_llm_response, final_response=None):
     agent.llm = MagicMock()
     agent.llm.bind_tools.return_value = llm_with_tools
     agent.llm.invoke.return_value = final_response or AIMessage(content="Fixed it!")
+
+    agent.enrichment_value_judge = MagicMock()
+    agent.enrichment_value_judge.evaluate.return_value = enrichment_assessment or (
+        EnrichmentValueAssessment(is_meaningful=True, reasoning="Genuine, common term.")
+    )
     return agent
 
 
@@ -51,8 +63,10 @@ class TestTryEnrichmentTool:
 
         agent.llm.bind_tools.assert_called_once_with([trigger_enrichment])
 
+    @patch("attribute_mapping_store.AttributeMappingStore")
     @patch("tools.enrichment_tool.enrich_attribute")
-    def test_tool_call_executes_and_returns_state(self, mock_enrich):
+    def test_tool_call_executes_and_returns_state(self, mock_enrich, mock_store_cls):
+        mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
             success=True,
             attribute_type="material",
@@ -86,8 +100,10 @@ class TestTryEnrichmentTool:
         assert result["enrichment_canonical"] == "metal"
         mock_enrich.assert_called_once_with("material", "chrome", explicit_canonical="metal")
 
+    @patch("attribute_mapping_store.AttributeMappingStore")
     @patch("tools.enrichment_tool.enrich_attribute")
-    def test_tool_message_has_matching_tool_call_id(self, mock_enrich):
+    def test_tool_message_has_matching_tool_call_id(self, mock_enrich, mock_store_cls):
+        mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
             success=True, attribute_type="color", variant="periwinkle", canonical="blue"
         )
@@ -113,11 +129,15 @@ class TestTryEnrichmentTool:
         assert len(tool_messages) == 1
         assert tool_messages[0].tool_call_id == "call_xyz"
 
+    @patch("attribute_mapping_store.AttributeMappingStore")
     @patch("tools.enrichment_tool.enrich_attribute")
-    def test_classification_failure_still_returns_state_with_final_response(self, mock_enrich):
+    def test_classification_failure_still_returns_state_with_final_response(
+        self, mock_enrich, mock_store_cls
+    ):
         """Even when the tool call itself fails (e.g. unclassifiable term),
         the LLM still gets a chance to respond naturally referencing the
         failure — this isn't a crash path."""
+        mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
             success=False,
             attribute_type="material",
@@ -139,6 +159,99 @@ class TestTryEnrichmentTool:
 
         assert result is not None
         assert result["enrichment_triggered"] is True
+
+
+class TestEnrichmentValueGate:
+    """EnrichmentValueJudge sits between 'the LLM decided to call
+    trigger_enrichment' and the tool actually executing -- a declined
+    assessment must prevent the real write + reindex entirely."""
+
+    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("tools.enrichment_tool.enrich_attribute")
+    def test_declined_assessment_never_invokes_the_tool(self, mock_enrich, mock_store_cls):
+        mock_store_cls.return_value.get_lookup_table.return_value = {}
+        tool_call_response = AIMessage(content="")
+        tool_call_response.tool_calls = [
+            {
+                "name": "trigger_enrichment",
+                "args": {"attribute_type": "color", "variant": "reddish", "canonical": "red"},
+                "id": "call_1",
+            }
+        ]
+        agent = _agent_with_llm(
+            tool_call_response,
+            enrichment_assessment=EnrichmentValueAssessment(
+                is_meaningful=False, reasoning="Too close to an existing 'red' variant."
+            ),
+        )
+
+        result = agent._try_enrichment_tool("reddish shoes")
+
+        mock_enrich.assert_not_called()
+        assert result is not None
+        assert result["enrichment_triggered"] is False
+        assert result["enrichment_evaluation_declined"] is True
+        assert result["enrichment_evaluation_reasoning"] == "Too close to an existing 'red' variant."
+        assert "reddish" in result["messages"][0].content
+
+    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("tools.enrichment_tool.enrich_attribute")
+    def test_declined_assessment_via_correction_path_never_invokes_the_tool(
+        self, mock_enrich, mock_store_cls
+    ):
+        """Same gate applies through _try_correction_tool's call into
+        _try_enrichment_tool (shared choke point) -- a disputed tag doesn't
+        get corrected just because the shopper disputed it."""
+        mock_store_cls.return_value.get_lookup_table.return_value = {"tan": "yellow"}
+        tool_call_response = AIMessage(content="")
+        tool_call_response.tool_calls = [
+            {
+                "name": "trigger_enrichment",
+                "args": {"attribute_type": "color", "variant": "tan", "canonical": "brown"},
+                "id": "call_1",
+            }
+        ]
+        agent = _agent_with_llm(
+            tool_call_response,
+            enrichment_assessment=EnrichmentValueAssessment(
+                is_meaningful=False, reasoning="Not enough evidence this is a real mistag."
+            ),
+        )
+
+        result = agent._try_correction_tool(
+            [HumanMessage(content="that's not tan, that's tagged yellow which is wrong")],
+            "that's not tan, that's tagged yellow which is wrong",
+        )
+
+        mock_enrich.assert_not_called()
+        assert result["enrichment_triggered"] is False
+        assert result["enrichment_evaluation_declined"] is True
+
+    @patch("attribute_mapping_store.AttributeMappingStore")
+    def test_evaluate_called_with_current_mapping_from_store(self, mock_store_cls):
+        mock_store_cls.return_value.get_lookup_table.return_value = {"tan": "yellow"}
+        tool_call_response = AIMessage(content="")
+        tool_call_response.tool_calls = [
+            {
+                "name": "trigger_enrichment",
+                "args": {"attribute_type": "color", "variant": "tan", "canonical": "brown"},
+                "id": "call_1",
+            }
+        ]
+        agent = _agent_with_llm(tool_call_response)
+        with patch("tools.enrichment_tool.enrich_attribute") as mock_enrich:
+            mock_enrich.return_value = EnrichmentResult(
+                success=True, attribute_type="color", variant="tan", canonical="brown"
+            )
+            agent._try_enrichment_tool("show me tan boots")
+
+        agent.enrichment_value_judge.evaluate.assert_called_once_with(
+            attribute_type="color",
+            variant="tan",
+            canonical="brown",
+            current_mapping="yellow",
+            context="show me tan boots",
+        )
 
 
 class TestAgentNodeGapDetection:

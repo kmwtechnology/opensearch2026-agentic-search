@@ -54,6 +54,7 @@ from agent_state import CustomAgentState
 from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, single_term_classify
 from doc_replacer import DocumentReplacer
 from exceptions import LLMError, SearchTimeoutError
+from enrichment_value_judge import EnrichmentValueJudge
 from judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
 from link_verifier import LinkVerifier
 from reranker import CrossEncoderReranker, GeminiReranker
@@ -469,6 +470,11 @@ class EcommerceSearchAgent:
         # Lazy LLM-as-judge — only constructed when first needed (judge node
         # only runs when user toggles llm_judge:on AND llm:on).
         self.judge: Optional[LLMJudge] = None
+
+        # Lazy second-opinion judge for trigger_enrichment — only constructed
+        # when the agent's own tool-call decision first fires (most users
+        # never trigger enrichment at all).
+        self.enrichment_value_judge: Optional[EnrichmentValueJudge] = None
 
         # Checkpointer will be created asynchronously via create_async_checkpointer()
         # This is required because AsyncPostgresSaver needs a running event loop
@@ -945,13 +951,16 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             product_id = doc.metadata.get("product_id") or "—"
             brand = doc.metadata.get("product_brand") or ""
             color = doc.metadata.get("product_color") or ""
+            color_category = doc.metadata.get("product_color_primary") or ""
             score = doc.metadata.get("reranker_score") or doc.metadata.get("retrieval_score") or 0.0
 
             facts: List[str] = [f"  Title: {title}"]
             if brand:
                 facts.append(f"  Brand: {brand}")
             if color:
-                facts.append(f"  Color: {color}")
+                facts.append(f"  Color (as listed): {color}")
+            if color_category:
+                facts.append(f"  Color category (indexed): {color_category}")
             content = (doc.page_content or "").strip()
             if content:
                 facts.append(f"  Description: {content}")
@@ -1377,6 +1386,7 @@ GROUNDING RULES (override creativity preferences — non-negotiable):
 3. If a fact is not in any FACTS block, OMIT it. Do not infer from brand reputation, product category, prior knowledge, or implication.
 4. Comparison tables/summaries: every cell or claim must trace to a specific product's FACTS block. Leave cells blank rather than fabricating.
 5. When writing about a product, prefer paraphrasing its FACTS over inventing supporting language.
+6. When a product's FACTS include both "Color (as listed)" and "Color category (indexed)", compare them. If the indexed category is a color family the listed color could plausibly belong to (e.g. "Navy" under "blue", "Charcoal" under "black"), say nothing about it. If the indexed category is NOT a plausible family for the listed color (e.g. "Tan" indexed under "yellow" — tan is a shade of brown, not yellow), explicitly flag this as a possible data-tagging issue for that product, using the literal values from its FACTS block.
 
 CITATION & STYLE:
 - Cite products descriptively by name (e.g., "the Nylabone 3 Pack Puppy Chew listing"), never as "Document N".
@@ -1461,6 +1471,47 @@ the query looks like a color/material gap, don't call the tool; just say so brie
 
         call = tool_calls[0]
         logger.info(f"Agent: trigger_enrichment called with args={call['args']}")
+
+        attribute_type = call["args"].get("attribute_type", "")
+        variant = call["args"].get("variant", "")
+        canonical = call["args"].get("canonical", "")
+
+        if self.enrichment_value_judge is None:
+            from config import JUDGE_MODEL
+
+            self.enrichment_value_judge = EnrichmentValueJudge(model_name=JUDGE_MODEL)
+
+        from attribute_mapping_store import AttributeMappingStore
+
+        current_mapping = (
+            AttributeMappingStore().get_lookup_table(attribute_type).get(variant.lower())
+            if attribute_type and variant
+            else None
+        )
+        assessment = self.enrichment_value_judge.evaluate(
+            attribute_type=attribute_type,
+            variant=variant,
+            canonical=canonical,
+            current_mapping=current_mapping,
+            context=user_query or "",
+        )
+        if not assessment.is_meaningful:
+            logger.info(f"Agent: declined trigger_enrichment — {assessment.reasoning}")
+            decline_response = AIMessage(
+                content=(
+                    f"I looked into this, but I don't think changing "
+                    f"'{variant}' would meaningfully improve search results "
+                    f"right now — {assessment.reasoning} I'll leave the "
+                    "catalog as-is for this one."
+                )
+            )
+            return {
+                "messages": [decline_response],
+                "citations": [],
+                "enrichment_triggered": False,
+                "enrichment_evaluation_declined": True,
+                "enrichment_evaluation_reasoning": assessment.reasoning,
+            }
 
         tool_result = trigger_enrichment.invoke(call["args"])
         tool_messages.append(response)

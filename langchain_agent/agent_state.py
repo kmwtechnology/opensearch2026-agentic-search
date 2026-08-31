@@ -183,3 +183,8 @@ class CustomAgentState(TypedDict, total=False):
     enrichment_canonical: Optional[str]
     enrichment_docs_processed: int
     enrichment_duration_seconds: float
+
+    # Set when EnrichmentValueJudge declines a proposed trigger_enrichment
+    # call before it executes -- no mapping write, no reindex happened.
+    enrichment_evaluation_declined: bool
+    enrichment_evaluation_reasoning: Optional[str]

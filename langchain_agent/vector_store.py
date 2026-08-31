@@ -987,6 +987,7 @@ class OpenSearchVectorStore:
             "product_id": src.get("product_id", ""),
             "product_brand": src.get("product_brand", ""),
             "product_color": src.get("product_color", ""),
+            "product_color_primary": src.get("product_color_primary", ""),
         }
         if score is not None:
             metadata["retrieval_score"] = float(score)

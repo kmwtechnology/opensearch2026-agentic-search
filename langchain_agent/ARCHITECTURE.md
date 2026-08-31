@@ -764,6 +764,40 @@ the live demo's centerpiece — see `DEMO.md` Part 4.5):
    `EnrichmentResult.corrected_from` and reported back distinctly
    ("Corrected 'tan' from 'yellow' to 'brown'", never "Added").
 
+**Making a mis-mapping visible without a dev tool**: `_build_grounded_context`
+(`main.py`, the FACTS-block builder every `agent_node` response is
+generated from) includes both a product's raw `product_color` and its
+derived `product_color_primary` as separate FACTS lines when both are
+present, and a grounding rule instructs the agent to flag it directly in
+prose when the indexed category isn't a plausible family for the listed
+color (e.g. "Tan" indexed as "yellow"). This is what lets a shopper (or
+a conference audience) see the mismatch straight from the chat response,
+not just the observability panel's DSL viewer. Two supporting fixes were
+needed: `vector_store.py`'s `_hit_to_document` didn't include
+`product_color_primary` in document metadata at all until this was
+added; and `judge.py`'s `_format_docs_for_prompt` — the *separate* doc
+rendering the LLM-judge pass grades against — needed the same two lines,
+or the judge flags the grounded mismatch note as an unsupported
+fabrication and the auto-correction retry strips it back out.
+
+**Value gate** (`EnrichmentValueJudge`, `enrichment_value_judge.py` —
+applies to both the gap and correction mechanisms, since both funnel
+through `main.py`'s shared `_try_enrichment_tool`): before the tool
+actually executes, a second, independent structured-output LLM call
+(same bias-mitigation pattern as `judge.py`'s `LLMJudge` — a different,
+cheap model via `config.JUDGE_MODEL`, temperature 0) evaluates whether
+the proposed `variant -> canonical` change would genuinely improve
+search quality for real shoppers, given what the term is currently
+mapped to (if anything, fetched fresh from `AttributeMappingStore`) and
+the conversation context — not just whether the *first* call's category
+choice is semantically defensible, which it already checked when it
+picked the canonical bucket. A declined assessment (`is_meaningful:
+False`) short-circuits before `trigger_enrichment.invoke(...)` — no
+mapping write, no reindex — and the agent explains why using the
+judge's one-sentence reasoning. Gates only the agent's own autonomous
+tool-call decision; `POST /api/admin/enrich` (a human operator's
+explicit action) bypasses this gate.
+
 **Shared write path** (both gap and correction, `enrich_attribute`):
 classify (or use the LLM-supplied canonical directly) → write the
 mapping to OpenSearch → additively ensure the index mapping has the
