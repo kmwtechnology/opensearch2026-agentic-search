@@ -475,9 +475,9 @@ Implementation:
 
 `GET /api/admin/health` returns index health and document count.
 `GET /api/admin/diagnose` probes field-level hit counts and mapping
-presence per field. `POST /api/admin/enrich` grows the color/material
-taxonomy with a new variant and triggers a real full Lucille reindex
-(~15-20s) — see "Agentic Enrichment Flywheel" below and
+presence per field. `POST /api/admin/enrich` grows or corrects the
+color/material taxonomy and triggers a real full Lucille reindex
+(~19-20s) — see "Agentic Taxonomy Growth & Correction" below and
 `docs/integration/rest-api.md` for the request/response shape. All three
 require session auth (UI login) or `X-Admin-Token` header (GitHub Actions
 automation).
@@ -489,34 +489,43 @@ Run instance, or `bash scripts/lucille_ingest.sh` locally) rather than an
 HTTP endpoint — add `reindex_judgments=true` to that workflow's inputs when
 the ESCI judgment index also needs a rebuild.
 
-### Agentic Enrichment Flywheel
+### Agentic Taxonomy Growth & Correction
 
-The agent can grow its own catalog taxonomy live: when `attribute_filter`
+The agent can grow *or fix* its own catalog taxonomy live via one shared
+tool, `trigger_enrichment(attribute_type, variant, canonical)`, gated by
+`ENABLE_ENRICHMENT_TOOL` (default off). Calling it writes the mapping to
+OpenSearch, regenerates the Lucille ingest config, and triggers a real
+full reindex — not a scoped patch, not a mock.
+
+**Gap** (a term the taxonomy has never seen): when `attribute_filter`
 intent extracts a color/material term the taxonomy doesn't recognize and
-the resulting search genuinely fails, `agent_node` offers the LLM a
-`trigger_enrichment(attribute_type, variant, canonical)` tool
-(gated by `ENABLE_ENRICHMENT_TOOL`, default off). Calling it writes the
-new mapping to OpenSearch, regenerates the Lucille ingest config, and
-triggers a real full reindex — not a scoped patch, not a mock.
-
-Color and material trigger this differently *by default*: color's
-unresolved-term filter is a hard exact match (excluded from the
+the resulting search genuinely fails, `agent_node` offers the tool.
+Color's unresolved-term filter is a hard exact match (excluded from the
 retriever's filter-relaxation safety net), so it reliably produces a
-genuine zero-result query — proven live end-to-end (e.g. "camel" as an
-unmapped color → "brown"). Material's fallback is, by default, a
+genuine zero-result query through live chat. Material's fallback is a
 deliberately soft lexical match (protecting legitimate non-material
 feature words like "waterproof"), and material/size filters *are*
 subject to relaxation, so no material term reliably triggers the gap
-signal through natural conversation with the flag off — that used to
-mean material could only trigger via `POST /api/admin/enrich` directly.
-`STRICT_MATERIAL_FILTER_DEMO` (config.py, default off, real users
-unaffected) fixes this for the conference demo: it swaps an unresolved
-material term's fallback to the same hard exact-match pattern color
-uses, so material now triggers live through chat too — proven end-to-end
-(e.g. "chrome" as an unmapped material → "metal"), with identical
-observability-panel visibility to the color act. See `ARCHITECTURE.md`'s
-"Attribute Detection" / "Enrichment Flywheel" sections for the full
-mechanism and `DEMO.md` for the live walkthrough.
+signal through natural conversation — a material gap can still be added
+via `POST /api/admin/enrich` directly.
+
+**Correction** (a term already mapped to the *wrong* bucket — the live
+demo's centerpiece, see `DEMO.md`): a separate detection branch in
+`agent_node` watches `refinement`/`follow_up` turns for dispute language
+("that's wrong", "mistagged", ...) via `_detect_correction_signal`, and
+if the shopper is disputing a real, verifiable mistake, offers the same
+tool framed as a correction. `enrichment_service.enrich_attribute`
+distinguishes this from a no-op by comparing the requested canonical
+against what's already stored — a genuine mismatch is tracked via
+`EnrichmentResult.corrected_from` and reported distinctly ("Corrected
+'tan' from 'yellow' to 'brown'", not "Added"). This case matters because
+it produces a **passing** quality-gate score (the wrong result is still
+relevant, just mis-colored) — invisible to any automated check, only
+catchable by a shopper actually looking at the product.
+
+See `ARCHITECTURE.md`'s "Attribute Detection" / "Taxonomy Growth &
+Correction" sections for the full mechanism and `DEMO.md` for the live
+walkthrough.
 
 ### Observable events
 

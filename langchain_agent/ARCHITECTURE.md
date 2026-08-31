@@ -135,11 +135,11 @@ This document provides a deep-dive into the system design, pipeline flow, state 
     - `product_color_primary`/`_secondary`, `product_material_primary`/`_secondary` — canonical
       values (keyword), populated during ingest by `AttributeDetectorStage`
     - `product_brand_normalized` — case-folded brand, e.g., "sony", "apple"
-  - Color's unresolved-term fallback is a **hard** exact-match filter; material's is, by default, a
-    **soft** lexical `multi_match` (protects legitimate non-material feature words like
-    "waterproof") — `STRICT_MATERIAL_FILTER_DEMO` swaps material to the same hard pattern for the
-    conference demo (off, so unaffected, everywhere else) — see **Attribute Detection** section
-    below for the full mechanism and why this asymmetry matters for the enrichment flywheel
+  - Color's unresolved-term fallback is a **hard** exact-match filter; material's is a **soft**
+    lexical `multi_match` (protects legitimate non-material feature words like "waterproof") — see
+    **Attribute Detection** section below for the full mechanism and why this asymmetry means only
+    color gaps can be demonstrated through live chat (material gaps get relaxed away by the
+    retriever's filter-relaxation safety net before they ever produce a zero-result trigger)
   - **Filter relaxation**: If fetch returns < 3 results with all filters, drops multi-match
     (material/size) filters but keeps color + brand exact-match filters (user explicitly named
     them) — this can retry all the way down to 0 fully-filtered results
@@ -476,9 +476,9 @@ The canonical re-indexing mechanism is the **GitHub Actions workflow** `.github/
 **Admin API** (`api/routes/admin.py`):
 - `GET /api/admin/health` — index document count, service status
 - `GET /api/admin/diagnose` — field-level hit counts and mapping inspection
-- `POST /api/admin/enrich` — grow the color/material taxonomy and trigger a
-  real reindex; see "Enrichment Flywheel" below (gated by
-  `ENABLE_ENRICHMENT_TOOL`, default off)
+- `POST /api/admin/enrich` — grow or correct the color/material taxonomy
+  and trigger a real reindex; see "Taxonomy Growth & Correction" below
+  (gated by `ENABLE_ENRICHMENT_TOOL`, default off)
 - Protected by same-origin check + (SessionMiddleware or Admin Token auth)
 
 ---
@@ -694,80 +694,93 @@ immediately before every run, so a reindex always reflects whatever
 attribute types exist in OpenSearch *at that moment* — including one the
 live enrichment flywheel (below) just registered.
 
-### Enrichment Flywheel — Agent-Triggered Taxonomy Growth
+### Taxonomy Growth & Correction — Agent-Triggered
 
-**Problem:** Detection only recognizes variants already in the taxonomy.
-A genuinely new term ("chrome" as a material, "camel" as a color) needs a
-way to get added without a code deploy or manual data migration.
+**Problem, two shapes:**
+1. **Gap** — detection only recognizes variants already in the taxonomy.
+   A genuinely new term ("chrome" as a material) needs a way to get
+   added without a code deploy or manual data migration.
+2. **Correction** — a variant can be *in* the taxonomy but mapped to the
+   wrong canonical bucket (e.g. the shipped taxonomy maps color variant
+   `"tan"` to canonical `"yellow"` instead of `"brown"` — a real bug,
+   affecting 29 products). This produces a **passing** quality-gate
+   result (the retrieved products are genuinely relevant, just filed
+   under the wrong color), so it's invisible to gap-detection by
+   construction — only a shopper actually looking at the product can
+   catch it.
 
-**Mechanism:**
+Both shapes share one tool and one write path; they differ only in
+*when* the agent offers the tool and *how it frames the ask*.
+
+**Gap mechanism** (used for a term the taxonomy has never seen):
 1. `attribute_filter` intent extracts a color/material term via
    `_extract_attributes()`. Color's fallback for an unresolved term is a
-   hard exact-match filter; material's is, by default, a soft
-   `multi_match` against `title`/`chunk_text` — deliberately softer,
-   since the same code path also has to handle non-material feature
-   words ("waterproof", "noise canceling") that a hard filter would
-   wrongly exclude. `STRICT_MATERIAL_FILTER_DEMO` (config.py, off by
-   default, real users unaffected) swaps material's unresolved fallback
-   to the same hard exact-match pattern as color, for the conference
-   demo only — see below.
+   hard exact-match filter, reliably producing a genuine zero-document
+   result. Material's fallback is, by default, a soft `multi_match`
+   against `title`/`chunk_text` — deliberately softer, since the same
+   code path also has to handle non-material feature words
+   ("waterproof", "noise canceling") that a hard filter would wrongly
+   exclude — combined with the retriever's filter-relaxation safety net
+   (below), no material term reliably produces a genuine zero-document
+   result through natural conversation; confirmed live, a material term
+   with **zero** corpus occurrences still got relaxed to 40 returned
+   documents. In practice this means the gap-fill path is only
+   demonstrable live, through chat, for **color** — a material gap can
+   still be added via `POST /api/admin/enrich`, just not triggered by an
+   ordinary shopper message.
 2. If the query genuinely returns nothing, `agent_node` offers the LLM a
    `trigger_enrichment(attribute_type, variant, canonical)` tool (a real
    `@tool`, bound via a manual two-call loop — bind → invoke → if the LLM
    calls it, execute + append a `ToolMessage` → invoke again without
    tools for the final response). Gated by `ENABLE_ENRICHMENT_TOOL`
-   (default off).
-3. The tool calls `enrichment_service.enrich_attribute(...)`: classify (or
-   use the LLM-supplied canonical directly) → write the mapping to
-   OpenSearch → additively ensure the index mapping has the
-   `product_<type>` fields → regenerate `products.generated.conf` →
-   trigger `scripts/lucille_ingest.sh` as a real subprocess (~15-20s for
-   9,618 products — a genuine full reindex, not a scoped patch).
-4. A follow-up identical query now resolves via the grown taxonomy.
+   (default off). The gap-detection signal has two OR'd conditions:
+   documents were retrieved but scored poorly even after a quality-gate
+   retry (`quality_gate_retried and max_relevance < threshold`), OR an
+   `attribute_filter` query's hard filter excluded everything on the
+   very first pass (`intent == "attribute_filter" and not
+   retrieved_documents`) — the second condition exists because
+   `quality_gate_node` deliberately never retries a zero-document first
+   pass (adjusting alpha can't fix an exclusionary filter), so without
+   it the tool would never be offered for exactly the scenario it
+   exists to fix.
 
-**The gap-detection signal has two OR'd conditions** in `agent_node`:
-documents were retrieved but scored poorly even after a quality-gate
-retry (`quality_gate_retried and max_relevance < threshold`), OR an
-`attribute_filter` query's hard filter excluded everything on the very
-first pass (`intent == "attribute_filter" and not retrieved_documents`).
-The second condition exists because `quality_gate_node` deliberately
-never retries a zero-document first pass (adjusting alpha can't fix an
-exclusionary filter) — without it, the tool would never be offered for
-exactly the scenario it exists to fix.
+**Correction mechanism** (used when a shopper disputes an existing tag,
+the live demo's centerpiece — see `DEMO.md` Part 4.5):
+1. `agent_node` has a separate detection branch, checked before the
+   gap-detection branch above and independent of this turn's own
+   retrieval results: `_detect_correction_signal` is a cheap keyword
+   pre-filter for dispute language ("that's wrong", "mistagged",
+   "actually that's..."), scoped to `refinement`/`follow_up` intent only
+   (a fresh, standalone query can't be disputing a prior turn).
+2. When it fires, `_try_correction_tool` builds a correction-framed
+   prompt including recent conversation history (`_build_recent_context`)
+   and offers the same `trigger_enrichment` tool. If the LLM agrees a
+   real mistagging occurred, it calls the tool with the term and what it
+   believes the *correct* canonical is.
+3. `enrichment_service.enrich_attribute` distinguishes a correction from
+   a no-op by comparing the LLM-supplied canonical against what's
+   already stored: same canonical → no-op (`"already mapped"`,
+   idempotent); different canonical → correction, tracked via
+   `EnrichmentResult.corrected_from` and reported back distinctly
+   ("Corrected 'tan' from 'yellow' to 'brown'", never "Added").
 
-**Color and material trigger this differently by default — this is why
-`STRICT_MATERIAL_FILTER_DEMO` exists.** Color's hard fallback filter,
-combined with color/brand being excluded from the retriever's
-filter-relaxation safety net (below), reliably produces a genuine
-zero-document result for an unrecognized term. Material, by default, has
-two independent layers protecting against ever returning zero documents
-(the soft `multi_match` fallback above, plus filter relaxation), so no
-material term — however rare in the corpus — reliably triggers the gap
-signal through natural conversation with the flag off. Confirmed live: a
-material term with **zero** corpus occurrences still got relaxed to 40
-returned documents. With `STRICT_MATERIAL_FILTER_DEMO=true`, an
-unresolved material term's filter becomes a `match` clause (see step 1),
-which is structurally identical to color's — it produces the same
-zero-document result and, per the filter-relaxation rule below, is
-excluded from relaxation for the same reason color's `match` filters
-are. No change to the relaxation logic itself was needed; only which
-filter *shape* material's fallback produces changed. Verified live:
-"show me a chrome material humidifier" → `0 documents retrieved` →
-`trigger_enrichment` called → real ~24s reindex → follow-up query
-resolves correctly, with the identical observability-panel visibility
-Act 1 (color) gets.
+**Shared write path** (both gap and correction, `enrich_attribute`):
+classify (or use the LLM-supplied canonical directly) → write the
+mapping to OpenSearch → additively ensure the index mapping has the
+`product_<type>` fields → regenerate `products.generated.conf` →
+trigger `scripts/lucille_ingest.sh` as a real subprocess (~19-20s for
+9,618 products — a genuine full reindex, not a scoped patch). A
+follow-up query (gap case) or a direct field check (correction case,
+since ranking itself barely moves — see `DEMO.md`) now reflects the
+fix.
 
-**Filter relaxation** (`main.py` retriever, pre-existing, unrelated to the
-enrichment flywheel but load-bearing for the asymmetry above): when an
+**Filter relaxation** (`main.py` retriever, pre-existing, load-bearing
+for the gap-mechanism asymmetry above): when an
 `attribute_filter`/`refinement` query's fully-filtered result count is
 under 3, the retriever automatically retries without `multi_match`
-filters (material, size, or an unresolved material term with
-`STRICT_MATERIAL_FILTER_DEMO` off) and keeps the relaxed results only if
-they outnumber the original — `match` filters (color, brand, or an
-unresolved material term with `STRICT_MATERIAL_FILTER_DEMO` on) are
-never relaxed, since the user named those explicitly (or, for the demo
-flag's case, since a hard filter is what makes the gap-detection signal
-work at all).
+filters (material, size) and keeps the relaxed results only if they
+outnumber the original — `match` filters (color, brand) are never
+relaxed, since the user named those explicitly.
 
 ### Search Pipeline (OpenSearch DSL)
 
@@ -904,8 +917,8 @@ type needs no new Java code and no hand-edited Lucille config:
 2. Add a filter block to `_extract_attributes()` in `main.py` for the new
    type — decide up front whether it needs color's hard-filter semantics
    (rare/exact terms) or material's soft-filter + relaxation semantics
-   (see "Enrichment Flywheel" above); this is a deliberate per-type
-   choice, not something to default to one or the other.
+   (see "Taxonomy Growth & Correction" above); this is a deliberate
+   per-type choice, not something to default to one or the other.
 3. Add the new type's field to `vector_store.py`'s `_build_multi_match`
    boost list to give it BM25 scoring weight — not automatic (a
    deliberate, documented limitation to avoid an extra OpenSearch
@@ -999,8 +1012,10 @@ The Agentic Hybrid Search system is a **LangGraph-powered RAG agent** that:
 6. **Generates responses** with citations and streaming
 7. **Persists memory** in PostgreSQL checkpoints
 8. **Emits observable events** for real-time UI visualization
-9. **Grows its own catalog taxonomy** — when it recognizes a real color/
-   material gap, it can trigger a live reindex to teach the system a new
-   term, not just adjust how it searches (see "Enrichment Flywheel")
+9. **Grows and corrects its own catalog taxonomy** — when it recognizes a
+   real color/material gap, or a shopper disputes an existing tag, it can
+   trigger a live reindex to teach the system a new term or fix a wrong
+   one, not just adjust how it searches (see "Taxonomy Growth &
+   Correction")
 
 Every stage is testable, extensible, and documented. The system is designed for e-commerce product discovery but generalizes to any RAG use case.

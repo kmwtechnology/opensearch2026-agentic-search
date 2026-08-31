@@ -12,7 +12,7 @@ Attendees will gain a blueprint for building search systems that think end-to-en
 
 # **1\. Talk thesis**
 
-A search agent becomes genuinely agentic in two distinct ways. First, it can improve results on the fly: classify intent, weight hybrid retrieval dynamically per query, retry once with an adjusted lexical/semantic balance when confidence is low, and check its own generated answer for hallucinations before the user sees it. Second — and this is the part most agentic-search systems don't do — it can recognize when the *catalog itself* is the problem, not the query, and fix that: teach the index a color or material term it doesn't recognize, and trigger a real re-index, live, as part of the conversation. The second capability is the talk's centerpiece.
+A search agent becomes genuinely agentic in two distinct ways. First, it can improve results on the fly: classify intent, weight hybrid retrieval dynamically per query, retry once with an adjusted lexical/semantic balance when confidence is low, and check its own generated answer for hallucinations before the user sees it. Second — and this is the part most agentic-search systems don't do — it can recognize when the *catalog itself* is the problem, not the query, and fix that: not just teach the index a term it's never seen, but **correct a term it already has wrong**, live, as part of the conversation. That second case is the harder and more honest one — the wrong result doesn't fail any automated check, it *passes* the quality gate with a confident score. Only a human catching the mistake and saying so triggers the fix. The second capability is the talk's centerpiece.
 
 **The only shared element is the authoritative judgment list: Search Relevance Workbench can import it for its feature demonstration, while LangGraph looks up the same judgments opportunistically at runtime — purely as a post-hoc diagnostic metric shown in the observability panel, never as an input to retry, routing, or ranking decisions, which are driven entirely by reranker confidence. Workbench results, experiments, and configurations do not feed the LangGraph application.**
 
@@ -27,7 +27,7 @@ A search agent becomes genuinely agentic in two distinct ways. First, it can imp
 * Uses the product index directly at runtime; accepts **any natural-language query**, not just pre-vetted ones — `esci_judgments` is consulted opportunistically for NDCG@10/MRR/Recall@20/Precision@10 when a query has an exact judgment match, and the panel falls back to a self-referential confidence proxy (top-1 score, score gap, variance, rank churn) when it doesn't.  
 * Classifies intent (6 classes), sets hybrid retrieval balance (α) per query, and retries once with an adjusted α when the reranker's confidence is low.  
 * Generates a cited answer from reranked evidence; an LLM-judge pass checks it for hallucination and can auto-correct once for the categories it's confident about.  
-* **Also**: when a query's color/material term isn't in the catalog's taxonomy, the agent can recognize the gap, teach the taxonomy the new term, and trigger a real Lucille re-index live — the talk's centerpiece, not a query-adjustment.  
+* **Also**: when a shopper points out that a product's color tag is simply wrong — not missing, *wrong* — the agent can verify the claim, correct the taxonomy, and trigger a real Lucille re-index live, permanently fixing the same mistake for every future shopper — the talk's centerpiece, not a query-adjustment.  
 * Explains the full run through the application's observability panel.
 
 ## **Demo B — OpenSearch Relevance Workbench feature showcase**
@@ -45,19 +45,19 @@ A search agent becomes genuinely agentic in two distinct ways. First, it can imp
 * Do not compare Workbench experiment output with the final LLM answer.  
 * Treat the two segments as separate examples of what can be built with and around OpenSearch.
 
-# **3\. Lucille Ingestion, Attribute Detection, and the Enrichment Flywheel**
+# **3\. Lucille Ingestion, Attribute Detection, and Taxonomy Self-Correction**
 
 * Lucille pipeline: ingests raw fields (title, brand, description, etc.) via a **generated** HOCON config (`products.generated.conf`, not a static committed file) — regenerated fresh before every run.  
 * Attribute detection happens **inside the ingest pipeline itself**, not as a separate post-processing script: `AttributeDetectorStage`, one generic Java stage parameterized by attribute type, scans product text for known color/material variants and writes canonical fields (`product_color_primary`/`_secondary`, `product_material_primary`/`_secondary`) in a single pass. `BrandNormalizerStage` handles brand case-folding separately.  
 * The taxonomy those stages detect against — which color/material terms map to which canonical bucket — lives in **OpenSearch**, not a committed JSON file. The config generator queries it and emits one detection-stage instance per registered attribute type (currently `detectColor`, `detectMaterial`) — a new attribute type needs zero new Java code and zero hand-edited config.  
-* **The flywheel**: the agent can grow that taxonomy itself, live, during a conversation. When it recognizes a real color/material gap — not a query it phrased wrong — it writes the new mapping to OpenSearch and triggers a genuine full Lucille re-index (\~15–20s for 9,618 products), then answers the original query correctly. This is Demo A's centerpiece: the agent reshaping what gets indexed, not just how it searches.  
-* Result: filter queries like "blue backpacks" match "Navy" or "Cyan" variants out of the box, *and* a genuinely new term the taxonomy has never seen (e.g. an unmapped color like "camel") becomes searchable within a single conversation turn.
+* **The correction, not just growth**: the agent can grow that taxonomy with terms it's never seen, but the more interesting case — because the shipped, discovered taxonomy actually contains a real, verifiable bug — is *fixing a term that's already there but wrong*. The taxonomy maps color variant "tan" to canonical "yellow" instead of "brown", affecting 29 real products (a boot titled "Tan" is indexed as `yellow`). A shopper disputing this live is the demo's centerpiece: the agent verifies the claim, writes the corrected mapping to OpenSearch, and triggers a genuine full Lucille re-index (\~19–20s for 9,618 products) — reshaping what's indexed, not just how it searches.  
+* Why this matters more than a missing term: an unrecognized color simply returns nothing, which is an obvious, self-evident failure. A *mis-mapped* color returns a plausible, relevant, confidently-scored result that just happens to be tagged wrong — invisible to any automated quality check. Only a shopper looking at the actual product catches it.
 
 # **4\. Audience outcomes**
 
 * Understand the progression from BM25 to vector, hybrid fusion, reranking, and a bounded, alpha-adjusting retry.  
 * See judgments used opportunistically by a LangGraph application to score one search and its answer at runtime — and see the system work just as well on a query with no ground truth at all.  
-* **See an agent fix the catalog, not just the query** — the talk's central, differentiating claim: watch it recognize a real taxonomy gap, teach the system a new term, and trigger a live re-index, then get a correct answer to the exact question that failed a moment earlier.  
+* **See an agent fix the catalog, not just the query** — the talk's central, differentiating claim: watch a shopper dispute a wrong color tag, watch the agent verify the claim and correct the taxonomy live, watch a real re-index run, and watch the same product's tag change permanently — a data-correctness fix, not a fuzzier "the ranking got a little better" story.  
 * See the agent's path, metrics, decisions, evidence, and latency in a live observability panel.  
 * Discover the latest Search Relevance Workbench capabilities as a separate OpenSearch feature tour.  
 * Leave with a practical architecture that avoids unconstrained retries and unnecessary dependencies.
@@ -79,7 +79,7 @@ A search agent becomes genuinely agentic in two distinct ways. First, it can imp
 ## **10–15 minutes — LangGraph architecture**
 
 * Introduce the pipeline: intent classifier → query evaluator (dynamic α) → retriever (hybrid BM25 \+ vector, RRF fusion) → reranker (cross-encoder) → quality gate (bounded, alpha-adjusting retry) → agent (cited generation) → LLM judge (hallucination check, bounded auto-correct).  
-* Introduce the enrichment flywheel as a distinct capability layered on top: the agent can also decide the *catalog* needs fixing, not just the query.  
+* Introduce taxonomy self-correction as a distinct capability layered on top: the agent can also decide the *catalog* needs fixing, not just the query.  
 * Make clear that every decision is made inside the application without Workbench.
 
 ## **15–28 minutes — Live LangGraph demo**
@@ -87,8 +87,7 @@ A search agent becomes genuinely agentic in two distinct ways. First, it can imp
 * Intent classification: show how a query routes to one of six intents.  
 * Hybrid search & alpha weighting: show dynamic α selection for a comparison/attribute-filter/search query.  
 * Quality gate retry: run a deliberately niche, low-confidence query and watch the alpha-adjusted retry fire.  
-* **The enrichment flywheel (centerpiece)**: run a query with an unrecognized color or material term, watch the agent recognize the gap and call its own tool to grow the taxonomy, watch a real \~15–20s Lucille re-index run live, then re-ask the same question and get a correct, cited answer.  
-* Use a second flywheel act (material — triggers live through chat identically to color, see Section 6 for why they needed different handling under the hood) if time allows.
+* **Taxonomy self-correction (centerpiece)**: run a query where the result is confidently wrong — "tan boots" resolves via a real, discovered taxonomy bug that maps "tan" to "yellow" instead of "brown", passing the quality gate at a score well above threshold. Dispute it in the next turn, watch the agent verify the claim and call its own tool to *correct* — not add to — the taxonomy, watch a real \~19–20s Lucille re-index run live, then show the same product's tag has permanently changed.
 
 ## **28–33 minutes — Observability debrief**
 
@@ -122,7 +121,7 @@ A search agent becomes genuinely agentic in two distinct ways. First, it can imp
 ## **Stage 3 — Retrieve (hybrid, single pass)**
 
 * One hybrid vector \+ BM25 retrieval, fused with Reciprocal Rank Fusion (k=60) — not a parallel multi-strategy tournament.  
-* For `attribute_filter` intent, applies brand/color/material/size filters classified against the OpenSearch-backed attribute taxonomy; a soft (material/size) filter that returns too few results gets automatically relaxed, a hard (color/brand) filter never does — that asymmetry is exactly what makes the flywheel demo's two acts trigger differently (see below).
+* For `attribute_filter` intent, applies brand/color/material/size filters classified against the OpenSearch-backed attribute taxonomy; a soft (material/size) filter that returns too few results gets automatically relaxed, a hard (color/brand) filter never does — that asymmetry is why only a **color** gap can be triggered live through chat (a material gap gets relaxed away before it produces the zero-result signal — see below).
 
 ## **Stage 4 — Rerank and gate quality**
 
@@ -135,11 +134,13 @@ A search agent becomes genuinely agentic in two distinct ways. First, it can imp
 * Build grounded context strictly from each retrieved product's own facts; generate a cited answer.  
 * An LLM-judge pass checks the answer for hallucination categories (fabrication, cross-product attribute bleed, unsupported inference, overreach); fabrication and cross-product-bleed get one bounded auto-correction retry, the others surface as-is.
 
-## **Stage 6 — The enrichment flywheel**
+## **Stage 6 — Taxonomy self-correction**
 
-* When an `attribute_filter` query's hard color/brand filter excludes every product on the first pass — the exact shape an unrecognized color term produces — the quality gate correctly doesn't retry (adjusting alpha can't fix an exclusionary filter), so a second, explicit gap-detection check offers the agent a real tool: `trigger_enrichment(attribute_type, variant, canonical)`.  
-* If the agent recognizes the term as a genuine color/material and calls the tool, it writes the new mapping to OpenSearch, regenerates the Lucille config, and triggers a real full re-index (\~15–20s) — then the same question, asked again, resolves correctly.  
-* **Why color and material needed different handling**: color's fallback filter is hard and excluded from relaxation, so an unrecognized color term reliably produces the zero-result signal live, through ordinary conversation. Material's fallback is *by default* soft (protecting legitimate non-material feature words like "waterproof"), and material filters *are*, by default, subject to relaxation — so with the default config, no material term reliably triggers the signal through natural language. A demo-only, env-gated flag (`STRICT_MATERIAL_FILTER_DEMO`, off everywhere except this environment) swaps an unresolved material term's fallback to the same hard pattern color uses, so both acts now trigger identically live through chat — same mechanism, same observability-panel visibility, same narrative beat. Worth narrating the *tradeoff* even though both acts now look the same on stage: the flag exists specifically because making this the default behavior would hard-exclude real feature-word queries.
+* Two related but distinct triggers share one tool, `trigger_enrichment(attribute_type, variant, canonical)`:
+  * **Gap** — an `attribute_filter` query's hard color/brand filter excludes every product on the first pass (the shape an unrecognized color term produces). The quality gate correctly doesn't retry here (adjusting alpha can't fix an exclusionary filter), so a second, explicit gap-detection check offers the agent the tool.
+  * **Correction** (the demo's centerpiece) — a shopper disputes a tag from the prior turn. A separate detection branch, scoped to `refinement`/`follow_up` intent, watches for dispute language and offers the same tool framed as "here's what the shopper says is actually correct."  
+* In the correction case, `enrich_attribute` distinguishes "genuinely different canonical" from "no-op" by comparing against what's already stored — the mapping write is a real correction, not a duplicate, tracked via `corrected_from` and reported distinctly. Either trigger writes the mapping to OpenSearch, regenerates the Lucille config, and runs a real full re-index (\~19–20s).  
+* **Why color and material need different handling for the gap case specifically**: color's fallback filter is hard and excluded from relaxation, so an unrecognized color term reliably produces the zero-result signal live, through ordinary conversation. Material's fallback is *by default* soft (protecting legitimate non-material feature words like "waterproof"), and material filters *are*, by default, subject to relaxation — so no material term reliably triggers the gap signal through natural language; a material gap is only reachable via the admin endpoint. This asymmetry doesn't apply to the correction case at all — correction fires on conversational dispute language, independent of which filter shape produced the wrong result — which is part of why the demo leads with correction rather than the gap mechanism.
 
 # **7\. Live observability panel**
 
@@ -149,7 +150,7 @@ The observability panel belongs exclusively to the LangGraph application. It exp
 * Retrieval detail: the full OpenSearch DSL query (hybrid, BM25 baseline, and quality-gate retry variants each viewable), applied filters, candidate counts.  
 * Reranker and quality gate: per-document scores, max score, pass/retry verdict and the reasoning behind it.  
 * Pipeline Quality Summary: NDCG@10/MRR/Recall@20/Precision@10 across BM25 → Hybrid → Reranked when ESCI judgments exist for the query; a self-referential confidence proxy (top-1 score, score gap, variance, rank churn) when they don't.  
-* **Enrichment card**: when the flywheel fires, a dedicated card shows the attribute type, the new term, the canonical bucket it resolved to, and the live re-index in progress.  
+* **Enrichment card**: when the tool fires (gap or correction), a dedicated card shows the attribute type, the term, the canonical bucket it resolved to, and the live re-index in progress.  
 * Operational view: end-to-end latency and time spent per stage.
 
 # **8\. Search Relevance Workbench feature showcase**
@@ -208,7 +209,9 @@ This segment exists to demonstrate current OpenSearch relevance features. It is 
 
 # **10\. What actually shipped (supersedes the original tournament design)**
 
-*An earlier draft of this outline planned a four-strategy retrieval tournament with explicit `SearchPlan`/`RetrievalAttempt`/`AgentDecision`/`AnswerEvaluation` state contracts and a critic/regenerate-once loop. That architecture was not built. What shipped instead is simpler and, for the flywheel narrative, better: a single hybrid retrieval per pass with a bounded, alpha-adjusting quality-gate retry — plus the enrichment flywheel, which the tournament design didn't include at all.*
+*An earlier draft of this outline planned a four-strategy retrieval tournament with explicit `SearchPlan`/`RetrievalAttempt`/`AgentDecision`/`AnswerEvaluation` state contracts and a critic/regenerate-once loop. That architecture was not built. What shipped instead is simpler and, for the self-correction narrative, better: a single hybrid retrieval per pass with a bounded, alpha-adjusting quality-gate retry — plus taxonomy growth & correction, which the tournament design didn't include at all.*
+
+*A second draft of this section (also superseded) planned a two-act "flywheel" demo showing the agent fill both a color gap ("camel") and a material gap ("chrome") live. Both acts were dropped after review: the color gap was solvable by plain BM25 without any enrichment, making it a cosmetic demo of a mechanism the query didn't actually need; the material gap required a demo-only env flag (`STRICT_MATERIAL_FILTER_DEMO`) to force a query that still couldn't find a real product afterward regardless of the "fix." What shipped instead — a single act built around a real, verified taxonomy bug (`tan` mapped to `yellow` instead of `brown`, affecting 29 real products) corrected via conversational dispute — is simpler, requires no demo-only flags, and tells a stronger story: the system is confidently *wrong*, not just silent, and only a human catches it.*
 
 ## **Quality gate retry (shipped)**
 
@@ -216,7 +219,7 @@ The quality gate compares the reranker's max score against an intent-specific th
 
 ## **Real state contracts (shipped, simpler than planned)**
 
-`CustomAgentState` (a `total=False` TypedDict) carries `intent`/`confidence`, `alpha`, `retrieved_documents`, `reranker_max_score`, `quality_gate_retried`, and — new this cycle — `enrichment_triggered`/`enrichment_attribute_type`/`enrichment_variant`/`enrichment_canonical`. No separate strategy-history or attempt-scoring contracts were needed.
+`CustomAgentState` (a `total=False` TypedDict) carries `intent`/`confidence`, `alpha`, `retrieved_documents`, `reranker_max_score`, `quality_gate_retried`, and `enrichment_triggered`/`enrichment_attribute_type`/`enrichment_variant`/`enrichment_canonical`. No separate strategy-history or attempt-scoring contracts were needed.
 
 ## **Keep Workbench out of the application**
 
@@ -225,14 +228,13 @@ The quality gate compares the reranker's max score against an intent-specific th
 * Live metric computation, retry policy, and answer evaluation stay inside the application.  
 * Workbench assets are prepared separately as conference-demo setup.
 
-## **The enrichment flywheel (shipped, new this cycle)**
+## **Taxonomy growth & correction (shipped)**
 
 * Generic `AttributeDetectorStage` (Java, parameterized by attribute type) replaced two retired dedicated stages; `config_generator.py` regenerates the Lucille pipeline config before every run from whatever attribute types are registered in OpenSearch.  
-* `enrichment_service.py` classifies a new variant, writes the mapping, ensures the index has the right fields, regenerates the config, and triggers a real `lucille_ingest.sh` subprocess — a genuine full re-index, not a scoped patch.  
-* `trigger_enrichment`, a real LangChain tool bound via a manual two-call loop, is offered to the agent from a dedicated gap-detection check in `agent_node` — added after a live rehearsal surfaced a real bug: the quality gate deliberately never retries a zero-document first pass, so the original retry-based gap signal could never fire for exactly the case the tool exists to handle.  
-* `POST /api/admin/enrich` exposes the identical mechanism directly (used for automation/CI or ops, not the live demo — both acts now trigger through chat, see below).
-* `STRICT_MATERIAL_FILTER_DEMO` (config.py, off by default): swaps an unresolved material term's fallback to a hard exact-match filter, the same pattern color's fallback already uses — this is what makes the material act trigger live through chat instead of needing the admin endpoint (see Section 6, Stage 6, for why the two attribute types needed different handling).
-* Full replay of both acts back-to-back, after every fix above had landed together (not just tested in isolation) — this is what caught a real query-reliability issue: the shorter, more natural "camel coat" phrasing intermittently classified as `search` intent instead of `attribute_filter` and found the hero product via plain lexical match, skipping the flywheel entirely. `DEMO.md` now specifies the exact confirmed-reliable phrasing for both acts.
+* `enrichment_service.enrich_attribute` classifies a variant, writes the mapping, ensures the index has the right fields, regenerates the config, and triggers a real `lucille_ingest.sh` subprocess — a genuine full re-index, not a scoped patch. It distinguishes a **correction** (the requested canonical differs from what's already stored) from a no-op, tracked via `EnrichmentResult.corrected_from`.  
+* `trigger_enrichment`, a real LangChain tool bound via a manual two-call loop, is offered to the agent from two independent branches in `agent_node`: a gap-detection check (added after a live rehearsal surfaced a real bug — the quality gate deliberately never retries a zero-document first pass, so the original retry-based gap signal could never fire for exactly the case the tool exists to handle) and a correction-detection check (`_detect_correction_signal` keyword pre-filter + `_try_correction_tool`, scoped to `refinement`/`follow_up` intent and dispute language).  
+* `POST /api/admin/enrich` exposes the identical mechanism directly (used for automation/CI or ops).
+* The demo pivoted from an earlier two-act "flywheel" design (color gap + material gap, the latter requiring a demo-only `STRICT_MATERIAL_FILTER_DEMO` flag that has since been reverted) to a single act built on a real, verified taxonomy bug: the discovered color taxonomy maps "tan" to "yellow" instead of "brown", affecting 29 real products. Verified live this cycle: turn 1 ("show me tan boots") surfaces the wrong-but-passing result (reranker score ~0.56 against a 0.45 threshold); turn 2 (a dispute phrase) correctly triggers the correction branch, calls `trigger_enrichment(color, tan, brown)`, and a real ~19.7s reindex flips the affected product's `product_color_primary` field from `yellow` to `brown` in the live index.
 
 ## **Improve the live UI**
 
@@ -245,10 +247,10 @@ The quality gate compares the reranker's max score against an intent-specific th
 ## **P0 — Required for the LangGraph live demo (done)**
 
 * Quality-gate retry on typed state, with an integration test proving a real retry executes.  
-* Enrichment flywheel: generic detection stage, config generation, real-reindex trigger, agent tool, admin endpoint, WebSocket event and UI card — built, and proven live end-to-end through natural chat for **both** the color act and the material act this session.  
+* Taxonomy growth & correction: generic detection stage, config generation, real-reindex trigger, agent tool (both gap and correction branches), admin endpoint, WebSocket event and UI card — built, and proven live end-to-end through natural chat: a color gap trigger, and the correction of a real, verified taxonomy bug (`tan` mapped to `yellow` instead of `brown`).  
 * Gap-detection fix so the enrichment tool is actually offered for the zero-document-on-first-pass case (see Section 10).  
+* Correction-detection branch (`_detect_correction_signal`, `_try_correction_tool`) so a shopper disputing an existing tag on a `refinement`/`follow_up` turn triggers the same tool, framed as a correction rather than an addition (see Section 10).  
 * Observability-panel visibility fix: the enrichment event was emitted but never actually rendered anywhere in the live UI (dead frontend code) — fixed with a persistent header banner, a step badge, and a dedicated expanded-detail card (see Section 10).  
-* `STRICT_MATERIAL_FILTER_DEMO` flag so the material act triggers live through chat too, with identical panel visibility to color (see Section 10).  
 * Stream the complete decision trace — intent, α, retrieval, rerank, quality gate, enrichment — to the observability panel.
 
 ## **P1 — Independent Workbench feature setup**
@@ -263,15 +265,15 @@ The quality gate compares the reranker's max score against an intent-specific th
 
 * Pin primary and backup queries for each LangGraph act (see Section 12).  
 * Add a deterministic application preflight that does not depend on Workbench.  
-* Extract graph nodes into focused modules; confirm re-index timing stays comfortably in the ~15–20s range.  
+* Extract graph nodes into focused modules; confirm re-index timing stays comfortably in the ~19–20s range.  
 * Prepare a timed Workbench feature carousel and appendix screenshots.
 
 # **12\. Rehearsal and fallback plan**
 
-* Pin the enrichment flywheel's gap terms before each rehearsal (color: "camel"→"brown"; material: "chrome"→"metal") and confirm both are genuinely absent from the taxonomy immediately beforehand — a stale prior run silently resolves the "gap" and the demo moment falls flat.  
-* Revert procedure between rehearsals: delete the `color#camel` / `material#chrome` mapping docs, run `lucille_ingest.sh --skip-judgments` once more for a clean baseline (the re-index alone clears the stale fields — see `langchain_agent/DEMO.md`).  
-* Keep one backup query for the quality-gate retry act, and one backup color/material term pair for the flywheel act.  
-* Record a short backup of the LangGraph demo and capture observability screenshots, including the enrichment card mid-reindex.  
+* Confirm the taxonomy is in the shipped bug state (`tan → yellow`) immediately before each rehearsal — a stale prior correction silently resolves the "bug" and the demo moment falls flat.  
+* Revert procedure between rehearsals: re-seed `color#tan → yellow` via `AttributeMappingStore.add_mapping`, run `lucille_ingest.sh --skip-judgments` once more for a clean baseline (see `langchain_agent/DEMO.md`'s Troubleshooting section for the exact commands).  
+* Keep one backup query for the quality-gate retry act.  
+* Record a short backup of the LangGraph demo and capture observability screenshots, including the enrichment card mid-reindex and the citation detail showing the tag change.  
 * Rehearse the Workbench feature tour as a separate browser sequence with no transition that implies integration.  
 * For the 30-minute version, show three Workbench highlights: pointwise evaluation, hybrid optimization, and dashboards or monitoring.  
 * For the 45-minute version, add query comparison and the optional experimental relevance-agent preview.
@@ -280,18 +282,18 @@ The quality gate compares the reranker's max score against an intent-specific th
 
 * The audience understands that LangGraph improves results at runtime without Workbench.  
 * The audience understands that Workbench is a separate showcase of native OpenSearch relevance features.  
-* **The audience leaves able to state, in their own words, the difference between adjusting a query and fixing the catalog** — the flywheel demo's whole point.  
+* **The audience leaves able to state, in their own words, the difference between adjusting a query and fixing the catalog** — the demo's whole point.  
 * The quality-gate retry demo shows a real reranker-score improvement between the first and retried pass for the chosen query.  
-* The flywheel demo shows, live: a genuine zero-result query, the agent recognizing the gap and calling a real tool, a real re-index completing, and the same question resolving correctly afterward.  
+* The taxonomy self-correction demo shows, live: a confidently-wrong result that *passes* the quality gate, a shopper disputing it, the agent verifying and calling a real tool, a real re-index completing, and the same product's tag having permanently changed afterward.  
 * The quality-gate retry budget (one retry, never more) and the enrichment tool's gate (`ENABLE_ENRICHMENT_TOOL`) are always enforced.  
 * The observability panel explains intent, α, the retry verdict, and — when it fires — the enrichment card's attribute type, term, and re-index status.  
 * No slide, diagram, transition, or demo step implies any flow between Workbench and LangGraph beyond their independent reuse of `esci_judgments`.
 
 # **14\. Decisions to lock**
 
-* The primary and backup queries for each act: intent classification, quality-gate retry, and both enrichment-flywheel gap terms. For the flywheel acts specifically, use the exact phrasing confirmed live this session ("show me camel colored coats" / "show me a chrome material humidifier") — the shorter, more natural-sounding "camel coat" intermittently classified as `search` intent instead of `attribute_filter` and skipped the flywheel entirely.  
-* Both acts now trigger identically live through chat — whether to show both in the allotted time, or narrate the second verbally and show only color live if time is tight.  
-* The acceptable latency budget for the quality-gate retry (~1–2s) and each re-index (~15–20s, narrate through it).  
+* The primary and backup queries for each act: intent classification, quality-gate retry, and the taxonomy-correction demo's exact two-turn phrasing ("show me tan boots", then a dispute phrase like "that's not tan, that's tagged yellow — that's wrong") — use "show me tan boots" specifically, not "show me tan colored boots" (the longer phrasing adds a spurious second filter that dilutes the result set).  
+* The taxonomy-correction demo is a single act by design — simpler and, because it's built on a real bug rather than a planted gap, a stronger claim than a two-act version would be.  
+* The acceptable latency budget for the quality-gate retry (~1–2s) and each re-index (~19–20s, narrate through it).  
 * The exact observability panels visible during the live demo, including whether the enrichment card gets its own dedicated moment on screen.  
 * The Workbench features included in the 30-minute and 45-minute versions.  
 * Whether the experimental relevance agent is stable enough for a prepared preview.

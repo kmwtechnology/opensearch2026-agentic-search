@@ -21,7 +21,7 @@ Open browser to **<http://localhost:5173>** and keep DevTools hidden (press `F12
 - **Intent Classification** (2 min): Show 6 intents with different queries
 - **Hybrid Search** (2 min): Demonstrate α (alpha) weighting
 - **Quality Gate Retry** (2 min): Trigger low-confidence → retry
-- **Agentic Enrichment Flywheel** (2–3 min): Agent fixes a real data gap live, twice
+- **Taxonomy Self-Correction** (2–3 min): Shopper disputes a wrong tag, agent fixes it live
 - **Observable Events** (1 min): Real-time pipeline visualization
 - **Q&A** (balance of time)
 
@@ -271,254 +271,199 @@ Then immediately: `Make them waterproof` (refinement)
 
 ---
 
-## Part 4.5: The Agentic Enrichment Flywheel (2–3 min) — THE centerpiece
+## Part 4.5: Taxonomy Self-Correction (2–3 min) — THE centerpiece
 
-**This is the "agents fix data quality, not just adjust queries" moment.**
-Unlike the quality gate retry (which adjusts *how* we search), this shows
-the agent noticing the *catalog itself* is missing a real color or material
-term, teaching the search system about it, and re-indexing the whole
-catalog live — genuinely, not simulated.
+**This is the "the agent is confidently wrong, and only a human catches
+it" moment.** Earlier demo parts show the system reacting to its own
+low confidence (quality gate retry). This part shows something harder:
+the catalog has a real, silent data-quality bug that produces a
+**passing, above-threshold result** — the automated quality gate can't
+see anything wrong, because nothing about the score says so. Only a
+shopper who actually looks at the product can catch it. The agent
+listens, verifies, and permanently fixes the underlying data live, on
+stage — not a scripted response, a real taxonomy write and a real
+re-index.
 
-**Setup requirement**: both must be set in the environment before starting
-the backend (both default to `false`):
+**The real bug**: the color taxonomy (rebuilt from scratch via
+discovery against real product text this project cycle) maps the
+variant **"tan" to the canonical bucket "yellow"** instead of "brown".
+This is objectively wrong — tan is a shade of brown, not yellow — and
+it's not a toy example: **29 real products** in the catalog carry this
+mis-mapping, including boots, jackets, and bags whose own titles say
+"Tan" but whose indexed `product_color_primary` says `yellow`.
+
+**Setup requirement**: must be set in the environment before starting
+the backend (defaults to `false`):
 ```bash
 ENABLE_ENRICHMENT_TOOL=true
-STRICT_MATERIAL_FILTER_DEMO=true
 ```
-Restart `make dev-api` after setting them if the backend was already
-running. `STRICT_MATERIAL_FILTER_DEMO` is what makes Act 2 trigger live
-through chat instead of needing the admin endpoint — see "Why this
-needed a fix" under Act 2 below.
+Restart `make dev-api` after setting it if the backend was already
+running. Confirm the bug state is loaded before going live — this repo
+intentionally ships with `tan → yellow` still in place; if a prior
+rehearsal already corrected it, see Troubleshooting below to restore it.
 
 **Mechanism** (for your own understanding, not to narrate verbatim):
-Both color and material are detected live from product text
-(`chunk_text`) by one generic Lucille stage, with the variant→canonical
-taxonomy stored in OpenSearch — not a static file. When `attribute_filter`
-intent extracts a **color** term that isn't in the taxonomy yet, the
-exact-match filter against it returns nothing on the first pass, which
-triggers the agent's gap-detection and offers `trigger_enrichment`. An
-unrecognized **material** term's fallback is normally a soft lexical
-match (protecting real non-material feature words like "waterproof") and
-gets relaxed away by the retriever's own "no dead-end results" safety
-net — so by default, material's gap can't surface through natural
-conversation. `STRICT_MATERIAL_FILTER_DEMO` swaps that fallback for a
-hard exact-match filter, same as color's, for exactly this demo. Either
-way, `trigger_enrichment(attribute_type, variant, canonical)` — a real
-tool, not a canned response — writes the new mapping to OpenSearch and
-triggers an actual full Lucille reindex of the whole 9,618-product
-catalog (~15–20s, measured — not a mock, not a scoped patch).
+`trigger_enrichment(attribute_type, variant, canonical)` — the same real
+tool used elsewhere in this codebase to add brand-new taxonomy terms —
+also handles **correcting** a term that's already mapped, just to the
+wrong bucket. `enrichment_service.enrich_attribute` distinguishes the
+two cases: if the requested canonical differs from what's already
+stored, it's a correction (tracked via `corrected_from`), not a no-op.
+On the conversation side, `main.py`'s `agent_node` has a dedicated
+correction-detection branch, separate from the existing zero-result
+gap-detection branch: `_detect_correction_signal` is a cheap keyword
+pre-filter for dispute language ("that's not right", "mistagged",
+"actually that's..."), scoped to `refinement`/`follow_up` intent only
+(a fresh, standalone query can't be disputing a prior turn — there's
+nothing to dispute yet). When it fires, `_try_correction_tool` builds a
+correction-framed prompt including recent conversation history and
+offers the LLM the same `trigger_enrichment` tool, which — if the LLM
+agrees a real mistagging occurred — writes the corrected mapping and
+triggers a genuine full Lucille reindex of the whole 9,618-product
+catalog (~19–20s, measured — not a mock, not a scoped patch).
 
-**Both taxonomies are genuinely gap-tested and rehearsed** (this session,
-2026-08-31) against the real dataset — the exact wording below reflects
-real product titles and real timing, not hypothetical numbers.
+### The demo
 
-### Act 1 — Color: "camel"
+**Send**: `show me tan boots`
 
-**Send**: `show me camel colored coats` (**not** the shorter `camel coat` —
-confirmed live this session that the shorter phrasing intermittently
-classifies as `search` intent rather than `attribute_filter` and finds
-the CAMEL-titled coat via plain lexical match, skipping the flywheel
-entirely. The longer, explicit phrasing has classified as
-`attribute_filter` with 100% confidence on every run tested this
-session — use it for the live demo.)
+(Use this exact phrasing — confirmed this session that longer variants
+like "show me tan colored boots" cause the query extractor to add a
+second, unrelated `material_or_feature: "boots"` filter alongside the
+color filter, which dilutes the result set and muddies the before/after
+comparison. "show me tan boots" extracts a single clean
+`color: "tan"` filter.)
 
-**Expected**: `attribute_filter` intent extracts `color: "camel"`. "camel"
-isn't in the color taxonomy (102 variants, none of them "camel") — the
-exact filter on `product_color_primary="camel"` matches nothing, quality
-gate retries, still nothing (max_relevance < 0.10). The agent gets offered
-`trigger_enrichment` and — if it recognizes "camel" as a real color — calls
-it with `attribute_type="color", variant="camel", canonical="brown"`.
+**Expected**: `attribute_filter` intent, filter resolves `tan → yellow`
+(the current, wrong mapping), retrieves real product results, reranks,
+and **passes the quality gate** — the top result (a Clarks Dark Tan
+Leather Boot) scores **~0.56** against a 0.45 threshold for
+`attribute_filter` intent. This is the whole point: the system is
+**confidently wrong**, not empty-handed. Nothing about this response
+looks broken.
 
-**Observe**:
-- A bright emerald banner appears immediately at the top of the
-  observability panel — **"Catalog Enrichment Triggered — live re-index
-  in progress"** with a spinning icon, visible without expanding
-  anything, the moment the LLM decides to call the tool. It switches to
-  "complete" when the reindex finishes. The **LLM Agent** step in the
-  timeline also shows an inline "Enrichment: color 'camel' → 'brown'"
-  badge in its collapsed header.
-- Agent's response references the fix (e.g. "I've added 'camel' as a
-  brown color and updated the catalog...")
-- **This takes ~15–20s** (measured: 19.98s and 16.48s across two real runs
-  this session) — the agent's response won't appear until the reindex
-  completes, but the header banner and step badge are visible the whole
-  time, so the wait no longer reads as dead air on its own; narrate
-  alongside it rather than instead of it.
+**Observe / narrate**: Open the observability panel's citation/DSL
+detail for the top result and point out the mismatch directly — the
+product's own title says "Tan", but the indexed field the filter
+actually matched against is `product_color_primary: yellow`. This is
+the moment to ask the audience: "does this look right to you?"
 
-**Then re-send**: `show me camel colored coats`
+**Then send** (same conversation, as a follow-up): something in the
+shape of `that's not tan, that's tagged yellow — that's wrong` (any
+natural dispute phrasing works; `_detect_correction_signal` matches on
+words like "wrong", "mistagged", "not right", "actually").
 
-**Expected**: Now resolves. Real hero product: **"Calvin Klein Women's
-Classic Cashmere Wool Blend Coat, CAMEL, 6"** should appear, correctly
-tagged `product_color_primary: brown` — confirmed live this session both
-as a same-conversation follow-up (classifies as `refinement`, reranker
-score 0.886) and as a fresh conversation (would classify as
-`attribute_filter` again). Either way works; a fresh conversation is
-simplest if you want a clean second act with no intent-routing nuance to
-explain.
+**Expected**: Classifies as `refinement`. The correction-detection
+branch fires, offers `trigger_enrichment` to the LLM with the recent
+conversation as context. The LLM calls it with
+`attribute_type="color", variant="tan", canonical="brown"`. Because
+`tan` is already mapped (to `yellow`), `enrich_attribute` recognizes
+this as a **correction**, not a fresh addition — `corrected_from`
+comes back as `"yellow"`. A real reindex runs (~19–20s, measured this
+session: 19.71s).
 
-### Act 2 — Material: "chrome"
+**Observe**: Same panel visibility as any enrichment event — a header
+banner while the reindex runs, an inline step badge on completion. The
+agent's response is warm and specific about what changed (e.g. "You're
+right — that was tagged yellow, which was wrong. I've corrected it to
+brown and re-indexed the catalog.").
 
-**Why this needed a fix**: material's attribute-filter fallback is
-deliberately *soft* by default — an unrecognized material term falls back
-to a lexical `multi_match` instead of an exact-match filter, because the
-same code path also has to handle non-material feature words users type
-("waterproof", "noise canceling") that would otherwise get hard-excluded
-incorrectly. On top of that, the retriever has a **separate, deliberate
-filter-relaxation safety net** (`main.py`, "filter relaxation if <3
-results" — see `CLAUDE.md`) that always drops material/size constraints
-and retries broader whenever the fully-filtered count is under 3,
-specifically to avoid dead-end "no results" screens. Confirmed live this
-session: even a material term with **zero** corpus occurrences
-(`malachite`) still got relaxed to 40 returned documents. Between the two
-mechanisms, no material term could produce a genuine zero-document
-`attribute_filter` result through natural conversation — Act 2 originally
-had to be triggered via `POST /api/admin/enrich` instead of live chat, with
-no observability-panel visibility.
+**Then prove it stuck** — ask (new message, or check the panel
+directly): `what color is that boot tagged as now?` — or simply
+re-open the citation/DSL detail for the same product. **The field
+itself changed**: `product_color_primary` for the affected boot goes
+from `yellow` to `brown`, permanently, for every shopper from now on —
+not just for this conversation.
 
-**The fix**: `STRICT_MATERIAL_FILTER_DEMO=true` (see Setup requirement
-above) swaps an *unresolved* material term's fallback for a hard
-exact-match filter — the same pattern color's unresolved fallback already
-uses. This also automatically exempts it from filter relaxation (which
-only relaxes `multi_match` filters), without touching that logic at all.
-Real users are unaffected: this flag is off everywhere except the demo
-environment, and it only changes behavior for *unresolved* terms — a
-material already in the taxonomy always used a hard filter regardless.
-
-**Send**: `show me a chrome material humidifier`
-
-**Expected**: Same shape as Act 1 — `attribute_filter` intent extracts
-`material_or_feature: "chrome"`. "chrome" isn't in the material taxonomy
-(34 variants, none of them "chrome") — with the strict flag on, the exact
-filter on `product_material_primary="chrome"` matches nothing (confirmed
-live: `0 documents retrieved`), quality gate shows "No documents to
-evaluate", the agent gets offered `trigger_enrichment` and calls it with
-`attribute_type="material", variant="chrome", canonical="metal"`.
-
-**Observe**: Identical to Act 1 — the same panel header banner, the same
-"Enrichment: material 'chrome' → 'metal'" step badge, the same expanded
-banner in the LLM Agent step. Real reindex, ~15–25s (measured this
-session: 24.4s).
-
-**Then, in a new conversation** (click **New Chat** — sending the
-follow-up in the *same* thread as the trigger query works too, but the
-query rewriter expands and merges it with the prior humidifier ask,
-which is an extra moving part you don't need for a clean "it worked"
-moment): send `show me a bar table made of chrome material`
-
-**Expected**: Real hero product **"Global Furniture Bar Table,
-Clear/Black/Chrome"** appears as the top citation, correctly tagged
-`product_material_primary: metal` (confirmed live this session).
+**A note on ranking**: don't over-promise a dramatic before/after
+reshuffling of the result *list* — confirmed this session that because
+the query text itself contains the literal word "tan", lexical
+matching on that word dominates ranking regardless of which color
+bucket the filter uses, so the same handful of "tan"-titled products
+tend to appear in both the before and after result sets. The
+compelling, honest proof point is the **data field itself changing
+value live** — not a reshuffled leaderboard. Lead with that.
 
 ### Narration
 
-> **Act 1**: "Notice this isn't the agent adjusting *how* it searches —
-> like the quality gate retry we just saw. The catalog itself was missing
-> this color. The agent recognized a real gap, taught the system about it,
-> and re-indexed the whole 9,618-product catalog live. That took about 15
-> to 20 seconds — genuinely reprocessing every product, not a shortcut.
-> Watch — if I ask the same question again, it works now."
+> "Watch the quality gate score on this result: 0.56, comfortably above
+> our 0.45 threshold. As far as the system is concerned, this worked.
+> But look closer — this boot's title literally says 'Tan', and it's
+> indexed as `yellow`. That's a real bug in our taxonomy, and it's
+> silent — no automated check catches it, because nothing about the
+> score says anything is wrong. Only a shopper looking at the actual
+> product would ever notice.
 >
-> **Act 2**: "Same mechanism, same real reindex — this time for a
-> material instead of a color. The agent recognized 'chrome' wasn't in
-> the material taxonomy, taught the system, and re-indexed live — just
-> like it did for camel a moment ago."
+> So let's tell it. [sends the correction] The agent doesn't just
+> apologize — it calls the same tool it would use to learn a brand-new
+> color, except this time to fix an existing one. That's a real write
+> to the taxonomy and a real re-index of all 9,618 products, about 20
+> seconds. And now — [shows the citation detail again] — that exact
+> field, for every shopper, from now on, says brown. Not just for me,
+> not just for this session. The catalog itself got smarter because
+> someone bothered to point out it was wrong."
 
 ### Verified this session (2026-08-31), not hypothetical
 
-- Both taxonomies (102 color variants, 34 material variants) were rebuilt
-  from scratch via discovery against real product text — not migrated from
-  a hand-authored file.
-- **Act 1 (color) fully proven end-to-end through real live chat**: sent
-  "show me camel colored coats" via `POST /api/chat`, the LLM recognized
-  the gap and called `trigger_enrichment(attribute_type="color",
-  variant="camel", canonical="brown")` on its own judgment, a real 19.8s
-  reindex ran, and a follow-up identical query returned the correctly
-  cited, correctly tagged hero product. This required a bug fix — see
-  below.
-- **Act 2 (material) fully proven end-to-end through real live chat**,
-  same trigger mechanism and panel visibility as Act 1 — this was NOT
-  possible earlier the same session (confirmed structurally impossible:
-  even a zero-corpus-occurrence material term still got relaxed to 40
-  results) and had to go through the admin endpoint instead.
-  `STRICT_MATERIAL_FILTER_DEMO` (see Setup requirement) fixed this: sent
-  "show me a chrome material humidifier", the LLM recognized the gap and
-  called `trigger_enrichment(attribute_type="material", variant="chrome",
-  canonical="metal")` on its own judgment, a real 24.4s reindex ran. **Unlike
-  Act 1, verification could not use the same query**: "chrome material
-  humidifier" was deliberately picked because no humidifier in the corpus
-  has any chrome-related text, which is exactly why it produces the 0-doc
-  trigger signal — but that same property means re-asking it after
-  enrichment still finds no chrome humidifier (there isn't one to find).
-  Verification instead used a different query in a fresh conversation,
-  "show me a bar table made of chrome material" — an unrelated category
-  chosen specifically because it *does* have real chrome products in the
-  corpus — which correctly resolved to the Global Furniture Bar Table,
-  proving the new "chrome"→"metal" mapping works generally, not proving
-  anything about humidifiers specifically.
-- **Two bugs found and fixed this session**:
-  1. The agent's enrichment-gap check originally only fired when
-     `quality_gate_retried and max_relevance < threshold`. But
-     `quality_gate_node` deliberately never retries when the *first*
-     retrieval pass already returns zero documents (adjusting alpha can't
-     fix an exclusionary filter) — so for the exact "unrecognized
-     attribute term → hard filter excludes everything on pass one"
-     scenario the whole feature exists to address, `quality_gate_retried`
-     never became `True` and the tool was never offered. Fixed in
-     `main.py`'s `agent_node` by adding a second, OR'd condition
-     (`intent == "attribute_filter" and not retrieved_documents`).
-  2. `EnrichmentTriggeredEvent` was emitted by the backend and typed on
-     the frontend, but was never actually rendered in the live UI —
-     `EventCard.tsx` had rendering logic for it, but was never imported
-     into `ObservabilityPanel`. Fixed with three layers of visibility: a
-     persistent panel-header banner, an inline step-header badge, and a
-     dedicated expanded-detail card — see `ARCHITECTURE.md`.
-  Full test suites (backend + frontend) unaffected by either fix.
-- The full mechanism (classify → write mapping → ensure index fields →
-  regenerate Lucille config → real reindex subprocess → verify field
-  population → verify query improvement) was run for real, for both acts,
-  this session — not mocked. Both gap terms were reverted afterward
-  (mapping deleted, affected documents' fields cleared, one more full
-  reindex run) specifically so they'd be fresh for the actual demo.
-- **Full replay, both acts back-to-back, after all fixes landed**: re-ran
-  the entire Part 4.5 script fresh (not just each fix in isolation) to
-  confirm nothing regressed when combined — both acts triggered live,
-  both showed correct panel/badge/card visibility, both resolved
-  correctly on the follow-up query. This is also what caught the "camel
-  coat" query-reliability finding above — a bug the isolated fix-by-fix
-  testing hadn't surfaced.
+- The `tan → yellow` mis-mapping is real, found in the actual discovered
+  color taxonomy (not planted) — confirmed via direct query against
+  `AttributeMappingStore`, affecting 29 real products.
+- Confirmed the wrong-tag result **passes** the quality gate
+  (`attribute_filter` threshold 0.45) at scores of 0.558–0.670 across
+  runs — i.e. this bug is invisible to the existing automated
+  zero-result gap-detection mechanism (used elsewhere in this repo for
+  brand-new taxonomy terms) by construction. Only conversational
+  correction can catch it.
+- Ran the full two-turn flow via direct pipeline invocation (intent
+  classifier → query evaluator → retriever → reranker → quality gate →
+  agent, called directly in sequence): turn 1 ("show me tan boots")
+  surfaced the confidently-wrong result; turn 2 (a dispute phrase)
+  correctly classified as `refinement`, triggered
+  `_try_correction_tool`, called `trigger_enrichment(color, tan,
+  brown)`, ran a real reindex, and returned `corrected_from="yellow"`.
+- Confirmed the correction is **live in the actual index**, not just
+  the mapping store: queried the affected boot document directly before
+  and after — `product_color_primary` flipped from `yellow` to `brown`.
+- After verification, reverted the mapping back to `tan → yellow` and
+  ran one more clean full reindex (19.71s, 9,618/9,618 succeeded) so the
+  repository is back in the genuine bug state, ready for the live
+  demo — confirmed via a direct post-revert query that the same boot
+  document is back to `product_color_primary: yellow`.
+- 834 unit + 205 integration tests pass, including new coverage added
+  for the correction path specifically: `EnrichmentResult.corrected_from`
+  tracking, the "already mapped, different canonical → correction, not
+  no-op" branch in `enrich_attribute`, `_detect_correction_signal`'s
+  dispute-phrase matching, and `agent_node`'s correction-branch gating
+  (fires on `refinement`/`follow_up` + dispute language + flag on;
+  never on a fresh `search`/`attribute_filter` turn, even with
+  dispute-shaped wording, since there's no prior turn to dispute).
 
 ### Troubleshooting this part specifically
 
-- **Either act's tool never gets called / agent just gives the canned "no
-  results" response**: Confirm `ENABLE_ENRICHMENT_TOOL=true` is actually
-  set for the running backend process (`echo $ENABLE_ENRICHMENT_TOOL` in
-  the shell that started `make dev-api`, or check `/api/admin/enrich`
-  returns something other than 403). If it's set correctly but the LLM
-  still doesn't call the tool, confirm intent classified as
-  `attribute_filter` in the observability panel and that the retriever log
-  shows `hybrid=0 docs` on the first pass — that's the exact signal the
-  gap-detection fix depends on.
-- **Act 2 specifically shows a nonzero document count** (e.g. "40
-  documents retrieved" instead of 0): `STRICT_MATERIAL_FILTER_DEMO=true`
-  isn't set for the running backend process, or the backend hasn't
-  restarted since it was set — `.env` changes aren't picked up by
-  uvicorn's `--reload` file watcher (it only watches `.py` files), so a
-  bare `.env` edit needs a manual restart:
-  `pkill -f "uvicorn api.main:app" && make dev-api`. Confirm with
-  `python3 -c "import config; print(config.STRICT_MATERIAL_FILTER_DEMO)"`
-  from `langchain_agent/` before going live.
+- **The tool never gets called / agent just answers normally without
+  fixing anything**: Confirm `ENABLE_ENRICHMENT_TOOL=true` is actually
+  set for the running backend process. If it's set correctly, confirm
+  the follow-up message actually classified as `refinement` or
+  `follow_up` (not `search`) in the observability panel, and that it
+  contains clear dispute language — `_detect_correction_signal` is a
+  keyword pre-filter and can miss very indirect phrasing.
+- **Turn 1 doesn't show the bug** (e.g. filter already resolves to
+  `brown`, or no results at all): the mapping isn't in the shipped bug
+  state. Restore it before going live:
+  ```bash
+  cd langchain_agent
+  python3 -c "
+  import sys; sys.path.insert(0,'.')
+  from attribute_mapping_store import AttributeMappingStore
+  AttributeMappingStore().add_mapping('color', 'tan', 'yellow', source='seed')
+  "
+  bash scripts/lucille_ingest.sh --skip-judgments
+  ```
 - **Reindex takes noticeably longer than ~20s live**: Docker image layer
-  cache may be cold (first run after a restart rebuilds a Maven layer,
-  ~1–4s extra) — acceptable, but if it's dramatically slower, check
+  cache may be cold — acceptable, but if dramatically slower, check
   `docker ps` / OpenSearch health before going live.
-- **Gap terms already resolved (from a prior rehearsal)**: Delete the
-  `color#camel` / `material#chrome` mapping docs from
-  `agentic_hybrid_search_attribute_mappings`, then run
-  `bash scripts/lucille_ingest.sh --skip-judgments` once more — the
-  detector stage only emits fields for variants currently registered in
-  the mapping store, so the reindex alone clears the affected documents'
-  `product_color_primary`/`product_material_primary` fields; no separate
-  `update_by_query` step is needed.
+- **Already corrected from a prior rehearsal and you want a clean
+  restart**: same restore commands as above — this both re-seeds the
+  bug mapping and re-indexes, undoing a prior on-stage correction.
 
 ---
 
@@ -576,15 +521,19 @@ A: We use Amazon ESCI dataset (~1.2M US products). Demo often uses a 10K sample 
 
 **Q: Is the reindex you just showed actually processing the whole catalog, or just the affected products?**
 
-A: The whole catalog — a real, full Lucille pipeline run (~15–20s for 9,618 products), not a scoped patch. We measured that a full reindex is fast enough to run live, so there's no need for a narrower, faster-but-less-authentic mechanism. The Lucille pipeline config itself is generated fresh before every run from whatever attribute types are currently registered in OpenSearch — a brand-new attribute type (not just color/material) would need zero hand-edited config to be picked up.
+A: The whole catalog — a real, full Lucille pipeline run (~19–20s for 9,618 products), not a scoped patch. We measured that a full reindex is fast enough to run live, so there's no need for a narrower, faster-but-less-authentic mechanism.
 
 **Q: What stops the agent from writing garbage into the taxonomy?**
 
-A: A few guardrails: the canonical bucket the agent chooses is validated against a fixed, bounded list per attribute type (it can't invent a new category on the fly); the mapping write is idempotent (won't duplicate or corrupt an existing entry); and the tool is gated behind an explicit `ENABLE_ENRICHMENT_TOOL` flag, off by default.
+A: A few guardrails: the canonical bucket the agent chooses is validated against a fixed, bounded list per attribute type (it can't invent a new category on the fly); the correction path only overwrites an existing mapping when the LLM explicitly supplies a different canonical after a shopper disputes it — an unprompted, casual mention never rewrites anything; and the tool is gated behind an explicit `ENABLE_ENRICHMENT_TOOL` flag, off by default.
 
-**Q: Does this work for attributes beyond color and material?**
+**Q: Why didn't the automated quality gate just catch this bug on its own?**
 
-A: Architecturally, yes — the detection stage is one generic, parameterized Lucille class, not a dedicated class per attribute type. Adding a new attribute type is a matter of registering it in the OpenSearch-backed mapping store; the next reindex picks it up automatically. This demo only wires up color and material end-to-end, though.
+A: Because the mis-tagged result isn't a *failure* by any metric the system tracks — it's a wrong-but-confident result. The reranker scored it 0.56, comfortably above the 0.45 `attribute_filter` threshold, because the retrieved product genuinely is relevant to "tan boots" in every way except the specific color bucket it's filed under. Automated gap-detection in this codebase is built to catch *zero-result* dead ends (a term the taxonomy has never heard of at all) — a silent mis-mapping produces the opposite signature, a passing score, so it needs a human to actually look at the product and say something.
+
+**Q: Does this work for attributes beyond color?**
+
+A: Yes — the same taxonomy store, detection stage, and `trigger_enrichment` tool also cover material (used elsewhere in this codebase for filling brand-new material gaps), and the correction path itself is generic over `attribute_type`. This demo's script only walks through the color correction end-to-end.
 
 **Q: Does this work for non-e-commerce domains?**
 
@@ -605,7 +554,7 @@ A: The current reranker uses LLM-based scoring (no fine-tuning needed). But you 
 > 1. **Intent routing** — tailors search strategy to query type
 > 2. **Dynamic alpha** — adapts semantic/lexical balance
 > 3. **Quality gates** — automatically retries if confidence is low
-> 4. **Agentic enrichment** — the agent fixes real catalog gaps live, not just query-side workarounds
+> 4. **Taxonomy self-correction** — the agent fixes real, silent data-quality bugs live when a shopper points them out, not just query-side workarounds
 > 5. **Observable events** — gives visibility into every decision
 >
 > The architecture is fully documented in the GitHub repo: comprehensive docstrings, ARCHITECTURE.md for deep-dives, and CONTRIBUTING.md for extending it.
