@@ -286,12 +286,17 @@ environment before starting the backend (default is `false`). Restart
 **Mechanism** (for your own understanding, not to narrate verbatim):
 Both color and material are detected live from product text
 (`chunk_text`) by one generic Lucille stage, with the variant→canonical
-taxonomy stored in OpenSearch — not a static file. When a query's
-`attribute_filter` intent extracts a color/material term that isn't in
-that taxonomy yet, the exact-match filter against it returns nothing;
-after the quality gate retries and still finds nothing, the agent gets a
-chance to call `trigger_enrichment(attribute_type, variant, canonical)` —
-a real tool, not a canned response. The tool writes the new mapping to
+taxonomy stored in OpenSearch — not a static file. When `attribute_filter`
+intent extracts a **color** term that isn't in the taxonomy yet, the
+exact-match filter against it returns nothing on the first pass, which
+triggers the agent's gap-detection and offers `trigger_enrichment`. An
+unrecognized **material** term instead falls back to a soft lexical match
+and can also get relaxed away by the retriever's own "no dead-end results"
+safety net — so material's gap can't reliably surface through natural
+conversation (see Act 2 below); it's triggered directly via the admin
+endpoint instead, exercising the identical underlying mechanism. Either
+way, `trigger_enrichment(attribute_type, variant, canonical)` — a real
+tool/endpoint, not a canned response — writes the new mapping to
 OpenSearch and triggers an actual full Lucille reindex of the whole
 9,618-product catalog (~15–20s, measured — not a mock, not a scoped patch).
 
@@ -325,69 +330,126 @@ it with `attribute_type="color", variant="camel", canonical="brown"`.
 **"Calvin Klein Women's Classic Cashmere Wool Blend Coat, CAMEL, 6"** should
 appear, correctly tagged `product_color_primary: brown`.
 
-### Act 2 — Material: "chrome"
+### Act 2 — Material: "chrome" (triggered via admin endpoint, not live chat)
 
-**Send**: `chrome bar table` (or `chrome vanity mirror`)
+**Why this act is triggered differently than Act 1**: material's
+attribute-filter fallback is deliberately *soft* — an unrecognized
+material term falls back to a lexical `multi_match` instead of an
+exact-match filter, because the same code path also has to handle
+non-material feature words users type ("waterproof", "noise canceling")
+that would otherwise get hard-excluded incorrectly. On top of that, the
+retriever has a **separate, deliberate filter-relaxation safety net**
+(`main.py`, "filter relaxation if <3 results" — see `CLAUDE.md`) that
+always drops material/size constraints and retries broader whenever the
+fully-filtered count is under 3, specifically to avoid dead-end
+"no results" screens. Confirmed live this session: even a material term
+with **zero** corpus occurrences (`malachite`) still gets relaxed to 40
+returned documents — `Retriever: filter relaxation — 0 doc(s) with full
+filters, retrying without material/size constraints`. Between the two
+mechanisms, no material term, however rare, can produce a genuine
+zero-document `attribute_filter` result through natural conversation. Color
+has neither protection (hard exact-match fallback, excluded from
+relaxation) — that's exactly why "camel" works live in Act 1 and no
+material term ever will, as currently architected.
 
-**Expected**: Same shape, `attribute_type="material"`,
-`variant="chrome"`, `canonical="metal"`. Material taxonomy has 34 variants,
-none of them "chrome" (note: "chrome" *is* already a valid color variant,
-mapping to gray — that's a separate, correctly-functioning taxonomy; this
-gap is specifically about *material*).
+Rather than compromise material's real-world filtering behavior (which
+correctly protects legitimate non-material queries) just to force a demo
+moment, Act 2 triggers the same real mechanism directly via the
+now-working `/api/admin/enrich` endpoint — still a genuine reindex, still
+live on stage, just invoked by you instead of by the LLM's own tool-call
+judgment.
 
-**Observe**: Same as Act 1. Real hero product: **"Global Furniture Bar
-Table, Clear/Black/Chrome"** (measured timing: 19.66s and included in the
-15.47s products-ingest step of the final rehearsal run this session).
+**Trigger** (run this live, e.g. from a second terminal or Swagger UI at
+`/swagger`):
 
-**Then re-send the same query** — the bar table (or the Decobros vanity
-mirror, also a valid hero) now appears, correctly tagged
-`product_material_primary: metal`.
+```bash
+curl -s -b <session-cookie-jar> -X POST http://localhost:8000/api/admin/enrich \
+  -H "Content-Type: application/json" -H "Origin: http://localhost:8000" \
+  -d '{"attribute_type": "material", "variant": "chrome", "canonical": "metal"}'
+```
+
+`canonical` is required here — the admin endpoint classifies
+dictionary-only (no LLM fallback), so an unrecognized term like "chrome"
+needs the bucket supplied explicitly, the same way the live agent tool
+supplies its own LLM-classified canonical.
+
+**Expected**: `{"success": true, "reindex_triggered": true,
+"reindex_success": true, "docs_processed": 9618, ...}` after ~15–20s
+(measured this session: 21.16s).
+
+**Then send in chat**: `chrome bar table`
+
+**Expected**: Real hero product **"Global Furniture Bar Table,
+Clear/Black/Chrome"** appears as the top citation, correctly tagged
+`product_material_primary: metal` (confirmed live this session).
 
 ### Narration
 
-> "Notice this isn't the agent adjusting *how* it searches — like the
-> quality gate retry we just saw. The catalog itself was missing this
-> color. The agent recognized a real gap, taught the system about it, and
-> re-indexed the whole 9,618-product catalog live. That took about 15 to 20
-> seconds — genuinely reprocessing every product, not a shortcut. Watch —
-> if I ask the same question again, it works now."
+> **Act 1**: "Notice this isn't the agent adjusting *how* it searches —
+> like the quality gate retry we just saw. The catalog itself was missing
+> this color. The agent recognized a real gap, taught the system about it,
+> and re-indexed the whole 9,618-product catalog live. That took about 15
+> to 20 seconds — genuinely reprocessing every product, not a shortcut.
+> Watch — if I ask the same question again, it works now."
+>
+> **Act 2**: "Same mechanism, same real reindex — this time triggered
+> directly rather than through the chat turn, since material's filter is
+> deliberately more forgiving than color's so it doesn't wrongly reject
+> legitimate feature words like 'waterproof'. The underlying fix — new
+> taxonomy entry, full catalog reindex — is identical."
 
 ### Verified this session (2026-08-31), not hypothetical
 
 - Both taxonomies (102 color variants, 34 material variants) were rebuilt
   from scratch via discovery against real product text — not migrated from
   a hand-authored file.
-- Both gap terms ("camel", "chrome") were confirmed absent from their
-  respective taxonomies immediately before writing this section, and the
-  hero products confirmed genuinely untagged (`product_color_primary`/
-  `product_material_primary` both null) on the current index.
+- **Act 1 (color) fully proven end-to-end through real live chat**: sent
+  "show me camel colored coats" via `POST /api/chat`, the LLM recognized
+  the gap and called `trigger_enrichment(attribute_type="color",
+  variant="camel", canonical="brown")` on its own judgment, a real 19.8s
+  reindex ran, and a follow-up identical query returned the correctly
+  cited, correctly tagged hero product. This required a bug fix — see
+  below.
+- **Act 2 (material) fully proven end-to-end via the admin endpoint**, not
+  live chat — confirmed structurally impossible to trigger through natural
+  conversation (see above). Real 21.16s reindex, `docs_processed: 9618`,
+  hero product citation confirmed correct afterward.
+- **Bug found and fixed this session**: the agent's enrichment-gap check
+  originally only fired when `quality_gate_retried and max_relevance <
+  threshold`. But `quality_gate_node` deliberately never retries when the
+  *first* retrieval pass already returns zero documents (adjusting alpha
+  can't fix an exclusionary filter) — so for the exact "unrecognized
+  attribute term → hard filter excludes everything on pass one" scenario
+  the whole feature exists to address, `quality_gate_retried` never became
+  `True` and the tool was never offered. Fixed in `main.py`'s `agent_node`
+  by adding a second, OR'd condition (`intent == "attribute_filter" and not
+  retrieved_documents`). Full unit suite (813 passed) unaffected.
 - The full mechanism (classify → write mapping → ensure index fields →
   regenerate Lucille config → real reindex subprocess → verify field
   population → verify query improvement) was run for real, for both acts,
   this session — not mocked. Both gap terms were reverted afterward
   (mapping deleted, affected documents' fields cleared, one more full
   reindex run) specifically so they'd be fresh for the actual demo.
-- **Not yet verified this session**: the full conversational path through
-  the live chat UI — does the LLM reliably recognize "camel"/"chrome" as
-  color/material terms and choose to call the tool with the right
-  arguments, when actually prompted via a real WebSocket conversation
-  turn? The tool-calling *loop* itself is unit-tested (mocked LLM), and the
-  *mechanism* the tool invokes is fully validated end-to-end — what hasn't
-  been exercised is the live LLM's own judgment in the actual chat flow.
-  **Do at least one live rehearsal through the real UI before presenting**,
-  and have a fallback ready (see Troubleshooting below) in case the model's
-  behavior differs from the mocked tests.
 
 ### Troubleshooting this part specifically
 
-- **Tool never gets called / agent just gives the canned "no results"
-  response**: Confirm `ENABLE_ENRICHMENT_TOOL=true` is actually set for the
-  running backend process (`echo $ENABLE_ENRICHMENT_TOOL` in the shell that
-  started `make dev-api`, or check `/api/admin/enrich` returns something
-  other than 403). If it's set correctly but the LLM still doesn't call the
-  tool, the query may not be scoring low enough to trigger the gap signal —
-  confirm intent classified as `attribute_filter` in the observability
-  panel, and that quality gate shows a retry with still-low `max_score`.
+- **Act 1 tool never gets called / agent just gives the canned "no
+  results" response**: Confirm `ENABLE_ENRICHMENT_TOOL=true` is actually
+  set for the running backend process (`echo $ENABLE_ENRICHMENT_TOOL` in
+  the shell that started `make dev-api`, or check `/api/admin/enrich`
+  returns something other than 403). If it's set correctly but the LLM
+  still doesn't call the tool, confirm intent classified as
+  `attribute_filter` in the observability panel and that the retriever log
+  shows `hybrid=0 docs` on the first pass — that's the exact signal the
+  gap-detection fix above depends on.
+- **Act 2 admin curl returns 403**: same `ENABLE_ENRICHMENT_TOOL` check as
+  above. If it returns 422, the request body is missing `attribute_type`,
+  `variant`, or (for an unrecognized term) `canonical`.
+- **Act 2 admin curl returns `success: false`**: the `canonical` value
+  isn't one of the material taxonomy's known buckets (`leather`, `cotton`,
+  `wool`, `synthetic`, `denim`, `canvas`, `wood`, `metal`, `glass_ceramic`,
+  `rubber` — see `MATERIAL_CANONICALS` in `attribute_discovery.py`), or the
+  variant is already mapped (check `reason` in the response body).
 - **Reindex takes noticeably longer than ~20s live**: Docker image layer
   cache may be cold (first run after a restart rebuilds a Maven layer,
   ~1–4s extra) — acceptable, but if it's dramatically slower, check
