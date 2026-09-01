@@ -232,13 +232,24 @@ jobs:
           echo ""
           echo "OpenSearch ready!"
 
+      - name: Create empty OpenSearch index
+        run: |
+          cd langchain_agent
+          # Index + search pipeline only -- no Postgres, no real product data,
+          # no Google API validation. Same code path reindex.yml's --reset-index
+          # flow already runs successfully in CI. Several integration tests
+          # (enrichment_service.py) only need the index to exist with the
+          # right mapping, not to contain real documents -- they mock the
+          # actual Lucille subprocess.
+          python setup.py --skip-db --skip-docs --skip-models
+
       - name: Run Phase 2 Integration Tests
         run: |
           cd langchain_agent
           PYTHONPATH=. pytest tests/integration/ \
             -v \
             -ra \
-            -m "not slow" \
+            -m "not slow and not requires_live_corpus" \
             --tb=short \
             --timeout=60 \
             --cov=. \
