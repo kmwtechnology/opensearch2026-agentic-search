@@ -2,7 +2,7 @@
 
 > **Parent**: [langchain_agent/README.md](../README.md)
 
-React 18 + TypeScript + Tailwind + Zustand single-page app. Built with Vite; proxies `/api`
+React 19 + TypeScript + Tailwind + Zustand single-page app. Built with Vite; proxies `/api`
 to the backend on `:8000` during development.
 
 ## Quick Start
@@ -71,7 +71,7 @@ Start with the components directory to understand the UI structure, then explore
 ### Key Files
 
 - **`App.tsx`** — Route setup, page selection, theme provider
-- **`main.tsx`** — React 18 root, Vite entry
+- **`main.tsx`** — React 19 root, Vite entry
 - **`vite-env.d.ts`** — Vite type definitions
 - **`.env.local`** — Local env vars (`VITE_API_URL` set by parent `setup.sh`)
 
@@ -196,7 +196,7 @@ npm install
 
 ## References
 
-- [React 18 docs](https://react.dev/)
+- [React 19 docs](https://react.dev/)
 - [TypeScript docs](https://www.typescriptlang.org/)
 - [Tailwind CSS](https://tailwindcss.com/)
 - [Zustand docs](https://github.com/pmndrs/zustand)

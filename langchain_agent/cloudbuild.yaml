@@ -62,7 +62,13 @@ steps:
       - '--timeout=3600'
       - '--add-cloudsql-instances=${PROJECT_ID}:${_REGION}:${_CLOUD_SQL_INSTANCE}'
       - '--service-account=agentic-hybrid-search-sa@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--set-env-vars=POSTGRES_HOST=/cloudsql/${PROJECT_ID}:${_REGION}:${_CLOUD_SQL_INSTANCE},POSTGRES_USER=${_DB_USER},POSTGRES_DB=${_DB_NAME},LLM_MODEL=gemini-3-flash-preview,EMBEDDINGS_MODEL=models/gemini-embedding-001,QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,VECTOR_DIMENSION=768,LOG_FORMAT=json,LOG_LEVEL=INFO,ENABLE_RERANKING=true,ENABLE_QUERY_EVALUATION=true,ENABLE_CONFIG_BUILDER=true,ENABLE_DOC_WRITER=true,ENABLE_CONTENT_TYPE_CLASSIFICATION=true'
+      # ENABLE_CONFIG_BUILDER, ENABLE_DOC_WRITER, ENABLE_CONTENT_TYPE_CLASSIFICATION,
+      # VECTOR_DIMENSION, ENABLE_RERANKING, ENABLE_QUERY_EVALUATION removed (see #26)
+      # -- none is read by any Python code (the last three are hardcoded config.py
+      # literals, not env-driven). This file itself hasn't been touched since the
+      # initial repo duplication and isn't invoked by any active CI/CD path
+      # (build-deploy.yml is) -- see #27 for whether it should exist at all.
+      - '--set-env-vars=POSTGRES_HOST=/cloudsql/${PROJECT_ID}:${_REGION}:${_CLOUD_SQL_INSTANCE},POSTGRES_USER=${_DB_USER},POSTGRES_DB=${_DB_NAME},LLM_MODEL=gemini-3-flash-preview,EMBEDDINGS_MODEL=models/gemini-embedding-001,QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,LOG_FORMAT=json,LOG_LEVEL=INFO'
       - '--set-secrets=GOOGLE_API_KEY=agentic-hybrid-search-google-api-key:latest,API_KEY=agentic-hybrid-search-api-key:latest,POSTGRES_PASSWORD=agentic-hybrid-search-db-password:latest'
       - '--quiet'
 

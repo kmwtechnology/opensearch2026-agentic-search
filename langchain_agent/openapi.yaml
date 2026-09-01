@@ -12,7 +12,7 @@ info:
     OR X-Admin-Token header (automation).
   contact:
     name: KMW Technology
-    url: https://github.com/kmwtechnology/agentic-hybrid-search
+    url: https://github.com/kmwtechnology/opensearch2026-agentic-search
 
 servers:
   - url: http://localhost:8000

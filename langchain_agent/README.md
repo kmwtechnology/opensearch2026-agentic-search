@@ -11,11 +11,13 @@ vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 **Capabilities:**
 
 - **6-intent classification** — `search`, `comparison`, `attribute_filter`,
-  `refinement`, `follow_up`, `summary`. Keyword fast-path + LLM fallback.
+  `refinement`, `follow_up`, `summary`. Single structured-output LLM call
+  (no keyword fast-path).
 - **Hybrid retrieval** — vector (768-dim Gemini embeddings) + BM25, fused via
   RRF (k=60), with dynamic α per intent.
-- **Cross-encoder reranking** — `ms-marco-MiniLM-L-12-v2` scores
-  query-product relevance (~10ms); Gemini Flash Lite fallback (~500ms).
+- **Cross-encoder reranking** (default) — local `ms-marco-MiniLM-L-12-v2`
+  scores query-product relevance, no API call; Gemini LLM reranking is a
+  non-default alternative (~500ms/batch).
 - **Quality gate** — retries once with α ±0.3 (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only) if max reranker score < 0.5.
 - **Real-time streaming** — token-by-token WebSocket output with full
   observability events.
@@ -28,7 +30,7 @@ vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 **Stack:**
 
 - **Backend:** Python 3.14+, FastAPI, LangGraph, LangChain
-- **Frontend:** React 18, TypeScript, Tailwind, Zustand
+- **Frontend:** React 19, TypeScript, Tailwind, Zustand
 - **Data layer:** OpenSearch 3.8.0 (HNSW + BM25) · PostgreSQL 16
   (LangGraph checkpoints only)
 - **LLM:** Google Gemini 3 Flash (generation) + Gemini 3.1 Flash Lite
@@ -260,7 +262,7 @@ Summarize our conversation
 
 ## Configuration
 
-Everything lives in `config.py` with `.env` overrides (see `.env.example`).
+Everything lives in `config.py`; most (but not all) values are `.env`-overridable — see `.env.example` for the current, authoritative list of what's genuinely read from the environment vs. hardcoded.
 
 ### Models
 
@@ -269,11 +271,12 @@ LLM_MODEL=gemini-3-flash-preview                   # generation
 RERANKER_MODEL=gemini-3.1-flash-lite-preview       # reranking
 QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview     # query evaluator
 EMBEDDINGS_MODEL=models/gemini-embedding-001      # 768-dim embeddings
-VECTOR_DIMENSION=768
 LLM_TEMPERATURE=0
 QUERY_EVAL_TEMPERATURE=0
 QUERY_EVAL_MAX_TOKENS=1024
 ```
+
+`VECTOR_DIMENSION` (768) is **not** on this list — it's a hardcoded literal in `config.py`, not an env override, despite living right next to `EMBEDDINGS_MODEL` in the source.
 
 ### Data stores
 
@@ -294,15 +297,17 @@ POSTGRES_DB=langchain_agent
 
 ### Retrieval / reranking
 
-```bash
-RETRIEVER_K=10              # Final docs
-RETRIEVER_FETCH_K=40        # Candidates before reranking
-RETRIEVER_ALPHA=0.25        # Default α (evaluator usually overrides)
-ENABLE_RERANKING=true
-RERANKER_FETCH_K=40         # Candidates reranked
-RERANKER_TOP_K=10           # Final top-K
-ENABLE_QUERY_EVALUATION=true
-QUERY_EVAL_TIMEOUT_MS=3000
+**None of these are `.env`-settable** — they're plain Python literals in `config.py`. Values shown are the actual current defaults; edit `config.py` and redeploy to change them.
+
+```python
+RETRIEVER_K = 10              # Final docs
+RETRIEVER_FETCH_K = 40        # Candidates before reranking
+RETRIEVER_ALPHA = 0.25        # Default α (evaluator usually overrides)
+ENABLE_RERANKING = True
+RERANKER_FETCH_K = 40         # Candidates reranked
+RERANKER_TOP_K = 10           # Final top-K
+ENABLE_QUERY_EVALUATION = True
+QUERY_EVAL_TIMEOUT_MS = 3000
 ```
 
 ### Intent routing

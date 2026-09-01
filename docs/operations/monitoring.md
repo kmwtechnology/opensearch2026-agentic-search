@@ -130,8 +130,8 @@ Create a Cloud Monitoring dashboard to track these KPIs:
 
 All deployments and re-indexing runs are visible on GitHub:
 
-- **Build & Deploy workflow:** https://github.com/kmwtechnology/agentic-hybrid-search/actions/workflows/build-deploy.yml
-- **Re-index workflow:** https://github.com/kmwtechnology/agentic-hybrid-search/actions/workflows/reindex.yml
+- **Build & Deploy workflow:** https://github.com/kmwtechnology/opensearch2026-agentic-search/actions/workflows/build-deploy.yml
+- **Re-index workflow:** https://github.com/kmwtechnology/opensearch2026-agentic-search/actions/workflows/reindex.yml
 
 View recent runs:
 ```bash

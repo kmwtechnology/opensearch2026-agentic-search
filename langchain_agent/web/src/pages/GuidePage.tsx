@@ -122,13 +122,13 @@ export function GuidePage() {
             <div className="border-l-4 border-purple-500 pl-4">
               <h4 className="font-semibold text-gray-900">Intent Classification</h4>
               <p className="text-sm text-gray-600">Seven classes: search, comparison, attribute_filter, refinement, follow_up, summary, clarify</p>
-              <p className="text-xs text-gray-500 mt-1">Keyword fast-path + LLM fallback. Confidence below 0.7 returns `clarify` intent with clarification questions instead of a guess.</p>
+              <p className="text-xs text-gray-500 mt-1">Single structured-output LLM call (no keyword fast-path). Confidence below 0.7 returns `clarify` intent with clarification questions instead of a guess.</p>
             </div>
 
             <div className="border-l-4 border-orange-500 pl-4">
               <h4 className="font-semibold text-gray-900">Smart Reranking</h4>
               <p className="text-sm text-gray-600">Cross-encoder (ms-marco-MiniLM-L-12-v2) relevance scoring on 0.0–1.0 scale to ensure top results are truly relevant</p>
-              <p className="text-xs text-gray-500 mt-1">Default: cross-encoder (~10ms per batch, local). Optional: Gemini Flash Lite LLM-based reranker (~500ms–1s). Quality gate: retries with adjusted search (alpha ±0.3) if score &lt; 0.5.</p>
+              <p className="text-xs text-gray-500 mt-1">Default: cross-encoder (~2s for a 40-doc batch, local, measured in production). Optional: Gemini Flash Lite LLM-based reranker (~500ms–1s). Quality gate: retries with adjusted search (alpha ±0.3) if score &lt; 0.5.</p>
             </div>
 
             <div className="border-l-4 border-pink-500 pl-4">
@@ -674,8 +674,8 @@ Server streams back:
           <div className="space-y-2">
             <p className="font-semibold text-gray-900">Getting Started</p>
             <ul className="space-y-1 text-gray-700">
-              <li><a href="https://github.com/kmwtechnology/agentic-hybrid-search/blob/main/docs/contributing/dev-setup.md" className="text-blue-600 hover:underline">⚙️ Local Development Setup</a> - Prerequisites, setup.sh walkthrough, daily workflow</li>
-              <li><a href="https://github.com/kmwtechnology/agentic-hybrid-search/blob/main/docs/operations/gcp-quickstart.md" className="text-blue-600 hover:underline">☁️ GCP Deployment Guide</a> - First-time GCP setup with Workload Identity Federation</li>
+              <li><a href="https://github.com/kmwtechnology/opensearch2026-agentic-search/blob/main/docs/contributing/dev-setup.md" className="text-blue-600 hover:underline">⚙️ Local Development Setup</a> - Prerequisites, setup.sh walkthrough, daily workflow</li>
+              <li><a href="https://github.com/kmwtechnology/opensearch2026-agentic-search/blob/main/docs/operations/gcp-quickstart.md" className="text-blue-600 hover:underline">☁️ GCP Deployment Guide</a> - First-time GCP setup with Workload Identity Federation</li>
             </ul>
 
             <p className="font-semibold text-gray-900 mt-3">Documentation</p>

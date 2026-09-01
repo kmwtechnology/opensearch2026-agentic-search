@@ -494,9 +494,10 @@ class EcommerceSearchAgent:
         """
         Classify the latest user message to determine intent for e-commerce product search.
 
-        Uses keyword fast-path (deterministic, <100ms) for high-confidence classification,
-        falls back to LLM for ambiguous queries. If confidence < 0.7, returns intent=clarify
-        with clarifying questions for user confirmation.
+        Classifies via a single structured LLM call (_classify_intent) -- there is no
+        keyword-based fast-path despite older docs/comments claiming one (see #26; every
+        request pays a full LLM round-trip here). If confidence < 0.7, returns
+        intent=clarify with clarifying questions for user confirmation.
 
         Intents (6 types):
         - `search`: General product discovery queries (DEFAULT)
@@ -540,7 +541,6 @@ class EcommerceSearchAgent:
             - node: "intent_classifier"
             - intent: detected intent class
             - confidence: classification confidence (0.0–1.0)
-            - path: "keyword" or "llm" (fast-path or fallback)
         """
         messages = state["messages"]
         user_query = ""
@@ -2133,7 +2133,8 @@ Return ONLY a JSON object (use null for missing attributes):
 
         Returns:
             Tuple of (intent, reasoning, confidence, clarifying_questions)
-            - intent: The classified intent (question, summary, follow_up, clarify)
+            - intent: The classified intent (search, comparison, attribute_filter,
+              refinement, follow_up, summary -- or "clarify" for low-confidence turns)
             - reasoning: Explanation for the classification
             - confidence: 0.0-1.0 confidence score
             - clarifying_questions: List of questions to ask if confidence is low
