@@ -3634,7 +3634,7 @@ Title:"""
                     return str(msg.content)[:50].strip()
             return "Untitled Conversation"
 
-    def update_conversation_title(self):
+    def update_conversation_title(self, thread_id: Optional[str] = None):
         """Generate and save a title for the current conversation based on its content.
 
         Retrieves the current conversation messages from the checkpoint, generates
@@ -3643,12 +3643,20 @@ Title:"""
         This method is called after each agent response to keep the title up-to-date
         with the conversation content.
 
+        Args:
+            thread_id: Conversation to title. Defaults to ``self.thread_id`` for the
+                CLI path. The API path (background title generation in
+                ``ObservableAgentService``) must pass this explicitly -- ``self`` is a
+                single shared agent instance and ``self.thread_id`` may already belong
+                to a different concurrent request by the time this runs.
+
         Raises:
             Does not raise exceptions - logs warnings if title update fails.
         """
+        thread_id = thread_id or self.thread_id
         try:
             # Get current conversation messages from checkpoint
-            checkpoint = self.checkpointer.get({"configurable": {"thread_id": self.thread_id}})
+            checkpoint = self.checkpointer.get({"configurable": {"thread_id": thread_id}})
             if not checkpoint:
                 logger.debug("No checkpoint found for title update")
                 return
@@ -3673,7 +3681,7 @@ Title:"""
                         ON CONFLICT (thread_id)
                         DO UPDATE SET title = EXCLUDED.title, updated_at = CURRENT_TIMESTAMP
                     """,
-                        (self.thread_id, title),
+                        (thread_id, title),
                     )
                 conn.commit()
         except psycopg.Error as e:

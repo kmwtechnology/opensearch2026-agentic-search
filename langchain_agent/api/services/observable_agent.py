@@ -93,6 +93,16 @@ class ObservableAgentService:
         self._lock = asyncio.Lock()
         self._warmup_complete = False
         self._warmup_lock = asyncio.Lock()
+        # `self._agent` is a single shared EcommerceSearchAgent (see #23): its
+        # thread_id/emit_callback/event_loop/event_queue are plain instance
+        # attributes, reassigned per request. Two concurrent process_message()
+        # calls race on them -- request B's emit_callback can overwrite
+        # request A's mid-flight, so A's intermediate events land on B's
+        # WebSocket (or vice versa), which manifests as one connection never
+        # completing and Cloud Run's keepalive killing it with a 1011. This
+        # lock serializes the section that touches shared agent state so only
+        # one request drives the shared agent at a time.
+        self._request_lock = asyncio.Lock()
 
     async def ensure_initialized(self):
         """Initialize the agent if not already done."""
@@ -225,135 +235,136 @@ class ObservableAgentService:
                         "Reranker warmup did not complete in time; proceeding with lazy init"
                     )
 
-            # Set thread for conversation persistence
-            self._agent.set_thread_id(thread_id)
+            async with self._request_lock:
+                # Set thread for conversation persistence
+                self._agent.set_thread_id(thread_id)
 
-            # Set emit callback for intermediate events from retriever_node
-            # Also store the current event loop so retriever_node can use it
-            self._agent.emit_callback = emit
-            try:
-                self._agent.event_loop = asyncio.get_running_loop()
-            except RuntimeError:
-                pass  # No running loop, will fallback to queueing
+                # Set emit callback for intermediate events from retriever_node
+                # Also store the current event loop so retriever_node can use it
+                self._agent.emit_callback = emit
+                try:
+                    self._agent.event_loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    pass  # No running loop, will fallback to queueing
 
-            # Load and emit conversation context
-            previous_count = await self._load_conversation_context(thread_id)
-            is_new = previous_count == 0
-            await emit(
-                ConversationContextEvent(
-                    previous_message_count=previous_count,
-                    is_new_conversation=is_new,
-                    summary=(
-                        "New conversation"
-                        if is_new
-                        else f"Loaded {previous_count} previous messages"
-                    ),
+                # Load and emit conversation context
+                previous_count = await self._load_conversation_context(thread_id)
+                is_new = previous_count == 0
+                await emit(
+                    ConversationContextEvent(
+                        previous_message_count=previous_count,
+                        is_new_conversation=is_new,
+                        summary=(
+                            "New conversation"
+                            if is_new
+                            else f"Loaded {previous_count} previous messages"
+                        ),
+                    )
                 )
-            )
 
-            # Build initial state
-            # Reset per-query state while preserving conversation history via checkpoint
-            from config import DEFAULT_ALPHA
+                # Build initial state
+                # Reset per-query state while preserving conversation history via checkpoint
+                from config import DEFAULT_ALPHA
 
-            initial_state = {
-                "messages": [HumanMessage(content=message)],
-                "alpha": DEFAULT_ALPHA,
-                "query_analysis": "",
-                "quality_gate_retried": False,  # Reset for each new message
-                "optimizations": optimizations or {},
-            }
+                initial_state = {
+                    "messages": [HumanMessage(content=message)],
+                    "alpha": DEFAULT_ALPHA,
+                    "query_analysis": "",
+                    "quality_gate_retried": False,  # Reset for each new message
+                    "optimizations": optimizations or {},
+                }
 
-            config = {"configurable": {"thread_id": thread_id}}
+                config = {"configurable": {"thread_id": thread_id}}
 
-            # Track metrics timing
-            node_start_times: Dict[str, float] = {}
-            final_response: Optional[str] = None
-            documents_used = 0
-            citations: List[Dict[str, str]] = []
+                # Track metrics timing
+                node_start_times: Dict[str, float] = {}
+                final_response: Optional[str] = None
+                documents_used = 0
+                citations: List[Dict[str, str]] = []
 
-            # Pipeline-summary state — accumulated as state updates flow past us.
-            # Last-write-wins for each key: retriever_node sets pre_rerank/bm25/
-            # judgments/latencies, reranker_node overwrites retrieved_documents
-            # with the post-rerank list and adds reranker_latency_ms.
-            pipeline_state: Dict[str, Any] = {
-                "user_query": "",
-                "pre_rerank_documents": [],
-                "bm25_documents": [],
-                "stock_bm25_documents": [],
-                "post_rerank_documents": [],
-                "judgments": None,
-                "judgment": None,
-                "original_judgment": None,
-                "corrected_response": None,
-                "hallucination_retry_used": False,
-                "bm25_latency_ms": 0.0,
-                "stock_bm25_latency_ms": 0.0,
-                "retriever_latency_ms": 0.0,
-                "reranker_latency_ms": 0.0,
-            }
+                # Pipeline-summary state — accumulated as state updates flow past us.
+                # Last-write-wins for each key: retriever_node sets pre_rerank/bm25/
+                # judgments/latencies, reranker_node overwrites retrieved_documents
+                # with the post-rerank list and adds reranker_latency_ms.
+                pipeline_state: Dict[str, Any] = {
+                    "user_query": "",
+                    "pre_rerank_documents": [],
+                    "bm25_documents": [],
+                    "stock_bm25_documents": [],
+                    "post_rerank_documents": [],
+                    "judgments": None,
+                    "judgment": None,
+                    "original_judgment": None,
+                    "corrected_response": None,
+                    "hallucination_retry_used": False,
+                    "bm25_latency_ms": 0.0,
+                    "stock_bm25_latency_ms": 0.0,
+                    "retriever_latency_ms": 0.0,
+                    "reranker_latency_ms": 0.0,
+                }
 
-            # Stream through the graph (with 150s timeout to prevent hangs)
-            async def stream_graph_with_timeout():
-                nonlocal final_response, documents_used, citations
-                async for event in self._astream_graph(
-                    initial_state, config, emit, node_start_times, metrics
-                ):
-                    # Extract final response from agent completions
-                    if isinstance(event, dict):
-                        if "messages" in event:
-                            for msg in event.get("messages", []):
-                                if isinstance(msg, AIMessage) and msg.content:
-                                    if not (hasattr(msg, "tool_calls") and msg.tool_calls):
-                                        content = msg.content
-                                        # Extract text if content is a list of content blocks (Gemini format)
-                                        if isinstance(content, list):
-                                            text_parts = []
-                                            for block in content:
-                                                if isinstance(block, dict) and "text" in block:
-                                                    text_parts.append(block["text"])
-                                            final_response = (
-                                                "".join(text_parts) if text_parts else ""
+                # Stream through the graph (with 150s timeout to prevent hangs)
+                async def stream_graph_with_timeout():
+                    nonlocal final_response, documents_used, citations
+                    async for event in self._astream_graph(
+                        initial_state, config, emit, node_start_times, metrics
+                    ):
+                        # Extract final response from agent completions
+                        if isinstance(event, dict):
+                            if "messages" in event:
+                                for msg in event.get("messages", []):
+                                    if isinstance(msg, AIMessage) and msg.content:
+                                        if not (hasattr(msg, "tool_calls") and msg.tool_calls):
+                                            content = msg.content
+                                            # Extract text if content is a list of content blocks (Gemini format)
+                                            if isinstance(content, list):
+                                                text_parts = []
+                                                for block in content:
+                                                    if isinstance(block, dict) and "text" in block:
+                                                        text_parts.append(block["text"])
+                                                final_response = (
+                                                    "".join(text_parts) if text_parts else ""
+                                                )
+                                            else:
+                                                final_response = content
+                                            logger.debug(
+                                                f"Extracted final_response: {len(final_response or '')} chars"
                                             )
-                                        else:
-                                            final_response = content
-                                        logger.debug(
-                                            f"Extracted final_response: {len(final_response or '')} chars"
-                                        )
 
-                        if "retrieved_documents" in event:
-                            documents_used = len(event["retrieved_documents"])
-                            pipeline_state["post_rerank_documents"] = list(
-                                event["retrieved_documents"]
-                            )
-                        for key in (
-                            "user_query",
-                            "pre_rerank_documents",
-                            "bm25_documents",
-                            "stock_bm25_documents",
-                            "judgments",
-                            "judgment",
-                            "original_judgment",
-                            "corrected_response",
-                            "hallucination_retry_used",
-                            "bm25_latency_ms",
-                            "stock_bm25_latency_ms",
-                            "retriever_latency_ms",
-                            "reranker_latency_ms",
-                        ):
-                            if key in event and event[key] is not None:
-                                pipeline_state[key] = event[key]
-                        if "citations" in event and isinstance(event["citations"], list):
-                            citations = event["citations"]
+                            if "retrieved_documents" in event:
+                                documents_used = len(event["retrieved_documents"])
+                                pipeline_state["post_rerank_documents"] = list(
+                                    event["retrieved_documents"]
+                                )
+                            for key in (
+                                "user_query",
+                                "pre_rerank_documents",
+                                "bm25_documents",
+                                "stock_bm25_documents",
+                                "judgments",
+                                "judgment",
+                                "original_judgment",
+                                "corrected_response",
+                                "hallucination_retry_used",
+                                "bm25_latency_ms",
+                                "stock_bm25_latency_ms",
+                                "retriever_latency_ms",
+                                "reranker_latency_ms",
+                            ):
+                                if key in event and event[key] is not None:
+                                    pipeline_state[key] = event[key]
+                            if "citations" in event and isinstance(event["citations"], list):
+                                citations = event["citations"]
 
-            try:
-                await asyncio.wait_for(stream_graph_with_timeout(), timeout=150.0)
-            except asyncio.TimeoutError:
-                logger.warning("Graph execution timed out after 150s; proceeding with response")
-                final_response = (
-                    final_response or "Processing took longer than expected. Please try again."
-                )
+                try:
+                    await asyncio.wait_for(stream_graph_with_timeout(), timeout=150.0)
+                except asyncio.TimeoutError:
+                    logger.warning("Graph execution timed out after 150s; proceeding with response")
+                    final_response = (
+                        final_response or "Processing took longer than expected. Please try again."
+                    )
 
-            logger.info(f"Graph execution completed. Preparing to emit completion event.")
+                logger.info(f"Graph execution completed. Preparing to emit completion event.")
 
             # Calculate total duration
             total_duration_ms = (time.time() - start_time) * 1000
@@ -1175,7 +1186,7 @@ class ObservableAgentService:
 
     async def _generate_title_async(
         self,
-        _thread_id: str,
+        thread_id: str,
         user_message: str,
         _response: Optional[str],
     ) -> None:
@@ -1184,16 +1195,18 @@ class ObservableAgentService:
         This runs asynchronously after AgentCompleteEvent is emitted, so any
         delays in LLM title generation don't block the WebSocket response.
 
-        `_thread_id` and `_response` are accepted for API symmetry with the
-        upstream call site but the agent already has the thread_id internally
-        and synthesizes the title from the prior conversation state.
+        `_response` is accepted for API symmetry with the upstream call site
+        but the title is synthesized from the prior conversation state.
+
+        `thread_id` is passed explicitly to `update_conversation_title` rather
+        than relying on `self._agent.thread_id` (see #23): `self._agent` is a
+        single shared instance, and by the time this background task runs, a
+        subsequent request may already have reassigned its thread_id.
         """
         try:
             loop = asyncio.get_event_loop()
-            # update_conversation_title() uses the internally set thread_id
-            # and handles both generation and database update
-            await loop.run_in_executor(None, self._agent.update_conversation_title)
-            logger.debug(f"Background title generation completed for thread {_thread_id}")
+            await loop.run_in_executor(None, self._agent.update_conversation_title, thread_id)
+            logger.debug(f"Background title generation completed for thread {thread_id}")
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(f"Background title generation failed: {e}")
 
