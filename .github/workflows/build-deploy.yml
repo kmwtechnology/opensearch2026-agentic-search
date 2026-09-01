@@ -249,7 +249,7 @@ jobs:
           PYTHONPATH=. pytest tests/integration/ \
             -v \
             -ra \
-            -m "not slow and not requires_live_corpus" \
+            -m "not slow" \
             --tb=short \
             --timeout=60 \
             --cov=. \
