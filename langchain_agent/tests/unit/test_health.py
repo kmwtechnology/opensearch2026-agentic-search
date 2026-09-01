@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
+from api.routes.chat import manager as chat_manager
 
 
 @pytest.fixture
@@ -128,8 +129,9 @@ def test_health_returns_version(mock_pg, mock_os, client):
 @patch(_API_KEY, "fake-key")
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect", return_value=_pg_ok())
-def test_ready_returns_true_when_healthy(mock_pg, mock_os, client):
-    r = client.get("/api/health/ready")
+def test_ready_returns_true_when_healthy_and_warmed_up(mock_pg, mock_os, client):
+    with patch.object(chat_manager.agent_service, "_warmup_complete", True):
+        r = client.get("/api/health/ready")
     assert r.status_code == 200
     assert r.json() == {"ready": True}
 
@@ -137,13 +139,30 @@ def test_ready_returns_true_when_healthy(mock_pg, mock_os, client):
 @patch(_API_KEY, "")
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect", return_value=_pg_ok())
-def test_ready_returns_false_with_reason_when_degraded(mock_pg, mock_os, client):
-    r = client.get("/api/health/ready")
-    assert r.status_code == 200
+def test_ready_returns_503_with_reason_when_degraded(mock_pg, mock_os, client):
+    with patch.object(chat_manager.agent_service, "_warmup_complete", True):
+        r = client.get("/api/health/ready")
+    assert r.status_code == 503
     body = r.json()
     assert body["ready"] is False
     assert "reason" in body
     assert body["reason"]["status"] == "degraded"
+
+
+@patch(_API_KEY, "fake-key")
+@patch(_OS_CLIENT, return_value=_os_ok())
+@patch(_PSYCOPG + ".connect", return_value=_pg_ok())
+def test_ready_returns_503_when_healthy_but_warmup_incomplete(mock_pg, mock_os, client):
+    """Regression test for #23: a cold instance whose reranker is still
+    loading must NOT report ready, even if postgres/opensearch/google_ai are
+    all healthy -- this is what gates Cloud Run's --startup-probe so it
+    doesn't route concurrent chat traffic to a not-yet-warm instance."""
+    with patch.object(chat_manager.agent_service, "_warmup_complete", False):
+        r = client.get("/api/health/ready")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["ready"] is False
+    assert body["reason"]["warmup_complete"] is False
 
 
 # ---------------------------------------------------------------------------
