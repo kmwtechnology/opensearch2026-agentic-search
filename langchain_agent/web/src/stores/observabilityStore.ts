@@ -19,6 +19,7 @@ import type {
   IntentClassificationEvent,
   QueryExpansionEvent,
   QualityGateEvent,
+  EnrichmentTriggeredEvent,
 } from '../types/events'
 
 // Snapshot of a historical conversation's last observability state, hydrated
@@ -58,6 +59,11 @@ interface ObservabilityState {
   documentGradingSummary: DocumentGradingSummaryEvent | null
   responseGrading: ResponseGradingEvent | null
   pipelineSummary: PipelineSummaryEvent | null
+
+  // Agentic enrichment flywheel — set when trigger_enrichment fires this
+  // turn. Kept at top level (not just buried in the agent step's events)
+  // so the panel can surface it as a persistent, always-visible banner.
+  enrichmentTriggered: EnrichmentTriggeredEvent | null
 
   // Historical snapshot — populated when user clicks a past conversation
   // and we hydrate from a checkpoint instead of a live stream.
@@ -103,6 +109,7 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
   documentGradingSummary: null,
   responseGrading: null,
   pipelineSummary: null,
+  enrichmentTriggered: null,
   historicalSnapshot: null,
   searchStatus: 'idle',
   rerankerStatus: 'idle',
@@ -126,6 +133,7 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     rerankedDocuments: [],
     documentGradingSummary: null,
     responseGrading: null,
+    enrichmentTriggered: null,
     historicalSnapshot: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',
@@ -199,6 +207,10 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
 
       case 'pipeline_summary':
         set({ pipelineSummary: event as PipelineSummaryEvent })
+        break
+
+      case 'enrichment_triggered':
+        set({ enrichmentTriggered: event as EnrichmentTriggeredEvent })
         break
 
       case 'search_progress':
@@ -324,6 +336,7 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     documentGradingSummary: null,
     responseGrading: null,
     pipelineSummary: null,
+    enrichmentTriggered: null,
     historicalSnapshot: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',

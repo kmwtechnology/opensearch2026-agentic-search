@@ -171,6 +171,21 @@ INDEX_MAPPING = {
                     "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
                 },
             },
+            "product_material": {
+                "type": "text",
+                "analyzer": "light_english_analyzer",
+                "fields": {
+                    "keyword": {"type": "keyword"},
+                    "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
+                },
+            },
+            # Normalized attribute filter fields, populated at ingest time by
+            # the Lucille stages (AttributeNormalizerStage, MaterialNormalizerStage).
+            # Declared explicitly here (unlike product_color_primary/
+            # product_brand_normalized, which land via dynamic mapping today)
+            # so a fresh index always has these as keyword from the start.
+            "product_material_primary": {"type": "keyword"},
+            "product_material_secondary": {"type": "keyword"},
             "product_locale": {"type": "keyword"},
             "esci_labels": {"type": "keyword"},
             "collection": {"type": "keyword"},
@@ -426,6 +441,7 @@ class OpenSearchVectorStore:
             [
                 ("product_brand", 2.0),
                 ("product_color", 1.5),
+                ("product_material", 2.0),
             ]
         )
         if phonetic:
@@ -441,6 +457,7 @@ class OpenSearchVectorStore:
                 ("chunk_text.heavy", 0.3),
                 ("product_brand.heavy", 0.3),
                 ("product_color.heavy", 0.3),
+                ("product_material.heavy", 0.3),
             ]
         )
 
@@ -970,6 +987,7 @@ class OpenSearchVectorStore:
             "product_id": src.get("product_id", ""),
             "product_brand": src.get("product_brand", ""),
             "product_color": src.get("product_color", ""),
+            "product_color_primary": src.get("product_color_primary", ""),
         }
         if score is not None:
             metadata["retrieval_score"] = float(score)

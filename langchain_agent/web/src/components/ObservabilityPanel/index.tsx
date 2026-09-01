@@ -3,6 +3,7 @@
  * Shows steps with full observability.
  */
 
+import { RefreshCw } from 'lucide-react'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import { HistoricalSnapshotCard } from './HistoricalSnapshotCard'
 import { PipelineSummaryCard } from './PipelineSummaryCard'
@@ -10,7 +11,7 @@ import { StepsList } from './StepsList'
 import { SearchOptimizationDetails } from './SearchOptimizationDetails'
 
 export function ObservabilityPanel() {
-  const { isExecuting, steps } = useObservabilityStore()
+  const { isExecuting, steps, enrichmentTriggered } = useObservabilityStore()
 
   return (
     <div className="flex flex-col w-full min-w-0 h-full bg-gray-900/50">
@@ -26,6 +27,26 @@ export function ObservabilityPanel() {
           )}
         </div>
       </div>
+
+      {/* Enrichment flywheel banner — PROJECTOR OPTIMIZED. Always visible
+          (not gated behind expanding a step) the moment trigger_enrichment
+          fires this turn, so a live re-index isn't just a silent wait. */}
+      {enrichmentTriggered && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-emerald-500/15 border-b-2 border-emerald-400 flex-shrink-0">
+          <RefreshCw
+            className={`w-5 h-5 text-emerald-300 flex-shrink-0 ${isExecuting ? 'animate-spin' : ''}`}
+          />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-emerald-200">
+              Catalog Enrichment Triggered — live re-index {isExecuting ? 'in progress' : 'complete'}
+            </div>
+            <div className="text-xs text-emerald-300/90 truncate">
+              {enrichmentTriggered.attribute_type} &ldquo;{enrichmentTriggered.variant}&rdquo;
+              {enrichmentTriggered.canonical && <> → resolved to &ldquo;{enrichmentTriggered.canonical}&rdquo;</>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 min-h-0 min-w-0 overflow-hidden">

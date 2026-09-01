@@ -255,6 +255,16 @@ export interface ToolCallEvent extends BaseEvent {
   tool_args: Record<string, unknown>
 }
 
+// Agentic enrichment flywheel: fired when trigger_enrichment adds a new
+// color/material variant and triggers a live catalog reindex.
+export interface EnrichmentTriggeredEvent extends BaseEvent {
+  type: 'enrichment_triggered'
+  node: 'agent'
+  attribute_type: string
+  variant: string
+  canonical?: string
+}
+
 // Response grading events
 export interface ResponseGradingEvent extends BaseEvent {
   type: 'response_grading'
@@ -479,6 +489,7 @@ export type AgentEvent =
   | LLMResponseChunkEvent
   | LLMResponseCorrectedEvent
   | ToolCallEvent
+  | EnrichmentTriggeredEvent
   | ResponseGradingEvent
   | ResponseImprovementEvent
   | AgentCompleteEvent

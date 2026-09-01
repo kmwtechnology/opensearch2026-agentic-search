@@ -51,7 +51,9 @@ from pydantic import BaseModel
 
 # Import extracted modules
 from agent_state import CustomAgentState
+from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, single_term_classify
 from doc_replacer import DocumentReplacer
+from enrichment_value_judge import EnrichmentValueJudge
 from exceptions import LLMError, SearchTimeoutError
 from judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
 from link_verifier import LinkVerifier
@@ -60,6 +62,14 @@ from vector_store import OpenSearchVectorStore
 
 # Setup logging
 logger = logging.getLogger(__name__)
+
+# Canonical bucket vocabularies for _classify_attribute, by attribute type.
+# Mirrors enrichment_service._CANONICAL_SEEDS_BY_TYPE — add an entry here
+# when a new attribute type gets a discovery seed dict in attribute_discovery.py.
+_CANONICAL_SEEDS_BY_TYPE = {
+    "color": COLOR_CANONICALS,
+    "material": MATERIAL_CANONICALS,
+}
 
 # Suppress Pydantic V1 compatibility warning on Python 3.14+
 # langchain-core imports pydantic.v1 for backward compatibility, but we use Pydantic V2
@@ -460,6 +470,11 @@ class EcommerceSearchAgent:
         # Lazy LLM-as-judge — only constructed when first needed (judge node
         # only runs when user toggles llm_judge:on AND llm:on).
         self.judge: Optional[LLMJudge] = None
+
+        # Lazy second-opinion judge for trigger_enrichment — only constructed
+        # when the agent's own tool-call decision first fires (most users
+        # never trigger enrichment at all).
+        self.enrichment_value_judge: Optional[EnrichmentValueJudge] = None
 
         # Checkpointer will be created asynchronously via create_async_checkpointer()
         # This is required because AsyncPostgresSaver needs a running event loop
@@ -936,13 +951,16 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             product_id = doc.metadata.get("product_id") or "—"
             brand = doc.metadata.get("product_brand") or ""
             color = doc.metadata.get("product_color") or ""
+            color_category = doc.metadata.get("product_color_primary") or ""
             score = doc.metadata.get("reranker_score") or doc.metadata.get("retrieval_score") or 0.0
 
             facts: List[str] = [f"  Title: {title}"]
             if brand:
                 facts.append(f"  Brand: {brand}")
             if color:
-                facts.append(f"  Color: {color}")
+                facts.append(f"  Color (as listed): {color}")
+            if color_category:
+                facts.append(f"  Color category (indexed): {color_category}")
             content = (doc.page_content or "").strip()
             if content:
                 facts.append(f"  Description: {content}")
@@ -1126,6 +1144,29 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 user_query = _flatten_llm_content(msg)
                 break
 
+        # Taxonomy CORRECTION signal — the shopper disputing a tag from a
+        # prior turn (e.g. "that's not tan, it's yellow"), distinct from
+        # this turn's own retrieval quality. Checked before the gap-detection
+        # block below since it's independent of whether THIS turn's search
+        # found anything: the thing being fixed is a prior turn's tag. Only
+        # meaningful when there's prior conversation to dispute — the cheap
+        # keyword gate combined with intent already scoped to continuation
+        # turns keeps this from firing on a fresh, standalone query.
+        from config import ENABLE_ENRICHMENT_TOOL as _correction_flag
+
+        if (
+            _correction_flag
+            and intent in ("refinement", "follow_up")
+            and self._detect_correction_signal(user_query)
+        ):
+            correction_result = self._try_correction_tool(messages, user_query)
+            if correction_result is not None:
+                logger.info("Agent: taxonomy correction triggered via trigger_enrichment")
+                return correction_result
+            # LLM declined (not confident this was a real correction) — this
+            # isn't a search failure, so fall through to normal response
+            # generation below rather than the "no info" canned response.
+
         # Check if retrieval failed even after quality gate retry
         # If quality gate retried and max relevance is still very low, return honest acknowledgment
         MIN_RELEVANCE_THRESHOLD = 0.10  # Same as citation suppression threshold
@@ -1143,16 +1184,40 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         reranker_skipped = opts.get("reranking", True) is False
         llm_off = opts.get("llm", True) is False
 
-        if (
-            quality_gate_retried
-            and max_relevance < MIN_RELEVANCE_THRESHOLD
-            and not reranker_skipped
-            and not llm_off
-        ):
+        # Two distinct ways retrieval can "fail" here, both needing to be
+        # caught for the enrichment gap signal:
+        #   1. Documents WERE retrieved but scored poorly even after a
+        #      quality-gate retry (the original condition).
+        #   2. An attribute_filter query's hard filter excluded EVERYTHING
+        #      on the very first pass — quality_gate_node deliberately never
+        #      retries this case (retrying with adjusted alpha can't fix an
+        #      exact-match filter that's excluding everything; see
+        #      quality_gate_node's "No documents to evaluate" branch), so
+        #      quality_gate_retried never becomes True. This is exactly the
+        #      scenario an unrecognized color/material term produces —
+        #      without this branch, the enrichment tool would never be
+        #      offered for the case it exists to fix. Confirmed via a live
+        #      rehearsal: "show me camel colored coats" hit this path
+        #      (0 documents retrieved, quality_gate_retried stayed False)
+        #      rather than the retry path.
+        retry_exhausted_gap = quality_gate_retried and max_relevance < MIN_RELEVANCE_THRESHOLD
+        zero_result_filter_gap = intent == "attribute_filter" and not retrieved_documents
+
+        if (retry_exhausted_gap or zero_result_filter_gap) and not reranker_skipped and not llm_off:
             logger.info(
-                f"Agent: retrieval failed after quality gate retry "
-                f"(max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD})"
+                f"Agent: retrieval failed "
+                f"(retry_exhausted_gap={retry_exhausted_gap}, "
+                f"zero_result_filter_gap={zero_result_filter_gap}, "
+                f"max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD})"
             )
+
+            from config import ENABLE_ENRICHMENT_TOOL
+
+            if ENABLE_ENRICHMENT_TOOL:
+                enrichment_result = self._try_enrichment_tool(user_query)
+                if enrichment_result is not None:
+                    return enrichment_result
+
             no_info_response = (
                 f"I searched for \"{user_query or 'your question'}\" but didn't find a strong "
                 "match in the catalog. A few things that usually help:\n\n"
@@ -1321,6 +1386,7 @@ GROUNDING RULES (override creativity preferences — non-negotiable):
 3. If a fact is not in any FACTS block, OMIT it. Do not infer from brand reputation, product category, prior knowledge, or implication.
 4. Comparison tables/summaries: every cell or claim must trace to a specific product's FACTS block. Leave cells blank rather than fabricating.
 5. When writing about a product, prefer paraphrasing its FACTS over inventing supporting language.
+6. When a product's FACTS include both "Color (as listed)" and "Color category (indexed)", compare them. If the indexed category is a color family the listed color could plausibly belong to (e.g. "Navy" under "blue", "Charcoal" under "black"), say nothing about it. If the indexed category is NOT a plausible family for the listed color (e.g. "Tan" indexed under "yellow" — tan is a shade of brown, not yellow), explicitly flag this as a possible data-tagging issue for that product, using the literal values from its FACTS block.
 
 CITATION & STYLE:
 - Cite products descriptively by name (e.g., "the Nylabone 3 Pack Puppy Chew listing"), never as "Document N".
@@ -1360,6 +1426,200 @@ CITATION & STYLE:
         logger.info(f"Agent: generated response ({response_length} chars) in {elapsed:.3f}s")
 
         return {"messages": [response], "citations": citations}
+
+    def _try_enrichment_tool(
+        self, user_query: Optional[str], prompt: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Give the LLM a chance to use trigger_enrichment before falling back
+        to the canned "no results" response, when a search-quality gap was
+        detected (quality_gate_retried and max_relevance still very low) --
+        or, when called with an explicit `prompt`, for any other scenario
+        that offers the same tool (e.g. the shopper disputing a taxonomy
+        tag on a prior turn; see _try_correction_tool).
+
+        Kept as a manual two-call loop (bind tools -> invoke -> execute tool
+        + append ToolMessage -> invoke again without tools for the final
+        response) rather than a ToolNode/graph-topology change — lower risk
+        to the existing quality_gate retry / llm_judge wiring, and this only
+        ever needs to call at most one tool once per turn.
+
+        Returns None if the LLM didn't call the tool (caller falls through
+        to the existing canned response), or a full agent_node return dict
+        (messages, citations, enrichment_* state fields) if it did.
+        """
+        from tools.enrichment_tool import trigger_enrichment
+
+        gap_prompt = (
+            prompt or f"""A shopper searched for "{user_query or 'their query'}" and the catalog \
+search returned no strong matches, even after retrying with adjusted search weighting.
+
+If the query plausibly mentions a COLOR or MATERIAL term that a product catalog should \
+recognize but might not have in its current taxonomy (e.g. an unusual color name, a \
+material synonym), you may call trigger_enrichment to add it and re-index the catalog live.
+
+Only call the tool if you're genuinely confident the query contains a real color or \
+material term worth adding — not for typos, brand names, or unrelated words. If nothing in \
+the query looks like a color/material gap, don't call the tool; just say so briefly."""
+        )
+
+        llm_with_tools = self.llm.bind_tools([trigger_enrichment])
+        tool_messages = [HumanMessage(content=gap_prompt)]
+        response = llm_with_tools.invoke(tool_messages)
+
+        tool_calls = getattr(response, "tool_calls", None)
+        if not tool_calls:
+            return None
+
+        call = tool_calls[0]
+        logger.info(f"Agent: trigger_enrichment called with args={call['args']}")
+
+        attribute_type = call["args"].get("attribute_type", "")
+        variant = call["args"].get("variant", "")
+        canonical = call["args"].get("canonical", "")
+
+        if self.enrichment_value_judge is None:
+            from config import JUDGE_MODEL
+
+            self.enrichment_value_judge = EnrichmentValueJudge(model_name=JUDGE_MODEL)
+
+        from attribute_mapping_store import AttributeMappingStore
+
+        current_mapping = (
+            AttributeMappingStore().get_lookup_table(attribute_type).get(variant.lower())
+            if attribute_type and variant
+            else None
+        )
+        assessment = self.enrichment_value_judge.evaluate(
+            attribute_type=attribute_type,
+            variant=variant,
+            canonical=canonical,
+            current_mapping=current_mapping,
+            context=user_query or "",
+        )
+        if not assessment.is_meaningful:
+            logger.info(f"Agent: declined trigger_enrichment — {assessment.reasoning}")
+            decline_response = AIMessage(
+                content=(
+                    f"I looked into this, but I don't think changing "
+                    f"'{variant}' would meaningfully improve search results "
+                    f"right now — {assessment.reasoning} I'll leave the "
+                    "catalog as-is for this one."
+                )
+            )
+            return {
+                "messages": [decline_response],
+                "citations": [],
+                "enrichment_triggered": False,
+                "enrichment_evaluation_declined": True,
+                "enrichment_evaluation_reasoning": assessment.reasoning,
+            }
+
+        tool_result = trigger_enrichment.invoke(call["args"])
+        tool_messages.append(response)
+        tool_messages.append(ToolMessage(content=tool_result, tool_call_id=call["id"]))
+
+        final_response = self.llm.invoke(tool_messages)
+
+        # Best-effort state population — the tool's return string is the
+        # source of truth shown to the user; these fields are for
+        # observability (WebSocket event, frontend badge), so a parsing
+        # miss shouldn't break the turn.
+        enrichment_state: Dict[str, Any] = {
+            "enrichment_triggered": True,
+            "enrichment_attribute_type": call["args"].get("attribute_type"),
+            "enrichment_variant": call["args"].get("variant"),
+            "enrichment_canonical": call["args"].get("canonical"),
+        }
+
+        return {
+            "messages": [final_response],
+            "citations": [],
+            **enrichment_state,
+        }
+
+    # Cheap, local pre-filter for "this message might be disputing a
+    # taxonomy tag" — deliberately broad (false positives just cost one
+    # extra LLM decision that declines to call the tool; false negatives
+    # silently drop a real correction, which is worse). Not meant to be
+    # exhaustive NLU — the actual judgment call is the LLM's, in
+    # _try_correction_tool's tool-offer prompt below.
+    _CORRECTION_SIGNAL_PHRASES = (
+        "that's not",
+        "thats not",
+        "that isn't",
+        "that is not",
+        "isn't really",
+        "isn't actually",
+        "doesn't look",
+        "does not look",
+        "not really",
+        "actually",
+        "mistag",
+        "miscategor",
+        "incorrectly tagged",
+        "wrong color",
+        "wrong material",
+        "should be tagged",
+        "tagged wrong",
+        "that's wrong",
+        "thats wrong",
+        "not correct",
+    )
+
+    def _detect_correction_signal(self, user_query: Optional[str]) -> bool:
+        """
+        Cheap keyword gate: does the latest message plausibly dispute a
+        color/material tag from a prior turn? Runs before any LLM call so
+        ordinary follow-ups ("show me cheaper ones") never pay for the
+        extra correction-offer prompt.
+        """
+        if not user_query:
+            return False
+        q = user_query.lower()
+        return any(phrase in q for phrase in self._CORRECTION_SIGNAL_PHRASES)
+
+    def _try_correction_tool(
+        self, messages: Sequence[BaseMessage], user_query: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Offer trigger_enrichment for a taxonomy CORRECTION rather than a
+        gap-fill: the shopper is disputing a color/material tag the catalog
+        assigned to a product shown in a prior turn (e.g. "that's not tan,
+        it's clearly yellow" after a mistagged product surfaced). Unlike
+        the zero-result gap path, this fires regardless of this turn's own
+        retrieval results — the thing being fixed is a PRIOR turn's tag,
+        not this turn's search.
+
+        Reuses _try_enrichment_tool's manual two-call loop with a
+        correction-framed prompt; enrich_attribute already supports
+        overwriting an existing mapping when the LLM supplies a different
+        canonical than the one on file (see enrichment_service.py).
+        """
+        history = self._build_recent_context(messages, limit=8)
+
+        correction_prompt = f"""A shopper is following up on a previous product search. Their \
+latest message may be disputing or correcting a color or material tag the catalog assigned to \
+a product you showed them earlier in this conversation.
+
+Recent conversation:
+{history}
+
+Latest message: "{user_query}"
+
+If the shopper is pointing out that a color or material tag looks wrong (for example, "that's \
+not tan, that's yellow" or "that boot isn't really brown" or "the color tag is wrong"), and you \
+can tell from the conversation which term is mistagged and what the correct canonical bucket \
+should be, call trigger_enrichment with:
+- attribute_type: "color" or "material"
+- variant: the term that's currently mistagged (e.g. "tan")
+- canonical: the CORRECT canonical bucket it should map to instead
+
+Only call the tool if you're genuinely confident this is a real tagging correction — not a \
+typo, a brand-new search, or an unrelated complaint. If you're not sure, don't call the tool; \
+just respond to the shopper normally."""
+
+        return self._try_enrichment_tool(user_query, prompt=correction_prompt)
 
     def _build_recent_context(self, messages: Sequence[BaseMessage], limit: int = 6) -> str:
         """
@@ -1653,6 +1913,37 @@ Query: "{query}" """
                 return True
         return False
 
+    @staticmethod
+    def _classify_attribute(attribute_type: str, term: str) -> Optional[str]:
+        """
+        Classify an LLM-extracted color or material_or_feature term against
+        the corresponding taxonomy (OS-backed, grown by the live enrichment
+        flywheel). Returns None for terms that don't resolve — for material
+        this includes non-material features like "waterproof", so the caller
+        falls back to the prior lexical multi_match instead of an
+        always-empty exact filter; for color the caller falls back to using
+        the raw term directly (matching pre-existing behavior).
+
+        No LLM fallback here — this is the query-time read path, called on
+        every attribute_filter query; the LLM-assisted classification (for a
+        term that genuinely can't be dictionary-matched) belongs to the
+        live enrichment tool, triggered deliberately on a detected gap, not
+        on every lookup.
+        """
+        canonical_seeds = _CANONICAL_SEEDS_BY_TYPE.get(attribute_type)
+        if canonical_seeds is None:
+            return None
+
+        try:
+            from attribute_mapping_store import AttributeMappingStore
+
+            lookup = AttributeMappingStore().get_lookup_table(attribute_type)
+        except Exception as exc:  # noqa: BLE001 - OS unreachable falls back to lexical
+            logger.debug(f"'{attribute_type}' taxonomy lookup unavailable, using fallback: {exc}")
+            lookup = {}
+
+        return single_term_classify(term, canonical_seeds, existing_lookup=lookup)
+
     def _extract_attributes(self, query: str) -> list:
         """
         Extract product attributes from attribute_filter queries.
@@ -1722,22 +2013,44 @@ Return ONLY a JSON object (use null for missing attributes):
             if brand:
                 filters.append({"match": {"product_brand_normalized": {"query": brand}}})
 
+            # Classify against the OS-backed color taxonomy first (fixes
+            # variant spellings like "grey" not matching an index that
+            # normalized to "gray"); an unresolved term falls back to using
+            # the raw LLM-extracted value directly, matching pre-existing
+            # behavior — colors don't need the lexical-fallback semantics
+            # material does, since a color term is rarely a red herring.
             color = _coerce(attributes.get("color"))
             if color:
-                filters.append({"match": {"product_color_primary": {"query": color}}})
+                color_canonical = self._classify_attribute("color", color)
+                filters.append(
+                    {"match": {"product_color_primary": {"query": color_canonical or color}}}
+                )
 
-            # material_or_feature → multi_match against title + content
+            # material_or_feature covers both actual materials ("leather",
+            # "vegan leather") and non-material features ("waterproof",
+            # "noise canceling") — only the former has a normalized field to
+            # filter on. Classify against the material taxonomy first; a
+            # resolved term gets an exact filter against
+            # product_material_primary (like brand/color above), an
+            # unresolved one (a feature, or a material outside the taxonomy)
+            # falls back to the prior lexical multi_match unchanged.
             material = _coerce(attributes.get("material_or_feature"))
             if material:
-                filters.append(
-                    {
-                        "multi_match": {
-                            "query": material,
-                            "fields": ["title", "chunk_text"],
-                            "type": "best_fields",
+                material_canonical = self._classify_attribute("material", material)
+                if material_canonical:
+                    filters.append(
+                        {"match": {"product_material_primary": {"query": material_canonical}}}
+                    )
+                else:
+                    filters.append(
+                        {
+                            "multi_match": {
+                                "query": material,
+                                "fields": ["title", "chunk_text"],
+                                "type": "best_fields",
+                            }
                         }
-                    }
-                )
+                    )
 
             # size → multi_match against title + content
             size = _coerce(attributes.get("size"))

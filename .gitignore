@@ -175,6 +175,11 @@ cython_debug/
 # clones. Anchored (leading /) so it doesn't also swallow docker/lucille/.
 /lucille/
 langchain_agent/lucille-esci/target/
+# Generated products pipeline config (config_generator.py) — regenerated
+# fresh before every Lucille run from the OS-backed attribute mapping store,
+# never hand-edited or committed. Precisely scoped filename (not a wildcard)
+# so this can never repeat the AttributeNormalizerStage.java incident above.
+langchain_agent/lucille-esci/conf/products.generated.conf
 # Native-path Lucille runtime logs (com.kmwllc.lucille*.log, heartbeat.log,
 # failed-documents.jsonl), written to the CWD when running the Runner directly.
 /log/

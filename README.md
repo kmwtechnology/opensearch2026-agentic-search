@@ -110,8 +110,22 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
 - **Admin diagnostics** — `GET /api/admin/health` reports index health and
   doc count; `GET /api/admin/diagnose` probes field-level hit counts.
   Requires session auth (UI login) or `X-Admin-Token` header (GitHub Actions
-  automation). Re-indexing is triggered via the `reindex.yml` workflow
-  (Lucille ETL on the runner), not an HTTP endpoint
+  automation). Routine full re-indexing is triggered via the `reindex.yml`
+  workflow (Lucille ETL on the runner); `POST /api/admin/enrich` also
+  triggers a real reindex directly, as part of the taxonomy growth &
+  correction mechanism below
+- **Agentic taxonomy growth & correction** — the agent can grow *or fix*
+  its own catalog taxonomy via `trigger_enrichment`, gated by
+  `ENABLE_ENRICHMENT_TOOL`: a genuine new color/material term gets added
+  (proven live through chat for color; material's live-chat trigger is
+  off by default since its deliberate lexical fallback + filter
+  relaxation protect real feature-word queries like "waterproof"), and a
+  term already mapped to the *wrong* bucket can be corrected when a
+  shopper disputes it (e.g. the shipped taxonomy maps "tan" to "yellow"
+  instead of "brown" — a real bug affecting 29 products, invisible to
+  automated quality gates since the wrong result still scores above
+  threshold). Either way, a genuine full Lucille reindex runs (~19–20s) —
+  see `langchain_agent/ARCHITECTURE.md` and `langchain_agent/DEMO.md`
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
   boosting, and field boosting, displayed in the observability panel's
   "Search Optimizations" card
@@ -412,6 +426,8 @@ opensearch2026-agentic-search/
 | [README.md](README.md) (this file) | Architecture, deployment paths, tech stack | Everyone |
 | **For Developers** | | |
 | [langchain_agent/README.md](langchain_agent/README.md) | Day-to-day development, API usage, config, troubleshooting | Backend/Frontend devs |
+| [langchain_agent/ARCHITECTURE.md](langchain_agent/ARCHITECTURE.md) | Deep pipeline reference — every node, state, index design, attribute detection, taxonomy growth & correction mechanism | Backend devs |
+| [langchain_agent/DEMO.md](langchain_agent/DEMO.md) | Live conference demo walkthrough, including the taxonomy self-correction centerpiece | Presenters |
 | [langchain_agent/api/README.md](langchain_agent/api/README.md) | FastAPI backend layers (routes, middleware, schemas, services) | Backend devs |
 | [langchain_agent/scripts/README.md](langchain_agent/scripts/README.md) | Lifecycle scripts (setup, dev, deploy, CI hooks) | All devs |
 | [langchain_agent/web/README.md](langchain_agent/web/README.md) | React frontend (components, stores, hooks, testing) | Frontend devs |

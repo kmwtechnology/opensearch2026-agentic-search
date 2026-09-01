@@ -170,6 +170,34 @@ class TestFormatDocsForPrompt:
             "glove leather" in result
         ), "late bullet attribute was truncated — judge will false-positive flag it as fabrication"
 
+    def test_includes_indexed_color_category_alongside_listed_color(self):
+        """Regression: the judge used to only see title/product_id/description,
+        never the raw-vs-indexed color facts EcommerceSearchAgent._build_grounded_context
+        gives the generating LLM (main.py) — so a grounded "indexed as yellow"
+        claim got flagged as an unsupported fabrication and the auto-correction
+        retry silently stripped it back out of the response."""
+        doc = Document(
+            page_content="A boot.",
+            metadata={
+                "title": "Test Boot",
+                "product_id": "ID1",
+                "product_color": "Tan",
+                "product_color_primary": "yellow",
+            },
+        )
+
+        result = _format_docs_for_prompt([doc])
+
+        assert "Color (as listed): Tan" in result
+        assert "Color category (indexed): yellow" in result
+
+    def test_omits_indexed_color_category_when_absent(self):
+        doc = self._doc("A boot.")
+
+        result = _format_docs_for_prompt([doc])
+
+        assert "Color category (indexed)" not in result
+
     def test_truncates_at_max_chars_when_explicitly_set(self):
         text = "A" * 2000
         result = _format_docs_for_prompt([self._doc(text)], max_chars=100)

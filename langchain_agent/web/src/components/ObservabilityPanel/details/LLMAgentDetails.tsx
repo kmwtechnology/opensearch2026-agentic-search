@@ -2,12 +2,14 @@
  * LLMAgentDetails - Display LLM agent execution details including reasoning, tool calls, and responses
  */
 
+import { RefreshCw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type {
   LLMReasoningChunkEvent,
   LLMResponseChunkEvent,
   ToolCallEvent,
+  EnrichmentTriggeredEvent,
   ObservabilityStep,
 } from '../../../types/events'
 
@@ -50,12 +52,46 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
     (e) => e.type === 'tool_call'
   ) as ToolCallEvent[]
 
+  const enrichmentEvent = agentStep.events.find(
+    (e) => e.type === 'enrichment_triggered'
+  ) as EnrichmentTriggeredEvent | undefined
+
   // Combine response chunks into full response
   const fullResponse = responseChunks.map((c) => c.content).join('')
   const fullReasoning = reasoningChunks.map((c) => c.content).join('')
 
   return (
     <div className="space-y-4 text-sm min-w-0 w-full">
+      {/* Enrichment flywheel — shown first and distinctly, not buried among
+          the generic Tool Calls list. This is the "agent fixes the catalog,
+          not just the query" moment the demo centers on. */}
+      {enrichmentEvent && (
+        <div className="flex items-start gap-3 rounded-lg border-2 border-emerald-400 bg-emerald-500/15 p-3">
+          <RefreshCw
+            className={`w-5 h-5 text-emerald-300 flex-shrink-0 mt-0.5 ${
+              agentStep.status === 'running' ? 'animate-spin' : ''
+            }`}
+          />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-emerald-200">
+              Catalog Enrichment Triggered
+            </div>
+            <div className="text-xs text-emerald-100 mt-1">
+              Recognized <span className="font-mono">{enrichmentEvent.attribute_type}</span> gap:
+              {' '}&ldquo;{enrichmentEvent.variant}&rdquo;
+              {enrichmentEvent.canonical && (
+                <> resolved to canonical bucket &ldquo;{enrichmentEvent.canonical}&rdquo;</>
+              )}
+            </div>
+            <div className="text-xs text-emerald-300/90 mt-1">
+              {agentStep.status === 'running'
+                ? 'Writing the new mapping and re-indexing the catalog live (~15-20s)...'
+                : 'New mapping written; catalog re-indexed. This query — and future ones — now resolve it.'}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reasoning Section */}
       {fullReasoning && (
         <div>

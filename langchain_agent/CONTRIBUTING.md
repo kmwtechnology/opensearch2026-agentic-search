@@ -498,6 +498,54 @@ PYTHONPATH=. python3 setup.py  # Validate API connection
 
 ---
 
+## Adding a New Attribute Type (beyond color/material)
+
+**Scenario**: Add a third detected/filterable product attribute (e.g. `size`,
+`pattern`) to the taxonomy-driven attribute detection + enrichment flywheel.
+
+The detection stage and Lucille config generation are already generic —
+this needs **no new Java code and no hand-edited pipeline config**:
+
+### Step 1: Seed the taxonomy
+
+Add a canonical seed vocabulary entry to `_CANONICAL_SEEDS_BY_TYPE` in
+`attribute_discovery.py`, then seed it into OpenSearch — either
+`AttributeMappingStore.seed_from_discovery(...)` for a small hand-curated
+set, or `bulk_discover(...)` against real `chunk_text` for a from-scratch
+build (see `scripts/rebuild_attribute_taxonomies.py` for the pattern).
+
+### Step 2: Wire query-time filtering
+
+Add a filter block to `_extract_attributes()` in `main.py` for the new
+type. Decide up front whether it needs a **hard** exact-match fallback
+(like color — reliable, but excludes non-taxonomy terms outright) or a
+**soft** lexical `multi_match` fallback (like material — protects
+legitimate non-taxonomy words, but subject to filter relaxation and can't
+reliably drive a live-conversation enrichment trigger). This is a
+deliberate per-type design choice — see `ARCHITECTURE.md`'s "Enrichment
+Flywheel" section for why color and material differ here.
+
+### Step 3: Add BM25 scoring weight
+
+Add the new field to `vector_store.py`'s `_build_multi_match` boost list.
+Not automatic — a documented tradeoff to avoid an extra OpenSearch
+round-trip per query for a small, known set of attribute types.
+
+### Step 4: Test
+
+```bash
+PYTHONPATH=. pytest tests/unit/test_attribute_discovery.py -v
+PYTHONPATH=. pytest tests/integration/test_config_generator_live.py -v
+bash scripts/lucille_ingest.sh --skip-judgments   # confirm the new
+                                                    # detectX stage appears
+                                                    # in products.generated.conf
+```
+
+The `trigger_enrichment` tool and `POST /api/admin/enrich` already accept
+any `attribute_type` string — no changes needed there.
+
+---
+
 ## Adding an Observable Event
 
 **Scenario**: Add real-time latency tracking for each node.

@@ -1,5 +1,6 @@
 """
-Admin routes for operational tasks: health checks and index diagnostics.
+Admin routes for operational tasks: health checks, index diagnostics, and
+the live material enrichment flywheel.
 
 Re-indexing is handled externally by ``lucille_ingest.sh`` (local dev) or the
 ``reindex.yml`` GitHub Actions workflow (Lucille ETL on the runner). There is no
@@ -18,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from api.middleware.origin_auth import verify_same_origin
 from api.middleware.session_auth import verify_admin_token, verify_session
+from api.schemas.admin import EnrichmentRequest, EnrichmentResponse
 
 logger = logging.getLogger(__name__)
 
@@ -151,3 +153,53 @@ async def admin_health(request: Request) -> dict:
                 "error": str(e),
             },
         }
+
+
+@router.post("/enrich", response_model=EnrichmentResponse)
+async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentResponse:
+    """
+    Enrich a color or material taxonomy with a new variant term: write the
+    mapping, ensure the index has the right fields, regenerate the Lucille
+    config, and trigger a real full reindex. This is the same
+    discover -> write -> reindex mechanism the live agent enrichment tool
+    uses (enrichment_service.enrich_attribute), exposed here so it can be
+    exercised and verified independently of the LLM loop.
+
+    **Authentication:** Requires session (user login) OR X-Admin-Token header (automation).
+
+    Gated by ``ENABLE_ENRICHMENT_TOOL`` (default off) — returns 403 when disabled.
+
+    Classification is dictionary-only by default (no LLM fallback) — a term
+    that doesn't match an existing variant in the given attribute_type's
+    taxonomy returns ``success: false`` with a reason. Pass ``canonical`` to
+    skip dictionary classification and supply the bucket directly, the same
+    way the live agent tool supplies its own LLM-classified canonical.
+    """
+    await verify_same_origin(request)
+    try:
+        await verify_session(request)
+    except HTTPException:
+        await verify_admin_token(request)
+
+    from config import ENABLE_ENRICHMENT_TOOL
+
+    if not ENABLE_ENRICHMENT_TOOL:
+        raise HTTPException(
+            status_code=403, detail="Enrichment is disabled (ENABLE_ENRICHMENT_TOOL=false)"
+        )
+
+    from enrichment_service import enrich_attribute
+
+    result = enrich_attribute(body.attribute_type, body.variant, explicit_canonical=body.canonical)
+
+    return EnrichmentResponse(
+        success=result.success,
+        attribute_type=result.attribute_type,
+        variant=result.variant,
+        canonical=result.canonical,
+        reason=result.reason,
+        reindex_triggered=result.reindex_triggered,
+        reindex_success=result.reindex_success,
+        docs_processed=result.docs_processed,
+        duration_seconds=result.duration_seconds,
+    )

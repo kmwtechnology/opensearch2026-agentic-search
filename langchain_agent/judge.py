@@ -184,7 +184,19 @@ def _format_docs_for_prompt(documents: List[Document], max_chars: int = 10_000) 
         snippet = (doc.page_content or "").replace("\n", " ").strip()
         if len(snippet) > max_chars:
             snippet = snippet[:max_chars].rstrip() + "…"
-        lines.append(f"{i}. [{product_id}] {title}\n   {snippet}")
+        entry = f"{i}. [{product_id}] {title}\n   {snippet}"
+        # Mirror EcommerceSearchAgent._build_grounded_context's raw-vs-indexed
+        # color facts here too -- the judge must see every fact the generating
+        # LLM saw, or it flags a grounded claim (e.g. "indexed as yellow") as
+        # an unsupported fabrication and the auto-correction retry strips it
+        # back out.
+        color = doc.metadata.get("product_color") or ""
+        color_category = doc.metadata.get("product_color_primary") or ""
+        if color:
+            entry += f"\n   Color (as listed): {color}"
+        if color_category:
+            entry += f"\n   Color category (indexed): {color_category}"
+        lines.append(entry)
     return "\n".join(lines)
 
 

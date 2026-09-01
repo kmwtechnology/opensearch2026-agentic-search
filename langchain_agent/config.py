@@ -187,6 +187,8 @@ __all__ = [
     "CHECKPOINT_SELECTIVE_SERIALIZATION",
     "CHECKPOINT_KEEP_VERSIONS",
     "CHECKPOINT_COMPACTION_DAYS",
+    # Agentic Enrichment Flywheel
+    "ENABLE_ENRICHMENT_TOOL",
 ]
 
 # ============================================================================
@@ -546,3 +548,13 @@ CHECKPOINT_KEEP_VERSIONS = 3
 
 # Compact checkpoints older than this many days
 CHECKPOINT_COMPACTION_DAYS = 7
+
+# ============================================================================
+# AGENTIC ENRICHMENT FLYWHEEL (DEMO-SPECIFIC)
+# ============================================================================
+
+# Gates both the trigger_enrichment agent tool and the /api/admin/enrich
+# endpoint. Off by default — this writes to the live index and the
+# OpenSearch-backed attribute mapping store, so it's kept opt-in outside the
+# conference demo environment.
+ENABLE_ENRICHMENT_TOOL = os.getenv("ENABLE_ENRICHMENT_TOOL", "false").lower() == "true"

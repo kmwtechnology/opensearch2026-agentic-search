@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -43,6 +43,19 @@ def _agent_returning_attributes(payload: dict) -> EcommerceSearchAgent:
     agent.alpha_estimator_llm = MagicMock()
     agent.alpha_estimator_llm.invoke.return_value = _Resp(json.dumps(payload))
     return agent
+
+
+@pytest.fixture(autouse=True)
+def _no_live_opensearch():
+    """_extract_attributes' color/material paths call _classify_attribute,
+    which queries AttributeMappingStore — mock it so this file (tests/unit/,
+    zero service dependency by convention) never depends on live OpenSearch.
+    An empty lookup still exercises real classification via the static
+    COLOR_CANONICALS/MATERIAL_CANONICALS seed dicts, which is all these
+    coercion-focused tests need."""
+    with patch("attribute_mapping_store.AttributeMappingStore") as mock_store_cls:
+        mock_store_cls.return_value.get_lookup_table.return_value = {}
+        yield
 
 
 def _all_query_fields_are_strings(filters: list) -> None:
@@ -108,11 +121,17 @@ class TestExtractAttributesCoercion:
         agent = _agent_returning_attributes({"brand": ["Sony"], "color": ["black", "blue"]})
         filters = agent._extract_attributes("sony black headphones")
         _all_query_fields_are_strings(filters)
-        # Brand becomes single-string, color becomes joined string.
+        # Brand becomes single-string. Color becomes a joined string
+        # ("black blue"), which _classify_attribute then resolves to its
+        # dominant/first color via substring match — "black blue" itself
+        # was never a viable product_color_primary value (a `match` on a
+        # keyword field needs an exact hit, and no document is literally
+        # tagged "black blue"), so classifying down to "black" is a real
+        # improvement, not a regression: it actually matches documents.
         brand = next(f for f in filters if "product_brand_normalized" in f.get("match", {}))
         color = next(f for f in filters if "product_color_primary" in f.get("match", {}))
         assert brand["match"]["product_brand_normalized"]["query"] == "Sony"
-        assert color["match"]["product_color_primary"]["query"] == "black blue"
+        assert color["match"]["product_color_primary"]["query"] == "black"
 
     def test_array_size_coerced(self) -> None:
         agent = _agent_returning_attributes({"size": ["XL"]})

@@ -33,6 +33,7 @@ from api.schemas.events import (
     BaseEvent,
     ConfidenceProxy,
     ConversationContextEvent,
+    EnrichmentTriggeredEvent,
     GenerationJudgment,
     HybridSearchStartEvent,
     IntentClassificationEvent,
@@ -910,6 +911,20 @@ class ObservableAgentService:
             )
 
         elif node_name == "agent":
+            # trigger_enrichment fires via a manual two-call tool-binding
+            # loop inside agent_node (_try_enrichment_tool), not a
+            # ToolNode-executed call — the standard on_tool_start/tool_calls
+            # machinery above doesn't see it, so check the node's own output
+            # state directly.
+            if output.get("enrichment_triggered"):
+                await emit(
+                    EnrichmentTriggeredEvent(
+                        attribute_type=output.get("enrichment_attribute_type") or "",
+                        variant=output.get("enrichment_variant") or "",
+                        canonical=output.get("enrichment_canonical"),
+                    )
+                )
+
             # Emit LLM events
             messages = output.get("messages", [])
             for msg in messages:
