@@ -14,7 +14,7 @@ import os
 import httpx
 import pytest
 
-from tests.e2e.conftest import auth_ws_headers
+from tests.e2e.conftest import auth_ws_headers, collect_chat_response
 
 # Configuration
 DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
@@ -72,7 +72,6 @@ class TestESCIProductIndexing:
     async def test_hybrid_search_returns_products(self):
         """Verify hybrid search (vector + lexical) returns product results."""
         import asyncio
-        import time
 
         from websockets.asyncio.client import connect as ws_connect
 
@@ -93,21 +92,7 @@ class TestESCIProductIndexing:
                 await websocket.send(message)
 
                 # Collect response to verify products were retrieved
-                response_text = ""
-                start_time = time.time()
-
-                while time.time() - start_time < 60:
-                    try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
-                        event = json.loads(event_msg)
-
-                        if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("content", "")
-
-                        if event.get("type") == "agent_complete":
-                            break
-                    except asyncio.TimeoutError:
-                        continue
+                response_text = await collect_chat_response(websocket)
 
                 # Should have gotten results mentioning products
                 assert len(response_text) > 0, "No products found in search"
@@ -120,7 +105,6 @@ class TestESCIProductIndexing:
     async def test_vector_search_semantic_similarity(self):
         """Verify vector search finds semantically similar products."""
         import asyncio
-        import time
 
         from websockets.asyncio.client import connect as ws_connect
 
@@ -143,21 +127,7 @@ class TestESCIProductIndexing:
                 )
                 await websocket.send(message)
 
-                response_text = ""
-                start_time = time.time()
-
-                while time.time() - start_time < 60:
-                    try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
-                        event = json.loads(event_msg)
-
-                        if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("content", "")
-
-                        if event.get("type") == "agent_complete":
-                            break
-                    except asyncio.TimeoutError:
-                        continue
+                response_text = await collect_chat_response(websocket)
 
                 # Should understand semantic meaning and return products
                 assert len(response_text) > 0, "Vector search failed"
@@ -170,7 +140,6 @@ class TestESCIProductIndexing:
     async def test_lexical_search_exact_match(self):
         """Verify lexical search finds exact product matches."""
         import asyncio
-        import time
 
         from websockets.asyncio.client import connect as ws_connect
 
@@ -189,21 +158,7 @@ class TestESCIProductIndexing:
                 )
                 await websocket.send(message)
 
-                response_text = ""
-                start_time = time.time()
-
-                while time.time() - start_time < 60:
-                    try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
-                        event = json.loads(event_msg)
-
-                        if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("content", "")
-
-                        if event.get("type") == "agent_complete":
-                            break
-                    except asyncio.TimeoutError:
-                        continue
+                response_text = await collect_chat_response(websocket)
 
                 # Should mention Sony specifically
                 assert len(response_text) > 0, "Lexical search failed"
@@ -270,7 +225,6 @@ class TestProductMetadata:
     async def test_product_brand_attribute_accessible(self):
         """Verify product brand attribute is indexed and searchable."""
         import asyncio
-        import time
 
         from websockets.asyncio.client import connect as ws_connect
 
@@ -293,21 +247,7 @@ class TestProductMetadata:
                 )
                 await websocket.send(message)
 
-                response_text = ""
-                start_time = time.time()
-
-                while time.time() - start_time < 60:
-                    try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
-                        event = json.loads(event_msg)
-
-                        if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("content", "")
-
-                        if event.get("type") == "agent_complete":
-                            break
-                    except asyncio.TimeoutError:
-                        continue
+                response_text = await collect_chat_response(websocket)
 
                 assert len(response_text) > 0, "Brand search failed"
         except Exception as e:
@@ -323,7 +263,6 @@ class TestDataConsistency:
     async def test_same_query_returns_consistent_results(self):
         """Verify repeated searches return consistent results."""
         import asyncio
-        import time
 
         from websockets.asyncio.client import connect as ws_connect
 
@@ -334,7 +273,6 @@ class TestDataConsistency:
 
         try:
             # First search
-            response_1 = ""
             async with ws_connect(
                 ws_url_1, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as ws:
@@ -345,20 +283,9 @@ class TestDataConsistency:
                 )
                 await ws.send(message)
 
-                start_time = time.time()
-                while time.time() - start_time < 60:
-                    try:
-                        event_msg = await asyncio.wait_for(ws.recv(), timeout=15)
-                        event = json.loads(event_msg)
-                        if event.get("type") == "llm_response_chunk":
-                            response_1 += event.get("content", "")
-                        if event.get("type") == "agent_complete":
-                            break
-                    except asyncio.TimeoutError:
-                        continue
+                response_1 = await collect_chat_response(ws)
 
             # Second search (same query)
-            response_2 = ""
             async with ws_connect(
                 ws_url_2, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as ws:
@@ -369,17 +296,7 @@ class TestDataConsistency:
                 )
                 await ws.send(message)
 
-                start_time = time.time()
-                while time.time() - start_time < 60:
-                    try:
-                        event_msg = await asyncio.wait_for(ws.recv(), timeout=15)
-                        event = json.loads(event_msg)
-                        if event.get("type") == "llm_response_chunk":
-                            response_2 += event.get("content", "")
-                        if event.get("type") == "agent_complete":
-                            break
-                    except asyncio.TimeoutError:
-                        continue
+                response_2 = await collect_chat_response(ws)
 
             # Both should have generated responses (not necessarily identical, but similar structure)
             assert len(response_1) > 0, "First search returned no results"
@@ -399,7 +316,6 @@ class TestDataConsistency:
     async def test_no_data_corruption_after_deployment(self):
         """Verify no data corruption in indexed products."""
         import asyncio
-        import time
 
         from websockets.asyncio.client import connect as ws_connect
 
@@ -417,21 +333,7 @@ class TestDataConsistency:
                 )
                 await websocket.send(message)
 
-                response_text = ""
-                start_time = time.time()
-
-                while time.time() - start_time < 60:
-                    try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
-                        event = json.loads(event_msg)
-
-                        if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("content", "")
-
-                        if event.get("type") == "agent_complete":
-                            break
-                    except asyncio.TimeoutError:
-                        continue
+                response_text = await collect_chat_response(websocket)
 
                 # Response should be valid text, no NUL or non-whitespace control
                 # corruption. LLM output routinely contains Unicode (smart quotes,

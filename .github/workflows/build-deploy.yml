@@ -497,6 +497,13 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
+          # --concurrency=8: without an explicit value Cloud Run defaults to 80,
+          # which never triggers scale-out under the ~15-20 concurrent WebSocket
+          # chats the post-deploy smoke job opens (max-instances=2 stays idle at 1
+          # instance) -- see #23. Each chat is CPU-bound (cross-encoder reranker)
+          # and cpu-throttling is on, so several piling onto one instance starves
+          # keepalive pings, producing 1011 timeouts. Lowering concurrency forces
+          # scale-out to the existing max-instances=2 under load instead.
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
@@ -530,6 +537,7 @@ jobs:
             --timeout=3600 \
             --min-instances=0 \
             --max-instances=2 \
+            --concurrency=8 \
             --no-traffic \
             --quiet
 
