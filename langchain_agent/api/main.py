@@ -91,6 +91,21 @@ async def lifespan(app: FastAPI):
             "Generate one with `openssl rand -hex 32`."
         )
 
+    # Initialize the agent (LLM clients, graph, reranker) and wait for
+    # warmup to complete *before* the ASGI server starts accepting
+    # connections. Uvicorn doesn't begin serving until this lifespan
+    # startup event returns, so this blocks Cloud Run's startup probe from
+    # succeeding until the instance can actually serve a chat request --
+    # closing the race where a cold instance is marked ready (its container
+    # just needs to be listening on the port) and receives concurrent chat
+    # traffic while still loading the cross-encoder model in a background
+    # thread. That CPU-bound load can starve the event loop's ability to
+    # answer WebSocket keepalive pings on already-open connections, which
+    # was showing up as `1011 keepalive ping timeout` under concurrent
+    # load on cold deploys. See #23.
+    await chat.manager.agent_service.ensure_initialized()
+    await chat.manager.agent_service._wait_for_warmup()
+
     base_url = _get_api_base_url()
     logger.info(
         "api_started",

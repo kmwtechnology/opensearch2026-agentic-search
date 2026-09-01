@@ -498,12 +498,18 @@ jobs:
       - name: Deploy to Cloud Run
         run: |
           # --concurrency=8: without an explicit value Cloud Run defaults to 80,
-          # which never triggers scale-out under the ~15-20 concurrent WebSocket
-          # chats the post-deploy smoke job opens (max-instances=2 stays idle at 1
-          # instance) -- see #23. Each chat is CPU-bound (cross-encoder reranker)
-          # and cpu-throttling is on, so several piling onto one instance starves
-          # keepalive pings, producing 1011 timeouts. Lowering concurrency forces
-          # scale-out to the existing max-instances=2 under load instead.
+          # which never triggers scale-out under concurrent WebSocket chat load.
+          # --startup-probe uses httpGet against /api/health/ready, not
+          # tcpSocket: a bare TCP probe passes as soon as uvicorn binds the
+          # port, well before the cross-encoder reranker model finishes
+          # loading. Cloud Run was routing concurrent chat traffic to cold
+          # instances still warming up, starving the event loop's ability to
+          # answer WebSocket keepalive pings (`1011 keepalive ping timeout`).
+          # /api/health/ready now reflects real agent/reranker readiness, not
+          # just "process is up" -- see #23 for the full investigation
+          # (ruled out CPU throttling via Cloud Monitoring: ~6% utilization
+          # during a failing request; ruled out raising max-instances alone,
+          # which made it worse by cold-starting more instances at once).
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
@@ -538,6 +544,7 @@ jobs:
             --min-instances=0 \
             --max-instances=2 \
             --concurrency=8 \
+            --startup-probe=timeoutSeconds=10,periodSeconds=10,failureThreshold=30,httpGet.path=/api/health/ready,httpGet.port=8080 \
             --no-traffic \
             --quiet
 

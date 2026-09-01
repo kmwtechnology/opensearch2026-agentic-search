@@ -31,9 +31,11 @@ CPU="2"
 MIN_INSTANCES="0"
 MAX_INSTANCES="2"
 # 8, not Cloud Run's default 80: at 80, concurrent WebSocket chat load never
-# crosses the scale-out threshold, so every request piles onto one instance
-# and cpu-throttling starves keepalive pings under load (see #23). Lowering
-# this forces scale-out to MAX_INSTANCES instead.
+# crosses the scale-out threshold. Best-known-good baseline, not a full fix --
+# `1011 keepalive` failures persist even at this setting on a cold deploy, and
+# raising MAX_INSTANCES to 4 made it worse (more simultaneous cold-start
+# warmup). See #23 -- leading suspect is now the reranker warmup blocking
+# traffic on cold instances, not concurrency/CPU throttling.
 CONCURRENCY="8"
 
 # ============================================================================
@@ -399,6 +401,13 @@ log "Docker image built and pushed."
 
 log "Deploying to Cloud Run..."
 
+# --startup-probe uses httpGet against /api/health/ready, not tcpSocket: a
+# bare TCP probe passes as soon as uvicorn binds the port, well before the
+# cross-encoder reranker model finishes loading -- Cloud Run was routing
+# concurrent chat traffic to cold instances still warming up, starving the
+# event loop's ability to answer WebSocket keepalive pings (see #23).
+# /api/health/ready now reflects real agent/reranker readiness, not just
+# "process is up".
 run gcloud run deploy "$SERVICE_NAME" \
     --image="$IMAGE_URI" \
     --platform=managed \
@@ -412,7 +421,7 @@ run gcloud run deploy "$SERVICE_NAME" \
     --concurrency="$CONCURRENCY" \
     --cpu-throttling \
     --timeout=3600 \
-    --startup-probe=timeoutSeconds=5,periodSeconds=30,failureThreshold=20,tcpSocket.port=8080 \
+    --startup-probe=timeoutSeconds=10,periodSeconds=10,failureThreshold=30,httpGet.path=/api/health/ready,httpGet.port=8080 \
     --add-cloudsql-instances="$CLOUD_SQL_CONNECTION" \
     --service-account=agentic-hybrid-search-sa@${PROJECT_ID}.iam.gserviceaccount.com \
     --set-env-vars="\
@@ -512,8 +521,8 @@ echo ""
 echo "COST CONTROL:"
 echo "  - min-instances=0 (scales to zero when idle)"
 echo "  - max-instances=2 (prevents runaway scaling)"
-echo "  - concurrency=8 (forces scale-out under concurrent load instead of"
-echo "    starving one CPU-throttled instance -- see #23)"
+echo "  - concurrency=8 (forces scale-out under concurrent load; best-known-good"
+echo "    baseline, investigation ongoing -- see #23)"
 echo "  - cpu-throttling enabled (CPU only during requests)"
 echo "  - Cloud SQL db-f1-micro tier"
 echo ""
