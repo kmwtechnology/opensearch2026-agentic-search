@@ -29,13 +29,14 @@ ARTIFACT_REPO="agentic-hybrid-search"
 MEMORY="2048Mi"
 CPU="2"
 MIN_INSTANCES="0"
-MAX_INSTANCES="2"
+# 4, not 2: gives real headroom for burst concurrent load (e.g. several
+# simultaneous WebSocket connections at once) now that the startup probe
+# below gates traffic on real readiness -- an earlier attempt at 4 made
+# things worse specifically because cold instances weren't readiness-gated
+# yet. See #23.
+MAX_INSTANCES="4"
 # 8, not Cloud Run's default 80: at 80, concurrent WebSocket chat load never
-# crosses the scale-out threshold. Best-known-good baseline, not a full fix --
-# `1011 keepalive` failures persist even at this setting on a cold deploy, and
-# raising MAX_INSTANCES to 4 made it worse (more simultaneous cold-start
-# warmup). See #23 -- leading suspect is now the reranker warmup blocking
-# traffic on cold instances, not concurrency/CPU throttling.
+# crosses the scale-out threshold. See #23.
 CONCURRENCY="8"
 
 # ============================================================================
@@ -520,7 +521,8 @@ echo "     gcloud run services logs read $SERVICE_NAME --region=$REGION --projec
 echo ""
 echo "COST CONTROL:"
 echo "  - min-instances=0 (scales to zero when idle)"
-echo "  - max-instances=2 (prevents runaway scaling)"
+echo "  - max-instances=4 (prevents runaway scaling; readiness-gated cold"
+echo "    starts make this safe headroom for burst load -- see #23)"
 echo "  - concurrency=8 (forces scale-out under concurrent load; best-known-good"
 echo "    baseline, investigation ongoing -- see #23)"
 echo "  - cpu-throttling enabled (CPU only during requests)"
