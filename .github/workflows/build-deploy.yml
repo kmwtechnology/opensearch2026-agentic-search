@@ -64,7 +64,7 @@ jobs:
       - name: Create test .env
         run: |
           cd langchain_agent
-          cat > .env.test << EOF
+          cat > .env << EOF
           GOOGLE_API_KEY=test-key-12345
           POSTGRES_USER=test
           POSTGRES_PASSWORD=test
@@ -98,8 +98,6 @@ jobs:
             --cov-report=html \
             --cov-report=term-missing:skip-covered \
             --junit-xml=test-results-phase1.xml
-        env:
-          ENV_FILE: .env.test
 
       - name: Generate unit test summary
         if: always()
@@ -203,7 +201,7 @@ jobs:
       - name: Create test .env
         run: |
           cd langchain_agent
-          cat > .env.test << EOF
+          cat > .env << EOF
           GOOGLE_API_KEY=test-key-12345
           POSTGRES_USER=test
           POSTGRES_PASSWORD=test
@@ -240,14 +238,13 @@ jobs:
           PYTHONPATH=. pytest tests/integration/ \
             -v \
             -ra \
+            -m "not slow" \
             --tb=short \
             --timeout=60 \
             --cov=. \
             --cov-report=xml \
             --cov-report=term-missing:skip-covered \
             --junit-xml=test-results-phase2.xml
-        env:
-          ENV_FILE: .env.test
 
       - name: Generate integration test summary
         if: always()
