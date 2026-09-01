@@ -471,16 +471,61 @@ Implementation:
 
 [psc]: web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx
 
-### Admin reindex API
+### Admin API
 
-`GET /api/admin/reindex?reset_index=true&limit=10000` kicks off a
-background ESCI re-ingestion. `GET /api/admin/reindex/status` returns
-`idle` / `queued` / `running` / `success` / `error` with detail.
-`GET /api/admin/health` returns index health and document count. Add
-`reindex_judgments=true` when the ESCI judgment index also needs a rebuild.
-A dedicated GitHub Actions
-workflow (`.github/workflows/reindex.yml`) exposes the flow as a manual
-dispatch against a deployed Cloud Run instance.
+`GET /api/admin/health` returns index health and document count.
+`GET /api/admin/diagnose` probes field-level hit counts and mapping
+presence per field. `POST /api/admin/enrich` grows or corrects the
+color/material taxonomy and triggers a real full Lucille reindex
+(~19-20s) — see "Agentic Taxonomy Growth & Correction" below and
+`docs/integration/rest-api.md` for the request/response shape. All three
+require session auth (UI login) or `X-Admin-Token` header (GitHub Actions
+automation).
+
+Routine full re-ingestion (not tied to a specific taxonomy change) is
+handled by a dedicated GitHub Actions workflow
+(`.github/workflows/reindex.yml`, manual dispatch against a deployed Cloud
+Run instance, or `bash scripts/lucille_ingest.sh` locally) rather than an
+HTTP endpoint — add `reindex_judgments=true` to that workflow's inputs when
+the ESCI judgment index also needs a rebuild.
+
+### Agentic Taxonomy Growth & Correction
+
+The agent can grow *or fix* its own catalog taxonomy live via one shared
+tool, `trigger_enrichment(attribute_type, variant, canonical)`, gated by
+`ENABLE_ENRICHMENT_TOOL` (default off). Calling it writes the mapping to
+OpenSearch, regenerates the Lucille ingest config, and triggers a real
+full reindex — not a scoped patch, not a mock.
+
+**Gap** (a term the taxonomy has never seen): when `attribute_filter`
+intent extracts a color/material term the taxonomy doesn't recognize and
+the resulting search genuinely fails, `agent_node` offers the tool.
+Color's unresolved-term filter is a hard exact match (excluded from the
+retriever's filter-relaxation safety net), so it reliably produces a
+genuine zero-result query through live chat. Material's fallback is a
+deliberately soft lexical match (protecting legitimate non-material
+feature words like "waterproof"), and material/size filters *are*
+subject to relaxation, so no material term reliably triggers the gap
+signal through natural conversation — a material gap can still be added
+via `POST /api/admin/enrich` directly.
+
+**Correction** (a term already mapped to the *wrong* bucket — the live
+demo's centerpiece, see `DEMO.md`): a separate detection branch in
+`agent_node` watches `refinement`/`follow_up` turns for dispute language
+("that's wrong", "mistagged", ...) via `_detect_correction_signal`, and
+if the shopper is disputing a real, verifiable mistake, offers the same
+tool framed as a correction. `enrichment_service.enrich_attribute`
+distinguishes this from a no-op by comparing the requested canonical
+against what's already stored — a genuine mismatch is tracked via
+`EnrichmentResult.corrected_from` and reported distinctly ("Corrected
+'tan' from 'yellow' to 'brown'", not "Added"). This case matters because
+it produces a **passing** quality-gate score (the wrong result is still
+relevant, just mis-colored) — invisible to any automated check, only
+catchable by a shopper actually looking at the product.
+
+See `ARCHITECTURE.md`'s "Attribute Detection" / "Taxonomy Growth &
+Correction" sections for the full mechanism and `DEMO.md` for the live
+walkthrough.
 
 ### Observable events
 
@@ -497,6 +542,7 @@ WebSocket:
 | `reranker_start` / `reranker_progress` / `reranker_result` | Per-doc 0.0–1.0 |
 | `quality_gate` | pass / retry / α adjusted |
 | `llm_response_start` / `llm_response_chunk` | Token streaming |
+| `enrichment_triggered` | Agent called `trigger_enrichment`; carries `attribute_type`/`variant`/`canonical` |
 | `agent_complete` | Final response + citations |
 | `pipeline_summary` | Per-stage NDCG/MRR/Recall/Precision (or confidence proxy) + latency cost-benefit |
 
@@ -555,6 +601,7 @@ TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
 | Reranker | `reranker_max_score`, `reranked_documents`, `reranker_latency_ms` |
 | Quality Gate | `quality_gate_retried`, `alpha_adjusted_value` |
 | Pipeline Summary | `pre_rerank_documents`, `bm25_documents`, `judgments`, `bm25_latency_ms`, `retriever_latency_ms` |
+| Agent (enrichment) | `enrichment_triggered`, `enrichment_attribute_type`, `enrichment_variant`, `enrichment_canonical` |
 | Other | `thread_id`, `current_node`, `retrieved_products`, `citations` |
 
 ---

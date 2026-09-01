@@ -1,9 +1,15 @@
 """
-Contract tests for langchain_agent/lucille-esci/conf/products.conf and judgments.conf.
+Contract tests for the generated products pipeline config
+(config_generator.generate_products_conf) and langchain_agent/lucille-esci/conf/judgments.conf.
 
 These tests guard against ingest-contract regressions — fields that the search API,
 health check, or retrieval pipeline depend on. A missing stage in the HOCON config
 produces zero search results even when doc counts look correct in OpenSearch.
+
+products.conf itself is retired — the pipeline config is now generated fresh
+before every Lucille run (config_generator.py), so these contract tests
+validate generate_products_conf()'s *output* rather than a static file. This
+preserves the regression coverage below across the rework.
 
 Lessons learned:
 - collection_id=esci_products must be set on every product doc; every query in
@@ -15,9 +21,14 @@ Lessons learned:
 import re
 from pathlib import Path
 
+from config_generator import generate_products_conf
+
 CONF_DIR = Path(__file__).parent.parent.parent / "lucille-esci" / "conf"
-PRODUCTS_CONF = CONF_DIR / "products.conf"
 JUDGMENTS_CONF = CONF_DIR / "judgments.conf"
+
+# Representative attribute types — the contract being tested here is about
+# the fixed prelude/epilogue stages, not the per-type detector blocks.
+_SAMPLE_ATTRIBUTE_TYPES = ["color", "material"]
 
 
 def _read(path: Path) -> str:
@@ -25,64 +36,61 @@ def _read(path: Path) -> str:
     return path.read_text()
 
 
-# ── products.conf ─────────────────────────────────────────────────────────────
+# ── generated products config ───────────────────────────────────────────────
 
 
-def test_products_conf_exists():
-    assert PRODUCTS_CONF.exists()
-
-
-def test_products_conf_sets_collection_id():
+def test_generated_conf_sets_collection_id():
     """collection_id=esci_products must appear via SetStaticValues.
 
     Every search query in vector_store.py adds a filter on this field.
     Without it all searches return 0 results regardless of doc count.
     """
-    text = _read(PRODUCTS_CONF)
-    assert "SetStaticValues" in text, "SetStaticValues stage missing from products.conf"
-    assert "collection_id" in text, "collection_id not configured in products.conf"
-    assert "esci_products" in text, "collection_id value 'esci_products' missing from products.conf"
+    text = generate_products_conf(_SAMPLE_ATTRIBUTE_TYPES)
+    assert "SetStaticValues" in text, "SetStaticValues stage missing from generated config"
+    assert "collection_id" in text, "collection_id not configured in generated config"
+    assert (
+        "esci_products" in text
+    ), "collection_id value 'esci_products' missing from generated config"
 
 
-def test_products_conf_collection_id_value():
+def test_generated_conf_collection_id_value():
     """The collection_id value must exactly match VECTOR_COLLECTION_NAME in config.py."""
-    text = _read(PRODUCTS_CONF)
-    # Match: "collection_id": "esci_products"  (with optional whitespace)
+    text = generate_products_conf(_SAMPLE_ATTRIBUTE_TYPES)
     assert re.search(
         r'"collection_id"\s*:\s*"esci_products"', text
-    ), "collection_id field not set to 'esci_products' in products.conf"
+    ), "collection_id field not set to 'esci_products' in generated config"
 
 
-def test_products_conf_builds_chunk_text():
+def test_generated_conf_builds_chunk_text():
     """chunk_text must be built from product fields (required by BM25 and knn retrieval)."""
-    text = _read(PRODUCTS_CONF)
+    text = generate_products_conf(_SAMPLE_ATTRIBUTE_TYPES)
     assert "chunk_text" in text
     assert "Concatenate" in text
 
 
-def test_products_conf_has_opensearch_indexer():
-    text = _read(PRODUCTS_CONF)
+def test_generated_conf_has_opensearch_indexer():
+    text = generate_products_conf(_SAMPLE_ATTRIBUTE_TYPES)
     assert 'type: "OpenSearch"' in text or "type: OpenSearch" in text
 
 
-def test_products_conf_uses_env_var_for_parquet_path():
+def test_generated_conf_uses_env_var_for_parquet_path():
     """PARQUET_PATH must come from env — never hardcoded."""
-    text = _read(PRODUCTS_CONF)
+    text = generate_products_conf(_SAMPLE_ATTRIBUTE_TYPES)
     assert "${PARQUET_PATH}" in text
     # Sanity check: no hardcoded absolute paths
     assert "/Users/" not in text
     assert "/home/" not in text
 
 
-def test_products_conf_uses_env_var_for_opensearch_url():
-    text = _read(PRODUCTS_CONF)
+def test_generated_conf_uses_env_var_for_opensearch_url():
+    text = generate_products_conf(_SAMPLE_ATTRIBUTE_TYPES)
     assert "${OPENSEARCH_URL}" in text
     assert "${OPENSEARCH_INDEX}" in text
 
 
-def test_products_conf_id_field_is_product_id():
+def test_generated_conf_id_field_is_product_id():
     """product_id must be the OpenSearch document _id to allow idempotent re-ingest."""
-    text = _read(PRODUCTS_CONF)
+    text = generate_products_conf(_SAMPLE_ATTRIBUTE_TYPES)
     assert 'idField: "product_id"' in text
 
 

@@ -22,6 +22,10 @@
 #   2. (native only) Build the lucille/esci module
 #   3. Pre-aggregate judgments parquet (skipped if output already exists)
 #   4. (Optional) Delete the products index + recreate mapping for a clean rebuild
+#   4b. Regenerate products.generated.conf (config_generator.py) — one
+#       AttributeDetectorStage entry per attribute type currently registered
+#       in the OS-backed attribute mapping store; always fresh, never
+#       hand-edited (see langchain_agent/config_generator.py)
 #   5. Run Lucille products ingest (ParquetConnector → OpenSearch)
 #   6. Run Lucille judgments ingest (ParquetConnector → OpenSearch)
 #
@@ -256,6 +260,18 @@ else
   info "Judgments parquet already exists: $JUDGMENTS_PARQUET"
 fi
 
+# ── Step 4b: Regenerate products.generated.conf ──────────────────────────────
+# One AttributeDetectorStage entry per attribute type currently registered in
+# the OS-backed attribute mapping store (config_generator.py) — always
+# regenerated immediately before the run so a reindex reflects whatever the
+# live agent enrichment flywheel has registered, with zero hand-edited config.
+info "Regenerating products.generated.conf from current OpenSearch attribute types..."
+PYTHON="${AGENT_DIR}/.venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then
+  PYTHON="$(command -v python3)"
+fi
+(cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" config_generator.py)
+
 # ── Step 5: Run products ingest ───────────────────────────────────────────────
 PRODUCTS_PARQUET="$DATA_DIR/esci_products_sample_10000.parquet"
 if [[ ! -f "$PRODUCTS_PARQUET" ]]; then
@@ -272,7 +288,7 @@ if [[ "$LUCILLE_USE_DOCKER" == "true" ]]; then
   # service — irrelevant (and wasted work) when CONTAINER_OPENSEARCH_URL points
   # at a remote hosted cluster instead (CI, GCP workstation).
   (cd "$REPO_DIR" && docker compose run --rm --no-deps \
-    -e LUCILLE_CONF=/lucille/conf/products.conf \
+    -e LUCILLE_CONF=/lucille/conf/products.generated.conf \
     -e PARQUET_PATH="/lucille/data/$(basename "$PRODUCTS_PARQUET")" \
     -e OPENSEARCH_URL="$CONTAINER_OPENSEARCH_URL" \
     -e OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
@@ -282,7 +298,7 @@ else
   OPENSEARCH_URL="$OPENSEARCH_URL" \
   OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
     java \
-      -Dconfig.file="$ESCI_MODULE_DIR/conf/products.conf" \
+      -Dconfig.file="$ESCI_MODULE_DIR/conf/products.generated.conf" \
       -cp "$ESCI_MODULE_DIR/target/lib/*:$ESCI_MODULE_DIR/target/lucille-esci-1.0.0.jar" \
       com.kmwllc.lucille.core.Runner
 fi

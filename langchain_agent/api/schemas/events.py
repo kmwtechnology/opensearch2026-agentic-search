@@ -737,6 +737,26 @@ class ClarificationResolvedEvent(BaseEvent):
 
 
 # ============================================================================
+# AGENTIC ENRICHMENT FLYWHEEL EVENTS
+# ============================================================================
+
+
+class EnrichmentTriggeredEvent(BaseEvent):
+    """Emitted when the agent's trigger_enrichment tool fires — a color or
+    material taxonomy gap was detected and a real Lucille reindex was
+    triggered live. Richer than the generic ToolCallEvent (which this
+    doesn't fire, since the enrichment tool loop is a manual two-call
+    binding inside agent_node, not a ToolNode-executed call the standard
+    astream_events tool-start/tool-call machinery would see)."""
+
+    type: Literal["enrichment_triggered"] = "enrichment_triggered"
+    node: Literal["agent"] = "agent"
+    attribute_type: str  # "color" or "material"
+    variant: str  # the raw term the agent recognized, e.g. "chrome"
+    canonical: Optional[str] = None  # the canonical bucket it resolved to, e.g. "metal"
+
+
+# ============================================================================
 # UNION TYPE FOR ALL EVENTS
 # ============================================================================
 
@@ -746,6 +766,7 @@ AgentEvent = (
     | ConversationContextEvent
     | NodeStartEvent
     | NodeEndEvent
+    | EnrichmentTriggeredEvent
     | QueryEvaluationEvent
     | IntentClassificationEvent
     | SummaryEvent

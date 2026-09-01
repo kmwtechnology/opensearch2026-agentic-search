@@ -2,7 +2,7 @@
  * StepCard - Expandable card showing details of a single execution step.
  */
 
-import { ChevronDown, ChevronRight, Clock } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, RefreshCw } from 'lucide-react'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import type {
   AgentEvent,
@@ -10,6 +10,7 @@ import type {
   ObservabilityStep,
   SummaryEvent,
   QualityGateEvent,
+  EnrichmentTriggeredEvent,
 } from '../../types/events'
 import { QueryEvaluatorDetails } from './details/QueryEvaluatorDetails'
 import { SearchDetails } from './details/SearchDetails'
@@ -62,11 +63,19 @@ export function StepCard({ step, index }: StepCardProps) {
   const { expandedSteps, toggleStepExpanded } = useObservabilityStore()
   const isExpanded = expandedSteps.has(step.id)
 
-  const config = nodeConfig[step.node] || {
-    label: step.node,
-    color: 'text-gray-400',
-    bgColor: 'bg-gray-500/10 border-gray-500/30',
-  }
+  const enrichmentEvent = step.events.find(isEnrichmentTriggeredEvent)
+
+  const config = enrichmentEvent
+    ? {
+        label: 'LLM Agent',
+        color: 'text-emerald-300',
+        bgColor: 'bg-emerald-500/25 border-emerald-400',
+      }
+    : nodeConfig[step.node] || {
+        label: step.node,
+        color: 'text-gray-400',
+        bgColor: 'bg-gray-500/10 border-gray-500/30',
+      }
 
   const statusColors = {
     idle: 'bg-gray-500',
@@ -106,14 +115,22 @@ export function StepCard({ step, index }: StepCardProps) {
         <div className={clsx('w-3 h-3 rounded-full', statusColors[step.status])} />
 
         {/* Node name + summary */}
-        <div className="flex-1 min-w-0 truncate">
+        <div className="flex-1 min-w-0 truncate flex items-center gap-2">
           <span className={clsx('font-medium text-base', config.color)}>
             {config.label}
           </span>
-          {step.node !== 'intent_classifier' && step.summary && (
-            <span className="ml-2 text-sm text-gray-300">
-              {step.summary}
+          {enrichmentEvent ? (
+            <span className="ml-1 inline-flex items-center gap-1.5 text-sm font-medium text-emerald-300">
+              <RefreshCw className={clsx('w-4 h-4', step.status === 'running' && 'animate-spin')} />
+              Enrichment: {enrichmentEvent.attribute_type} &ldquo;{enrichmentEvent.variant}&rdquo;
+              {enrichmentEvent.canonical && <> → &ldquo;{enrichmentEvent.canonical}&rdquo;</>}
             </span>
+          ) : (
+            step.node !== 'intent_classifier' && step.summary && (
+              <span className="text-sm text-gray-300">
+                {step.summary}
+              </span>
+            )
           )}
         </div>
 
@@ -183,6 +200,10 @@ function StepDetails({ step }: { step: ObservabilityStep }) {
 
 function isIntentClassificationEvent(event: AgentEvent): event is IntentClassificationEvent {
   return event.type === 'intent_classification'
+}
+
+function isEnrichmentTriggeredEvent(event: AgentEvent): event is EnrichmentTriggeredEvent {
+  return event.type === 'enrichment_triggered'
 }
 
 function isSummaryEvent(event: AgentEvent): event is SummaryEvent {

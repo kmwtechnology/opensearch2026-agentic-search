@@ -26,9 +26,10 @@ is running (or can be started automatically).
 | `lucille_ingest.sh` | ESCI re-ingestion (builds Lucille on first run, reads `data/*.parquet`) | Manual re-ingest | 30 s–1 min |
 | **Utilities** |
 | `prepare_judgments_parquet.py` | Pre-aggregate ESCI judgments (one-time or on sample change) | Data ops | 2–3 min |
-| `analyze_color_attributes.py` | Analyze product colors and generate canonical color mappings | Data ops (once per sample) | 5 s |
-| `enrich_attribute_normalization.py` | Post-ingest enrichment: add normalized color/brand fields to OpenSearch | Data ops (after Lucille ingest) | 30–60 s |
+| `rebuild_attribute_taxonomies.py` | Wipe and rebuild the color/material attribute taxonomies from scratch via discovery against real `chunk_text` (writes to OpenSearch, not a committed file) | Data ops (rare — the taxonomies persist in OpenSearch; the live enrichment flywheel grows them incrementally instead) | ~1 min |
 | `probe_demo_query.py` | Standalone demo query tester; useful for debugging retriever/reranker | Ad hoc testing | — |
+
+`../config_generator.py` (not a standalone script — invoked by `lucille_ingest.sh`) regenerates `lucille-esci/conf/products.generated.conf` from whatever attribute types are currently registered in OpenSearch, immediately before every ingest run. See `ARCHITECTURE.md`'s "Attribute Detection" and "Enrichment Flywheel" sections for the full mechanism — `AttributeNormalizerStage.java`/`enrich_attribute_normalization.py`/`analyze_color_attributes.py`/`color_mappings.json` described in older docs are retired; detection now happens during ingest via the generic `AttributeDetectorStage.java`, sourced from OpenSearch, not a post-ingest Python pass over a committed JSON file.
 
 ## Execution Order
 

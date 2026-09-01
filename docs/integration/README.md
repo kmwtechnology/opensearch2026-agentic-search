@@ -8,7 +8,7 @@ REST API and WebSocket examples for integrating Agentic Hybrid Search into your 
 
 | Guide | Purpose | For Whom |
 |-------|---------|----------|
-| [REST API](rest-api.md) | Endpoints with cURL examples (auth, conversations, suggestions) | Backend integrators |
+| [REST API](rest-api.md) | Endpoints with cURL examples (auth, conversations, suggestions, admin/enrichment) | Backend integrators |
 | [WebSocket](websocket.md) | Message contract, event stream, JS/Python examples | Real-time UI developers |
 | [Auth Patterns](auth-patterns.md) | Session cookie flow (browser) and admin token flow (automation) | All integrators |
 

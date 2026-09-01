@@ -129,14 +129,20 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 **Process**:
 
 - **Attribute extraction & filtering** (for `attribute_filter` intent):
-  - Extracts brand and color constraints from user query (LLM-powered)
-  - Filters on **normalized fields**:
-    - `product_color_primary` (normalized primary color, e.g., "black", "white", "blue")
-    - `product_color_secondary` (normalized secondary color if compound entry, e.g., "Black & Purple" → primary: "black", secondary: "purple")
-    - `product_brand_normalized` (case-folded brand, e.g., "sony", "apple")
-  - Normalization rules: 16 canonical color forms (e.g., "grey" → "gray", "navy" → "blue", "taupe" → "brown"), synonym expansion, compound color extraction
-  - See **Attribute Normalization** section below for details
-  - **Filter relaxation**: If fetch returns < 3 results with all filters, drops multi-match (material/size) filters but keeps color + brand exact-match filters (user explicitly named them)
+  - Extracts brand, color, material/feature, and size constraints from the user query (LLM-powered)
+  - Classifies color/material terms against the OS-backed taxonomy first, then filters on
+    **detected fields**:
+    - `product_color_primary`/`_secondary`, `product_material_primary`/`_secondary` — canonical
+      values (keyword), populated during ingest by `AttributeDetectorStage`
+    - `product_brand_normalized` — case-folded brand, e.g., "sony", "apple"
+  - Color's unresolved-term fallback is a **hard** exact-match filter; material's is a **soft**
+    lexical `multi_match` (protects legitimate non-material feature words like "waterproof") — see
+    **Attribute Detection** section below for the full mechanism and why this asymmetry means only
+    color gaps can be demonstrated through live chat (material gaps get relaxed away by the
+    retriever's filter-relaxation safety net before they ever produce a zero-result trigger)
+  - **Filter relaxation**: If fetch returns < 3 results with all filters, drops multi-match
+    (material/size) filters but keeps color + brand exact-match filters (user explicitly named
+    them) — this can retry all the way down to 0 fully-filtered results
 - **Dual-path search**:
   1. **Vector Search** (HNSW): Gemini 768-dim embeddings, cosine similarity
   2. **Lexical Search** (BM25): Dual-analyzer pattern — primary fields (`chunk_text`, `product_brand`, `product_color`) use `light_english_analyzer` (kstem, light stemming) for precision; `.heavy` sub-fields use `heavy_english_analyzer` (snowball, aggressive stemming) at ^0.3 boost for morphological recall fallback. Dense vectors handle the bulk of morphological recall, so BM25 is tuned for precision ("Beats" ≠ "beat" with kstem, but still matches "running/runs/ran" via embeddings).
@@ -469,8 +475,11 @@ The canonical re-indexing mechanism is the **GitHub Actions workflow** `.github/
 
 **Admin API** (`api/routes/admin.py`):
 - `GET /api/admin/health` — index document count, service status
-- `GET /api/admin/ingest_judgments` — populate esci_judgments index (rarely used; primarily for local dev)
-- Protected by SessionMiddleware or Admin Token auth
+- `GET /api/admin/diagnose` — field-level hit counts and mapping inspection
+- `POST /api/admin/enrich` — grow or correct the color/material taxonomy
+  and trigger a real reindex; see "Taxonomy Growth & Correction" below
+  (gated by `ENABLE_ENRICHMENT_TOOL`, default off)
+- Protected by same-origin check + (SessionMiddleware or Admin Token auth)
 
 ---
 
@@ -635,39 +644,177 @@ Continue to agent
 - **Text mapping**: `_search` queries match "Sony" in "Sony WH-1000XM5"
 - **Keyword mapping** (`.keyword` suffix): Exact match, no tokenization, used for faceting
 
-### Attribute Normalization (Color & Brand)
+### Attribute Detection (Color & Material) and Brand Normalization
 
-**Problem:** Raw color/brand fields have high variance ("grey" vs "gray", "Light Grey", "Black & Purple"). Users expect "black" to match all black variants.
+**Problem:** Raw color/material text has high variance ("grey" vs "gray",
+"chrome" as a material with no dedicated field). Users expect "black" to
+match all black variants, and a genuinely new variant term (a color/material
+word the taxonomy hasn't seen yet) to be teachable without a code deploy.
 
-**Solution:** Post-ingest normalization (Python script in Step 5b of `lucille_ingest.sh`):
+**Solution:** Detection happens **during Lucille ingest**, not as a
+post-ingest pass, driven by a taxonomy stored in OpenSearch — not a
+committed file:
 
-1. **Color Normalization** (16 canonical forms):
-   - Synonym expansion: "grey" → "gray", "navy" → "blue", "taupe" → "brown"
-   - Compound extraction: "Black & Purple" → primary: "black", secondary: "purple"
-   - Descriptor stripping: "light grey" → "grey" → "gray"
-   - Case folding and special-character cleanup
+1. **`AttributeDetectorStage.java`** — one generic, parameterized Lucille
+   stage (config param: `attributeType`). Scans `chunk_text`
+   (title + description + bullet points) for known variants via a
+   longest-match-first, word-boundary regex built from the taxonomy, and
+   writes `product_<type>` (raw match, dual-mapped text field) and
+   `product_<type>_primary`/`_secondary` (canonical, keyword). The pipeline
+   config carries one distinct stage instance per attribute type currently
+   registered (`detectColor`, `detectMaterial`) — both share the one Java
+   class; a new attribute type gets a new stage instance automatically (see
+   "Config Generation" below), zero new Java code.
+   Sources its variant→canonical lookup from OpenSearch at `start()`
+   (`agentic_hybrid_search_attribute_mappings` index, via
+   `AttributeMappingStore` on the Python side) — no bundled-file fallback;
+   logs a warning and produces no fields for that run if OpenSearch is
+   unreachable.
+2. **`BrandNormalizerStage.java`** — a small, separate, fixed transform
+   (case folding, generic-placeholder consolidation like "Unknown"/"N/A").
+   Not a discovered taxonomy, no OpenSearch dependency, always present.
+3. **Output fields** (added to every document): `product_color_primary`/
+   `_secondary`, `product_material_primary`/`_secondary` (both keyword, for
+   exact filtering), `product_brand_normalized` (keyword).
 
-2. **Brand Normalization**:
-   - Case folding: "Sony" → "sony"
-   - Generic consolidation: "Unknown", "N/A" deduplicated
-   - Preserves real brands
+**Impact** (measured against the current discovery-built taxonomies —
+102 color variants, 34 material variants): `product_color_primary`
+populated on 70.5% of products, `product_material_primary` on 44.7%,
+`product_brand_normalized` on 96.4%. Deterministic detection (rules-only
+regex match, no AI calls at ingest time) — reproducible, auditable. Raw
+fields preserved — no data loss.
 
-3. **Output fields** (added to every document):
-   - `product_color_primary`: Canonical primary color (keyword, for exact filtering)
-   - `product_color_secondary`: Canonical secondary color if present (keyword)
-   - `product_brand_normalized`: Case-folded brand (keyword, for exact filtering)
+**Config Generation** (`config_generator.py`) — `products.conf` is no
+longer a static committed file. `generate_products_conf()` renders the
+full Lucille HOCON pipeline (fixed prelude/epilogue + one
+`AttributeDetectorStage` block per attribute type currently registered in
+OpenSearch) to `lucille-esci/conf/products.generated.conf`
+(gitignored). `scripts/lucille_ingest.sh` regenerates this file
+immediately before every run, so a reindex always reflects whatever
+attribute types exist in OpenSearch *at that moment* — including one the
+live enrichment flywheel (below) just registered.
 
-**Impact:**
-- Filter recall: 79.4% of products classified into 16 base colors
-- "blue running shoes" now matches "Navy Running Shoes", "Cyan Runners", etc.
-- Deterministic (rules-only, no AI calls) — reproducible, auditable
-- Raw fields preserved — no data loss
+### Taxonomy Growth & Correction — Agent-Triggered
 
-**Implementation Details:**
-- Executed after Lucille ingest via `scripts/enrich_attribute_normalization.py`
-- Uses `OpenSearch search_after` pagination; bulk-updates all docs
-- `AttributeNormalizer` class (reusable for tests, future offline enrichment)
-- `color_mappings.json` committed to git for reproducibility
+**Problem, two shapes:**
+1. **Gap** — detection only recognizes variants already in the taxonomy.
+   A genuinely new term ("chrome" as a material) needs a way to get
+   added without a code deploy or manual data migration.
+2. **Correction** — a variant can be *in* the taxonomy but mapped to the
+   wrong canonical bucket (e.g. the shipped taxonomy maps color variant
+   `"tan"` to canonical `"yellow"` instead of `"brown"` — a real bug,
+   affecting 29 products). This produces a **passing** quality-gate
+   result (the retrieved products are genuinely relevant, just filed
+   under the wrong color), so it's invisible to gap-detection by
+   construction — only a shopper actually looking at the product can
+   catch it.
+
+Both shapes share one tool and one write path; they differ only in
+*when* the agent offers the tool and *how it frames the ask*.
+
+**Gap mechanism** (used for a term the taxonomy has never seen):
+1. `attribute_filter` intent extracts a color/material term via
+   `_extract_attributes()`. Color's fallback for an unresolved term is a
+   hard exact-match filter, reliably producing a genuine zero-document
+   result. Material's fallback is, by default, a soft `multi_match`
+   against `title`/`chunk_text` — deliberately softer, since the same
+   code path also has to handle non-material feature words
+   ("waterproof", "noise canceling") that a hard filter would wrongly
+   exclude — combined with the retriever's filter-relaxation safety net
+   (below), no material term reliably produces a genuine zero-document
+   result through natural conversation; confirmed live, a material term
+   with **zero** corpus occurrences still got relaxed to 40 returned
+   documents. In practice this means the gap-fill path is only
+   demonstrable live, through chat, for **color** — a material gap can
+   still be added via `POST /api/admin/enrich`, just not triggered by an
+   ordinary shopper message.
+2. If the query genuinely returns nothing, `agent_node` offers the LLM a
+   `trigger_enrichment(attribute_type, variant, canonical)` tool (a real
+   `@tool`, bound via a manual two-call loop — bind → invoke → if the LLM
+   calls it, execute + append a `ToolMessage` → invoke again without
+   tools for the final response). Gated by `ENABLE_ENRICHMENT_TOOL`
+   (default off). The gap-detection signal has two OR'd conditions:
+   documents were retrieved but scored poorly even after a quality-gate
+   retry (`quality_gate_retried and max_relevance < threshold`), OR an
+   `attribute_filter` query's hard filter excluded everything on the
+   very first pass (`intent == "attribute_filter" and not
+   retrieved_documents`) — the second condition exists because
+   `quality_gate_node` deliberately never retries a zero-document first
+   pass (adjusting alpha can't fix an exclusionary filter), so without
+   it the tool would never be offered for exactly the scenario it
+   exists to fix.
+
+**Correction mechanism** (used when a shopper disputes an existing tag,
+the live demo's centerpiece — see `DEMO.md` Part 4.5):
+1. `agent_node` has a separate detection branch, checked before the
+   gap-detection branch above and independent of this turn's own
+   retrieval results: `_detect_correction_signal` is a cheap keyword
+   pre-filter for dispute language ("that's wrong", "mistagged",
+   "actually that's..."), scoped to `refinement`/`follow_up` intent only
+   (a fresh, standalone query can't be disputing a prior turn).
+2. When it fires, `_try_correction_tool` builds a correction-framed
+   prompt including recent conversation history (`_build_recent_context`)
+   and offers the same `trigger_enrichment` tool. If the LLM agrees a
+   real mistagging occurred, it calls the tool with the term and what it
+   believes the *correct* canonical is.
+3. `enrichment_service.enrich_attribute` distinguishes a correction from
+   a no-op by comparing the LLM-supplied canonical against what's
+   already stored: same canonical → no-op (`"already mapped"`,
+   idempotent); different canonical → correction, tracked via
+   `EnrichmentResult.corrected_from` and reported back distinctly
+   ("Corrected 'tan' from 'yellow' to 'brown'", never "Added").
+
+**Making a mis-mapping visible without a dev tool**: `_build_grounded_context`
+(`main.py`, the FACTS-block builder every `agent_node` response is
+generated from) includes both a product's raw `product_color` and its
+derived `product_color_primary` as separate FACTS lines when both are
+present, and a grounding rule instructs the agent to flag it directly in
+prose when the indexed category isn't a plausible family for the listed
+color (e.g. "Tan" indexed as "yellow"). This is what lets a shopper (or
+a conference audience) see the mismatch straight from the chat response,
+not just the observability panel's DSL viewer. Two supporting fixes were
+needed: `vector_store.py`'s `_hit_to_document` didn't include
+`product_color_primary` in document metadata at all until this was
+added; and `judge.py`'s `_format_docs_for_prompt` — the *separate* doc
+rendering the LLM-judge pass grades against — needed the same two lines,
+or the judge flags the grounded mismatch note as an unsupported
+fabrication and the auto-correction retry strips it back out.
+
+**Value gate** (`EnrichmentValueJudge`, `enrichment_value_judge.py` —
+applies to both the gap and correction mechanisms, since both funnel
+through `main.py`'s shared `_try_enrichment_tool`): before the tool
+actually executes, a second, independent structured-output LLM call
+(same bias-mitigation pattern as `judge.py`'s `LLMJudge` — a different,
+cheap model via `config.JUDGE_MODEL`, temperature 0) evaluates whether
+the proposed `variant -> canonical` change would genuinely improve
+search quality for real shoppers, given what the term is currently
+mapped to (if anything, fetched fresh from `AttributeMappingStore`) and
+the conversation context — not just whether the *first* call's category
+choice is semantically defensible, which it already checked when it
+picked the canonical bucket. A declined assessment (`is_meaningful:
+False`) short-circuits before `trigger_enrichment.invoke(...)` — no
+mapping write, no reindex — and the agent explains why using the
+judge's one-sentence reasoning. Gates only the agent's own autonomous
+tool-call decision; `POST /api/admin/enrich` (a human operator's
+explicit action) bypasses this gate.
+
+**Shared write path** (both gap and correction, `enrich_attribute`):
+classify (or use the LLM-supplied canonical directly) → write the
+mapping to OpenSearch → additively ensure the index mapping has the
+`product_<type>` fields → regenerate `products.generated.conf` →
+trigger `scripts/lucille_ingest.sh` as a real subprocess (~19-20s for
+9,618 products — a genuine full reindex, not a scoped patch). A
+follow-up query (gap case) or a direct field check (correction case,
+since ranking itself barely moves — see `DEMO.md`) now reflects the
+fix.
+
+**Filter relaxation** (`main.py` retriever, pre-existing, load-bearing
+for the gap-mechanism asymmetry above): when an
+`attribute_filter`/`refinement` query's fully-filtered result count is
+under 3, the retriever automatically retries without `multi_match`
+filters (material, size) and keeps the relaxed results only if they
+outnumber the original — `match` filters (color, brand) are never
+relaxed, since the user named those explicitly.
 
 ### Search Pipeline (OpenSearch DSL)
 
@@ -789,6 +936,30 @@ For long conversations, context window fills up:
 7. Add UI rendering in ObservabilityPanel
 8. Test with `PYTHONPATH=. pytest tests/integration/test_pipeline_flow.py`
 
+### Adding a New Attribute Type (beyond color/material)
+
+The detection stage and config generation are already generic — a third
+type needs no new Java code and no hand-edited Lucille config:
+
+1. Add a canonical seed vocabulary (`_CANONICAL_SEEDS_BY_TYPE` in
+   `attribute_discovery.py`), then seed the taxonomy via
+   `AttributeMappingStore.seed_from_discovery(...)` (or
+   `bulk_discover` against real `chunk_text` for a from-scratch build).
+   The next `lucille_ingest.sh` run picks it up automatically —
+   `config_generator.py` queries OpenSearch for registered attribute
+   types and emits a new `AttributeDetectorStage` block for it.
+2. Add a filter block to `_extract_attributes()` in `main.py` for the new
+   type — decide up front whether it needs color's hard-filter semantics
+   (rare/exact terms) or material's soft-filter + relaxation semantics
+   (see "Taxonomy Growth & Correction" above); this is a deliberate
+   per-type choice, not something to default to one or the other.
+3. Add the new type's field to `vector_store.py`'s `_build_multi_match`
+   boost list to give it BM25 scoring weight — not automatic (a
+   deliberate, documented limitation to avoid an extra OpenSearch
+   round-trip per query for two known types).
+4. The `trigger_enrichment` tool and `/api/admin/enrich` already accept
+   any `attribute_type` string — no changes needed there.
+
 ### Swapping the LLM Provider
 
 1. Replace `ChatGoogleGenerativeAI` with `ChatOpenAI`, `ChatAnthropic`, etc. in `main.py`
@@ -875,5 +1046,10 @@ The Agentic Hybrid Search system is a **LangGraph-powered RAG agent** that:
 6. **Generates responses** with citations and streaming
 7. **Persists memory** in PostgreSQL checkpoints
 8. **Emits observable events** for real-time UI visualization
+9. **Grows and corrects its own catalog taxonomy** — when it recognizes a
+   real color/material gap, or a shopper disputes an existing tag, it can
+   trigger a live reindex to teach the system a new term or fix a wrong
+   one, not just adjust how it searches (see "Taxonomy Growth &
+   Correction")
 
 Every stage is testable, extensible, and documented. The system is designed for e-commerce product discovery but generalizes to any RAG use case.

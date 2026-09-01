@@ -26,7 +26,7 @@ api/
 | `conversations.py` | `GET/POST /api/conversations/{thread_id}` | Checkpoint-backed conversation CRUD |
 | `suggest.py` | `GET /api/suggest?q=...` | Typeahead autocomplete (edge-ngram + spell correction) |
 | `health.py` | `GET /api/health` | Index health + document count |
-| `admin.py` | `GET /api/admin/*` | Background reindex, status polling (session or `X-Admin-Token`) |
+| `admin.py` | `GET /api/admin/health` · `GET /api/admin/diagnose` · `POST /api/admin/enrich` | Index health, field diagnostics, and the live attribute-taxonomy enrichment flywheel (session or `X-Admin-Token`) |
 | `auth.py` | `POST /api/auth/login` · `POST /api/auth/logout` | Session login/logout |
 
 ## Middleware (`api/middleware/`)
@@ -47,7 +47,8 @@ Routes check session first; on `HTTPException`, fall back to token. Constant-tim
 
 | File | Purpose |
 |------|---------|
-| `events.py` | Pydantic event models: `SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `OpenSearchQueryEvent`, `LLMResponseChunkEvent`, `LLMResponseCorrectedEvent` (emitted by `llm_judge` when auto-correction fires; replaces streamed chat message on the frontend), `ClarificationRequestedEvent`, `PipelineSummaryEvent`, etc. |
+| `events.py` | Pydantic event models: `SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `OpenSearchQueryEvent`, `LLMResponseChunkEvent`, `LLMResponseCorrectedEvent` (emitted by `llm_judge` when auto-correction fires; replaces streamed chat message on the frontend), `ClarificationRequestedEvent`, `EnrichmentTriggeredEvent` (agent called `trigger_enrichment`; carries `attribute_type`/`variant`/`canonical`), `PipelineSummaryEvent`, etc. |
+| `admin.py` | `EnrichmentRequest`/`EnrichmentResponse` — request/response contract for `POST /api/admin/enrich` |
 
 **CRITICAL:** `events.py` must stay in sync with `web/src/types/events.ts`. Each event's `type` literal and `node` field must match. Use the pre-flight unit test `test_frontend_backend_event_parity.py` to catch divergence.
 
@@ -73,6 +74,10 @@ Optional:
 
 ```bash
 CORS_ORIGINS               # Comma-separated allow-list; empty for local dev
+ENABLE_ENRICHMENT_TOOL     # Default false. Gates the agent's trigger_enrichment
+                            # tool AND POST /api/admin/enrich (403 when unset).
+                            # Both trigger a real Lucille reindex — see
+                            # ARCHITECTURE.md's "Enrichment Flywheel" section.
 ```
 
 ## Development

@@ -185,6 +185,16 @@ class TestHitToDocument:
         assert doc.metadata["product_color"] == "blue"
         assert doc.metadata["collection_id"] == "esci_products"
 
+    def test_includes_product_color_primary_when_present(self):
+        hit = self._make_hit(product_color_primary="blue")
+        doc = OpenSearchVectorStore._hit_to_document(hit)
+        assert doc.metadata["product_color_primary"] == "blue"
+
+    def test_product_color_primary_defaults_to_empty_string_when_absent(self):
+        hit = self._make_hit()
+        doc = OpenSearchVectorStore._hit_to_document(hit)
+        assert doc.metadata["product_color_primary"] == ""
+
     def test_retrieval_score_from_hit_score(self):
         hit = self._make_hit(score=0.42)
         doc = OpenSearchVectorStore._hit_to_document(hit)
