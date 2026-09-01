@@ -191,7 +191,9 @@ class TestEnrichmentValueGate:
         assert result is not None
         assert result["enrichment_triggered"] is False
         assert result["enrichment_evaluation_declined"] is True
-        assert result["enrichment_evaluation_reasoning"] == "Too close to an existing 'red' variant."
+        assert (
+            result["enrichment_evaluation_reasoning"] == "Too close to an existing 'red' variant."
+        )
         assert "reddish" in result["messages"][0].content
 
     @patch("attribute_mapping_store.AttributeMappingStore")

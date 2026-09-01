@@ -6,7 +6,7 @@ Replaces bundled JSON files (color_mappings.json); allows agent-driven taxonomy 
 
 import os
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import NotFoundError

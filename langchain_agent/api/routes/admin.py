@@ -190,9 +190,7 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
 
     from enrichment_service import enrich_attribute
 
-    result = enrich_attribute(
-        body.attribute_type, body.variant, explicit_canonical=body.canonical
-    )
+    result = enrich_attribute(body.attribute_type, body.variant, explicit_canonical=body.canonical)
 
     return EnrichmentResponse(
         success=result.success,

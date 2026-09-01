@@ -53,8 +53,8 @@ from pydantic import BaseModel
 from agent_state import CustomAgentState
 from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, single_term_classify
 from doc_replacer import DocumentReplacer
-from exceptions import LLMError, SearchTimeoutError
 from enrichment_value_judge import EnrichmentValueJudge
+from exceptions import LLMError, SearchTimeoutError
 from judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
 from link_verifier import LinkVerifier
 from reranker import CrossEncoderReranker, GeminiReranker
@@ -1450,7 +1450,8 @@ CITATION & STYLE:
         """
         from tools.enrichment_tool import trigger_enrichment
 
-        gap_prompt = prompt or f"""A shopper searched for "{user_query or 'their query'}" and the catalog \
+        gap_prompt = (
+            prompt or f"""A shopper searched for "{user_query or 'their query'}" and the catalog \
 search returned no strong matches, even after retrying with adjusted search weighting.
 
 If the query plausibly mentions a COLOR or MATERIAL term that a product catalog should \
@@ -1460,6 +1461,7 @@ material synonym), you may call trigger_enrichment to add it and re-index the ca
 Only call the tool if you're genuinely confident the query contains a real color or \
 material term worth adding — not for typos, brand names, or unrelated words. If nothing in \
 the query looks like a color/material gap, don't call the tool; just say so briefly."""
+        )
 
         llm_with_tools = self.llm.bind_tools([trigger_enrichment])
         tool_messages = [HumanMessage(content=gap_prompt)]
