@@ -508,8 +508,11 @@ jobs:
           # /api/health/ready now reflects real agent/reranker readiness, not
           # just "process is up" -- see #23 for the full investigation
           # (ruled out CPU throttling via Cloud Monitoring: ~6% utilization
-          # during a failing request; ruled out raising max-instances alone,
-          # which made it worse by cold-starting more instances at once).
+          # during a failing request; an earlier attempt at --max-instances=4
+          # made things worse specifically because cold instances weren't
+          # gated on real readiness yet -- now that they are, via the probe
+          # above, --max-instances=4 gives real headroom instead of more
+          # unguarded cold starts).
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
@@ -542,7 +545,7 @@ jobs:
             --cpu=4 \
             --timeout=3600 \
             --min-instances=0 \
-            --max-instances=2 \
+            --max-instances=4 \
             --concurrency=8 \
             --startup-probe=timeoutSeconds=10,periodSeconds=10,failureThreshold=30,httpGet.path=/api/health/ready,httpGet.port=8080 \
             --no-traffic \
