@@ -29,16 +29,14 @@ ARTIFACT_REPO="agentic-hybrid-search"
 MEMORY="2048Mi"
 CPU="2"
 MIN_INSTANCES="0"
-# 4, not 2: ObservableAgentService.process_message() (see #30) holds a single
-# asyncio.Lock() per instance, serializing chat processing to one at a time
-# regardless of CONCURRENCY. Raised alongside the lower CONCURRENCY below so
-# scale-out actually spreads concurrent chat load instead of queueing it.
-MAX_INSTANCES="4"
-# 2, not Cloud Run's default 80: at a higher concurrency, chats queue behind
-# the process-level lock above while Cloud Run still sees per-instance
-# headroom and never scales out (see #23). At 2, a 2nd concurrent chat
-# triggers scale-out to MAX_INSTANCES instead of piling onto one instance.
-CONCURRENCY="2"
+MAX_INSTANCES="2"
+# 8, not Cloud Run's default 80: at 80, concurrent WebSocket chat load never
+# crosses the scale-out threshold. Best-known-good baseline, not a full fix --
+# `1011 keepalive` failures persist even at this setting on a cold deploy, and
+# raising MAX_INSTANCES to 4 made it worse (more simultaneous cold-start
+# warmup). See #23 -- leading suspect is now the reranker warmup blocking
+# traffic on cold instances, not concurrency/CPU throttling.
+CONCURRENCY="8"
 
 # ============================================================================
 # ARGUMENT PARSING
@@ -403,6 +401,13 @@ log "Docker image built and pushed."
 
 log "Deploying to Cloud Run..."
 
+# --startup-probe uses httpGet against /api/health/ready, not tcpSocket: a
+# bare TCP probe passes as soon as uvicorn binds the port, well before the
+# cross-encoder reranker model finishes loading -- Cloud Run was routing
+# concurrent chat traffic to cold instances still warming up, starving the
+# event loop's ability to answer WebSocket keepalive pings (see #23).
+# /api/health/ready now reflects real agent/reranker readiness, not just
+# "process is up".
 run gcloud run deploy "$SERVICE_NAME" \
     --image="$IMAGE_URI" \
     --platform=managed \
@@ -416,7 +421,7 @@ run gcloud run deploy "$SERVICE_NAME" \
     --concurrency="$CONCURRENCY" \
     --cpu-throttling \
     --timeout=3600 \
-    --startup-probe=timeoutSeconds=5,periodSeconds=30,failureThreshold=20,tcpSocket.port=8080 \
+    --startup-probe=timeoutSeconds=10,periodSeconds=10,failureThreshold=30,httpGet.path=/api/health/ready,httpGet.port=8080 \
     --add-cloudsql-instances="$CLOUD_SQL_CONNECTION" \
     --service-account=agentic-hybrid-search-sa@${PROJECT_ID}.iam.gserviceaccount.com \
     --set-env-vars="\
@@ -515,9 +520,9 @@ echo "     gcloud run services logs read $SERVICE_NAME --region=$REGION --projec
 echo ""
 echo "COST CONTROL:"
 echo "  - min-instances=0 (scales to zero when idle)"
-echo "  - max-instances=4 (prevents runaway scaling)"
-echo "  - concurrency=2 (forces scale-out to match the per-instance chat-"
-echo "    processing lock instead of queueing behind it -- see #23)"
+echo "  - max-instances=2 (prevents runaway scaling)"
+echo "  - concurrency=8 (forces scale-out under concurrent load; best-known-good"
+echo "    baseline, investigation ongoing -- see #23)"
 echo "  - cpu-throttling enabled (CPU only during requests)"
 echo "  - Cloud SQL db-f1-micro tier"
 echo ""

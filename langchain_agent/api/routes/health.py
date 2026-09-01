@@ -8,6 +8,7 @@ from pathlib import Path
 
 import psycopg
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 # Add parent directory to path for config import (dynamic, not hardcoded)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -112,11 +113,22 @@ async def readiness_check():
     """
     Kubernetes-style readiness probe.
 
-    **Purpose:** Determine if the service is ready to accept traffic.
+    **Purpose:** Determine if the service is ready to accept traffic. Also
+    used as the Cloud Run `--startup-probe` target (see #23): the agent's
+    cross-encoder reranker model load is CPU-bound and can take tens of
+    seconds on a cold instance. A bare TCP startup probe passes as soon as
+    uvicorn binds the port -- long before that load finishes -- so Cloud Run
+    was marking cold instances "ready" and routing real concurrent chat
+    traffic to them while the reranker was still loading, which starved the
+    event loop's ability to answer WebSocket keepalive pings on other
+    connections (`1011 keepalive ping timeout`). Gating on this endpoint
+    instead means Cloud Run won't route traffic until warmup has actually
+    finished.
 
     **Behavior:**
-        - Returns 200 OK if all critical services are healthy
-        - Returns 503 Service Unavailable if any critical service is down
+        - Returns 200 OK if all critical services are healthy AND the agent's
+          reranker warmup has completed (or warmup is disabled)
+        - Returns 503 Service Unavailable otherwise
         - Used by Kubernetes, load balancers, and orchestration systems
 
     **Request:** `GET /api/health/ready`
@@ -139,8 +151,16 @@ async def readiness_check():
             }
         }
         ```
+        or, while the reranker is still warming up:
+        ```json
+        {
+            "ready": false,
+            "reason": {"status": "ok", "warmup_complete": false, ...}
+        }
+        ```
 
     **Use cases:**
+        - Cloud Run `--startup-probe` (gates traffic routing on cold starts)
         - Kubernetes liveness/readiness probes
         - Load balancer traffic routing
         - Deployment validation
@@ -149,10 +169,18 @@ async def readiness_check():
     Returns:
         Ready status and full health details if not ready.
     """
+    # Local import: avoids a circular import at module load time (chat.py
+    # imports from api.services.observable_agent, which is a heavy import
+    # chain we don't want to pay unless something actually calls this route).
+    from api.routes.chat import manager
+
     health = await health_check()
-    if health["status"] == "ok":
+    warmup_complete = manager.agent_service._warmup_complete
+    health["warmup_complete"] = warmup_complete
+
+    if health["status"] == "ok" and warmup_complete:
         return {"ready": True}
-    return {"ready": False, "reason": health}
+    return JSONResponse(status_code=503, content={"ready": False, "reason": health})
 
 
 @router.get("/config")
