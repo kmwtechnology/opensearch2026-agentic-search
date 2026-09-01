@@ -29,16 +29,12 @@ ARTIFACT_REPO="agentic-hybrid-search"
 MEMORY="2048Mi"
 CPU="2"
 MIN_INSTANCES="0"
-# 4, not 2: ObservableAgentService.process_message() (see #30) holds a single
-# asyncio.Lock() per instance, serializing chat processing to one at a time
-# regardless of CONCURRENCY. Raised alongside the lower CONCURRENCY below so
-# scale-out actually spreads concurrent chat load instead of queueing it.
-MAX_INSTANCES="4"
-# 2, not Cloud Run's default 80: at a higher concurrency, chats queue behind
-# the process-level lock above while Cloud Run still sees per-instance
-# headroom and never scales out (see #23). At 2, a 2nd concurrent chat
-# triggers scale-out to MAX_INSTANCES instead of piling onto one instance.
-CONCURRENCY="2"
+MAX_INSTANCES="2"
+# 8, not Cloud Run's default 80: at 80, concurrent WebSocket chat load never
+# crosses the scale-out threshold, so every request piles onto one instance
+# and cpu-throttling starves keepalive pings under load (see #23). Lowering
+# this forces scale-out to MAX_INSTANCES instead.
+CONCURRENCY="8"
 
 # ============================================================================
 # ARGUMENT PARSING
@@ -515,9 +511,9 @@ echo "     gcloud run services logs read $SERVICE_NAME --region=$REGION --projec
 echo ""
 echo "COST CONTROL:"
 echo "  - min-instances=0 (scales to zero when idle)"
-echo "  - max-instances=4 (prevents runaway scaling)"
-echo "  - concurrency=2 (forces scale-out to match the per-instance chat-"
-echo "    processing lock instead of queueing behind it -- see #23)"
+echo "  - max-instances=2 (prevents runaway scaling)"
+echo "  - concurrency=8 (forces scale-out under concurrent load instead of"
+echo "    starving one CPU-throttled instance -- see #23)"
 echo "  - cpu-throttling enabled (CPU only during requests)"
 echo "  - Cloud SQL db-f1-micro tier"
 echo ""
