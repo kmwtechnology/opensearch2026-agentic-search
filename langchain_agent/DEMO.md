@@ -667,6 +667,19 @@ make dev
 - Check WebSocket connection (DevTools → Network → WS)
 - Verify `GOOGLE_API_KEY` is set
 
+### If audience asks about "1 OVERREACH" badge in Pipeline Quality Summary
+
+The LLM judge (part of the quality-assurance layer) flags statements that
+aren't directly sourced from the retrieved product data, even if they're
+generally true. In Turn 1, it flags the commonsense statement "tan is
+typically considered a shade of brown, not yellow" because that reasoning
+isn't literally in the FACTS blocks — it's the judge being appropriately
+strict about unsourced inferences. **The response itself is correct;** this
+is just the safety mechanism being visible in the panel. You can say: "The
+system triple-checks its own reasoning against the actual data — and in this
+case, flagged a general color-family comment because it's inferred, not
+stated in the product data. That's working as designed."
+
 ---
 
 ## Tips for Smooth Delivery
