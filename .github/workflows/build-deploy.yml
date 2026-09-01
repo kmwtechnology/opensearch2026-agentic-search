@@ -661,22 +661,26 @@ jobs:
           # 240s provides 60s buffer above the inner timeout for setup/teardown.
           # The three suites are independent (no shared state) so run in parallel
           # to cut wall-clock time from ~9-15 min sequential to ~3-5 min.
-          pytest tests/e2e/test_deployment_smoke.py \
+          # Each pipeline runs in a subshell with pipefail set, so `$!` captures
+          # the subshell (not `tee`'s PID) and `wait` returns pytest's real exit
+          # status instead of tee's (see issue #22 — bare `cmd | tee f &` makes
+          # this gate report green regardless of test outcome).
+          ( set -o pipefail; pytest tests/e2e/test_deployment_smoke.py \
             -v -ra --tb=short -m "e2e and slow" \
             --timeout=240 --asyncio-mode=auto \
-            2>&1 | tee smoke-test-results.txt &
+            2>&1 | tee smoke-test-results.txt ) &
           pid1=$!
 
-          pytest tests/e2e/test_cloud_run_deployment.py \
+          ( set -o pipefail; pytest tests/e2e/test_cloud_run_deployment.py \
             -v -ra --tb=short -m "e2e and slow" \
             --timeout=240 --asyncio-mode=auto \
-            2>&1 | tee cloud-run-test-results.txt &
+            2>&1 | tee cloud-run-test-results.txt ) &
           pid2=$!
 
-          pytest tests/e2e/test_deployment_data.py \
+          ( set -o pipefail; pytest tests/e2e/test_deployment_data.py \
             -v -ra --tb=short -m "e2e and slow" \
             --timeout=240 --asyncio-mode=auto \
-            2>&1 | tee data-test-results.txt &
+            2>&1 | tee data-test-results.txt ) &
           pid3=$!
 
           wait $pid1; exit1=$?
