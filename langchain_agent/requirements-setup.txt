@@ -1,0 +1,19 @@
+# Minimal dependency set for setup.py (used by .github/workflows/reindex.yml
+# and local first-time setup) -- NOT for the main app or test suite, which
+# need the full requirements.txt.
+#
+# setup.py's own imports plus its lazy `from vector_store import ...` calls
+# resolve to exactly these packages (AST-verified, see #24) -- no torch, no
+# sentence-transformers, no pandas/pyarrow. Installing the full
+# requirements.txt for a reindex job pulls ~85s of unused ML dependencies.
+#
+# Keep these version constraints identical to their entries in
+# requirements.txt when either file changes.
+psycopg[binary]>=3.3.0
+psycopg-pool>=3.3.0
+langchain-core>=1.2.5,<2.0.0
+langchain-google-genai>=4.0.0,<5.0.0
+langgraph>=1.0.5,<2.0.0
+langgraph-checkpoint-postgres>=3.0.2,<4.0.0
+opensearch-py>=2.4.0
+python-dotenv>=1.0.0

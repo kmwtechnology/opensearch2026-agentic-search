@@ -59,7 +59,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           lfs: false
 
@@ -95,14 +95,19 @@ jobs:
 
       - name: Set up Python (for index mapping recreation on --reset-index)
         if: ${{ github.event.inputs.reset_index == 'true' }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.14'
           cache: 'pip'
+          cache-dependency-path: langchain_agent/requirements-setup.txt
 
       - name: Install Python dependencies (for index mapping recreation)
         if: ${{ github.event.inputs.reset_index == 'true' }}
-        run: pip install -r langchain_agent/requirements.txt
+        # requirements-setup.txt, not the full requirements.txt (see #24):
+        # this step only runs setup.py's index-recreation path, which never
+        # imports torch/sentence-transformers/pandas -- AST-verified. Saves
+        # ~85s of installing unused ML dependencies on every --reset-index run.
+        run: pip install -r langchain_agent/requirements-setup.txt
 
       - name: Run Lucille ingest
         env:
