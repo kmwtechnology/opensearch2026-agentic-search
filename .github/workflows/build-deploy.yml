@@ -695,6 +695,13 @@ jobs:
           wait $pid2; exit2=$?
           wait $pid3; exit3=$?
 
+          # `wait` returning only guarantees the subshell/tee processes have
+          # exited, not that their buffered writes have reached disk before
+          # the next step's upload-artifact reads these files 5s later --
+          # observed truncating data-test-results.txt mid-line twice (see #23
+          # investigation). Force the flush explicitly.
+          sync
+
           [ "$exit1" -eq 0 ] && echo "✓ Smoke tests passed"      || echo "❌ Smoke tests failed"
           [ "$exit2" -eq 0 ] && echo "✓ Cloud Run tests passed"  || echo "❌ Cloud Run tests failed"
           [ "$exit3" -eq 0 ] && echo "✓ Data tests passed"       || echo "❌ Data tests failed"
