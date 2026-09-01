@@ -81,14 +81,15 @@ PYTHONPATH=. pytest tests/ -k "quality_gate"
 ```bash
 PYTHONPATH=. pytest tests/ -m unit
 PYTHONPATH=. pytest tests/ -m "integration and not slow"
-PYTHONPATH=. pytest tests/ -m content_generation
 PYTHONPATH=. pytest tests/ -m performance
 ```
 
-Available markers: `phase1`, `phase2`, `phase3`, `unit`, `integration`,
-`e2e`, `slow`, `auth`, `search`, `rerank`, `websocket`, `database`,
-`performance`, `load`, `stress`, `profile`, `content_generation`,
-`asyncio`.
+Available markers (kept in sync with `pytest.ini`'s `markers =` list; a
+marker not declared there fails collection under `--strict-markers`):
+`phase1`, `phase3`, `unit`, `integration`, `e2e`, `slow`, `websocket`,
+`performance`, `load`, `stress`, `profile`, `asyncio`, `agent`,
+`edge_cases`, `pipeline`, `quality_gate_retry`, `retriever_reranker`,
+`requires_real_api`, `evaluator`, `intent`, `quality_gate`.
 
 ### Coverage
 

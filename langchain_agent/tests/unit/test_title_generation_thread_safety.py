@@ -16,17 +16,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from main import EcommerceSearchAgent
 
-
-def test_update_conversation_title_uses_passed_thread_id_not_self():
+def test_update_conversation_title_uses_passed_thread_id_not_self(bare_agent):
     """Passing thread_id must override self.thread_id, not merely default to it.
 
     Regression test for the race: a background title-generation task can run
     after a concurrent request has already reassigned the shared agent's
     self.thread_id to a different conversation.
     """
-    agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
+    agent = bare_agent
     agent.thread_id = "stale-thread-from-another-request"
     agent.checkpointer = MagicMock()
     agent.checkpointer.get.return_value = {
@@ -50,9 +48,9 @@ def test_update_conversation_title_uses_passed_thread_id_not_self():
     assert write_args[0] == "the-actual-request-thread"
 
 
-def test_update_conversation_title_defaults_to_self_thread_id():
+def test_update_conversation_title_defaults_to_self_thread_id(bare_agent):
     """CLI path (main.py) calls update_conversation_title() with no args."""
-    agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
+    agent = bare_agent
     agent.thread_id = "cli-thread"
     agent.checkpointer = MagicMock()
     agent.checkpointer.get.return_value = None  # no checkpoint -> early return

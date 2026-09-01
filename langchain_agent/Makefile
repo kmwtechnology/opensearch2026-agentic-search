@@ -90,9 +90,15 @@ type-check:
 	$(VENV)/mypy main.py config.py --ignore-missing-imports --check-untyped-defs || true
 
 # ----------------------------------------------------------------------------
-# CI parity: run *exactly* what build-deploy.yml runs in GitHub Actions.
-# `make ci` is the pre-push gate — if this passes, the GCP build/deploy
-# pipeline will too.
+# CI parity: `make ci` is the pre-push gate. ci-format/ci-lint run the exact
+# same commands as build-deploy.yml's lint job (black/isort/flake8/mypy,
+# same flags, same failure behavior -- a regression here WILL fail CI too).
+# ci-test is not full parity: unit tests run for real (same as CI's Phase 1),
+# but integration/e2e only get --collect-only here (import + signature check)
+# -- CI's Phase 2 runs them against real services this Makefile has no way to
+# provide locally without `docker compose up -d` + `make dev-api` first (see
+# tests/integration/README.md). A green `make ci` means lint/types/unit are
+# safe; it does NOT guarantee integration/e2e will pass in CI.
 # ----------------------------------------------------------------------------
 
 ci-tools:
@@ -110,7 +116,7 @@ ci-lint: ci-tools
 	@echo "[CI] flake8 . --count"
 	@$(VENV)/flake8 . --count
 	@echo "[CI] mypy main.py"
-	@$(VENV)/mypy main.py --ignore-missing-imports --check-untyped-defs || true
+	@$(VENV)/mypy main.py
 
 ci-test: ci-tools
 	@echo "[CI] pytest tests/unit/"
