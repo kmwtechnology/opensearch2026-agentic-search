@@ -1,0 +1,41 @@
+# Build context is the repo root (build-deploy.yml: `context: .`), but the
+# Dockerfile only COPYs langchain_agent/{requirements.txt,*.py,api/,web/}.
+# Without this file, BuildKit uploads the entire repo on every build --
+# langchain_agent/.dockerignore is never consulted here since BuildKit only
+# reads <context>/.dockerignore (repo root) or <Dockerfile>.dockerignore,
+# and this repo's context has always been the former with neither present.
+# See #24.
+
+.git/
+.github/
+
+# Large data directories never referenced by the Dockerfile
+data/
+esci/
+docs/
+
+# Local dev / tooling, not part of the image
+.venv/
+**/node_modules/
+log/
+.pytest_cache/
+.vscode/
+.mvn/
+scripts/
+tests/
+
+# Repeated inside langchain_agent/ too, but harmless to state twice
+langchain_agent/.venv/
+langchain_agent/tests/
+langchain_agent/web/node_modules/
+langchain_agent/web/dist/
+langchain_agent/htmlcov/
+langchain_agent/*.log
+langchain_agent/.pytest_cache/
+
+__pycache__/
+*.pyc
+.env
+.env.*
+*.egg-info/
+.DS_Store

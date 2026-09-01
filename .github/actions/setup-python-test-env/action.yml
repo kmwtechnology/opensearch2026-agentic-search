@@ -1,0 +1,52 @@
+name: 'Set up Python test environment'
+description: >-
+  Installs Python 3.14 with pip caching, CPU-only torch + requirements.txt +
+  pytest tooling, and writes the shared test .env file. Shared by the unit
+  and integration test jobs (previously 32 byte-identical duplicated lines
+  in build-deploy.yml -- see #24) so a new required env var only needs to
+  be added once instead of drifting between two copies.
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.14'
+        cache: 'pip'
+        cache-dependency-path: langchain_agent/requirements.txt
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        cd langchain_agent
+        pip install --upgrade pip
+        # Pre-install CPU-only torch so sentence-transformers reuses it instead
+        # of pulling the ~3GB default GPU wheel. Mirrors the Dockerfile pattern.
+        pip install torch --index-url https://download.pytorch.org/whl/cpu
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-cov pytest-timeout pytest-xdist
+
+    - name: Create test .env
+      shell: bash
+      run: |
+        cd langchain_agent
+        cat > .env << EOF
+        GOOGLE_API_KEY=test-key-12345
+        POSTGRES_USER=test
+        POSTGRES_PASSWORD=test
+        POSTGRES_HOST=localhost
+        POSTGRES_PORT=5432
+        POSTGRES_DB=agentic_hybrid_search_test
+        OPENSEARCH_HOST=localhost
+        OPENSEARCH_PORT=9200
+        OPENSEARCH_USE_SSL=false
+        API_KEY=test-api-key-12345
+        LOGIN_PASSWORD=test-login-pw
+        SESSION_SECRET=ci-test-session-secret-must-be-at-least-32-chars-long
+        SESSION_COOKIE_SECURE=false
+        LLM_MODEL=gemini-3-flash-preview
+        RERANKER_MODEL=gemini-3.1-flash-lite-preview
+        QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview
+        EMBEDDINGS_MODEL=models/gemini-embedding-001
+        EOF
