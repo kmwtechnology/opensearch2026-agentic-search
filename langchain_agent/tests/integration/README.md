@@ -139,8 +139,11 @@ set -a && source .env && set +a
 Typical run time: 5–60 seconds depending on which tests are selected.
 
 Long-running tests (marked `@pytest.mark.slow`):
-- `test_performance_load.py` — concurrent user load
-- `test_stress.py` — 60-second sustained load
+- `test_enrichment_service.py::TestRealReindexEndToEnd` — triggers a real
+  ~20 s Lucille reindex over the full ESCI corpus
+
+(`test_performance_load.py` and `test_stress.py` are load/stress suites; they
+live in `tests/e2e/`, not here.)
 
 For rapid iteration, skip slow tests:
 ```bash
@@ -151,9 +154,20 @@ PYTHONPATH=. pytest tests/integration/ -m "integration and not slow" -v
 
 The GitHub Actions workflow `.github/workflows/build-deploy.yml` runs integration tests
 on every push:
-- Ephemeral PostgreSQL + OpenSearch containers (docker compose in CI)
-- `GOOGLE_API_KEY` from GitHub secrets
-- Pytest timeout: 120 seconds (covers ~2 chat messages)
+- Ephemeral PostgreSQL + OpenSearch as GitHub Actions `services:` containers
+  (not docker compose)
+- A `setup.py --skip-db --skip-docs --skip-models` step runs first, creating the
+  product index with the correct mapping but no documents
+- `GOOGLE_API_KEY` is a dummy value — no real Google credential is available to
+  this job, so anything needing live LLM calls must be mocked. The real key comes
+  from Secret Manager at Cloud Run deploy time only.
+- Selection: `-m "not slow"` — everything runs except the real-Lucille-reindex
+  test noted above
+- Pytest timeout: 60 seconds
+
+Tests needing seeded taxonomy data point the mapping store at a throwaway index
+via `monkeypatch.setattr(store_module, "INDEX_NAME", ...)` and seed it themselves,
+so they run in CI without any corpus ingest. See `test_config_generator_live.py`.
 
 Note: **`make ci` only runs `pytest --collect-only` on integration tests** to catch import
 errors and signature changes. The actual test suite runs live in GitHub Actions. Before pushing,
