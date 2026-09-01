@@ -19,7 +19,10 @@ Env vars consumed:
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
+import time
 from typing import Optional
 
 import httpx
@@ -93,3 +96,37 @@ def auth_rest_headers(extra: Optional[dict[str, str]] = None) -> dict[str, str]:
     if extra:
         headers.update(extra)
     return headers
+
+
+async def collect_chat_response(
+    websocket, timeout_s: float = 60, recv_timeout_s: float = 15
+) -> str:
+    """Drain a chat WebSocket until ``agent_complete`` (or the timeout) and
+    return the response text.
+
+    Prefers the streamed ``llm_response_chunk`` content, but falls back to
+    ``agent_complete``'s ``final_response`` field when no chunks arrived —
+    e.g. the server-side 150s graph timeout in ``ObservableAgentService``
+    emits a complete event with fallback text but never streams chunks, so a
+    caller that only accumulates chunks reads a real (if slow) response as
+    "nothing came back". See #23.
+    """
+    response_text = ""
+    final_response = ""
+    start_time = time.time()
+
+    while time.time() - start_time < timeout_s:
+        try:
+            event_msg = await asyncio.wait_for(websocket.recv(), timeout=recv_timeout_s)
+            event = json.loads(event_msg)
+            event_type = event.get("type")
+
+            if event_type == "llm_response_chunk":
+                response_text += event.get("content", "")
+            elif event_type == "agent_complete":
+                final_response = event.get("final_response", "") or ""
+                break
+        except asyncio.TimeoutError:
+            continue
+
+    return response_text or final_response
