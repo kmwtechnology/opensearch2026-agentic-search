@@ -20,6 +20,42 @@ os.environ.setdefault("QUALITY_GATE_THRESHOLD", "0.50")
 
 
 @pytest.fixture
+def bare_agent():
+    """An EcommerceSearchAgent with every I/O attribute stubbed to None/mocks.
+
+    Built via ``__new__`` (bypasses ``__init__``, so no real DB/OpenSearch/LLM
+    connections happen) -- the pattern this repo already used ad hoc in 15+
+    call sites across 10 test files before this fixture existed (#28). Sets
+    the full attribute baseline any pipeline-node/helper-method unit test
+    might touch; override individual attributes on the returned object
+    (``agent.alpha_estimator_llm = MagicMock(...)``) for what a specific test
+    actually exercises.
+    """
+    from main import EcommerceSearchAgent
+
+    agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
+    agent.llm = None
+    agent.embeddings = None
+    agent.vector_store = None
+    agent.pool = None
+    agent.async_pool = None
+    agent.checkpointer = None
+    agent.app = None
+    agent.thread_id = None
+    agent.emit_callback = None
+    agent.event_loop = None
+    agent.event_queue = []
+    agent.retriever = None
+    agent.reranker = None
+    agent.alpha_estimator_llm = None
+    agent.link_verifier = MagicMock()
+    agent.doc_replacer = MagicMock()
+    agent.judge = None
+    agent.intent_structured = None
+    return agent
+
+
+@pytest.fixture
 def mock_llm():
     """Mock LLM for fast unit tests (no API calls)."""
     llm = MagicMock()
@@ -115,7 +151,7 @@ def pytest_collection_modifyitems(config, items):
         skip_marker = pytest.mark.skip(reason="Requires real GOOGLE_API_KEY")
         for item in items:
             # Skip content generation tests that require real API
-            if "test_content_gen" in item.nodeid or "test_*_generation" in item.nodeid:
+            if "test_content_gen" in item.nodeid:
                 item.add_marker(skip_marker)
             # Skip tests that explicitly require real API
             if item.get_closest_marker("requires_real_api"):

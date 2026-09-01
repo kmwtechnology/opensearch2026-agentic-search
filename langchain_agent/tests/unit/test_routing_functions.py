@@ -9,39 +9,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-# Patch heavy init dependencies before importing EcommerceSearchAgent
-_PATCH_TARGETS = [
-    "main.LinkVerifier",
-    "main.DocumentReplacer",
-]
-
-
-def _make_agent():
-    """Return an EcommerceSearchAgent with external I/O bypassed."""
-    with patch("main.LinkVerifier"), patch("main.DocumentReplacer"):
-        from main import EcommerceSearchAgent
-
-        agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
-        agent.llm = None
-        agent.embeddings = None
-        agent.vector_store = None
-        agent.pool = None
-        agent.async_pool = None
-        agent.checkpointer = None
-        agent.app = None
-        agent.thread_id = None
-        agent.emit_callback = None
-        agent.event_loop = None
-        agent.event_queue = []
-        agent.retriever = None
-        agent.reranker = None
-        agent.alpha_estimator_llm = None
-        agent.link_verifier = MagicMock()
-        agent.doc_replacer = MagicMock()
-        agent.judge = None
-    return agent
-
-
 # ---------------------------------------------------------------------------
 # _route_after_intent
 # ---------------------------------------------------------------------------
@@ -49,8 +16,9 @@ def _make_agent():
 
 @pytest.mark.unit
 class TestRouteAfterIntent:
-    def setup_method(self):
-        self.agent = _make_agent()
+    @pytest.fixture(autouse=True)
+    def _setup(self, bare_agent):
+        self.agent = bare_agent
 
     def test_clarify_intent_returns_clarify(self):
         state = {"intent": "clarify", "messages": []}
@@ -89,8 +57,9 @@ class TestRouteAfterIntent:
 
 @pytest.mark.unit
 class TestRouteAfterQueryEvaluator:
-    def setup_method(self):
-        self.agent = _make_agent()
+    @pytest.fixture(autouse=True)
+    def _setup(self, bare_agent):
+        self.agent = bare_agent
 
     def test_always_returns_retriever(self):
         for intent in ("search", "comparison", "attribute_filter", "follow_up", "summary"):
@@ -105,8 +74,9 @@ class TestRouteAfterQueryEvaluator:
 
 @pytest.mark.unit
 class TestRouteAfterSummary:
-    def setup_method(self):
-        self.agent = _make_agent()
+    @pytest.fixture(autouse=True)
+    def _setup(self, bare_agent):
+        self.agent = bare_agent
 
     def test_summary_intent_returns_done(self):
         state = {"intent": "summary", "messages": []}
@@ -129,8 +99,9 @@ class TestRouteAfterSummary:
 
 @pytest.mark.unit
 class TestQualityGateRoute:
-    def setup_method(self):
-        self.agent = _make_agent()
+    @pytest.fixture(autouse=True)
+    def _setup(self, bare_agent):
+        self.agent = bare_agent
 
     def test_retry_triggered_and_retried_returns_retry(self):
         state = {
@@ -172,8 +143,9 @@ class TestQualityGateRoute:
 
 @pytest.mark.unit
 class TestLlmJudgeNodeSkips:
-    def setup_method(self):
-        self.agent = _make_agent()
+    @pytest.fixture(autouse=True)
+    def _setup(self, bare_agent):
+        self.agent = bare_agent
 
     def _state_with(self, **kwargs):
         base = {"messages": [], "retrieved_documents": [MagicMock()]}
@@ -227,8 +199,9 @@ class TestLlmJudgeNodeSkips:
 
 @pytest.mark.unit
 class TestLlmJudgeNodeNormalPath:
-    def setup_method(self):
-        self.agent = _make_agent()
+    @pytest.fixture(autouse=True)
+    def _setup(self, bare_agent):
+        self.agent = bare_agent
 
     def test_returns_judgment_on_success(self):
         from langchain_core.documents import Document
@@ -287,8 +260,9 @@ class TestLlmJudgeNodeNormalPath:
 
 @pytest.mark.unit
 class TestLlmJudgeNodeHallucinationRetry:
-    def setup_method(self):
-        self.agent = _make_agent()
+    @pytest.fixture(autouse=True)
+    def _setup(self, bare_agent):
+        self.agent = bare_agent
 
     def test_retries_when_faithfulness_low_and_hallucinations_found(self):
         from langchain_core.documents import Document
@@ -549,8 +523,9 @@ class TestIntentClassifierNodeStateReset:
     """Verify that intent_classifier_node resets per-turn guards so a retry
     fired in turn N doesn't permanently disable the gate for turns N+1, N+2…"""
 
-    def setup_method(self):
-        self.agent = _make_agent()
+    @pytest.fixture(autouse=True)
+    def _setup(self, bare_agent):
+        self.agent = bare_agent
 
     def test_resets_hallucination_retry_used_when_true_in_checkpoint(self):
         """Regression for issue #83: LangGraph persists hallucination_retry_used=True

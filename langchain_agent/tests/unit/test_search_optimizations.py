@@ -381,27 +381,20 @@ class TestRerankerToggle:
     """The `reranking` flag on `optimizations` short-circuits `reranker_node`
     without invoking the LLM and signals the quality gate to pass through."""
 
-    def _make_agent(self, reranker_mock: MagicMock):
-        """Construct an EcommerceSearchAgent without running __init__ (which
-        would pull in real models/db). Only the attributes actually touched by
-        `reranker_node` need to be present."""
-        from main import EcommerceSearchAgent
-
-        agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
-        agent.reranker = reranker_mock
-        agent.event_queue = []
-        agent.emit_callback = None
-        agent.event_loop = None
-        return agent
+    def _make_agent(self, bare_agent, reranker_mock: MagicMock):
+        """Only `reranker` is set beyond bare_agent's defaults -- all
+        `reranker_node` needs."""
+        bare_agent.reranker = reranker_mock
+        return bare_agent
 
     def _make_doc(self, source: str = "doc1"):
         from langchain_core.documents import Document
 
         return Document(page_content="hello world", metadata={"source": source})
 
-    def test_reranking_off_skips_reranker_and_bypasses_quality_gate(self):
+    def test_reranking_off_skips_reranker_and_bypasses_quality_gate(self, bare_agent):
         reranker = MagicMock()
-        agent = self._make_agent(reranker)
+        agent = self._make_agent(bare_agent, reranker)
         doc = self._make_doc()
 
         out = agent.reranker_node(
@@ -422,7 +415,7 @@ class TestRerankerToggle:
         assert out["reranker_max_score"] == 1.0
         assert out["quality_gate_retried"] is True
 
-    def test_reranking_on_runs_reranker(self, monkeypatch):
+    def test_reranking_on_runs_reranker(self, bare_agent, monkeypatch):
         # Force ENABLE_RERANKING true regardless of env
         import main as main_module
 
@@ -435,7 +428,7 @@ class TestRerankerToggle:
         # score_documents() returns [(Document, score), ...] for ALL candidates
         # sorted descending by score; reranker_node slices to RERANKER_TOP_K.
         reranker.score_documents.return_value = [(self._make_doc("doc1"), 0.9)]
-        agent = self._make_agent(reranker)
+        agent = self._make_agent(bare_agent, reranker)
         doc = self._make_doc()
 
         # Patch the synchronous emit helper to no-op (it touches the event loop
@@ -459,7 +452,7 @@ class TestRerankerToggle:
         # Full scored list is exposed to the UI for the demo
         assert "all_reranked_documents" in out
 
-    def test_reranking_default_true_when_key_missing(self, monkeypatch):
+    def test_reranking_default_true_when_key_missing(self, bare_agent, monkeypatch):
         """If the optimizations dict is empty, reranking should run (default True)."""
         import main as main_module
 
@@ -469,7 +462,7 @@ class TestRerankerToggle:
         reranker.batch_size = 8
         reranker.device = "cpu"
         reranker.score_documents.return_value = [(self._make_doc(), 0.9)]
-        agent = self._make_agent(reranker)
+        agent = self._make_agent(bare_agent, reranker)
         monkeypatch.setattr(agent, "_emit_event_from_sync", lambda *_a, **_kw: None)
 
         agent.reranker_node(
@@ -483,7 +476,7 @@ class TestRerankerToggle:
         )
         reranker.score_documents.assert_called_once()
 
-    def test_global_enable_reranking_false_overrides_toggle_on(self, monkeypatch):
+    def test_global_enable_reranking_false_overrides_toggle_on(self, bare_agent, monkeypatch):
         """When the env-level ENABLE_RERANKING is False, the per-query toggle
         cannot turn it on."""
         import main as main_module
@@ -491,7 +484,7 @@ class TestRerankerToggle:
         monkeypatch.setattr(main_module, "ENABLE_RERANKING", False)
 
         reranker = MagicMock()
-        agent = self._make_agent(reranker)
+        agent = self._make_agent(bare_agent, reranker)
         doc = self._make_doc()
 
         out = agent.reranker_node(

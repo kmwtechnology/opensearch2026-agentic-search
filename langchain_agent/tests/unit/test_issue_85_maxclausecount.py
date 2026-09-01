@@ -5,10 +5,11 @@ Covers:
 2. Message filtering in _expand_vague_query (HumanMessage only)
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from main import EcommerceSearchAgent
 from vector_store import OpenSearchVectorStore
 
 
@@ -53,14 +54,48 @@ class TestTruncateQueryTerms:
 class TestExpandVagueQueryMessageFiltering:
     """Tests for HumanMessage-only filtering in _expand_vague_query."""
 
-    def test_filters_out_ai_responses_from_context(self):
-        """_expand_vague_query should only use HumanMessage turns in context."""
-        # Skip this test if EcommerceSearchAgent can't be instantiated without full dependencies
-        # (mocking/setup would be needed for a full integration test)
-        pytest.skip("Integration test deferred; covered by smoke tests")
+    def test_filters_out_ai_responses_from_context(self, bare_agent):
+        """AI-only history means no HumanMessage context, so _expand_vague_query
+        must short-circuit and return the query unchanged without ever calling
+        the LLM -- proving AI turns never reach the expansion prompt."""
+        bare_agent.alpha_estimator_llm = MagicMock()
 
-    def test_user_messages_only_reduces_context_size(self):
-        """Filtering to HumanMessage only should significantly reduce context bloat."""
-        # Skip this test if EcommerceSearchAgent can't be instantiated without full dependencies
-        # (mocking/setup would be needed for a full integration test)
-        pytest.skip("Integration test deferred; covered by smoke tests")
+        messages = [
+            AIMessage(content="Here are some wireless headphones: Sony WH-1000XM5, Bose QC45"),
+            AIMessage(content="Both are great for noise canceling and travel"),
+        ]
+
+        result = bare_agent._expand_vague_query("show cheaper ones", messages)
+
+        assert result == "show cheaper ones"
+        bare_agent.alpha_estimator_llm.invoke.assert_not_called()
+
+    def test_user_messages_only_reduces_context_size(self, bare_agent):
+        """When HumanMessages are present, the LLM prompt must contain only
+        their content -- AI response content (product listings) must never
+        leak into the expansion context, which is what caused issue #85's
+        maxClauseCount errors on multi-turn refinement conversations."""
+        bare_agent.alpha_estimator_llm = MagicMock()
+        bare_agent.alpha_estimator_llm.invoke.return_value = MagicMock(
+            content="wireless headphones under $100"
+        )
+
+        # A marker substring, not a full-string membership check: the context
+        # builder .strip()s each message's content before joining, so
+        # checking containment of the whole ai_bloat string (with its
+        # trailing space from the `* 10` repeat) can pass even when the AI
+        # content genuinely leaked in, just missing that last space.
+        ai_marker = "Sony WH-1000XM5 wireless noise-canceling headphones"
+        ai_bloat = f"{ai_marker} with 30-hour battery. " * 10
+        messages = [
+            HumanMessage(content="wireless headphones"),
+            AIMessage(content=ai_bloat),
+            HumanMessage(content="show cheaper ones"),
+        ]
+
+        bare_agent._expand_vague_query("show cheaper ones", messages)
+
+        assert bare_agent.alpha_estimator_llm.invoke.called
+        prompt = bare_agent.alpha_estimator_llm.invoke.call_args[0][0]
+        assert "wireless headphones" in prompt
+        assert ai_marker not in prompt
