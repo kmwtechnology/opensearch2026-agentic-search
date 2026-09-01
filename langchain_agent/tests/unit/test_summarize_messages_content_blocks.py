@@ -78,21 +78,18 @@ class TestSummarizeMessagesReturnsString:
     """summarize_messages must always return a str, even when the LLM
     returns a list of content blocks (Gemini)."""
 
-    def _agent_with_llm_returning(self, content: Any):
-        from main import EcommerceSearchAgent
+    def _agent_with_llm_returning(self, bare_agent, content: Any):
+        bare_agent.llm = MagicMock()
+        bare_agent.llm.invoke.return_value = _Resp(content)
+        return bare_agent
 
-        agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
-        agent.llm = MagicMock()
-        agent.llm.invoke.return_value = _Resp(content)
-        return agent
-
-    def test_string_response_passes_through(self) -> None:
-        agent = self._agent_with_llm_returning("Plain summary.")
+    def test_string_response_passes_through(self, bare_agent) -> None:
+        agent = self._agent_with_llm_returning(bare_agent, "Plain summary.")
         out = agent.summarize_messages([HumanMessage(content="hi"), AIMessage(content="hello")])
         assert isinstance(out, str)
         assert out == "Plain summary."
 
-    def test_gemini_content_blocks_flattened(self) -> None:
+    def test_gemini_content_blocks_flattened(self, bare_agent) -> None:
         # The exact shape that crashed production on 2026-04-29:
         # response.content was a list of {type, text} dicts and the
         # SummaryEvent Pydantic field rejected it.
@@ -100,7 +97,7 @@ class TestSummarizeMessagesReturnsString:
             {"type": "text", "text": "User asked about headphones. "},
             {"type": "text", "text": "Assistant returned 4 products."},
         ]
-        agent = self._agent_with_llm_returning(gemini_content)
+        agent = self._agent_with_llm_returning(bare_agent, gemini_content)
         out = agent.summarize_messages([HumanMessage(content="hi"), AIMessage(content="hello")])
         assert isinstance(out, str)
         assert out == "User asked about headphones. Assistant returned 4 products."

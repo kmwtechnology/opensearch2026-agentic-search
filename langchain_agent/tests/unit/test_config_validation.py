@@ -38,21 +38,15 @@ class TestRequiredEnvironmentVariables:
         assert len(test_key) > 0
         assert isinstance(test_key, str)
 
-    def test_verify_prerequisites_exits_when_google_api_key_absent(self):
+    def test_verify_prerequisites_exits_when_google_api_key_absent(self, bare_agent):
         """verify_prerequisites must exit(1) when GOOGLE_API_KEY is not set."""
         from unittest.mock import MagicMock, patch
 
-        with patch("main.LinkVerifier"), patch("main.DocumentReplacer"):
-            from main import EcommerceSearchAgent
-
-            agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
-            agent.link_verifier = MagicMock()
-            agent.doc_replacer = MagicMock()
-            # Mock vector_store so OpenSearch checks pass
-            mock_vs = MagicMock()
-            mock_vs.client.info.return_value = {"version": {"number": "2.19"}}
-            mock_vs.client.count.return_value = {"count": 100}
-            agent.vector_store = mock_vs
+        # Mock vector_store so OpenSearch checks pass
+        mock_vs = MagicMock()
+        mock_vs.client.info.return_value = {"version": {"number": "2.19"}}
+        mock_vs.client.count.return_value = {"count": 100}
+        bare_agent.vector_store = mock_vs
 
         # Patch Postgres connect and GOOGLE_API_KEY to simulate missing key
         with (
@@ -60,7 +54,7 @@ class TestRequiredEnvironmentVariables:
             patch("main.GOOGLE_API_KEY", None),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                agent.verify_prerequisites()
+                bare_agent.verify_prerequisites()
             assert exc_info.value.code == 1
 
     def test_opensearch_host_has_default(self):
