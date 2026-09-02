@@ -769,7 +769,6 @@ langchain_agent/
 ├── embedding_cache.py     # Thread-safe query embedding cache
 ├── link_verifier.py       # URL validation w/ TTL cache
 ├── doc_replacer.py        # Broken-link replacement
-├── retry_utils.py         # Tenacity decorators
 ├── logging_config.py      # structlog setup (JSON/console)
 ├── setup.py               # DB + index init; also calls lucille_ingest.sh for ESCI data
 ├── relevancy_metrics.py           # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)

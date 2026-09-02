@@ -9,9 +9,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import psycopg
-from fastapi import APIRouter, HTTPException
-from fastapi import Path as PathParam
-from fastapi import Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from slowapi import Limiter

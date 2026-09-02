@@ -127,7 +127,6 @@ services — everything is mocked through `conftest.py`.
 | `test_pipeline_summary_event.py` | `_build_pipeline_summary` accumulation, ground-truth vs. confidence-proxy fallback, latency table assembly |
 | `test_relevancy_metrics.py` | NDCG@k / MRR / Recall@k / Precision@k, `compute_stage_metrics`, `confidence_from_scores`, `count_rank_changes`, `latency_cost_benefit` (43 tests, no NumPy) |
 | `test_reranker.py` | `GeminiReranker` scoring, Pydantic validation, partial-JSON fallback |
-| `test_retry_utils.py` | Retry decorators, transient-error detection, max-attempts behaviour |
 | `test_routing_functions.py` | LangGraph edge routing logic |
 | `test_search_optimizations.py` | BM25 synonym expansion, fuzzy, phrase-boost, phonetic config |
 | `test_vector_store.py` | `OpenSearchVectorStore` hybrid search, RRF fusion, facets, collapse |

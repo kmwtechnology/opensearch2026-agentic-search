@@ -14,9 +14,14 @@ exclude =
 # W503: line break before binary operator (black prefers this)
 # E501: line too long (rare exceeding cases, black handles most)
 # E402: module level import not at top (tests set env vars before importing)
-# F401: unused imports (test files commonly have placeholder imports)
 # F541: f-string without placeholders (harmless, common in log messages)
 # F811: redefinition (tests redefine fixtures locally)
 # F841: local variable assigned but not used (test scaffolding)
 # E302: expected 2 blank lines (cosmetic)
-extend-ignore = E203, W503, E501, E402, F401, F541, F811, F841, E302
+# F401 (unused imports) used to be ignored repo-wide, which hid unused imports
+# in production modules too, not just the test-file placeholder imports the
+# comment actually meant (see #27). Scoped to tests/ below instead -- F401 is
+# now enforced everywhere else.
+extend-ignore = E203, W503, E501, E402, F541, F811, F841, E302
+per-file-ignores =
+    tests/*: F401

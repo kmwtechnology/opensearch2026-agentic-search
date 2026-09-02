@@ -22,12 +22,10 @@ Usage:
 import argparse
 import json
 import logging
-import os
 import sys
 import time
-from pathlib import Path
-from statistics import mean, median, stdev
-from typing import Any, Dict, List, Tuple
+from statistics import mean, stdev
+from typing import Any, Dict, List
 
 import psycopg
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
