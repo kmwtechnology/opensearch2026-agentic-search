@@ -7,6 +7,7 @@ Provides:
 """
 
 import logging
+import threading
 import time
 from typing import Any, Dict, List, Optional, Union
 
@@ -250,6 +251,37 @@ def create_opensearch_client(
     if user and password:
         kwargs["http_auth"] = (user, password)
     return OpenSearch(**kwargs)
+
+
+_shared_client: Optional[OpenSearch] = None
+_shared_client_lock = threading.Lock()
+
+
+def get_shared_opensearch_client() -> OpenSearch:
+    """Process-wide OpenSearch client for read/ops paths outside the main
+    search pipeline (suggest, health, admin diagnostics, attribute mapping
+    store). RequestsHttpConnection pools sockets internally, so constructing
+    a fresh client per request (previously done in each of those call sites)
+    meant a full TCP(+TLS) handshake per call -- on suggest.py specifically,
+    per keystroke. Reusing this instance avoids that (see #25).
+    """
+    global _shared_client
+    if _shared_client is None:
+        with _shared_client_lock:
+            if _shared_client is None:
+                _shared_client = create_opensearch_client()
+    return _shared_client
+
+
+def reset_shared_opensearch_client() -> None:
+    """Test hook: drop the cached shared client so the next call re-creates
+    it, picking up a fresh create_opensearch_client() patch. Without this,
+    a test that patches create_opensearch_client after the singleton has
+    already been constructed (by an earlier test) would silently get the
+    stale real/previously-mocked client instead of its own mock."""
+    global _shared_client
+    with _shared_client_lock:
+        _shared_client = None
 
 
 class OpenSearchVectorStore:

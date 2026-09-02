@@ -13,6 +13,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+import vector_store
 from api.main import app
 from api.routes.chat import manager as chat_manager
 
@@ -22,12 +23,23 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _reset_shared_client():
+    """get_shared_opensearch_client() is a process-wide lazy singleton (#25)
+    -- reset it between tests so each test's own patch of the underlying
+    factory actually takes effect, rather than every test after the first
+    silently reusing whichever mock got cached first."""
+    vector_store.reset_shared_opensearch_client()
+    yield
+    vector_store.reset_shared_opensearch_client()
+
+
 # ---------------------------------------------------------------------------
 # Helpers — patch targets used across multiple tests
 # ---------------------------------------------------------------------------
 
 _PSYCOPG = "api.routes.health.psycopg"
-_OS_CLIENT = "vector_store.create_opensearch_client"
+_OS_CLIENT = "vector_store.get_shared_opensearch_client"
 _API_KEY = "api.routes.health.GOOGLE_API_KEY"
 
 

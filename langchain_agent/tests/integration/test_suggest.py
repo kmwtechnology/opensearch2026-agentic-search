@@ -11,7 +11,21 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+import vector_store
 from api.main import app
+
+
+@pytest.fixture(autouse=True)
+def _reset_shared_client():
+    """get_shared_opensearch_client() is a process-wide lazy singleton (#25)
+    -- without resetting it, only the first test in this file to construct
+    it would have its patch actually take effect; every later test's own
+    @patch(...create_opensearch_client mock would be silently ignored
+    because the singleton short-circuits before calling the (now-different)
+    patched factory."""
+    vector_store.reset_shared_opensearch_client()
+    yield
+    vector_store.reset_shared_opensearch_client()
 
 
 @pytest.fixture
@@ -33,7 +47,7 @@ def _mk_response(hits, max_score: float = 10.0) -> dict:
     return {"hits": {"hits": hits, "max_score": max_score}}
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_happy_path_returns_suggestion_items(mock_client_factory, client):
     """Eight hits → eight SuggestionItem objects with titles, brands, normalized scores."""
     mock_os = MagicMock()
@@ -60,7 +74,7 @@ def test_empty_query_returns_422(client):
     assert r.status_code == 422
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_limit_param_honored(mock_client_factory, client):
     """?limit=1 should return at most one suggestion even if more hits exist."""
     mock_os = MagicMock()
@@ -74,7 +88,7 @@ def test_limit_param_honored(mock_client_factory, client):
     assert len(r.json()["suggestions"]) == 1
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_duplicate_titles_deduplicated(mock_client_factory, client):
     """Two hits with the same title collapse to one entry."""
     mock_os = MagicMock()
@@ -90,7 +104,7 @@ def test_duplicate_titles_deduplicated(mock_client_factory, client):
     assert titles == ["Sony WH-1000XM5", "Sony Other"]
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_opensearch_exception_returns_empty(mock_client_factory, client):
     """Upstream failure must not leak — endpoint returns 200 with empty list."""
     mock_os = MagicMock()
@@ -102,7 +116,7 @@ def test_opensearch_exception_returns_empty(mock_client_factory, client):
     assert r.json() == {"suggestions": [], "spell_correction": None}
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_spell_correction_detected_for_misspelled_query(mock_client_factory, client):
     """Query 'sonie' against a hit titled 'Sony ...' should surface spell_correction."""
     mock_os = MagicMock()
@@ -120,7 +134,7 @@ def test_spell_correction_detected_for_misspelled_query(mock_client_factory, cli
     assert correction["score"] >= 0.5
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_prefix_of_candidate_skips_spell_correction(mock_client_factory, client):
     """Query 'charg' against a title containing 'Charger' should NOT offer a
     correction — the query is an in-progress prefix of the candidate token,
@@ -137,7 +151,7 @@ def test_prefix_of_candidate_skips_spell_correction(mock_client_factory, client)
     assert r.json()["spell_correction"] is None
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_query_present_as_corpus_token_skips_spell_correction(mock_client_factory, client):
     """When the query itself appears verbatim as a token in any top-hit
     title, suppress spell correction. This prevents the bidirectional cross-
@@ -158,7 +172,7 @@ def test_query_present_as_corpus_token_skips_spell_correction(mock_client_factor
         assert r.json()["spell_correction"] is None, f"unexpected correction for q={q!r}"
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_fuzzy_fallback_catches_distance_one_typo(mock_client_factory, client):
     """Edge-ngram can't match 'nikey' against 'Nike' (the extra 'y' breaks
     the prefix path), so the primary search returns 0 hits. The endpoint
@@ -187,7 +201,7 @@ def test_fuzzy_fallback_catches_distance_one_typo(mock_client_factory, client):
     assert mock_os.search.call_count == 2
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_fuzzy_fallback_skipped_when_primary_has_hits(mock_client_factory, client):
     """Fuzzy fallback must not run when the primary search returned any hits,
     even if no correction was surfaced. Keeps the common case to a single
@@ -205,7 +219,7 @@ def test_fuzzy_fallback_skipped_when_primary_has_hits(mock_client_factory, clien
     assert mock_os.search.call_count == 1
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_non_corpus_misspelling_still_surfaces_spell_correction(mock_client_factory, client):
     """Misspellings that are NOT corpus tokens must still trigger a correction
     (e.g. 'sonie' against a 'Sony ...' title). This is the case the endpoint
@@ -225,7 +239,7 @@ def test_non_corpus_misspelling_still_surfaces_spell_correction(mock_client_fact
     assert correction["title"].lower() == "sony"
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_query_body_enforces_minimum_should_match(mock_client_factory, client):
     """The bool query must enforce minimum_should_match=1 so the collection
     filter alone cannot fall through as a match."""
@@ -240,7 +254,7 @@ def test_query_body_enforces_minimum_should_match(mock_client_factory, client):
     assert body["query"]["bool"]["minimum_should_match"] == 1
 
 
-@patch("api.routes.suggest.create_opensearch_client")
+@patch("api.routes.suggest.get_shared_opensearch_client")
 def test_highlight_fragments_round_trip(mock_client_factory, client):
     """Highlight fragments from OpenSearch should appear in the response."""
     mock_os = MagicMock()

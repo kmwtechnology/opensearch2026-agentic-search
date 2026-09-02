@@ -20,12 +20,23 @@ TEST_INDEX = "test_attribute_mappings"
 
 @pytest.fixture
 def store(monkeypatch):
-    """AttributeMappingStore pointed at a throwaway index, cleaned up after the test."""
+    """AttributeMappingStore pointed at a throwaway index, cleaned up after the test.
+
+    get_lookup_table() caches by (INDEX_NAME, attribute_type) (see #25), which
+    structurally isolates this throwaway index's cache entries from the real
+    index's -- but every test in this file shares the SAME TEST_INDEX name,
+    so cache entries would otherwise leak across tests (e.g. a "color"
+    lookup cached by one test surviving into the next test's fresh index).
+    Explicitly clearing the cache on both sides of the test is what actually
+    guarantees per-test isolation here.
+    """
     monkeypatch.setattr(store_module, "INDEX_NAME", TEST_INDEX)
+    store_module._clear_lookup_cache()
     s = AttributeMappingStore()
     s.client.indices.delete(index=TEST_INDEX, ignore=[404])
     yield s
     s.client.indices.delete(index=TEST_INDEX, ignore=[404])
+    store_module._clear_lookup_cache()
 
 
 class TestBasicReadWrite:
@@ -136,3 +147,23 @@ class TestLiveFlywheelScenario:
         assert lookup["vegan leather"] == "leather"
         assert lookup["leather"] == "leather"
         assert lookup["cotton"] == "cotton"
+
+    def test_write_invalidates_an_already_populated_cache(self, store):
+        """Regression coverage for #25's get_lookup_table() cache: a lookup
+        BEFORE the write must not shadow the write from a lookup AFTER it.
+        (The scenario above doesn't actually exercise this -- its first
+        get_lookup_table() call happens after every write, so the cache is
+        never populated with stale data to invalidate in the first place.)
+        """
+        store.add_mapping("material", "leather", "leather", source="test")
+
+        # Populate the cache with the pre-write state.
+        first_lookup = store.get_lookup_table("material")
+        assert "vegan leather" not in first_lookup
+
+        # Live agent turn: a new gap term is classified and written.
+        store.add_mapping("material", "vegan leather", "leather", source="agent")
+
+        # The next lookup must reflect the write, not the cached pre-write table.
+        second_lookup = store.get_lookup_table("material")
+        assert second_lookup.get("vegan leather") == "leather"

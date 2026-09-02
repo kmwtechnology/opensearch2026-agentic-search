@@ -4,14 +4,37 @@ Centralized, mutable source of truth for attribute variant→canonical mappings.
 Replaces bundled JSON files (color_mappings.json); allows agent-driven taxonomy growth.
 """
 
-import os
+import threading
+import time
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import NotFoundError
 
+from vector_store import get_shared_opensearch_client
+
 INDEX_NAME = "agentic_hybrid_search_attribute_mappings"
+
+# In-process cache for get_lookup_table, keyed on (INDEX_NAME, attribute_type)
+# at call time -- not just attribute_type -- so tests that monkeypatch the
+# module-level INDEX_NAME to a throwaway index (see
+# tests/integration/test_attribute_mapping_store.py) get structurally
+# isolated cache entries instead of relying on remembering to clear the
+# cache. TTL is short-lived defense-in-depth for multi-instance staleness;
+# the real correctness guarantee is write-through invalidation in
+# add_mapping below, which is what the live enrichment flywheel's
+# read-your-write requirement actually depends on (see #25, #26).
+_LOOKUP_CACHE_TTL_SECONDS = 30
+_lookup_cache_lock = threading.Lock()
+_lookup_cache: Dict[Tuple[str, str], Tuple[Dict[str, str], float]] = {}
+
+
+def _clear_lookup_cache() -> None:
+    """Test hook: drop every cached lookup table immediately."""
+    with _lookup_cache_lock:
+        _lookup_cache.clear()
+
 
 # Mapping document schema (for setup/reset only)
 INDEX_MAPPING = {
@@ -34,27 +57,13 @@ class AttributeMappingStore:
         """Initialize the store.
 
         Args:
-            client: OpenSearch client. If None, creates one from env config.
+            client: OpenSearch client. If None, uses the shared process-wide
+                client (see vector_store.get_shared_opensearch_client). This
+                used to build its own client from raw os.getenv() calls with
+                defaults that silently diverged from config.py's on 4 of 6
+                settings (host, SSL, cert verification, password) -- see #25.
         """
-        self.client = client or self._create_client()
-
-    @staticmethod
-    def _create_client() -> OpenSearch:
-        """Create OpenSearch client from environment."""
-        host = os.getenv("OPENSEARCH_HOST", "localhost")
-        port = int(os.getenv("OPENSEARCH_PORT", "9200"))
-        use_ssl = os.getenv("OPENSEARCH_USE_SSL", "false").lower() == "true"
-        verify_certs = os.getenv("OPENSEARCH_VERIFY_CERTS", "true").lower() == "true"
-        user = os.getenv("OPENSEARCH_USER", "admin")
-        password = os.getenv("OPENSEARCH_PASSWORD", "admin")
-
-        return OpenSearch(
-            hosts=[{"host": host, "port": port}],
-            http_auth=(user, password),
-            use_ssl=use_ssl,
-            verify_certs=verify_certs,
-            ssl_show_warn=False,
-        )
+        self.client = client or get_shared_opensearch_client()
 
     def ensure_index_exists(self) -> None:
         """Create the mapping index if it doesn't exist."""
@@ -64,28 +73,46 @@ class AttributeMappingStore:
     def get_lookup_table(self, attribute_type: str) -> Dict[str, str]:
         """Get all variant→canonical mappings for an attribute type.
 
+        Cached for _LOOKUP_CACHE_TTL_SECONDS (see module docstring) --
+        previously every call (including _classify_attribute's query-time
+        read path, hit once for color and once for material on every
+        attribute_filter/refinement query, doubling on a quality-gate
+        retry) ran a fresh, unfiltered 10k-doc scan. add_mapping()
+        invalidates this entry synchronously on write, so the live
+        enrichment flywheel still gets read-your-write consistency within
+        this process (see #25, #26).
+
         Args:
             attribute_type: e.g. "color", "material"
 
         Returns:
             Dict mapping variant (lowercase) to canonical value
         """
+        cache_key = (INDEX_NAME, attribute_type)
+        with _lookup_cache_lock:
+            cached = _lookup_cache.get(cache_key)
+            if cached is not None and cached[1] > time.monotonic():
+                return cached[0]
+
         try:
             response = self.client.search(
                 index=INDEX_NAME,
                 body={
                     "query": {"term": {"attribute_type": attribute_type}},
                     "size": 10000,
+                    "_source": ["variant", "canonical"],
                 },
             )
         except NotFoundError:
-            return {}
+            lookup: Dict[str, str] = {}
+        else:
+            lookup = {}
+            for hit in response["hits"]["hits"]:
+                doc = hit["_source"]
+                lookup[doc["variant"].lower()] = doc["canonical"]
 
-        lookup = {}
-        for hit in response["hits"]["hits"]:
-            doc = hit["_source"]
-            lookup[doc["variant"].lower()] = doc["canonical"]
-
+        with _lookup_cache_lock:
+            _lookup_cache[cache_key] = (lookup, time.monotonic() + _LOOKUP_CACHE_TTL_SECONDS)
         return lookup
 
     def get_all_attribute_types(self) -> List[str]:
@@ -162,6 +189,14 @@ class AttributeMappingStore:
             },
             refresh=refresh,
         )
+
+        # Invalidate the cached lookup table for this attribute type so the
+        # next get_lookup_table() call sees this write immediately, not
+        # after the TTL expires. This is the correctness guarantee the live
+        # enrichment flywheel's read-your-write requirement depends on
+        # (see #25's caching change, and #26's "corrected_from" flow).
+        with _lookup_cache_lock:
+            _lookup_cache.pop((INDEX_NAME, attribute_type), None)
 
         return is_new
 
