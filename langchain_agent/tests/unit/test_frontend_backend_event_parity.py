@@ -182,25 +182,10 @@ def test_shared_model_fields_match_between_backend_and_frontend() -> None:
     shared = set(py_classes) & set(ts_classes)
     assert shared, "No Python/TypeScript class names matched at all -- regex likely broken"
 
-    # KNOWN, tracked drift -- not silenced, scoped. #27 already covers
-    # RerankedDocument's 4 TS-only score/content fields as its own finding
-    # ("wire the fields on the backend or delete the dead UI" -- a product
-    # decision this test isn't the place to make). Everything else is fully
-    # enforced; remove this entry when #27 lands.
-    KNOWN_DRIFT = {
-        "RerankedDocument": {
-            "ts_only": ["page_content", "rrf_score", "text_score", "vector_score"],
-            "py_only": [],
-        },
-    }
-
     drift = {}
     for cls in sorted(shared):
         extra_in_ts = ts_classes[cls] - py_classes[cls]
         extra_in_py = py_classes[cls] - ts_classes[cls]
-        if cls in KNOWN_DRIFT:
-            extra_in_ts -= set(KNOWN_DRIFT[cls]["ts_only"])
-            extra_in_py -= set(KNOWN_DRIFT[cls]["py_only"])
         if extra_in_ts or extra_in_py:
             drift[cls] = {"ts_only": sorted(extra_in_ts), "py_only": sorted(extra_in_py)}
 

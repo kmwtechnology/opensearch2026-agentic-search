@@ -19,8 +19,6 @@ const INITIAL_OBS = {
   qualityGate: null,
   searchCandidates: [],
   rerankedDocuments: [],
-  documentGradingSummary: null,
-  responseGrading: null,
   pipelineSummary: null,
   historicalSnapshot: null,
   searchStatus: 'idle' as const,
@@ -112,10 +110,6 @@ describe('SearchDetails (reranker mode)', () => {
         score: 0.95,
         rank_change: 2,
         snippet: 'Best headphones',
-        page_content: 'Full content here',
-        vector_score: 0.9,
-        text_score: 0.85,
-        rrf_score: undefined,
         url: undefined,
       },
       {
@@ -124,10 +118,6 @@ describe('SearchDetails (reranker mode)', () => {
         score: 0.80,
         rank_change: 0,
         snippet: 'Good headphones',
-        page_content: undefined,
-        vector_score: undefined,
-        text_score: undefined,
-        rrf_score: undefined,
         url: 'https://example.com/product',
       },
     ]
@@ -171,12 +161,12 @@ describe('SearchDetails (reranker mode)', () => {
       expect(link).toHaveAttribute('href', 'https://example.com/product')
     })
 
-    it('expands document to show component scores when View more is clicked', async () => {
+    it('expands document to show full snippet when View more is clicked', async () => {
       const user = userEvent.setup()
       render(<SearchDetails mode="reranker" />)
       const viewMoreButtons = screen.getAllByText(/view more/i)
       await user.click(viewMoreButtons[0])
-      expect(screen.getByText(/vector:/i)).toBeInTheDocument()
+      expect(screen.getAllByText('Best headphones').length).toBeGreaterThan(0)
     })
   })
 })

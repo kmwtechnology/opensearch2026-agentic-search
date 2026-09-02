@@ -36,12 +36,6 @@ export function MessageList() {
     if (latestEvent.type === 'hybrid_search_result') {
       return `Found ${latestEvent.candidate_count} candidates`
     }
-    if (latestEvent.type === 'document_grading_summary') {
-      return `${latestEvent.relevant_count}/${latestEvent.total_count} relevant`
-    }
-    if (latestEvent.type === 'response_grading') {
-      return `Score: ${(latestEvent.score * 100).toFixed(0)}%`
-    }
 
     return null
   }

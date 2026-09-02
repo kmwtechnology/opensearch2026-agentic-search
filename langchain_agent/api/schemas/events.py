@@ -63,14 +63,6 @@ class ConnectionEstablished(BaseEvent):
     existing_messages: int = 0
 
 
-class ConnectionErrorEvent(BaseEvent):
-    """Sent when connection fails. Renamed from ``ConnectionError`` to avoid
-    shadowing the built-in exception type."""
-
-    type: Literal["connection_error"] = "connection_error"
-    error: str
-
-
 # ============================================================================
 # NODE LIFECYCLE EVENTS
 # ============================================================================
@@ -324,59 +316,6 @@ class RerankerProgressEvent(BaseEvent):
 
 
 # ============================================================================
-# DOCUMENT GRADING EVENTS
-# ============================================================================
-
-
-class DocumentGradingStartEvent(BaseEvent):
-    """Emitted when document grading begins."""
-
-    type: Literal["document_grading_start"] = "document_grading_start"
-    node: Literal["document_grader"] = "document_grader"
-    document_count: int
-
-
-class DocumentGradeEvent(BaseEvent):
-    """Emitted for each document that is graded."""
-
-    type: Literal["document_grade"] = "document_grade"
-    node: Literal["document_grader"] = "document_grader"
-    source: str
-    relevant: bool
-    score: ConfidenceScore  # 0.0-1.0, validated
-    reasoning: str
-
-
-class DocumentGradingSummaryEvent(BaseEvent):
-    """Emitted when all document grading is complete."""
-
-    type: Literal["document_grading_summary"] = "document_grading_summary"
-    node: Literal["document_grader"] = "document_grader"
-    grade: Literal["pass", "fail"]  # Only valid grades
-    relevant_count: Annotated[int, Field(ge=0, description="Count of relevant documents")]
-    total_count: Annotated[int, Field(gt=0, description="Total documents graded (must be > 0)")]
-    average_score: ConfidenceScore  # 0.0-1.0, validated
-    reasoning: str
-
-
-# ============================================================================
-# QUERY TRANSFORMATION EVENTS
-# ============================================================================
-
-
-class QueryTransformationEvent(BaseEvent):
-    """Emitted when query is transformed for retry."""
-
-    type: Literal["query_transformation"] = "query_transformation"
-    node: Literal["query_transformer"] = "query_transformer"
-    original_query: str
-    transformed_query: str
-    iteration: int
-    max_iterations: int
-    reasons: List[str]  # Why documents failed
-
-
-# ============================================================================
 # LLM RESPONSE EVENTS
 # ============================================================================
 
@@ -430,38 +369,6 @@ class ToolCallEvent(BaseEvent):
     node: Literal["agent"] = "agent"
     tool_name: str
     tool_args: Dict[str, Any]
-
-
-# ============================================================================
-# RESPONSE GRADING EVENTS
-# ============================================================================
-
-
-class ResponseGradingEvent(BaseEvent):
-    """Emitted when response quality is evaluated."""
-
-    type: Literal["response_grading"] = "response_grading"
-    node: Literal["response_grader"] = "response_grader"
-    grade: str  # "pass" or "fail"
-    score: float  # 0.0-1.0
-    score_source: Optional[str] = None  # "reranker", "honest_ack", or "llm"
-    reasoning: str
-    retry_count: int
-    max_retries: int
-
-
-# ============================================================================
-# RESPONSE IMPROVEMENT EVENTS
-# ============================================================================
-
-
-class ResponseImprovementEvent(BaseEvent):
-    """Emitted when response improvement is triggered."""
-
-    type: Literal["response_improvement"] = "response_improvement"
-    node: Literal["response_improver"] = "response_improver"
-    feedback: str
-    retry_count: int
 
 
 # ============================================================================
@@ -611,50 +518,6 @@ class PipelineSummaryEvent(BaseEvent):
 
 
 # ============================================================================
-# TOKEN BUDGET EVENTS
-# ============================================================================
-
-
-class TokenBudgetEvent(BaseEvent):
-    """Emitted when token usage is tracked against budget."""
-
-    type: Literal["token_budget"] = "token_budget"
-    total_tokens_used: int
-    token_budget: int
-    budget_exceeded: bool
-    warning_threshold_hit: bool
-
-
-# ============================================================================
-# CACHE HIT EVENTS
-# ============================================================================
-
-
-class CacheHitEvent(BaseEvent):
-    """Emitted when a cache hit occurs."""
-
-    type: Literal["cache_hit"] = "cache_hit"
-    node: Literal["query_evaluator"] = "query_evaluator"
-    query: str
-    cached_result: Dict[str, Any]  # alpha + query_analysis
-
-
-# ============================================================================
-# CONFIDENCE SCORE EVENTS
-# ============================================================================
-
-
-class ConfidenceScoreEvent(BaseEvent):
-    """Emitted when confidence scoring is performed."""
-
-    type: Literal["confidence_score"] = "confidence_score"
-    node: str  # response_grader, document_grader, etc.
-    score: float  # 0.0-1.0
-    confidence: float  # 0.0-1.0
-    early_stop_triggered: bool
-
-
-# ============================================================================
 # METRICS EVENT
 # ============================================================================
 
@@ -700,43 +563,6 @@ class DocumentReplacementEvent(BaseEvent):
 
 
 # ============================================================================
-# CLARIFICATION EVENTS
-# ============================================================================
-
-
-class ClarificationRequestedEvent(BaseEvent):
-    """Emitted when classifier detects vague query requiring user clarification.
-
-    Clarification types:
-    - "format": Query doesn't specify content format (e.g., "write about X")
-    - "topic": Query lacks explicit topic (e.g., "write a blog post")
-    """
-
-    type: Literal["clarification_requested"] = "clarification_requested"
-    node: Literal["content_type_classifier"] = "content_type_classifier"
-    clarification_type: str  # "format" | "topic"
-    reason: str  # e.g., "Query doesn't specify content format"
-    candidates: List[
-        Dict[str, Any]
-    ]  # [{"type": "blog_post", "confidence": 0.0, "description": "..."}, ...]
-    threshold: float  # Always 1.0 for vagueness-based clarification (not confidence-based)
-    original_query: str  # User's original query
-
-
-class ClarificationResolvedEvent(BaseEvent):
-    """Emitted when user provides clarification and it's resolved."""
-
-    type: Literal["clarification_resolved"] = "clarification_resolved"
-    node: Literal["content_type_clarification_resolver"] = "content_type_clarification_resolver"
-    clarification_type: str  # "format" | "topic"
-    original_classification: str  # Classifier's original top choice
-    user_selected: str  # What user selected
-    confidence_before: float  # Confidence before clarification (0.0 for vagueness-based)
-    confidence_after: float  # Always 1.0 (user-confirmed)
-    user_response: str  # Raw user response ("1", "2", "blog post", etc.)
-
-
-# ============================================================================
 # AGENTIC ENRICHMENT FLYWHEEL EVENTS
 # ============================================================================
 
@@ -762,7 +588,6 @@ class EnrichmentTriggeredEvent(BaseEvent):
 
 AgentEvent = (
     ConnectionEstablished
-    | ConnectionErrorEvent
     | ConversationContextEvent
     | NodeStartEvent
     | NodeEndEvent
@@ -776,10 +601,6 @@ AgentEvent = (
     | RerankerProgressEvent
     | RerankerStartEvent
     | RerankerResultEvent
-    | DocumentGradingStartEvent
-    | DocumentGradeEvent
-    | DocumentGradingSummaryEvent
-    | QueryTransformationEvent
     | QueryExpansionEvent
     | OpenSearchQueryEvent
     | QualityGateEvent
@@ -789,17 +610,10 @@ AgentEvent = (
     | LLMResponseChunkEvent
     | LLMResponseCorrectedEvent
     | ToolCallEvent
-    | ResponseGradingEvent
-    | ResponseImprovementEvent
     | AgentCompleteEvent
     | AgentErrorEvent
     | PipelineSummaryEvent
-    | TokenBudgetEvent
-    | CacheHitEvent
-    | ConfidenceScoreEvent
     | MetricsEvent
     | LinkVerificationEvent
     | DocumentReplacementEvent
-    | ClarificationRequestedEvent
-    | ClarificationResolvedEvent
 )

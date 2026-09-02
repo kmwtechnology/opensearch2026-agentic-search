@@ -22,8 +22,6 @@ const INITIAL_OBS = {
   qualityGate: null,
   searchCandidates: [],
   rerankedDocuments: [],
-  documentGradingSummary: null,
-  responseGrading: null,
   pipelineSummary: null,
   enrichmentTriggered: null,
   historicalSnapshot: null,

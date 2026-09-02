@@ -12,8 +12,6 @@ const INITIAL_STATE = {
   qualityGate: null,
   searchCandidates: [],
   rerankedDocuments: [],
-  documentGradingSummary: null,
-  responseGrading: null,
   pipelineSummary: null,
   searchStatus: 'idle' as const,
   rerankerStatus: 'idle' as const,

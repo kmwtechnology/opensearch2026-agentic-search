@@ -17,11 +17,6 @@ export interface ConnectionEstablished extends BaseEvent {
   existing_messages: number
 }
 
-export interface ConnectionError extends BaseEvent {
-  type: 'connection_error'
-  error: string
-}
-
 // Conversation context events
 export interface ConversationContextEvent extends BaseEvent {
   type: 'conversation_context'
@@ -148,11 +143,6 @@ export interface RerankedDocument {
   snippet: string
   rank_change: number
   url?: string
-  // Optional component scores (may be included from hybrid search)
-  vector_score?: number
-  text_score?: number
-  rrf_score?: number
-  page_content?: string
 }
 
 export interface RerankerResultEvent extends BaseEvent {
@@ -176,43 +166,6 @@ export interface RerankerProgressEvent extends BaseEvent {
   stage: 'scoring' | 'ranking'
   progress: number  // 0.0-1.0
   message: string
-}
-
-// Document grading events
-export interface DocumentGradingStartEvent extends BaseEvent {
-  type: 'document_grading_start'
-  node: 'document_grader'
-  document_count: number
-}
-
-export interface DocumentGradeEvent extends BaseEvent {
-  type: 'document_grade'
-  node: 'document_grader'
-  source: string
-  relevant: boolean
-  score: number
-  reasoning: string
-}
-
-export interface DocumentGradingSummaryEvent extends BaseEvent {
-  type: 'document_grading_summary'
-  node: 'document_grader'
-  grade: 'pass' | 'fail'
-  relevant_count: number
-  total_count: number
-  average_score: number
-  reasoning: string
-}
-
-// Query transformation events
-export interface QueryTransformationEvent extends BaseEvent {
-  type: 'query_transformation'
-  node: 'query_transformer'
-  original_query: string
-  transformed_query: string
-  iteration: number
-  max_iterations: number
-  reasons: string[]
 }
 
 // LLM response events
@@ -265,26 +218,6 @@ export interface EnrichmentTriggeredEvent extends BaseEvent {
   canonical?: string
 }
 
-// Response grading events
-export interface ResponseGradingEvent extends BaseEvent {
-  type: 'response_grading'
-  node: 'response_grader'
-  grade: 'pass' | 'fail'
-  score: number
-  score_source?: 'reranker' | 'honest_ack' | 'llm'  // Source of the score
-  reasoning: string
-  retry_count: number
-  max_retries: number
-}
-
-// Response improvement events
-export interface ResponseImprovementEvent extends BaseEvent {
-  type: 'response_improvement'
-  node: 'response_improver'
-  feedback: string
-  retry_count: number
-}
-
 // Completion events
 export interface AgentCompleteEvent extends BaseEvent {
   type: 'agent_complete'
@@ -305,23 +238,6 @@ export interface AgentErrorEvent extends BaseEvent {
   recoverable: boolean
 }
 
-// Token budget events
-export interface TokenBudgetEvent extends BaseEvent {
-  type: 'token_budget'
-  total_tokens_used: number
-  token_budget: number
-  budget_exceeded: boolean
-  warning_threshold_hit: boolean
-}
-
-// Cache hit events
-export interface CacheHitEvent extends BaseEvent {
-  type: 'cache_hit'
-  node: 'query_evaluator'
-  query: string
-  cached_result: Record<string, unknown>
-}
-
 // Metrics events
 export interface MetricsEvent extends BaseEvent {
   type: 'metrics'
@@ -332,15 +248,6 @@ export interface MetricsEvent extends BaseEvent {
   llm_generation_ms?: number
   response_grading_ms?: number
   total_ms: number
-}
-
-// Confidence score events
-export interface ConfidenceScoreEvent extends BaseEvent {
-  type: 'confidence_score'
-  node: string
-  score: number
-  confidence: number
-  early_stop_triggered: boolean
 }
 
 // Link verification events
@@ -360,32 +267,6 @@ export interface DocumentReplacementEvent extends BaseEvent {
   replacements_made: number
   replacement_details: Array<{ old_source: string; new_source: string; reason: string }>
   documents_after_replacement: number
-}
-
-// Clarification events
-export interface ClarificationRequestedEvent extends BaseEvent {
-  type: 'clarification_requested'
-  node: 'content_type_classifier'
-  clarification_type: string
-  reason: string
-  candidates: Array<{
-    type: string
-    confidence: number
-    description: string
-  }>
-  threshold: number
-  original_query: string
-}
-
-export interface ClarificationResolvedEvent extends BaseEvent {
-  type: 'clarification_resolved'
-  node: 'content_type_clarification_resolver'
-  clarification_type: string
-  original_classification: string
-  user_selected: string
-  confidence_before: number
-  confidence_after: number
-  user_response: string
 }
 
 // ============================================================================
@@ -463,7 +344,6 @@ export interface PipelineSummaryEvent extends BaseEvent {
 // Union type of all events
 export type AgentEvent =
   | ConnectionEstablished
-  | ConnectionError
   | ConversationContextEvent
   | NodeStartEvent
   | NodeEndEvent
@@ -479,10 +359,6 @@ export type AgentEvent =
   | RerankerResultEvent
   | SearchProgressEvent
   | RerankerProgressEvent
-  | DocumentGradingStartEvent
-  | DocumentGradeEvent
-  | DocumentGradingSummaryEvent
-  | QueryTransformationEvent
   | LLMReasoningStartEvent
   | LLMReasoningChunkEvent
   | LLMResponseStartEvent
@@ -490,19 +366,12 @@ export type AgentEvent =
   | LLMResponseCorrectedEvent
   | ToolCallEvent
   | EnrichmentTriggeredEvent
-  | ResponseGradingEvent
-  | ResponseImprovementEvent
   | AgentCompleteEvent
   | AgentErrorEvent
   | PipelineSummaryEvent
-  | TokenBudgetEvent
-  | CacheHitEvent
   | MetricsEvent
-  | ConfidenceScoreEvent
   | LinkVerificationEvent
   | DocumentReplacementEvent
-  | ClarificationRequestedEvent
-  | ClarificationResolvedEvent
 
 // Node names for routing
 export type NodeName =
