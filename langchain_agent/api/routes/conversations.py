@@ -12,6 +12,7 @@ import psycopg
 from fastapi import APIRouter, HTTPException
 from fastapi import Path as PathParam
 from fastapi import Query, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -203,32 +204,40 @@ async def list_conversations(
     await verify_session(request)
 
     try:
-        with psycopg.connect(DATABASE_URL) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT thread_id, title, created_at, updated_at
-                    FROM conversation_metadata
-                    ORDER BY COALESCE(updated_at, created_at) DESC
-                    LIMIT %s
-                """,
-                    (limit,),
-                )
-
-                conversations = []
-                for row in cur.fetchall():
-                    conversations.append(
-                        ConversationSummary(
-                            thread_id=row[0],
-                            title=row[1],
-                            created_at=row[2],
-                            updated_at=row[3],
-                        )
-                    )
-
-                return conversations
+        return await run_in_threadpool(_list_conversations_sync, limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+def _list_conversations_sync(limit: int) -> List[ConversationSummary]:
+    """Blocking Postgres call for GET /conversations, run off the event loop
+    via run_in_threadpool (see #25) -- a fresh psycopg.connect() here used to
+    run directly on the loop, so a DB hiccup froze every in-flight WebSocket
+    chat stream for the connection timeout."""
+    with psycopg.connect(DATABASE_URL) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT thread_id, title, created_at, updated_at
+                FROM conversation_metadata
+                ORDER BY COALESCE(updated_at, created_at) DESC
+                LIMIT %s
+            """,
+                (limit,),
+            )
+
+            conversations = []
+            for row in cur.fetchall():
+                conversations.append(
+                    ConversationSummary(
+                        thread_id=row[0],
+                        title=row[1],
+                        created_at=row[2],
+                        updated_at=row[3],
+                    )
+                )
+
+            return conversations
 
 
 @router.get("/conversations/{thread_id}", response_model=ConversationDetail)
@@ -288,75 +297,81 @@ async def get_conversation(request: Request, thread_id: str):
     thread_id = validate_thread_id(thread_id)
 
     try:
-        with psycopg.connect(DATABASE_URL) as conn:
-            with conn.cursor() as cur:
-                # Get metadata
-                cur.execute(
-                    """
-                    SELECT title, created_at
-                    FROM conversation_metadata
-                    WHERE thread_id = %s
-                """,
-                    (thread_id,),
-                )
-
-                row = cur.fetchone()
-                if not row:
-                    raise HTTPException(status_code=404, detail="Conversation not found")
-
-                title, created_at = row
-
-                # Get messages from checkpoint_blobs (LangGraph stores them as msgpack)
-                # Get latest messages blob for this thread
-                cur.execute(
-                    """
-                    SELECT blob, type
-                    FROM checkpoint_blobs
-                    WHERE thread_id = %s
-                      AND channel = 'messages'
-                    ORDER BY version DESC
-                    LIMIT 1
-                """,
-                    (thread_id,),
-                )
-
-                blob_row = cur.fetchone()
-                messages = []
-
-                if blob_row and blob_row[0]:
-                    from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-
-                    try:
-                        blob, blob_type = blob_row
-                        serializer = JsonPlusSerializer()
-                        raw_messages = serializer.loads_typed((blob_type, blob))
-
-                        for msg in raw_messages:
-                            # LangChain message objects have type and content attributes
-                            msg_type = getattr(msg, "type", None)
-                            content = getattr(msg, "content", "")
-                            # Skip tool messages and empty content
-                            if content and msg_type in ("human", "ai"):
-                                messages.append(
-                                    {
-                                        "type": msg_type,
-                                        "content": content,
-                                    }
-                                )
-                    except Exception as e:
-                        logger.warning("message_decode_error", thread_id=thread_id, error=str(e))
-
-                return ConversationDetail(
-                    thread_id=thread_id,
-                    title=title,
-                    created_at=created_at,
-                    message_count=len(messages),
-                    messages=messages,
-                )
+        return await run_in_threadpool(_get_conversation_sync, thread_id)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+def _get_conversation_sync(thread_id: str) -> ConversationDetail:
+    """Blocking Postgres calls for GET /conversations/{thread_id}, run off
+    the event loop via run_in_threadpool (see #25)."""
+    with psycopg.connect(DATABASE_URL) as conn:
+        with conn.cursor() as cur:
+            # Get metadata
+            cur.execute(
+                """
+                SELECT title, created_at
+                FROM conversation_metadata
+                WHERE thread_id = %s
+            """,
+                (thread_id,),
+            )
+
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+
+            title, created_at = row
+
+            # Get messages from checkpoint_blobs (LangGraph stores them as msgpack)
+            # Get latest messages blob for this thread
+            cur.execute(
+                """
+                SELECT blob, type
+                FROM checkpoint_blobs
+                WHERE thread_id = %s
+                  AND channel = 'messages'
+                ORDER BY version DESC
+                LIMIT 1
+            """,
+                (thread_id,),
+            )
+
+            blob_row = cur.fetchone()
+            messages = []
+
+            if blob_row and blob_row[0]:
+                from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+                try:
+                    blob, blob_type = blob_row
+                    serializer = JsonPlusSerializer()
+                    raw_messages = serializer.loads_typed((blob_type, blob))
+
+                    for msg in raw_messages:
+                        # LangChain message objects have type and content attributes
+                        msg_type = getattr(msg, "type", None)
+                        content = getattr(msg, "content", "")
+                        # Skip tool messages and empty content
+                        if content and msg_type in ("human", "ai"):
+                            messages.append(
+                                {
+                                    "type": msg_type,
+                                    "content": content,
+                                }
+                            )
+                except Exception as e:
+                    logger.warning("message_decode_error", thread_id=thread_id, error=str(e))
+
+            return ConversationDetail(
+                thread_id=thread_id,
+                title=title,
+                created_at=created_at,
+                message_count=len(messages),
+                messages=messages,
+            )
 
 
 @router.get("/conversations/{thread_id}/observability", response_model=ObservabilitySnapshot)
@@ -376,53 +391,59 @@ async def get_conversation_observability(request: Request, thread_id: str):
     thread_id = validate_thread_id(thread_id)
 
     try:
-        with psycopg.connect(DATABASE_URL) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT checkpoint -> 'channel_values'
-                    FROM checkpoints
-                    WHERE thread_id = %s
-                    ORDER BY checkpoint_id DESC
-                    LIMIT 1
-                    """,
-                    (thread_id,),
-                )
-                row = cur.fetchone()
-                if not row or not row[0]:
-                    return ObservabilitySnapshot(thread_id=thread_id, has_data=False)
-
-                values = row[0]
-                latency = {
-                    k: values.get(k)
-                    for k in (
-                        "bm25_latency_ms",
-                        "retriever_latency_ms",
-                        "reranker_latency_ms",
-                        "stock_bm25_latency_ms",
-                        "judge_latency_ms",
-                    )
-                    if values.get(k) is not None
-                }
-                return ObservabilitySnapshot(
-                    thread_id=thread_id,
-                    has_data=True,
-                    user_query=values.get("user_query"),
-                    intent=values.get("intent"),
-                    intent_confidence=values.get("intent_confidence"),
-                    reasoning=values.get("reasoning"),
-                    alpha=values.get("alpha"),
-                    query_analysis=values.get("query_analysis"),
-                    reranker_max_score=values.get("reranker_max_score"),
-                    quality_gate_retried=values.get("quality_gate_retried"),
-                    quality_gate_reason=values.get("quality_gate_reason"),
-                    latency=latency,
-                )
+        return await run_in_threadpool(_get_conversation_observability_sync, thread_id)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to fetch observability for {thread_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+def _get_conversation_observability_sync(thread_id: str) -> ObservabilitySnapshot:
+    """Blocking Postgres call for GET /conversations/{thread_id}/observability,
+    run off the event loop via run_in_threadpool (see #25)."""
+    with psycopg.connect(DATABASE_URL) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT checkpoint -> 'channel_values'
+                FROM checkpoints
+                WHERE thread_id = %s
+                ORDER BY checkpoint_id DESC
+                LIMIT 1
+                """,
+                (thread_id,),
+            )
+            row = cur.fetchone()
+            if not row or not row[0]:
+                return ObservabilitySnapshot(thread_id=thread_id, has_data=False)
+
+            values = row[0]
+            latency = {
+                k: values.get(k)
+                for k in (
+                    "bm25_latency_ms",
+                    "retriever_latency_ms",
+                    "reranker_latency_ms",
+                    "stock_bm25_latency_ms",
+                    "judge_latency_ms",
+                )
+                if values.get(k) is not None
+            }
+            return ObservabilitySnapshot(
+                thread_id=thread_id,
+                has_data=True,
+                user_query=values.get("user_query"),
+                intent=values.get("intent"),
+                intent_confidence=values.get("intent_confidence"),
+                reasoning=values.get("reasoning"),
+                alpha=values.get("alpha"),
+                query_analysis=values.get("query_analysis"),
+                reranker_max_score=values.get("reranker_max_score"),
+                quality_gate_retried=values.get("quality_gate_retried"),
+                quality_gate_reason=values.get("quality_gate_reason"),
+                latency=latency,
+            )
 
 
 @router.delete("/conversations", status_code=204)
@@ -467,25 +488,31 @@ async def clear_all_conversations(request: Request):
     await verify_session(request)
 
     try:
-        with psycopg.connect(DATABASE_URL) as conn:
-            conn.autocommit = True
-            with conn.cursor() as cur:
-                # Delete metadata
-                cur.execute("DELETE FROM conversation_metadata")
-
-                # Delete checkpoints
-                cur.execute("DELETE FROM checkpoints")
-
-                # Delete checkpoint blobs if they exist
-                try:
-                    cur.execute("DELETE FROM checkpoint_blobs")
-                except psycopg.Error:
-                    pass  # Table may not exist
-
-                logger.info(f"Cleared all conversations")
+        await run_in_threadpool(_clear_all_conversations_sync)
     except Exception as e:
         logger.error(f"Failed to clear all conversations: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+def _clear_all_conversations_sync() -> None:
+    """Blocking Postgres calls for DELETE /conversations, run off the event
+    loop via run_in_threadpool (see #25)."""
+    with psycopg.connect(DATABASE_URL) as conn:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            # Delete metadata
+            cur.execute("DELETE FROM conversation_metadata")
+
+            # Delete checkpoints
+            cur.execute("DELETE FROM checkpoints")
+
+            # Delete checkpoint blobs if they exist
+            try:
+                cur.execute("DELETE FROM checkpoint_blobs")
+            except psycopg.Error:
+                pass  # Table may not exist
+
+            logger.info(f"Cleared all conversations")
 
 
 @router.delete("/conversations/{thread_id}", status_code=204)
@@ -536,23 +563,29 @@ async def delete_conversation(request: Request, thread_id: str):
     thread_id = validate_thread_id(thread_id)
 
     try:
-        with psycopg.connect(DATABASE_URL) as conn:
-            conn.autocommit = True
-            with conn.cursor() as cur:
-                # Delete metadata
-                cur.execute("DELETE FROM conversation_metadata WHERE thread_id = %s", (thread_id,))
-
-                if cur.rowcount == 0:
-                    raise HTTPException(status_code=404, detail="Conversation not found")
-
-                # Delete checkpoints
-                cur.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
-
-                logger.info(f"Conversation deleted: {thread_id}")
-                # 204 No Content - no response body needed
-                return None
+        return await run_in_threadpool(_delete_conversation_sync, thread_id)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to delete conversation {thread_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+def _delete_conversation_sync(thread_id: str) -> None:
+    """Blocking Postgres calls for DELETE /conversations/{thread_id}, run off
+    the event loop via run_in_threadpool (see #25)."""
+    with psycopg.connect(DATABASE_URL) as conn:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            # Delete metadata
+            cur.execute("DELETE FROM conversation_metadata WHERE thread_id = %s", (thread_id,))
+
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+
+            # Delete checkpoints
+            cur.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
+
+            logger.info(f"Conversation deleted: {thread_id}")
+            # 204 No Content - no response body needed
+            return None

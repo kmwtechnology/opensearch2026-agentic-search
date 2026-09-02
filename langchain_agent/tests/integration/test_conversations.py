@@ -13,9 +13,12 @@ extra request per test, b) interacts badly with the 5/min login rate
 limit, and c) couples integration tests to LOGIN_PASSWORD env state.
 """
 
+import asyncio
+import time
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -187,3 +190,44 @@ class TestDeleteConversation:
     def test_missing_origin_blocked(self, client):
         r = client.delete("/api/conversations/thread_abc")
         assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Event loop non-blocking (regression coverage for #25)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestEventLoopNotBlocked:
+    """A slow Postgres call inside these routes must not stall the event
+    loop -- these routes used to call psycopg.connect() directly on an
+    async def handler, so a DB hiccup froze every in-flight WebSocket chat
+    stream for the duration. run_in_threadpool moves the blocking call to a
+    worker thread; this test proves a concurrent request doesn't wait on it.
+    """
+
+    @pytest.mark.asyncio
+    @patch("api.routes.conversations.psycopg.connect")
+    async def test_slow_db_call_does_not_block_concurrent_request(self, mock_connect):
+        def _slow_connect(*args, **kwargs):
+            time.sleep(0.4)
+            return _mock_conn([])
+
+        mock_connect.side_effect = _slow_connect
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+            t0 = time.monotonic()
+            slow_task = asyncio.create_task(ac.get("/api/conversations", headers=HEADERS))
+            await asyncio.sleep(0.05)  # let the slow request actually start
+            fast_resp = await ac.get("/api/config")
+            fast_elapsed = time.monotonic() - t0
+            slow_resp = await slow_task
+
+        assert slow_resp.status_code == 200
+        assert fast_resp.status_code == 200
+        # If the loop were blocked by the slow DB call, the fast request
+        # would also have to wait out the full 0.4s sleep. It shouldn't.
+        assert (
+            fast_elapsed < 0.3
+        ), f"fast request took {fast_elapsed:.3f}s -- event loop was blocked"
