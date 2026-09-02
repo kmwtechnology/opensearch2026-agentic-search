@@ -174,7 +174,7 @@ smoke-local-quick:
 
 benchmark-esci-fast:
 	@echo "Running ESCI relevancy benchmark (fast mode, deterministic)..."
-	PYTHONPATH=. $(VENV)/python benchmark_esci.py --limit 5000 --hard-only --fast
+	PYTHONPATH=. $(VENV)/python benchmark_esci.py --limit 5000 --fast
 
 benchmark-esci:
 	@echo "Running ESCI relevancy benchmark (full mode, with Gemini intent classification)..."

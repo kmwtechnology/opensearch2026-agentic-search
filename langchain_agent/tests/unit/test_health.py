@@ -5,8 +5,11 @@ Mocks psycopg, create_opensearch_client, and config values so no live
 services are required.
 """
 
+import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -191,3 +194,39 @@ def test_config_uses_env_var_for_http_origin(client):
         r = client.get("/api/config", headers={"origin": "http://localhost:5173"})
     assert r.status_code == 200
     assert r.json()["apiUrl"] == "http://localhost:8000"
+
+
+# ---------------------------------------------------------------------------
+# Event loop non-blocking (regression coverage for #25)
+# ---------------------------------------------------------------------------
+
+
+@patch(_API_KEY, "fake-key")
+@patch(_OS_CLIENT, return_value=_os_ok())
+@patch(_PSYCOPG + ".connect")
+@pytest.mark.asyncio
+async def test_slow_postgres_does_not_block_concurrent_config_request(mock_connect, mock_os):
+    """/api/health is Cloud Run's --startup-probe target (see #23), polled on
+    a schedule. A blocking psycopg.connect() called directly on an async def
+    route would stall the loop -- and every in-flight WebSocket -- for the
+    duration of a Postgres hiccup. run_in_threadpool moves it to a worker
+    thread; this proves a concurrent request doesn't wait on it."""
+
+    def _slow_connect(*args, **kwargs):
+        time.sleep(0.4)
+        return _pg_ok()
+
+    mock_connect.side_effect = _slow_connect
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        t0 = time.monotonic()
+        slow_task = asyncio.create_task(ac.get("/api/health"))
+        await asyncio.sleep(0.05)  # let the slow request actually start
+        fast_resp = await ac.get("/api/config")
+        fast_elapsed = time.monotonic() - t0
+        slow_resp = await slow_task
+
+    assert slow_resp.status_code == 200
+    assert fast_resp.status_code == 200
+    assert fast_elapsed < 0.3, f"fast request took {fast_elapsed:.3f}s -- event loop was blocked"
