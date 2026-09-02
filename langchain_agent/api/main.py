@@ -29,10 +29,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from starlette.middleware.sessions import SessionMiddleware
 
 from api.middleware.auth import AuthConfigurationError
+from api.middleware.client_ip import get_client_ip
 from api.routes import admin, auth, chat, conversations, health, suggest
 from config import (
     LOGIN_PASSWORD,
@@ -65,7 +65,7 @@ def _get_api_base_url() -> str:
 
 # Initialize rate limiter
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=get_client_ip,
     enabled=RATE_LIMIT_ENABLED,
 )
 

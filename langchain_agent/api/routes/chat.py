@@ -13,11 +13,11 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import verify_same_origin, verify_websocket_origin
 from api.middleware.session_auth import verify_session, verify_websocket_session
 from api.schemas.events import (
@@ -35,7 +35,7 @@ logger = get_logger(__name__)
 THREAD_ID_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
 
 # Initialize limiter (will use app.state.limiter)
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_client_ip)
 
 router = APIRouter()
 

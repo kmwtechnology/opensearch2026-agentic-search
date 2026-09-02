@@ -760,7 +760,11 @@ langchain_agent/
 │   ├── unit/              # Fast, no external services (~0.5s, 612 tests)
 │   ├── integration/       # Multi-component, live services — see tests/integration/README.md
 │   └── e2e/               # Deployed Cloud Run checks — see tests/e2e/README.md
-├── main.py                # LangGraph agent core (~2,600 lines)
+├── main.py                # EcommerceSearchAgent: setup, graph wiring, routers, lifecycle (~600 lines)
+├── pipeline_nodes.py      # PipelineNodesMixin: the 8 LangGraph nodes + helpers (~3,000 lines)
+├── conversation_management.py  # ConversationManagementMixin: threads, titles, summarize/compact
+├── cli.py                 # Interactive terminal REPL (dev only; `make run`)
+├── llm_content.py         # _flatten_llm_content (Gemini content-block normalization)
 ├── agent_state.py         # CustomAgentState TypedDict
 ├── config.py              # All configuration constants
 ├── exceptions.py          # Custom exception hierarchy

@@ -20,6 +20,8 @@ import os
 
 from fastapi import HTTPException, Request, WebSocket, status
 
+from api.middleware.client_ip import get_client_ip
+
 logger = logging.getLogger(__name__)
 
 # WebSocket close codes (4xxx range is application-defined per RFC 6455)
@@ -57,7 +59,7 @@ async def verify_session(request: Request) -> bool:
         extra={
             "path": request.url.path,
             "method": request.method,
-            "client": request.client.host if request.client else None,
+            "client": get_client_ip(request),
         },
     )
     raise HTTPException(
@@ -82,7 +84,7 @@ async def verify_websocket_session(websocket: WebSocket) -> bool:
 
     logger.info(
         "websocket_session_auth_rejected",
-        extra={"client": websocket.client.host if websocket.client else None},
+        extra={"client": get_client_ip(websocket)},
     )
     await websocket.close(
         code=WS_CLOSE_UNAUTHORIZED,
@@ -114,7 +116,7 @@ async def verify_admin_token(request: Request) -> bool:
             "admin_token_missing",
             extra={
                 "path": request.url.path,
-                "client": request.client.host if request.client else None,
+                "client": get_client_ip(request),
             },
         )
         raise HTTPException(
@@ -127,7 +129,7 @@ async def verify_admin_token(request: Request) -> bool:
             "admin_token_invalid",
             extra={
                 "path": request.url.path,
-                "client": request.client.host if request.client else None,
+                "client": get_client_ip(request),
             },
         )
         raise HTTPException(

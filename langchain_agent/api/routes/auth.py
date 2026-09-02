@@ -20,11 +20,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import verify_same_origin
 from config import LOGIN_PASSWORD, RATE_LIMIT_LOGIN
 from logging_config import get_logger
@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 # A separate Limiter instance keeps login throttling self-contained; slowapi
 # allows multiple Limiters on one app as long as the global one in main.py
 # owns the exception handler.
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_client_ip)
 
 router = APIRouter()
 
@@ -76,7 +76,7 @@ async def login(request: Request, body: LoginRequest):
     if not hmac.compare_digest(body.password, LOGIN_PASSWORD):
         logger.info(
             "login_failed",
-            extra={"client": request.client.host if request.client else None},
+            extra={"client": get_client_ip(request)},
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -86,7 +86,7 @@ async def login(request: Request, body: LoginRequest):
     request.session["authenticated"] = True
     logger.info(
         "login_succeeded",
-        extra={"client": request.client.host if request.client else None},
+        extra={"client": get_client_ip(request)},
     )
     return LoginResponse(authenticated=True)
 
