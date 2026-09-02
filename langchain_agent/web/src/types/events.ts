@@ -504,39 +504,6 @@ export type AgentEvent =
   | ClarificationRequestedEvent
   | ClarificationResolvedEvent
 
-// Helper type guards
-export function isQueryEvaluation(event: AgentEvent): event is QueryEvaluationEvent {
-  return event.type === 'query_evaluation'
-}
-
-export function isDocumentGradingSummary(event: AgentEvent): event is DocumentGradingSummaryEvent {
-  return event.type === 'document_grading_summary'
-}
-
-export function isResponseGrading(event: AgentEvent): event is ResponseGradingEvent {
-  return event.type === 'response_grading'
-}
-
-export function isAgentComplete(event: AgentEvent): event is AgentCompleteEvent {
-  return event.type === 'agent_complete'
-}
-
-export function isAgentError(event: AgentEvent): event is AgentErrorEvent {
-  return event.type === 'agent_error'
-}
-
-export function isQueryExpansion(event: AgentEvent): event is QueryExpansionEvent {
-  return event.type === 'query_expansion'
-}
-
-export function isQualityGate(event: AgentEvent): event is QualityGateEvent {
-  return event.type === 'quality_gate'
-}
-
-export function isIntentClassification(event: AgentEvent): event is IntentClassificationEvent {
-  return event.type === 'intent_classification'
-}
-
 // Node names for routing
 export type NodeName =
   | 'query_evaluator'
