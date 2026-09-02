@@ -11,7 +11,6 @@ Real-time visualization of the LangGraph RAG pipeline: event stream, per-node me
 | `index.tsx` | Container component exposing the full observability panel |
 | `StepsList.tsx` | Linear timeline of pipeline nodes with collapse/expand |
 | `StepCard.tsx` | Individual node card showing elapsed time + status |
-| `EventCard.tsx` | Event detail view (raw JSON, formatted payload) |
 | `PipelineSummaryCard.tsx` | NDCG/MRR/Recall metrics + lift-per-100ms (emitted after `agent_complete`) |
 | `SearchOptimizationDetails.tsx` | Hybrid BM25 + Reranked comparison cards with lift indicators |
 | `HistoricalSnapshotCard.tsx` | Checkpoint snapshot view (if saved to LangGraph) |

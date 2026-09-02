@@ -84,6 +84,11 @@ langchain_agent/__pycache__/
 # Web UI
 web/node_modules/
 web/dist/
+# tsc build artifacts -- vite.config.js/.d.ts shadow vite.config.ts (vite resolves
+# .js before .ts, see #27); tsbuildinfo is a compiler cache, neither belongs in git
+web/vite.config.js
+web/vite.config.d.ts
+web/*.tsbuildinfo
 
 # OS-specific
 .DS_Store
