@@ -12,7 +12,7 @@ This guide explains how to extend the Agentic Hybrid Search agent with new featu
 
 ### Step 1: Implement Keyword Patterns (Fast-Path)
 
-In `main.py`, find `_build_intent_prompt()` docstring and intent list. Add your intent:
+In `pipeline_nodes.py`, find `_build_intent_prompt()` docstring and intent list. Add your intent:
 
 ```python
 # In intent_classifier_node docstring and _build_intent_prompt()
@@ -117,7 +117,7 @@ class CustomAgentState(TypedDict, total=False):
 
 ### Step 2: Implement Node Function
 
-In `main.py` (or dedicated file if large):
+In `pipeline_nodes.py` (`PipelineNodesMixin`; graph wiring stays in `main.py`):
 
 ```python
 async def sentiment_analyzer_node(state: CustomAgentState) -> Dict[str, Any]:
@@ -516,7 +516,7 @@ build (see `scripts/rebuild_attribute_taxonomies.py` for the pattern).
 
 ### Step 2: Wire query-time filtering
 
-Add a filter block to `_extract_attributes()` in `main.py` for the new
+Add a filter block to `_extract_attributes()` in `pipeline_nodes.py` for the new
 type. Decide up front whether it needs a **hard** exact-match fallback
 (like color — reliable, but excludes non-taxonomy terms outright) or a
 **soft** lexical `multi_match` fallback (like material — protects
@@ -577,7 +577,7 @@ interface NodeLatencyEvent extends BaseEvent {
 
 ### Step 3: Emit from Nodes
 
-In `main.py`, wrap node functions with timing:
+In `pipeline_nodes.py`, wrap node functions with timing:
 
 ```python
 async def timed_node(node_func, state):

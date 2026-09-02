@@ -13,11 +13,11 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import verify_same_origin
 from api.middleware.session_auth import verify_session
 from config import DATABASE_URL, RATE_LIMIT_CONVERSATIONS
@@ -51,7 +51,7 @@ def validate_thread_id(thread_id: str) -> str:
 logger = get_logger(__name__)
 
 # Initialize limiter
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_client_ip)
 
 router = APIRouter()
 

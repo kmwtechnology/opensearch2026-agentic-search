@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from main import _flatten_llm_content
+from llm_content import _flatten_llm_content
 
 
 class _Resp:

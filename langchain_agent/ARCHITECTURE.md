@@ -773,7 +773,7 @@ the live demo's centerpiece — see `DEMO.md` Part 4.5):
    ("Corrected 'tan' from 'yellow' to 'brown'", never "Added").
 
 **Making a mis-mapping visible without a dev tool**: `_build_grounded_context`
-(`main.py`, the FACTS-block builder every `agent_node` response is
+(`pipeline_nodes.py`, the FACTS-block builder every `agent_node` response is
 generated from) includes both a product's raw `product_color` and its
 derived `product_color_primary` as separate FACTS lines when both are
 present, and a grounding rule instructs the agent to flag it directly in
@@ -790,7 +790,7 @@ fabrication and the auto-correction retry strips it back out.
 
 **Value gate** (`EnrichmentValueJudge`, `enrichment_value_judge.py` —
 applies to both the gap and correction mechanisms, since both funnel
-through `main.py`'s shared `_try_enrichment_tool`): before the tool
+through `pipeline_nodes.py`'s shared `_try_enrichment_tool`): before the tool
 actually executes, a second, independent structured-output LLM call
 (same bias-mitigation pattern as `judge.py`'s `LLMJudge` — a different,
 cheap model via `config.JUDGE_MODEL`, temperature 0) evaluates whether
@@ -816,7 +816,7 @@ follow-up query (gap case) or a direct field check (correction case,
 since ranking itself barely moves — see `DEMO.md`) now reflects the
 fix.
 
-**Filter relaxation** (`main.py` retriever, pre-existing, load-bearing
+**Filter relaxation** (`pipeline_nodes.py` retriever, pre-existing, load-bearing
 for the gap-mechanism asymmetry above): when an
 `attribute_filter`/`refinement` query's fully-filtered result count is
 under 3, the retriever automatically retries without `multi_match`
@@ -956,7 +956,7 @@ type needs no new Java code and no hand-edited Lucille config:
    The next `lucille_ingest.sh` run picks it up automatically —
    `config_generator.py` queries OpenSearch for registered attribute
    types and emits a new `AttributeDetectorStage` block for it.
-2. Add a filter block to `_extract_attributes()` in `main.py` for the new
+2. Add a filter block to `_extract_attributes()` in `pipeline_nodes.py` for the new
    type — decide up front whether it needs color's hard-filter semantics
    (rare/exact terms) or material's soft-filter + relaxation semantics
    (see "Taxonomy Growth & Correction" above); this is a deliberate

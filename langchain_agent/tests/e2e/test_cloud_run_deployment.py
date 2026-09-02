@@ -184,10 +184,21 @@ class TestConcurrentRequests:
 
         async def make_connection(thread_id: str):
             ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
+            # open_timeout: websockets defaults to 10s for the opening handshake.
+            # The post-deploy smoke job runs three suites in parallel against a
+            # service deployed with --concurrency=8, so these 5 handshakes can
+            # land while the other suites already hold most of an instance's
+            # slots -- Cloud Run then has to cold-start a readiness-gated
+            # instance (~30s+ reranker warmup) before it can even *accept* the
+            # socket, and the 10s default fires as "timed out during opening
+            # handshake" (#42). This test proves concurrent connections work,
+            # not that scale-out finishes in 10s, so give the handshake the same
+            # budget the recv() side already gets.
             async with ws_connect(
                 ws_url,
                 subprotocols=["websocket"],
                 additional_headers=auth_ws_headers(),
+                open_timeout=WEBSOCKET_TIMEOUT,
             ) as ws:
                 msg = await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
                 return msg is not None
