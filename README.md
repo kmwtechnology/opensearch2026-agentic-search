@@ -90,11 +90,13 @@ After the first deploy, initialize Cloud SQL and ingest product data:
 A conversational RAG agent powered by Google Gemini for e-commerce product discovery:
 
 - **6-intent classifier** — `search`, `comparison`, `attribute_filter`,
-  `refinement`, `follow_up`, `summary` — keyword fast-path + LLM fallback
+  `refinement`, `follow_up`, `summary` — single structured-output LLM call
+  (no keyword fast-path)
 - **Hybrid search** — vector (768-dim Gemini embeddings) + BM25 lexical,
   fused via Reciprocal Rank Fusion (k=60)
-- **Cross-encoder reranking** — `ms-marco-MiniLM-L-12-v2` scores
-  query-product relevance (~10ms); Gemini Flash Lite fallback (~500ms)
+- **Cross-encoder reranking** (default) — local `ms-marco-MiniLM-L-12-v2`
+  scores query-product relevance, no API call; Gemini LLM reranking is a
+  non-default alternative (~500ms/batch)
 - **Dynamic alpha** — query-aware lexical/semantic balance; fast-path alpha
   for comparison/attribute_filter/refinement, LLM path for search/follow_up
 - **Quality gate** — if max reranker score < 0.5, adjusts alpha ±0.3 (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only) and retries once
@@ -181,7 +183,7 @@ flowchart TB
     end
 
     subgraph Reranking["Reranking"]
-        CE["ms-marco-MiniLM-L-12-v2<br/>(cross-encoder, ~10ms)"]
+        CE["ms-marco-MiniLM-L-12-v2<br/>(cross-encoder, ~2s/40-doc batch)"]
         LLMR["Gemini Flash Lite<br/>(fallback, ~500ms)"]
     end
 
@@ -263,14 +265,14 @@ retries with an opposite-direction α adjustment.
 | --- | --- | --- |
 | **LLM (generation)** | Gemini 3 Flash (preview) | Response generation |
 | **LLM (classify/eval)** | Gemini 3.1 Flash Lite (preview) | Intent classification, query evaluation, reranking fallback |
-| **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder) | Default reranker (~10ms/query); Gemini Flash Lite fallback (~500ms) |
+| **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder) | Default reranker (~2s for a 40-doc batch, measured in production); Gemini Flash Lite fallback (~500ms) |
 | **Embeddings** | `models/gemini-embedding-001` | 768-dim vectors |
 | **Vector Database** | OpenSearch 3.8.0 | HNSW `knn_vector` + BM25 |
 | **Search Fusion** | Reciprocal Rank Fusion (k=60) | Hybrid score fusion |
 | **Checkpoints** | PostgreSQL 16 | LangGraph state persistence |
 | **Agent Framework** | LangGraph + LangChain | Graph-based pipeline with typed state |
 | **Backend API** | FastAPI + WebSocket | REST/WebSocket with real-time streaming |
-| **Frontend** | React 18 + TypeScript + Tailwind + Zustand | Observability panel + chat UI |
+| **Frontend** | React 19 + TypeScript + Tailwind + Zustand | Observability panel + chat UI |
 | **Data** | Amazon ESCI (Shopping Queries Dataset) | 1.8M+ product listings |
 | **Deployment** | GCP Cloud Run (multi-stage Docker) | Serverless auto-scaling |
 
@@ -371,7 +373,7 @@ Pure-Python metric implementations live in
 
 | Technique | Description |
 | --- | --- |
-| **6-intent classification** | Keyword fast-path + LLM fallback for `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary` |
+| **6-intent classification** | Single structured-output LLM call (no keyword fast-path) for `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary` |
 | **Conversational query rewriting** | Resolves pronouns, comparatives, short attribute questions using conversation context; skips expansion when a specific brand/product is named |
 | **Context-validated refinement** | Continuity scoring (category match + doc-ID overlap) distinguishes "make them waterproof" (refine prior boots) from "find me dresses" (reset) |
 | **Dynamic α** | Fast-path α for comparison/attribute_filter/refinement; LLM path for search/follow_up |
@@ -395,11 +397,11 @@ opensearch2026-agentic-search/
 │   ├── esci_products_sample_10000.parquet
 │   └── esci_judgments_aggregated.parquet
 ├── langchain_agent/              # Main application (see langchain_agent/README.md)
-│   ├── main.py                   # LangGraph agent core (~2,600 lines)
+│   ├── main.py                   # LangGraph agent core (~4,200 lines)
 │   ├── agent_state.py            # CustomAgentState TypedDict
 │   ├── config.py                 # All configuration constants
 │   ├── vector_store.py           # OpenSearchVectorStore + retriever (RRF fusion)
-│   ├── reranker.py               # CrossEncoderReranker (default, ~10ms) + GeminiReranker (fallback, ~500ms)
+│   ├── reranker.py               # CrossEncoderReranker (default, ~2s/40-doc batch) + GeminiReranker (fallback, ~500ms/batch)
 │   ├── link_verifier.py          # URL validation w/ TTL cache
 │   ├── embedding_cache.py        # Query embedding cache
 │   ├── relevancy_metrics.py      # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)
@@ -455,22 +457,21 @@ opensearch2026-agentic-search/
 
 ### Key Tunables
 
-**Note:** Most retriever and reranker knobs are hardcoded in `langchain_agent/config.py` and cannot be changed via `.env`. To modify them, edit `config.py` directly and redeploy.
+**Note:** Most retriever and reranker knobs are hardcoded in `langchain_agent/config.py` and cannot be changed via `.env` — setting them there has no effect. To modify them, edit `config.py` directly and redeploy.
 
 ```python
 # langchain_agent/config.py
 RETRIEVER_K = 10                 # Final documents returned
 RETRIEVER_FETCH_K = 40           # Candidates fetched before reranking
+RETRIEVER_ALPHA = 0.25           # Default lexical/semantic balance
+                                  # (query evaluator usually overrides per-query)
 RERANKER_FETCH_K = 40            # Candidates reranked
 RERANKER_TOP_K = 10              # Final top-K after reranking
-ENABLE_RERANKING = true
-ENABLE_QUERY_EVALUATION = true
-ESCI_INGEST_LIMIT = 10000
+ENABLE_RERANKING = True
+ENABLE_QUERY_EVALUATION = True
 ```
 
-Environment variables (in `.env`) that **do** affect behavior:
-
-- `RETRIEVER_ALPHA=0.25` — Default lexical/semantic balance (query evaluator usually overrides per-query)
+Environment variables (in `.env`) that **do** affect behavior include `ESCI_INGEST_LIMIT`, `QUALITY_GATE_THRESHOLD`, `RERANKER_BATCH_SIZE`, and the model selections (`LLM_MODEL`, `EMBEDDINGS_MODEL`, `RERANKER_MODEL`, `QUERY_EVAL_MODEL`, `JUDGE_MODEL`) — see `langchain_agent/.env.example` for the full, current list with defaults. That file is the single source of truth for what's genuinely configurable; this README doesn't duplicate it in full to avoid drifting out of sync again.
 
 ## Operations
 

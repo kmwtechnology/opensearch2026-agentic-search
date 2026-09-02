@@ -36,11 +36,11 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 **Key nodes:**
 
-- **Intent Classifier** — keyword fast-path + LLM fallback. Confidence < 0.7 triggers clarification.
+- **Intent Classifier** — single structured-output LLM call (no keyword fast-path, despite older docs/comments — see #26). Confidence < 0.7 triggers clarification.
 - **Query Rewriter** — resolves follow-up references using conversation history.
 - **Query Evaluator** — sets `dynamic alpha` (0.0 for lexical exact matches, 1.0 for semantic/exploration).
 - **Retriever** — hybrid vector + BM25 via RRF fusion (k=60); applies attribute filters for `attribute_filter` intent; filter relaxation if <3 results.
-- **Reranker** — LLM-scored 0.0–1.0; sets `reranker_max_score`.
+- **Reranker** — local cross-encoder by default (`RERANKER_TYPE=cross-encoder`), scores 0.0–1.0; sets `reranker_max_score`. An LLM-based reranker (`RERANKER_TYPE=gemini`) exists but isn't the shipped default.
 - **Quality Gate** — intent-specific thresholds (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45). Retries with adjusted alpha if below threshold.
 - **Agent** — conversational response with citations. ESCI products cite via `https://www.amazon.com/s?k={title}` (robust against delisted ASINs).
 - **LLM Judge** (post-agent, optional) — flags hallucinations; auto-correction retry for `fabrication` and `cross_product_bleed` categories only. **Reset `hallucination_retry_used=False` at top of every new user turn** (issue #83).
@@ -50,13 +50,14 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 | Layer | Tech |
 |-------|------|
 | LLM (generation) | Gemini 3 Flash (preview) |
-| LLM (classify/rerank/eval) | Gemini 3.1 Flash Lite (preview) |
+| LLM (classify/eval) | Gemini 3.1 Flash Lite (preview) |
+| Reranker | Local cross-encoder (`ms-marco-MiniLM-L-12-v2`), not an LLM call |
 | Embeddings | `models/gemini-embedding-001` (768-dim) |
 | Agent framework | LangGraph + LangChain |
 | Vector DB | OpenSearch 3.8.0 (HNSW knn + BM25) |
 | Checkpoints | PostgreSQL 16 |
 | API | FastAPI + WebSocket |
-| Frontend | React 18 + TypeScript + Tailwind + Zustand |
+| Frontend | React 19 + TypeScript + Tailwind + Zustand |
 | Deployment | GCP Cloud Run |
 
 ## Key Patterns
@@ -80,7 +81,7 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
   2. **Shared-password session + admin token** (`session_auth.py`):
      - **Session**: `LOGIN_PASSWORD` env var. `POST /api/auth/login` sets HttpOnly + SameSite=Lax cookie (`ahs_session`). WS rejects with code **4401** on failure.
      - **Admin token** (automation): `ADMIN_TOKEN` env var (32+ chars). Use `X-Admin-Token` header. Constant-time comparison via `hmac.compare_digest`.
-  - **Do NOT wire new routes through legacy `verify_api_key`** — use `verify_same_origin` + `verify_session` (or `verify_admin_token` for automation).
+  - **Do NOT wire new routes through `verify_api_key`** — it doesn't exist (`api/middleware/auth.py` only holds `AuthConfigurationError`; importing it raises `ImportError`). Use `verify_same_origin` + `verify_session` (or `verify_admin_token` for automation).
 
 - **Event sync** — `api/schemas/events.py` must stay in sync with `web/src/types/events.ts`. Each event's `node` field pins it to pipeline step. All return paths in `agent_node` must include `"citations"` key (empty list if no citations).
 

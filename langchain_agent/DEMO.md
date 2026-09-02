@@ -33,7 +33,7 @@ Open browser to **<http://localhost:5173>** and keep DevTools hidden (press `F12
 
 **Narration**:
 
-> "This is **Agentic Hybrid Search** — a production-grade RAG agent for e-commerce product discovery. It's built on LangGraph, uses hybrid search (vector + lexical), and leverages LLM-based reranking.
+> "This is **Agentic Hybrid Search** — a production-grade RAG agent for e-commerce product discovery. It's built on LangGraph, uses hybrid search (vector + lexical), and reranks with a local cross-encoder model.
 >
 > The unique feature here is **dynamic alpha weighting** — the system automatically balances semantic understanding and exact keyword matching based on the query type. Watch as we demo this in action."
 
@@ -97,7 +97,7 @@ and submit, `Esc` to close. The whole surface uses ARIA combobox semantics.
 
 **Observe**:
 
-- Intent Classifier step shows "search" with keyword fast-path
+- Intent Classifier step shows "search" with its confidence and reasoning
 - Query Evaluator step shows assigned α and reasoning
 - Knowledge Search retrieves relevant headphones
 - Observability panel shows each stage in real-time
@@ -116,14 +116,14 @@ and submit, `Esc` to close. The whole surface uses ARIA combobox semantics.
 
 **Observe**:
 
-- Intent Classifier shows keyword match ("vs" pattern), confidence ~0.95
-- Query Evaluator assigns α=0.60 instantly (fast-path, no LLM)
+- Intent Classifier shows "comparison" via its LLM call, confidence ~0.95
+- Query Evaluator assigns α=0.60 instantly (its own fast-path, no LLM — separate from intent classification, which is always an LLM call)
 - Knowledge Search retrieves both specific models
 - Results ranked by comparison relevance
 
 **Narration**:
 
-> "**Comparison intent** — users want to pit products against each other. We detect this with a keyword pattern, assign a fixed alpha, and the LLM-based reranker scores each product's relevance to both products."
+> "**Comparison intent** — users want to pit products against each other. The LLM classifies the intent, the query evaluator assigns a fixed alpha via its fast-path, and the cross-encoder reranker scores each product's relevance to both products."
 
 ---
 
@@ -135,8 +135,8 @@ and submit, `Esc` to close. The whole surface uses ARIA combobox semantics.
 
 **Observe**:
 
-- Intent Classifier detects attribute keywords (brand + color + size)
-- Query Evaluator assigns α=0.25 (lexical-heavy fast-path)
+- Intent Classifier classifies this as `attribute_filter` via its LLM call (brand + color + size cues)
+- Query Evaluator assigns α=0.25 (its own lexical-heavy fast-path, no LLM)
 - Knowledge Search prioritizes exact attribute matching
 - BM25 scores keywords heavily
 
@@ -571,7 +571,7 @@ value live** — not a reshuffled leaderboard. Lead with that.
 
 **Q: What models are you using?**
 
-A: Gemini 3 Flash for generation, Gemini 3.1 Flash Lite for classification/reranking (faster, cheaper), text-embedding-005 for embeddings (768-dim). All via Google AI.
+A: Gemini 3 Flash for generation, Gemini 3.1 Flash Lite for classification/query evaluation (faster, cheaper), models/gemini-embedding-001 for embeddings (768-dim) — all via Google AI. Reranking is a local cross-encoder (`ms-marco-MiniLM-L-12-v2`), not an LLM call — it's baked into the Docker image so it runs offline with no added API latency.
 
 **Q: How does RRF fusion actually work?**
 

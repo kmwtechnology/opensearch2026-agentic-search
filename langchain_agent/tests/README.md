@@ -107,7 +107,7 @@ services — everything is mocked through `conftest.py`.
 
 | File | Focus |
 | --- | --- |
-| `intent/test_intent_classifier.py` | 6-intent classification, keyword fast-path vs LLM fallback, confidence thresholds |
+| `intent/test_intent_classifier.py` | 6-intent classification via single LLM call (no keyword fast-path — see #26), confidence thresholds |
 | `evaluator/test_query_evaluator.py` | Dynamic α selection, query expansion, fast-path vs LLM-path |
 | `quality_gate/test_quality_gate.py` | Retry decision logic, α adjustment bounds, intent-specific thresholds |
 | `test_auth_routes.py` | Login/logout/session route behavior |

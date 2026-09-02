@@ -61,7 +61,7 @@ See [PR Process](pr-process.md) for detailed instructions.
 ## Code Quality Standards
 
 - **Backend:** Python 3.14+, typed with `mypy`, linted with `flake8`
-- **Frontend:** TypeScript + React 18, linted with ESLint, tested with Vitest
+- **Frontend:** TypeScript + React 19, linted with ESLint, tested with Vitest
 - **Tests:** Unit tests mandatory; integration tests for multi-component changes; e2e for flow changes
 
 See [Testing](testing.md) for the test pyramid and how to run each tier.

@@ -351,6 +351,19 @@ elif ! gcloud secrets describe "agentic-hybrid-search-session-secret" --project=
     log "Auto-generated SESSION_SECRET and stored in Secret Manager."
 fi
 
+# Auto-generate ADMIN_TOKEN (always; never prompted -- same reasoning as
+# SESSION_SECRET). Read by api/middleware/session_auth.py for X-Admin-Token
+# automation auth; previously never wired into any deploy path at all (#26).
+if $DRY_RUN; then
+    echo "[DRY RUN] Auto-generate ADMIN_TOKEN if missing"
+elif ! gcloud secrets describe "agentic-hybrid-search-admin-token" --project="$PROJECT_ID" &>/dev/null; then
+    ADMIN_TOKEN_VALUE=$(openssl rand -hex 32)
+    echo -n "$ADMIN_TOKEN_VALUE" | gcloud secrets create "agentic-hybrid-search-admin-token" \
+        --data-file=- \
+        --project="$PROJECT_ID"
+    log "Auto-generated ADMIN_TOKEN and stored in Secret Manager."
+fi
+
 # Grant Secret Manager access to the Compute Engine default service account
 log "Granting secret access to Cloud Run service account..."
 for secret_name in \
@@ -358,6 +371,7 @@ for secret_name in \
     agentic-hybrid-search-api-key \
     agentic-hybrid-search-login-password \
     agentic-hybrid-search-session-secret \
+    agentic-hybrid-search-admin-token \
     agentic-hybrid-search-db-password; do
     run gcloud secrets add-iam-policy-binding "$secret_name" \
         --member="serviceAccount:${COMPUTE_SA}" \
@@ -409,6 +423,12 @@ log "Deploying to Cloud Run..."
 # event loop's ability to answer WebSocket keepalive pings (see #23).
 # /api/health/ready now reflects real agent/reranker readiness, not just
 # "process is up".
+#
+# --set-env-vars below no longer includes VECTOR_DIMENSION, ENABLE_RERANKING,
+# ENABLE_QUERY_EVALUATION, ENABLE_COMPACTION, or MAX_CONTEXT_TOKENS (see #26)
+# -- config.py reads none of these from the environment, they're plain
+# Python literals, so setting them here was always a no-op. Also dropped
+# ENABLE_CONTENT_TYPE_CLASSIFICATION, which no Python code reads at all.
 run gcloud run deploy "$SERVICE_NAME" \
     --image="$IMAGE_URI" \
     --platform=managed \
@@ -434,16 +454,10 @@ EMBEDDINGS_MODEL=models/gemini-embedding-001,\
 RERANKER_TYPE=cross-encoder,\
 CROSS_ENCODER_MODEL=cross-encoder/ms-marco-MiniLM-L-12-v2,\
 QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,\
-VECTOR_DIMENSION=768,\
 LOG_FORMAT=json,\
 LOG_LEVEL=INFO,\
-ENABLE_RERANKING=true,\
-ENABLE_QUERY_EVALUATION=true,\
-ENABLE_CONTENT_TYPE_CLASSIFICATION=true,\
 SESSION_COOKIE_SECURE=true,\
 SESSION_MAX_AGE_SECONDS=86400,\
-ENABLE_COMPACTION=true,\
-MAX_CONTEXT_TOKENS=3000,\
 OPENSEARCH_HOST=34.138.97.13,\
 OPENSEARCH_PORT=9200,\
 OPENSEARCH_USE_SSL=true,\
@@ -454,6 +468,7 @@ GOOGLE_API_KEY=agentic-hybrid-search-google-api-key:latest,\
 API_KEY=agentic-hybrid-search-api-key:latest,\
 LOGIN_PASSWORD=agentic-hybrid-search-login-password:latest,\
 SESSION_SECRET=agentic-hybrid-search-session-secret:latest,\
+ADMIN_TOKEN=agentic-hybrid-search-admin-token:latest,\
 POSTGRES_PASSWORD=agentic-hybrid-search-db-password:latest,\
 OPENSEARCH_USER=agentic-hybrid-search-opensearch-user:latest,\
 OPENSEARCH_PASSWORD=agentic-hybrid-search-opensearch-password:latest" \

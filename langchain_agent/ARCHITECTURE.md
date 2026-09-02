@@ -8,7 +8,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         User Interfaces                             │
 │  ┌─────────────────────────┐         ┌─────────────────────────┐   │
-│  │   Web UI (React 18)     │◄───────►│  FastAPI WebSocket API  │   │
+│  │   Web UI (React 19)     │◄───────►│  FastAPI WebSocket API  │   │
 │  │  - Chat Panel           │         │  - Real-time streaming  │   │
 │  │  - Observability Panel  │         │  - Event emission       │   │
 │  └─────────────────────────┘         └─────────────────────────┘   │
@@ -69,14 +69,16 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 
 **Process**:
 
-- Keyword-based fast-path: pattern matching for 6 intents
+- Single structured-output LLM call (Gemini 3.1 Flash Lite) classifies into 6 intents
+  — there is no keyword-based fast-path (see #26); every request pays this LLM
+  round-trip
   - `search` — product discovery ("find me...")
   - `comparison` — compare products ("Sony vs Bose")
   - `attribute_filter` — filtered search ("blue running shoes")
   - `refinement` — constrain prior results ("make them waterproof")
   - `follow_up` — vague continuation ("the next one?")
   - `summary` — summarize conversation ("what did we discuss?")
-- LLM fallback: Gemini 3.1 Flash Lite classifies if confidence < 0.7
+- Confidence < 0.7 downgrades to `clarify` (or `follow_up` if prior context exists)
 - Emits `IntentClassificationEvent` with detected intent and confidence
 
 **Output State**:
@@ -169,18 +171,25 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 
 ---
 
-### 4. Reranker (LLM-Based Scoring)
+### 4. Reranker (Cross-Encoder by Default)
 
 **Input State**: `retrieved_documents`, `user_query`
 
-**Process**:
+**Process** (`RERANKER_TYPE=cross-encoder`, the default -- see #26, this doc
+previously only described the alternative LLM-based path):
 
-- **Batch scoring**: Sends up to `batch_size=10` documents per LLM call
-- **Structured output**: Gemini 3.1 Flash Lite returns JSON with score per document
-- **Pydantic validation**: Ensures all scores are floats in [0.0, 1.0]
-- **Sorting**: Returns documents sorted by score (highest first)
+- **Local scoring**: `sentence-transformers` cross-encoder (`cross-encoder/ms-marco-MiniLM-L-12-v2`,
+  baked into the Docker image at build time) scores all `RERANKER_FETCH_K=40` candidates
+  in a single `predict()` call — no API round-trip
+- **Sigmoid normalization**: raw logits mapped to [0.0, 1.0]
+- **Sorting**: Returns documents sorted by score (highest first), top `RERANKER_TOP_K=10` kept
 - Emits `RerankerProgressEvent` with per-document scores and top-K selection
 - Sets `reranker_max_score` for Quality Gate decision
+
+An LLM-based alternative (`RERANKER_TYPE=gemini`) exists (`reranker.py`'s `GeminiReranker`):
+batch-scores documents via structured-output Gemini calls instead of a local model. Not
+the shipped default; both deploy paths (`build-deploy.yml`, `scripts/deploy.sh`) set
+`RERANKER_TYPE=cross-encoder` explicitly.
 
 **Output State**:
 
@@ -974,12 +983,12 @@ type needs no new Java code and no hand-edited Lucille config:
 
 | Component | Latency | Notes |
 |-----------|---------|-------|
-| Intent Classification | 0–500ms | Keyword fast-path ~10ms, LLM ~500ms |
+| Intent Classification | ~300–500ms | Single LLM call, no keyword fast-path (see #26) |
 | Query Evaluation | 0–500ms | Fast-path instant, LLM ~300–500ms |
 | Vector Search (HNSW) | 200–500ms | 768-dim, k=20 |
 | Lexical Search (BM25) | 100–300ms | Full-text analysis |
 | RRF Fusion | ~10ms | In-memory rank merge |
-| Reranking (LLM) | 1–2s | Batch scoring, 10 docs per call |
+| Reranking (cross-encoder) | ~1.5–2s | Local `ms-marco-MiniLM-L-12-v2`, RERANKER_FETCH_K=40 candidates scored per call, top RERANKER_TOP_K=10 returned. Not an LLM call — see #26. Measured directly from production logs (`CrossEncoder: predict() took 1866–2048ms for 40 docs`), not estimated. |
 | Quality Gate Retry | +1–2s | If triggered (max 1 retry) |
 | Response Generation | 3–8s | LLM streaming (cached/fresh embedding) |
 | **Total (Q&A)** | **6–15s** | Sum of all stages |
@@ -1041,7 +1050,7 @@ The Agentic Hybrid Search system is a **LangGraph-powered RAG agent** that:
 1. **Classifies intent** (6 categories) to route conversation
 2. **Evaluates queries** with dynamic α to balance semantic/lexical search
 3. **Retrieves candidates** via hybrid search (vector + BM25 fused by RRF)
-4. **Reranks** with LLM-based scoring
+4. **Reranks** with a local cross-encoder (LLM-based scoring is a non-default alternative)
 5. **Quality gates** with automatic α retry if scores are low
 6. **Generates responses** with citations and streaming
 7. **Persists memory** in PostgreSQL checkpoints
