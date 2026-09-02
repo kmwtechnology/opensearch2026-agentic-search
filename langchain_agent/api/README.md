@@ -47,7 +47,7 @@ Routes check session first; on `HTTPException`, fall back to token. Constant-tim
 
 | File | Purpose |
 |------|---------|
-| `events.py` | Pydantic event models: `SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `OpenSearchQueryEvent`, `LLMResponseChunkEvent`, `LLMResponseCorrectedEvent` (emitted by `llm_judge` when auto-correction fires; replaces streamed chat message on the frontend), `ClarificationRequestedEvent`, `EnrichmentTriggeredEvent` (agent called `trigger_enrichment`; carries `attribute_type`/`variant`/`canonical`), `PipelineSummaryEvent`, etc. |
+| `events.py` | Pydantic event models: `SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `OpenSearchQueryEvent`, `LLMResponseChunkEvent`, `LLMResponseCorrectedEvent` (emitted by `llm_judge` when auto-correction fires; replaces streamed chat message on the frontend), `EnrichmentTriggeredEvent` (agent called `trigger_enrichment`; carries `attribute_type`/`variant`/`canonical`), `PipelineSummaryEvent`, etc. |
 | `admin.py` | `EnrichmentRequest`/`EnrichmentResponse` — request/response contract for `POST /api/admin/enrich` |
 
 **CRITICAL:** `events.py` must stay in sync with `web/src/types/events.ts`. Each event's `type` literal and `node` field must match. Use the pre-flight unit test `test_frontend_backend_event_parity.py` to catch divergence.
