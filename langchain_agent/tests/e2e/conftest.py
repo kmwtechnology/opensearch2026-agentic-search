@@ -130,3 +130,41 @@ async def collect_chat_response(
             continue
 
     return response_text or final_response
+
+
+async def collect_chat_result(websocket, timeout_s: float = 60, recv_timeout_s: float = 15) -> dict:
+    """Like ``collect_chat_response`` but keep the structured outcome too.
+
+    Returns ``{"text": str, "completed": bool, "citations": list}`` where
+    ``completed`` is whether an ``agent_complete`` event actually arrived (vs.
+    the drain loop timing out) and ``citations`` is that event's citation
+    list. Used by consistency checks that need something more deterministic
+    than the prose length of a non-deterministic LLM response (#43).
+    """
+    response_text = ""
+    final_response = ""
+    completed = False
+    citations: list = []
+    start_time = time.time()
+
+    while time.time() - start_time < timeout_s:
+        try:
+            event_msg = await asyncio.wait_for(websocket.recv(), timeout=recv_timeout_s)
+            event = json.loads(event_msg)
+            event_type = event.get("type")
+
+            if event_type == "llm_response_chunk":
+                response_text += event.get("content", "")
+            elif event_type == "agent_complete":
+                final_response = event.get("final_response", "") or ""
+                citations = event.get("citations") or []
+                completed = True
+                break
+        except asyncio.TimeoutError:
+            continue
+
+    return {
+        "text": response_text or final_response,
+        "completed": completed,
+        "citations": citations,
+    }

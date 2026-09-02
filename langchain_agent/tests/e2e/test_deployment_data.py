@@ -14,11 +14,14 @@ import os
 import httpx
 import pytest
 
-from tests.e2e.conftest import auth_ws_headers, collect_chat_response
+from tests.e2e.conftest import auth_ws_headers, collect_chat_response, collect_chat_result
 
 # Configuration
 DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
 TIMEOUT = 30
+# Opening-handshake budget: same reasoning as test_cloud_run_deployment.py (#42) --
+# the parallel smoke suites can force a readiness-gated Cloud Run scale-out.
+WEBSOCKET_TIMEOUT = 180
 # Same-origin Origin header so the deployment's verify_same_origin allow-list
 # accepts the WebSocket handshake.
 ORIGIN_HEADER = DEPLOYMENT_URL
@@ -261,52 +264,49 @@ class TestDataConsistency:
     @pytest.mark.e2e
     @pytest.mark.slow
     async def test_same_query_returns_consistent_results(self):
-        """Verify repeated searches return consistent results."""
+        """Verify repeated searches against the same index both complete and
+        both ground their answer in indexed products.
+
+        This used to compare the *character length* of the two generated
+        responses (ratio < 1.5). Generation is a live, non-deterministic LLM
+        call, so two independent answers to the same query legitimately differ
+        by 2-3x in length (observed: 1305 vs 3565 chars) -- that assertion
+        measured LLM verbosity, not data consistency, and failed on two
+        consecutive deploys (#43). What *is* stable across runs, and what
+        "consistent data" actually means here, is that both runs complete
+        the pipeline and both cite products from the index -- the same
+        expectation ``TestCitations`` already enforces for this query.
+        """
         import asyncio
 
         from websockets.asyncio.client import connect as ws_connect
 
-        thread_id_1 = "consistency-1"
-        thread_id_2 = "consistency-2"
-        ws_url_1 = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id_1}"
-        ws_url_2 = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id_2}"
-
+        query = "Find headphones"
+        results = []
         try:
-            # First search
-            async with ws_connect(
-                ws_url_1, subprotocols=["websocket"], additional_headers=auth_ws_headers()
-            ) as ws:
-                await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
+            for thread_id in ("consistency-1", "consistency-2"):
+                ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
+                async with ws_connect(
+                    ws_url,
+                    subprotocols=["websocket"],
+                    additional_headers=auth_ws_headers(),
+                    open_timeout=WEBSOCKET_TIMEOUT,  # see #42: parallel suites + scale-out
+                ) as ws:
+                    await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
+                    await ws.send(
+                        json.dumps(
+                            {"type": "chat_message", "message": query, "thread_id": thread_id}
+                        )
+                    )
+                    results.append(await collect_chat_result(ws))
 
-                message = json.dumps(
-                    {"type": "chat_message", "message": "laptop", "thread_id": thread_id_1}
+            for i, result in enumerate(results, start=1):
+                assert result["completed"], f"Search {i} never emitted agent_complete"
+                assert len(result["text"]) > 0, f"Search {i} returned no response text"
+                assert result["citations"], (
+                    f"Search {i} cited no products -- both runs of the same query "
+                    "must ground in the same index"
                 )
-                await ws.send(message)
-
-                response_1 = await collect_chat_response(ws)
-
-            # Second search (same query)
-            async with ws_connect(
-                ws_url_2, subprotocols=["websocket"], additional_headers=auth_ws_headers()
-            ) as ws:
-                await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
-
-                message = json.dumps(
-                    {"type": "chat_message", "message": "laptop", "thread_id": thread_id_2}
-                )
-                await ws.send(message)
-
-                response_2 = await collect_chat_response(ws)
-
-            # Both should have generated responses (not necessarily identical, but similar structure)
-            assert len(response_1) > 0, "First search returned no results"
-            assert len(response_2) > 0, "Second search returned no results"
-
-            # Should be roughly similar length (within 50%)
-            ratio = max(len(response_1), len(response_2)) / min(len(response_1), len(response_2))
-            assert (
-                ratio < 1.5
-            ), f"Results inconsistent: {len(response_1)} vs {len(response_2)} chars"
         except Exception as e:
             _skip_if_origin_blocked(e)
             pytest.fail(f"Data consistency test failed: {e}")

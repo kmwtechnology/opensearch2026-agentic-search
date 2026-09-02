@@ -397,7 +397,10 @@ opensearch2026-agentic-search/
 │   ├── esci_products_sample_10000.parquet
 │   └── esci_judgments_aggregated.parquet
 ├── langchain_agent/              # Main application (see langchain_agent/README.md)
-│   ├── main.py                   # LangGraph agent core (~4,200 lines)
+│   ├── main.py                   # EcommerceSearchAgent: setup, graph wiring, lifecycle (~600 lines)
+│   ├── pipeline_nodes.py         # PipelineNodesMixin: the 8 LangGraph nodes + helpers (~3,000 lines)
+│   ├── conversation_management.py  # ConversationManagementMixin: threads, titles, summarize/compact
+│   ├── cli.py                    # Interactive terminal REPL (dev only)
 │   ├── agent_state.py            # CustomAgentState TypedDict
 │   ├── config.py                 # All configuration constants
 │   ├── vector_store.py           # OpenSearchVectorStore + retriever (RRF fusion)
