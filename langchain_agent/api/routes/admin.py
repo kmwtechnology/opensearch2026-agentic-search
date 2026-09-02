@@ -14,8 +14,10 @@ Protected by two-layer auth:
 """
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 
 from api.middleware.origin_auth import verify_same_origin
 from api.middleware.session_auth import verify_admin_token, verify_session
@@ -49,6 +51,13 @@ async def diagnose(request: Request, q: str = "sony") -> dict:
         await verify_session(request)
     except HTTPException:
         await verify_admin_token(request)
+    return await run_in_threadpool(_diagnose_sync, q)
+
+
+def _diagnose_sync(q: str) -> dict:
+    """Blocking OpenSearch calls for /diagnose, run off the event loop via
+    run_in_threadpool (see #25) so a slow/hanging index probe never stalls
+    concurrent chat WebSocket traffic."""
     try:
         from config import OPENSEARCH_INDEX_NAME
         from vector_store import create_opensearch_client
@@ -116,6 +125,12 @@ async def admin_health(request: Request) -> dict:
         await verify_session(request)
     except HTTPException:
         await verify_admin_token(request)
+    return await run_in_threadpool(_admin_health_sync)
+
+
+def _admin_health_sync() -> dict:
+    """Blocking OpenSearch calls for /admin/health, run off the event loop
+    via run_in_threadpool (see #25)."""
     try:
         from config import OPENSEARCH_INDEX_NAME
         from vector_store import create_opensearch_client
@@ -188,9 +203,9 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
             status_code=403, detail="Enrichment is disabled (ENABLE_ENRICHMENT_TOOL=false)"
         )
 
-    from enrichment_service import enrich_attribute
-
-    result = enrich_attribute(body.attribute_type, body.variant, explicit_canonical=body.canonical)
+    result = await run_in_threadpool(
+        _enrich_sync, body.attribute_type, body.variant, body.canonical
+    )
 
     return EnrichmentResponse(
         success=result.success,
@@ -203,3 +218,16 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
         docs_processed=result.docs_processed,
         duration_seconds=result.duration_seconds,
     )
+
+
+def _enrich_sync(attribute_type: str, variant: str, canonical: Optional[str]):
+    """enrich_attribute triggers a real Lucille reindex subprocess -- measured
+    ~17-20s (see enrichment_service.py). Called directly on the event loop
+    this would freeze every in-flight WebSocket chat stream for the whole
+    duration; run_in_threadpool (see #25) keeps it off the loop. The live
+    agent's own trigger_enrichment tool call is unaffected by this bug --
+    it already runs inside a LangGraph node, which astream_events dispatches
+    to an executor thread, not the event loop."""
+    from enrichment_service import enrich_attribute
+
+    return enrich_attribute(attribute_type, variant, explicit_canonical=canonical)

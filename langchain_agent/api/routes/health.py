@@ -8,6 +8,7 @@ from pathlib import Path
 
 import psycopg
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 # Add parent directory to path for config import (dynamic, not hardcoded)
@@ -15,6 +16,57 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from config import DATABASE_URL, GOOGLE_API_KEY, OPENSEARCH_INDEX_NAME, VECTOR_COLLECTION_NAME
 
 router = APIRouter()
+
+
+def _health_check_sync() -> dict:
+    """Synchronous health-check body -- run off the event loop via
+    run_in_threadpool (see #25). psycopg.connect and the OpenSearch client's
+    .count() are both blocking; called directly from an async def route they
+    stall the loop (and every in-flight WebSocket) for up to the 5s connect
+    timeout on a Postgres hiccup. This endpoint is also Cloud Run's
+    --startup-probe target (see #23), polled on a schedule, so a stall here
+    is an availability problem, not just added latency.
+    """
+    status = {
+        "status": "ok",
+        "version": "1.1.0",
+        "postgres": False,
+        "google_ai": False,
+        "vector_store": False,
+    }
+
+    # Check PostgreSQL (with connection timeout) - used for checkpoints
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=5) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                status["postgres"] = True
+    except Exception:  # noqa: BLE001 # health probe must not raise
+        status["postgres_error"] = "Database connection failed"
+
+    # Check OpenSearch vector store has documents
+    try:
+        from vector_store import create_opensearch_client
+
+        client = create_opensearch_client()
+        result = client.count(
+            index=OPENSEARCH_INDEX_NAME,
+            body={"query": {"term": {"collection_id": VECTOR_COLLECTION_NAME}}},
+        )
+        doc_count = result["count"]
+        status["vector_store"] = doc_count > 0
+        status["document_count"] = doc_count
+    except Exception:  # noqa: BLE001 # health probe must not raise
+        status["vector_store_error"] = "Vector store connection failed"
+
+    # Check Google AI API key is configured (don't leak the fact it's missing)
+    status["google_ai"] = bool(GOOGLE_API_KEY)
+
+    # Overall status
+    if not all([status["postgres"], status["google_ai"]]):
+        status["status"] = "degraded"
+
+    return status
 
 
 @router.get("/health")
@@ -62,50 +114,13 @@ async def health_check():
         - Deployment readiness checks
 
     **Note:** Always returns 200 even if degraded (fail-open for monitoring).
+        Runs off the event loop (see #25) -- the underlying checks are
+        blocking (psycopg, requests-based OpenSearch client).
 
     Returns:
         Health status of postgres, google_ai, vector_store, and overall system.
     """
-    status = {
-        "status": "ok",
-        "version": "1.1.0",
-        "postgres": False,
-        "google_ai": False,
-        "vector_store": False,
-    }
-
-    # Check PostgreSQL (with connection timeout) - used for checkpoints
-    try:
-        with psycopg.connect(DATABASE_URL, connect_timeout=5) as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1")
-                status["postgres"] = True
-    except Exception:  # noqa: BLE001 # health probe must not raise
-        status["postgres_error"] = "Database connection failed"
-
-    # Check OpenSearch vector store has documents
-    try:
-        from vector_store import create_opensearch_client
-
-        client = create_opensearch_client()
-        result = client.count(
-            index=OPENSEARCH_INDEX_NAME,
-            body={"query": {"term": {"collection_id": VECTOR_COLLECTION_NAME}}},
-        )
-        doc_count = result["count"]
-        status["vector_store"] = doc_count > 0
-        status["document_count"] = doc_count
-    except Exception:  # noqa: BLE001 # health probe must not raise
-        status["vector_store_error"] = "Vector store connection failed"
-
-    # Check Google AI API key is configured (don't leak the fact it's missing)
-    status["google_ai"] = bool(GOOGLE_API_KEY)
-
-    # Overall status
-    if not all([status["postgres"], status["google_ai"]]):
-        status["status"] = "degraded"
-
-    return status
+    return await run_in_threadpool(_health_check_sync)
 
 
 @router.get("/health/ready")
