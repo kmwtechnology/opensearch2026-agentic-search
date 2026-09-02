@@ -186,7 +186,9 @@ Both must match exactly. If you add a field to the backend, add it to the fronte
 
 ## Auth Patterns
 
-Never wire new routes through the legacy `verify_api_key` middleware. It's dead code.
+Never wire new routes through `verify_api_key` — it doesn't exist. `api/middleware/auth.py`
+is 9 lines holding only `AuthConfigurationError`; a `verify_api_key` import raises
+`ImportError`, not a working-but-dead call (see #26).
 
 **✓ Correct:**
 ```python
@@ -202,11 +204,11 @@ async def list_conversations(request: Request):
 
 **✗ Wrong:**
 ```python
-from api.middleware.auth import verify_api_key  # Dead code
+from api.middleware.auth import verify_api_key  # ImportError -- doesn't exist
 
 @app.get("/api/conversations")
 async def list_conversations(request: Request):
-    verify_api_key(request)  # This doesn't work; use verify_session
+    verify_api_key(request)  # Use verify_same_origin + verify_session instead
 ```
 
 ### Two-Layer Auth

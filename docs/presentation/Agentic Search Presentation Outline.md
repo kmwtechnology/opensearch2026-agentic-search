@@ -109,7 +109,7 @@ A search agent becomes genuinely agentic in two distinct ways. First, it can imp
 
 ## **Stage 1 — Classify intent**
 
-* Keyword fast-path with an LLM fallback, into six classes: `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary`.  
+* A single structured-output LLM call classifies into six classes: `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary` (no keyword fast-path — every request pays a full LLM round-trip here).  
 * Confidence below 0.7 triggers a clarifying question instead of a guess.  
 * For a follow-up turn, the query rewriter resolves pronouns and comparatives against conversation history first.
 

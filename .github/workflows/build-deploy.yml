@@ -462,6 +462,17 @@ jobs:
           # gated on real readiness yet -- now that they are, via the probe
           # above, --max-instances=4 gives real headroom instead of more
           # unguarded cold starts).
+          #
+          # ADMIN_TOKEN (see #26 -- api/middleware/session_auth.py reads it
+          # for X-Admin-Token automation auth, but it was never wired into
+          # any deploy path, so admin automation couldn't authenticate in
+          # prod at all) is sourced from a GitHub Actions repo secret via
+          # --set-env-vars, not GCP Secret Manager via --set-secrets like
+          # every other credential below. That's a real, deliberate
+          # inconsistency: unlike Secret Manager-backed values, this one
+          # is visible in plain text via `gcloud run services describe`.
+          # Move it to Secret Manager (matching the others) if that's not
+          # an acceptable tradeoff.
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
@@ -481,7 +492,8 @@ jobs:
           QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,\
           EMBEDDINGS_MODEL=models/gemini-embedding-001,\
           LOG_LEVEL=INFO,\
-          LOG_FORMAT=json" \
+          LOG_FORMAT=json,\
+          ADMIN_TOKEN=${{ secrets.ADMIN_TOKEN }}" \
             --set-secrets="\
           API_KEY=agentic-hybrid-search-api-key:latest,\
           GOOGLE_API_KEY=agentic-hybrid-search-google-api-key:latest,\

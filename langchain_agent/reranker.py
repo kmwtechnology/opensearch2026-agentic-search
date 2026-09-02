@@ -324,9 +324,8 @@ class CrossEncoderReranker:
     """
     Cross-encoder reranker using sentence-transformers for fast local document scoring.
 
-    Replaces LLM-based reranking (~500ms per batch) with a specialized cross-encoder model
-    (~10ms per batch). Cross-encoders are designed for pair-wise relevance scoring, unlike
-    general-purpose LLMs.
+    Replaces LLM-based reranking (~500ms per batch) with a specialized cross-encoder model.
+    Cross-encoders are designed for pair-wise relevance scoring, unlike general-purpose LLMs.
 
     ## Why Cross-Encoders?
 
@@ -337,17 +336,22 @@ class CrossEncoderReranker:
     ## Scoring Approach
 
     Uses `sentence-transformers.CrossEncoder` to score (query, document) pairs:
-    - Model: `cross-encoder/ms-marco-MiniLM-L-12-v2` (default; 12M params, ~10ms per batch)
+    - Model: `cross-encoder/ms-marco-MiniLM-L-12-v2` (default; 12M params)
     - Raw output: logits (unbounded); normalized via sigmoid to [0.0, 1.0]
     - Batching: all documents scored in a single `predict()` call
     - Documents: content truncated to 500 chars (same as GeminiReranker)
 
     ## Performance
 
-    - Latency: ~1ms per document (10ms for 10 docs vs. 500ms for Gemini)
+    - Latency: measured directly from production logs (see #26) at ~1.9–2.0s for a
+      RERANKER_FETCH_K=40-document batch on Cloud Run's CPU-only instance -- not the
+      ~10ms/batch figure this docstring and several other docs previously claimed
+      (that number doesn't match observed behavior at real batch size / real hardware;
+      don't propagate it further without re-measuring).
     - Quality: Comparable or better than Gemini on ESCI benchmarks (cross-encoders are
       rank-trained on MS MARCO)
-    - Memory: ~200MB model weights (one-time download from HuggingFace Hub)
+    - Memory: ~200MB model weights (baked into the Docker image at build time, not
+      downloaded at runtime — see the HF_HOME/HF_HUB_OFFLINE comments in the Dockerfile)
 
     ## Parameters
 

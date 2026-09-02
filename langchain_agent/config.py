@@ -1,8 +1,14 @@
 """
 Configuration constants for Agentic Hybrid Search RAG Agent.
 
-All configuration values are loaded from the `.env` file via python-dotenv.
-Copy `.env.example` to `.env` and customize as needed.
+Most configuration values are loaded from the `.env` file via python-dotenv;
+a subset (see #26 -- notably RETRIEVER_K/FETCH_K/ALPHA, RERANKER_FETCH_K/
+TOP_K, ENABLE_RERANKING, ENABLE_QUERY_EVALUATION, QUERY_EVAL_TIMEOUT_MS,
+VECTOR_DIMENSION, ENABLE_COMPACTION, MAX_CONTEXT_TOKENS, DEFAULT_THREAD_ID)
+are plain Python literals below and are NOT env-overridable, regardless of
+what a matching-looking entry in `.env.example` might suggest. Copy
+`.env.example` to `.env` and customize as needed -- but check `.env.example`
+itself for which of its entries actually do anything.
 
 ## Configuration Sections
 
@@ -200,7 +206,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # LLM Model (Gemini)
 LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-flash-preview")
-LLM_TEMPERATURE = int(os.getenv("LLM_TEMPERATURE", 0))
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", 0))
 
 # Embeddings Model (Gemini)
 EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "models/gemini-embedding-001")
@@ -241,8 +247,8 @@ DB_POOL_MAX_SIZE = 20
 # VECTOR CONFIGURATION
 # ============================================================================
 
-# Vector embedding dimension (text-embedding-005 with output_dimensionality=768)
-# Default is 1024 but 768 is recommended: nearly identical quality with 4x less storage
+# Vector embedding dimension (models/gemini-embedding-001 with output_dimensionality=768)
+# Default is 3072 but 768 is recommended: nearly identical quality with far less storage
 VECTOR_DIMENSION = 768
 
 # Collection name for vector storage
@@ -314,7 +320,8 @@ RERANKER_BATCH_SIZE = int(os.getenv("RERANKER_BATCH_SIZE", 20))
 # Enable API connection priming on startup to reduce first-query latency
 RERANKER_WARMUP_ENABLED = os.getenv("RERANKER_WARMUP_ENABLED", "true").lower() == "true"
 
-# Reranker backend: "cross-encoder" (local, ~10ms/batch) or "gemini" (LLM, ~500ms/batch)
+# Reranker backend: "cross-encoder" (local, ~2s for a 40-doc batch, measured in
+# production) or "gemini" (LLM, ~500ms/batch)
 # Default to cross-encoder for speed; set to "gemini" to revert to LLM-based reranking
 RERANKER_TYPE = os.getenv("RERANKER_TYPE", "cross-encoder")
 

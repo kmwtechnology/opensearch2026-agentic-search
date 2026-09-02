@@ -181,8 +181,9 @@ app = FastAPI(
         "- **Hybrid search**: BM25 + vector (RRF fusion, k=60) with dynamic alpha per intent\n"
         "- **Intent routing**: 7 classes (search, comparison, attribute_filter, refinement, "
         "follow_up, summary, clarify)\n"
-        "- **Reranking + quality gate**: Cross-encoder (ms-marco-MiniLM-L-12-v2, ~10ms, default) "
-        "or optional Gemini LLM (~500ms–1s), 0.0–1.0 scores, with adaptive alpha ±0.3 retry\n"
+        "- **Reranking + quality gate**: Cross-encoder (ms-marco-MiniLM-L-12-v2, ~2s for a "
+        "40-doc batch, default) or optional Gemini LLM (~500ms–1s), 0.0–1.0 scores, with "
+        "adaptive alpha ±0.3 retry\n"
         "- **Typeahead autocomplete**: `/api/suggest` edge-ngram prefix matching with "
         "spell correction and distance-1 fuzzy fallback\n"
         "- **BM25 optimizations**: synonyms, phrase boosting, field boosting, phonetic matching\n"
@@ -201,7 +202,7 @@ app = FastAPI(
         "**Authentication:** Two-layer auth (both enforced): "
         "(1) Same-origin check (localhost dev ports + Cloud Run URL), "
         "(2) Session cookie (LoginScreen) OR X-Admin-Token header (automation).\n\n"
-        "See [openapi.yaml](https://github.com/kmwtechnology/agentic-hybrid-search/blob/main/"
+        "See [openapi.yaml](https://github.com/kmwtechnology/opensearch2026-agentic-search/blob/main/"
         "langchain_agent/openapi.yaml) for the full hand-authored spec."
     ),
     version="1.0.0",
@@ -210,7 +211,7 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     contact={
         "name": "KMW Technology",
-        "url": "https://github.com/kmwtechnology/agentic-hybrid-search",
+        "url": "https://github.com/kmwtechnology/opensearch2026-agentic-search",
     },
     lifespan=lifespan,
 )

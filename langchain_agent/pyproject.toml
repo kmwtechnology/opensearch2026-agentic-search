@@ -1,5 +1,11 @@
 [tool.black]
 line-length = 100
+# Deliberately pinned to py313, NOT py314 (the runtime/CI version -- see #26).
+# black 26.5.1's py314 target rewrites `except (ValueError, TypeError):` into
+# invalid syntax `except ValueError, TypeError:`. Confirmed via
+# `black --target-version py314 --check --diff main.py`. Bump this once that's
+# fixed upstream; until then it's an intentional exception to the version-drift
+# fix, not an oversight.
 target-version = ["py313"]
 extend-exclude = '''
 (
@@ -14,7 +20,7 @@ skip = [".venv", "venv", "node_modules", "build", "dist", "htmlcov"]
 skip_glob = ["**/node_modules/**"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 ignore_missing_imports = true
 exclude = [
     "\\.venv/",

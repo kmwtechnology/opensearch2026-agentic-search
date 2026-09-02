@@ -108,7 +108,6 @@ class TestRequiredEnvironmentVariables:
         int_configs = {
             "POSTGRES_PORT": "5432",
             "OPENSEARCH_PORT": "9200",
-            "LLM_TEMPERATURE": "0",
             "PORT": "8000",
             "RETRIEVER_K": "10",
             "RETRIEVER_FETCH_K": "40",
@@ -119,9 +118,34 @@ class TestRequiredEnvironmentVariables:
             value = os.getenv(key, default)
             try:
                 int_val = int(value)
-                assert int_val >= 0 or key == "LLM_TEMPERATURE"
+                assert int_val >= 0
             except ValueError:
                 pytest.fail(f"{key}={value} is not a valid integer")
+
+    def test_llm_temperature_is_a_real_float_config_attribute(self):
+        """Regression test: config.LLM_TEMPERATURE must be float, not int.
+
+        `int(os.getenv("LLM_TEMPERATURE", 0))` was the actual bug -- setting
+        LLM_TEMPERATURE=0.7 raised ValueError at import time. The other
+        temperature-related tests in this file never caught it because they
+        re-parse a hardcoded default string locally instead of importing and
+        checking the real `config` module attribute -- this one does.
+        """
+        import config
+
+        assert isinstance(config.LLM_TEMPERATURE, float)
+
+        with patch.dict(os.environ, {"LLM_TEMPERATURE": "0.7"}):
+            import importlib
+
+            importlib.reload(config)
+            try:
+                assert config.LLM_TEMPERATURE == pytest.approx(0.7)
+            finally:
+                # Restore the module to its normal (unset-env) state for
+                # any other test that imports config later in this session.
+                os.environ.pop("LLM_TEMPERATURE", None)
+                importlib.reload(config)
 
 
 @pytest.mark.unit
@@ -222,7 +246,7 @@ class TestConfigDefaults:
     def test_default_temperature_value(self):
         """Test default temperature is valid (0-1 or 0-2)."""
         temp_str = os.getenv("LLM_TEMPERATURE", "0")
-        temp = int(temp_str)
+        temp = float(temp_str)
 
         assert 0 <= temp <= 2
 
@@ -455,7 +479,7 @@ class TestConfigurationConsistency:
 
     def test_temperature_not_negative(self):
         """Test temperature is not negative."""
-        temp = int(os.getenv("LLM_TEMPERATURE", "0"))
+        temp = float(os.getenv("LLM_TEMPERATURE", "0"))
 
         assert temp >= 0
 
@@ -501,7 +525,7 @@ class TestEnvironmentVariableTypes:
             "POSTGRES_PORT": int,
             "OPENSEARCH_PORT": int,
             "PORT": int,
-            "LLM_TEMPERATURE": int,
+            "LLM_TEMPERATURE": float,
             "VECTOR_DIMENSION": int,
             "RETRIEVER_K": int,
             "RETRIEVER_FETCH_K": int,
