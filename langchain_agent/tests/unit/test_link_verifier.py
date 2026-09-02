@@ -66,53 +66,45 @@ class TestLinkVerifier:
         return resp
 
     def test_verify_url_returns_true_for_200(self):
-        verifier = LinkVerifier()
         with patch("httpx.Client") as mock_client_cls:
             mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
             mock_client.head.return_value = self._mock_response(200)
             mock_client_cls.return_value = mock_client
 
+            verifier = LinkVerifier()  # httpx.Client() built at __init__ (see #25)
             is_valid, reason = verifier.verify_url("https://amazon.com/dp/B08")
             assert is_valid is True
             assert "200" in reason
 
     def test_verify_url_returns_false_for_404(self):
-        verifier = LinkVerifier()
         with patch("httpx.Client") as mock_client_cls:
             mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
             mock_client.head.return_value = self._mock_response(404)
             mock_client_cls.return_value = mock_client
 
+            verifier = LinkVerifier()
             is_valid, reason = verifier.verify_url("https://amazon.com/dp/GONE")
             assert is_valid is False
             assert "404" in reason
 
     def test_verify_url_returns_false_on_timeout(self):
-        verifier = LinkVerifier()
         with patch("httpx.Client") as mock_client_cls:
             mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
             mock_client.head.side_effect = httpx.TimeoutException("timed out")
             mock_client_cls.return_value = mock_client
 
+            verifier = LinkVerifier()
             is_valid, reason = verifier.verify_url("https://slow.example.com")
             assert is_valid is False
             assert "Timeout" in reason or "timeout" in reason.lower()
 
     def test_verify_url_returns_false_on_connect_error(self):
-        verifier = LinkVerifier()
         with patch("httpx.Client") as mock_client_cls:
             mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
             mock_client.head.side_effect = httpx.ConnectError("refused")
             mock_client_cls.return_value = mock_client
 
+            verifier = LinkVerifier()
             is_valid, reason = verifier.verify_url("https://down.example.com")
             assert is_valid is False
 
@@ -123,14 +115,12 @@ class TestLinkVerifier:
         assert "empty" in reason.lower()
 
     def test_verify_url_uses_cache_on_second_call(self):
-        verifier = LinkVerifier()
         with patch("httpx.Client") as mock_client_cls:
             mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
             mock_client.head.return_value = self._mock_response(200)
             mock_client_cls.return_value = mock_client
 
+            verifier = LinkVerifier()
             url = "https://amazon.com/dp/B08"
             verifier.verify_url(url)
             verifier.verify_url(url)  # Second call should hit cache
@@ -157,18 +147,38 @@ class TestLinkVerifier:
         verifier = LinkVerifier()
         assert verifier.verify_urls([]) == {}
 
-    def test_get_stats_tracks_verified_and_failed(self):
-        verifier = LinkVerifier()
+    def test_verify_urls_reuses_one_client_across_concurrent_workers(self):
+        """Regression coverage for #25: verify_urls used to construct a
+        fresh httpx.Client per URL (even under the ThreadPoolExecutor's
+        concurrent workers). httpx.Client() should now be constructed
+        exactly once, in __init__ -- not once per URL verified."""
         with patch("httpx.Client") as mock_client_cls:
             mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.head.return_value = self._mock_response(200)
+            mock_client_cls.return_value = mock_client
+
+            verifier = LinkVerifier()
+            urls = [f"https://item-{i}.example.com" for i in range(5)]
+            results = verifier.verify_urls(urls)
+
+        assert len(results) == 5
+        assert all(is_valid for is_valid, _ in results.values())
+        assert mock_client_cls.call_count == 1, (
+            f"httpx.Client() constructed {mock_client_cls.call_count} times "
+            "for 5 URLs -- expected exactly 1 (shared client)"
+        )
+        assert mock_client.head.call_count == 5
+
+    def test_get_stats_tracks_verified_and_failed(self):
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
             mock_client.head.side_effect = [
                 self._mock_response(200),
                 self._mock_response(404),
             ]
             mock_client_cls.return_value = mock_client
 
+            verifier = LinkVerifier()
             verifier.verify_url("https://valid.com")
             verifier.verify_url("https://broken.com")
 

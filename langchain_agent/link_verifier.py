@@ -107,6 +107,14 @@ class LinkVerifier:
         self.verified_count = 0
         self.failed_count = 0
         self._counter_lock = threading.Lock()  # Thread-safe counter updates
+        # One client shared across every verify_url call, including the
+        # concurrent ThreadPoolExecutor workers in verify_urls -- httpx
+        # clients are documented safe to share across threads (connection
+        # pooling is internally synchronized). Previously a fresh
+        # httpx.Client() was constructed per URL, so a 10-URL batch at
+        # max_workers=5 paid a fresh TLS handshake per URL across 2 waves
+        # (see #25).
+        self._client = httpx.Client(timeout=self.timeout_seconds, follow_redirects=True)
 
     def verify_url(self, url: Optional[str]) -> Tuple[bool, str]:
         """
@@ -130,22 +138,21 @@ class LinkVerifier:
 
         # Perform verification
         try:
-            with httpx.Client(timeout=self.timeout_seconds, follow_redirects=True) as client:
-                response = client.head(url)
+            response = self._client.head(url)
 
-                # 200-299 = success
-                is_valid = 200 <= response.status_code < 300
+            # 200-299 = success
+            is_valid = 200 <= response.status_code < 300
 
-                if is_valid:
-                    with self._counter_lock:
-                        self.verified_count += 1
-                    self.cache.set(url, True)
-                    return True, f"Status {response.status_code}"
-                else:
-                    with self._counter_lock:
-                        self.failed_count += 1
-                    self.cache.set(url, False)
-                    return False, f"Status {response.status_code}"
+            if is_valid:
+                with self._counter_lock:
+                    self.verified_count += 1
+                self.cache.set(url, True)
+                return True, f"Status {response.status_code}"
+            else:
+                with self._counter_lock:
+                    self.failed_count += 1
+                self.cache.set(url, False)
+                return False, f"Status {response.status_code}"
 
         except httpx.TimeoutException:
             with self._counter_lock:

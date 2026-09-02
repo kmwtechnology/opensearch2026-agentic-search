@@ -60,9 +60,9 @@ def _diagnose_sync(q: str) -> dict:
     concurrent chat WebSocket traffic."""
     try:
         from config import OPENSEARCH_INDEX_NAME
-        from vector_store import create_opensearch_client
+        from vector_store import get_shared_opensearch_client
 
-        client = create_opensearch_client()
+        client = get_shared_opensearch_client()
 
         def count(field: str) -> dict:
             try:
@@ -133,9 +133,9 @@ def _admin_health_sync() -> dict:
     via run_in_threadpool (see #25)."""
     try:
         from config import OPENSEARCH_INDEX_NAME
-        from vector_store import create_opensearch_client
+        from vector_store import get_shared_opensearch_client
 
-        client = create_opensearch_client()
+        client = get_shared_opensearch_client()
 
         # Check index exists and get stats
         if client.indices.exists(index=OPENSEARCH_INDEX_NAME):
