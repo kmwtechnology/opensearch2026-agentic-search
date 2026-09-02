@@ -13,7 +13,6 @@ import json
 import os
 import sys
 import uuid
-from typing import Any
 
 import httpx
 import websockets.asyncio.client as ws_client

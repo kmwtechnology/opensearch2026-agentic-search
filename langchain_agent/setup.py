@@ -10,11 +10,8 @@ Usage:
 """
 
 import argparse
-import json
-import os
 import sys
 from pathlib import Path
-from typing import List, Tuple
 
 import psycopg
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -40,11 +37,6 @@ from config import (
     RERANKER_MODEL,
     VECTOR_DIMENSION,
 )
-
-# Document chunking settings
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
-
 
 # ============================================================================
 # STEP 1: POSTGRESQL DATABASE SETUP
@@ -104,7 +96,7 @@ def create_opensearch_index(reset: bool = False):
     print("\n[2/7] Creating OpenSearch index...")
 
     try:
-        from vector_store import INDEX_MAPPING, SEARCH_PIPELINE, create_opensearch_client
+        from vector_store import INDEX_MAPPING, create_opensearch_client
 
         client = create_opensearch_client()
 
@@ -222,74 +214,6 @@ def validate_google_api():
     except Exception as e:
         print(f"      ✗ Google AI API validation failed: {e}")
         print("      Check your GOOGLE_API_KEY in .env")
-        return False
-
-
-# ============================================================================
-# STEP 3: SAMPLE DATA LOADING
-# ============================================================================
-
-
-def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
-    """Split text into overlapping chunks"""
-    chunks = []
-    start = 0
-
-    while start < len(text):
-        end = min(start + chunk_size, len(text))
-        chunk = text[start:end]
-
-        if chunk.strip():
-            chunks.append(chunk)
-
-        start = end - overlap
-        if end == len(text):
-            break
-
-    return chunks
-
-
-def load_documents_from_directory(docs_dir: str) -> List[Tuple[str, str]]:
-    """Load all text documents from a directory"""
-    documents = []
-    docs_path = Path(docs_dir)
-
-    if not docs_path.exists():
-        print(f"      ✗ Documents directory not found: {docs_dir}")
-        return documents
-
-    txt_files = list(docs_path.glob("*.txt"))
-    if not txt_files:
-        print(f"      ⚠ No .txt files found in {docs_dir}")
-        return documents
-
-    for file_path in txt_files:
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-                documents.append((file_path.name, content))
-                print(f"      ✓ Loaded: {file_path.name} ({len(content)} chars)")
-        except Exception as e:
-            print(f"      ✗ Error loading {file_path.name}: {e}")
-
-    return documents
-
-
-def verify_data_load() -> bool:
-    """Verify that documents were loaded into OpenSearch"""
-    try:
-        from vector_store import create_opensearch_client
-
-        client = create_opensearch_client()
-        count = client.count(index=OPENSEARCH_INDEX_NAME, body={"query": {"match_all": {}}})[
-            "count"
-        ]
-
-        print(f"      ✓ Chunks in OpenSearch: {count}")
-        return count > 0
-
-    except Exception as e:
-        print(f"      ✗ Error verifying load: {e}")
         return False
 
 

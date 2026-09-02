@@ -33,11 +33,9 @@ import argparse
 import json
 import logging
 import sys
-import time
-from collections import defaultdict
 from datetime import datetime
 from statistics import mean, stdev
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 from langchain_core.documents import Document
 from opensearchpy import OpenSearch
