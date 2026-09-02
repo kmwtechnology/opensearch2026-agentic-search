@@ -46,9 +46,9 @@ def _health_check_sync() -> dict:
 
     # Check OpenSearch vector store has documents
     try:
-        from vector_store import create_opensearch_client
+        from vector_store import get_shared_opensearch_client
 
-        client = create_opensearch_client()
+        client = get_shared_opensearch_client()
         result = client.count(
             index=OPENSEARCH_INDEX_NAME,
             body={"query": {"term": {"collection_id": VECTOR_COLLECTION_NAME}}},

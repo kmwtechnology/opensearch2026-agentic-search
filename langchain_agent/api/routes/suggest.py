@@ -12,10 +12,11 @@ from difflib import SequenceMatcher
 from typing import List, Optional
 
 from fastapi import APIRouter, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from config import OPENSEARCH_INDEX_NAME
-from vector_store import create_opensearch_client
+from vector_store import get_shared_opensearch_client
 
 logger = logging.getLogger(__name__)
 
@@ -235,8 +236,18 @@ async def suggest(
     if not q or len(q.strip()) == 0:
         return SuggestResponse(suggestions=[])
 
+    return await run_in_threadpool(_suggest_sync, q, limit)
+
+
+def _suggest_sync(q: str, limit: int) -> SuggestResponse:
+    """Blocking OpenSearch calls for /suggest, run off the event loop via
+    run_in_threadpool (see #25). This is the app's highest-frequency
+    endpoint (fires per keystroke); the synchronous RequestsHttpConnection
+    client's .search() call used to run directly on the loop, stalling
+    every in-flight WebSocket chat stream for the duration of each search.
+    """
     try:
-        client = create_opensearch_client()
+        client = get_shared_opensearch_client()
 
         body = {
             "size": max(limit, 3),

@@ -2868,14 +2868,19 @@ Original query: {query}
             )
             return docs, (time.time() - t0) * 1000.0
 
+        # Best-effort lookup of ESCI ground-truth judgments depends only on
+        # `query`, not on any retrieval result -- runs in the same pool as
+        # the three searches below instead of serially after them (see #25).
         retrieve_start = time.time()
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             hybrid_future = pool.submit(_hybrid_call)
             bm25_future = pool.submit(_bm25_call)
             stock_future = pool.submit(_stock_bm25_call)
+            judgments_future = pool.submit(self.vector_store.lookup_judgments, query)
             results, retriever_latency_ms = hybrid_future.result()
             bm25_results, bm25_latency_ms = bm25_future.result()
             stock_bm25_results, stock_bm25_latency_ms = stock_future.result()
+            judgments = judgments_future.result()
         retrieve_elapsed = time.time() - retrieve_start
 
         logger.info(
@@ -2971,10 +2976,9 @@ Original query: {query}
                         exc_info=True,
                     )
 
-        # Best-effort lookup of ESCI ground-truth judgments. Missing index or
-        # missing query is silently treated as "no ground truth" — the UI
-        # falls back to the confidence proxy in that case.
-        judgments = self.vector_store.lookup_judgments(query)
+        # judgments was fetched concurrently above. Missing index or missing
+        # query is silently treated as "no ground truth" — the UI falls back
+        # to the confidence proxy in that case.
         if judgments:
             logger.info(f"Retriever: ground truth available ({len(judgments)} judged products)")
         else:

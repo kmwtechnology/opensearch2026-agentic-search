@@ -34,11 +34,19 @@ MAPPING_TEST_INDEX = "test_attribute_mappings_enrichment_v2"
 
 @pytest.fixture
 def store(monkeypatch):
+    """AttributeMappingStore.get_lookup_table() caches by (INDEX_NAME,
+    attribute_type) (see #25). Every test in this file shares the same
+    MAPPING_TEST_INDEX name, so without clearing the cache on both sides,
+    a lookup cached by one test (e.g. an assertion's own
+    store.get_lookup_table(...) call) would leak into the next test's
+    freshly-deleted-and-recreated index."""
     monkeypatch.setattr(store_module, "INDEX_NAME", MAPPING_TEST_INDEX)
+    store_module._clear_lookup_cache()
     s = AttributeMappingStore()
     s.client.indices.delete(index=MAPPING_TEST_INDEX, ignore=[404])
     yield s
     s.client.indices.delete(index=MAPPING_TEST_INDEX, ignore=[404])
+    store_module._clear_lookup_cache()
 
 
 def _mock_successful_subprocess():
