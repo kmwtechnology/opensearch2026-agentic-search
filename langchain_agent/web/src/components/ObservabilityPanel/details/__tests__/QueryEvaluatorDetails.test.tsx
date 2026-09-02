@@ -18,8 +18,6 @@ const INITIAL_OBS = {
   qualityGate: null,
   searchCandidates: [],
   rerankedDocuments: [],
-  documentGradingSummary: null,
-  responseGrading: null,
   pipelineSummary: null,
   historicalSnapshot: null,
   searchStatus: 'idle' as const,

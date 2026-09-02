@@ -212,9 +212,6 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
           <div className="space-y-2">
             {documents.map((doc, index) => {
               const isExpanded = expandedDocs.has(index)
-              const hasVectorScore = doc.vector_score !== undefined
-              const hasTextScore = doc.text_score !== undefined
-              const hasRrfScore = doc.rrf_score !== undefined
 
               return (
                 <div
@@ -292,30 +289,6 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
                     </div>
                   </div>
 
-                  {/* Score badges - show component scores when expanded */}
-                  {isExpanded && (
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {hasVectorScore && doc.vector_score !== undefined && (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs">
-                          <span className="font-medium">Vector:</span>
-                          <span>{(doc.vector_score * 100).toFixed(1)}%</span>
-                        </span>
-                      )}
-                      {hasTextScore && doc.text_score !== undefined && (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs">
-                          <span className="font-medium">Text:</span>
-                          <span>{(doc.text_score * 100).toFixed(1)}%</span>
-                        </span>
-                      )}
-                      {hasRrfScore && doc.rrf_score !== undefined && (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs">
-                          <span className="font-medium">RRF:</span>
-                          <span>{(doc.rrf_score * 100).toFixed(1)}%</span>
-                        </span>
-                      )}
-                    </div>
-                  )}
-
                   {/* Snippet - collapsed view */}
                   {!isExpanded && (
                     <p className="text-xs text-gray-400 line-clamp-2">
@@ -327,12 +300,7 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
                   {isExpanded && (
                     <div className="max-h-48 overflow-y-auto rounded bg-gray-900/50 p-3 border border-gray-700/50">
                       <div className="text-xs text-gray-300 space-y-2">
-                        {doc.page_content && (
-                          <p className="whitespace-pre-wrap">{doc.page_content}</p>
-                        )}
-                        {!doc.page_content && doc.snippet && (
-                          <p className="whitespace-pre-wrap">{doc.snippet}</p>
-                        )}
+                        {doc.snippet && <p className="whitespace-pre-wrap">{doc.snippet}</p>}
                       </div>
                     </div>
                   )}

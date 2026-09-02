@@ -378,8 +378,7 @@ emit_event(event) ──JSON─────────────────�
 | Retriever | `RetrievalProgressEvent`, `OpenSearchQueryEvent` | query_dsl, alpha, intent, candidates; `query_type` ∈ {`hybrid`, `bm25_baseline`, `quality_gate_retry`} |
 | Reranker | `RerankerProgressEvent` | per-doc scores, top-k |
 | Quality Gate | `QualityGateEvent` | decision (pass/retry/accept), reasoning |
-| Agent | `LLMResponseChunkEvent`, `AgentCompleteEvent` | token, finish_reason |
-| Agent (low confidence) | `ClarificationRequestedEvent`, `ClarificationResolvedEvent` | emitted when intent confidence < 0.7; resolved on user reply |
+| Agent | `LLMResponseChunkEvent`, `AgentCompleteEvent` | token, finish_reason; low-confidence clarification (intent confidence < 0.7) streams through this same path as a normal agent response carrying `clarifying_questions`, not a dedicated event type |
 | LLM Judge | `LLMResponseCorrectedEvent` | `corrected_content`, `original_faithfulness`, `corrected_faithfulness`; emitted when judge auto-correction fires (any fabrication/cross-product-bleed flag present — faithfulness score is NOT a gate, see issue #77); `hallucination_retry_used` reset to `False` in `intent_classifier_node` so the gate is live for every new user turn (issue #83); frontend replaces the streamed chat message |
 
 ### Event Schema Sync

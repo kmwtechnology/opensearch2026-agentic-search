@@ -11,8 +11,6 @@ import type {
   ObservabilityStep,
   PipelineSummaryEvent,
   QueryEvaluationEvent,
-  DocumentGradingSummaryEvent,
-  ResponseGradingEvent,
   SearchCandidate,
   RerankedDocument,
   ConversationContextEvent,
@@ -56,8 +54,6 @@ interface ObservabilityState {
   qualityGate: QualityGateEvent | null
   searchCandidates: SearchCandidate[]
   rerankedDocuments: RerankedDocument[]
-  documentGradingSummary: DocumentGradingSummaryEvent | null
-  responseGrading: ResponseGradingEvent | null
   pipelineSummary: PipelineSummaryEvent | null
 
   // Agentic enrichment flywheel — set when trigger_enrichment fires this
@@ -106,8 +102,6 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
   qualityGate: null,
   searchCandidates: [],
   rerankedDocuments: [],
-  documentGradingSummary: null,
-  responseGrading: null,
   pipelineSummary: null,
   enrichmentTriggered: null,
   historicalSnapshot: null,
@@ -131,8 +125,6 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     qualityGate: null,
     searchCandidates: [],
     rerankedDocuments: [],
-    documentGradingSummary: null,
-    responseGrading: null,
     enrichmentTriggered: null,
     historicalSnapshot: null,
     searchStatus: 'idle',
@@ -195,14 +187,6 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
           rerankerStatus: 'done',
           rerankedDocuments: (event as { results: RerankedDocument[] }).results,
         })
-        break
-
-      case 'document_grading_summary':
-        set({ documentGradingSummary: event as DocumentGradingSummaryEvent })
-        break
-
-      case 'response_grading':
-        set({ responseGrading: event as ResponseGradingEvent })
         break
 
       case 'pipeline_summary':
@@ -333,8 +317,6 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     qualityGate: null,
     searchCandidates: [],
     rerankedDocuments: [],
-    documentGradingSummary: null,
-    responseGrading: null,
     pipelineSummary: null,
     enrichmentTriggered: null,
     historicalSnapshot: null,

@@ -281,8 +281,6 @@ async def websocket_chat(websocket: WebSocket):
           when ESCI judgments exist; confidence proxy otherwise; LLM-as-judge
           generation row with categorical hallucination flags when enabled)
         - `AgentErrorEvent` — Error occurred (recoverable or fatal)
-        - `ClarificationRequestedEvent` — Intent classification too uncertain
-        - `ClarificationResolvedEvent` — User provided clarification
 
     **Authentication:**
         Two layers, both enforced before the WebSocket is accepted:
