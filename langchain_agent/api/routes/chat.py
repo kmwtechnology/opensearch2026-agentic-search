@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -121,10 +121,6 @@ class ConnectionManager:
                 logger.error("websocket_send_error", thread_id=thread_id, error=str(e))
             except Exception as e:
                 logger.error("unexpected_websocket_send_error", thread_id=thread_id, error=str(e))
-
-    def get_connection_count(self) -> int:
-        """Return number of active connections."""
-        return len(self.active_connections)
 
     async def shutdown(self):
         """

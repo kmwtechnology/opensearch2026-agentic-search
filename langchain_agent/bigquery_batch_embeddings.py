@@ -19,15 +19,13 @@ Usage:
 
 import argparse
 import logging
-import os
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 import pandas as pd
-import pyarrow.parquet as pq
 from google.api_core.exceptions import AlreadyExists, NotFound
 from google.cloud import bigquery, storage
 

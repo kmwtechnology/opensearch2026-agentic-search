@@ -4,21 +4,15 @@ Structured logging configuration using structlog.
 Provides:
 - configure_logging(): Setup structlog with JSON/console output
 - get_logger(name): Get a bound logger for a module
-- LogContext: Context manager for adding temporary log context
 """
 
 import logging
 import sys
-from contextvars import ContextVar
-from typing import Any, Dict, Optional
 
 import structlog
 from structlog.types import Processor
 
 from config import LOG_FORMAT, LOG_INCLUDE_TIMESTAMP, LOG_LEVEL
-
-# Context variable for request-scoped logging context
-_log_context: ContextVar[Dict[str, Any]] = ContextVar("log_context", default={})
 
 
 def configure_logging() -> None:
@@ -106,52 +100,3 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
         BoundLogger instance with structured logging capabilities
     """
     return structlog.get_logger(name)
-
-
-class LogContext:
-    """
-    Context manager for adding temporary context to logs.
-
-    Example:
-        with LogContext(request_id="abc123", user_id="user1"):
-            logger.info("Processing request")
-            # Logs will include request_id and user_id
-    """
-
-    def __init__(self, **kwargs: Any) -> None:
-        """
-        Initialize log context with key-value pairs.
-
-        Args:
-            **kwargs: Context variables to add to logs
-        """
-        self.context = kwargs
-        self.token: Optional[Any] = None
-
-    def __enter__(self) -> "LogContext":
-        """Enter the context and bind variables."""
-        structlog.contextvars.bind_contextvars(**self.context)
-        return self
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Exit the context and unbind variables."""
-        structlog.contextvars.unbind_contextvars(*self.context.keys())
-
-
-def bind_context(**kwargs: Any) -> None:
-    """
-    Bind context variables to all subsequent logs in this context.
-
-    Args:
-        **kwargs: Context variables to bind
-
-    Example:
-        bind_context(thread_id="abc123")
-        logger.info("Message with thread_id")
-    """
-    structlog.contextvars.bind_contextvars(**kwargs)
-
-
-def clear_context() -> None:
-    """Clear all bound context variables."""
-    structlog.contextvars.clear_contextvars()

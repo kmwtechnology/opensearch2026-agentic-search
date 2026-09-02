@@ -701,7 +701,7 @@ class ObservableAgentService:
                         await emit(
                             NodeStartEvent(
                                 node=event_name,
-                                input_summary=f"Starting {event_name}",
+                                input_summary=self._summarize_input(event_name, {}),
                             )
                         )
 

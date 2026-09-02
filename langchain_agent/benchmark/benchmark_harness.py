@@ -31,8 +31,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from statistics import mean
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 # Results directory
 RESULTS_DIR = Path(__file__).parent.parent / "tests" / "performance_results"
