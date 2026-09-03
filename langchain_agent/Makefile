@@ -1,4 +1,4 @@
-.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval register-langfuse-evaluators analyze-quality-gate
+.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval capture-langfuse-prompts register-langfuse-evaluators analyze-quality-gate
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -14,6 +14,7 @@ help:
 	@echo "Observability (Local Development Only):"
 	@echo "  make langfuse-up        - Start Langfuse tracing (docker compose --profile observability up -d)"
 	@echo "  make langfuse-down      - Stop Langfuse tracing (docker compose --profile observability down)"
+	@echo "  make capture-langfuse-prompts - Capture current prompts for local Langfuse authoring"
 	@echo "  make langfuse-eval      - Run a Langfuse Experiment (Dataset Run) against esci-ground-truth"
 	@echo "  make register-langfuse-evaluators - Register /evals Evaluators (Code + LLM-as-judge templates)"
 	@echo "  make analyze-quality-gate - Report quality-gate threshold calibration vs. eval outcomes"
@@ -273,6 +274,10 @@ langfuse-down:
 langfuse-eval:
 	@echo "Running a Langfuse Experiment (Dataset Run) against esci-ground-truth..."
 	@PYTHONPATH=. $(VENV)/python scripts/run_langfuse_eval.py
+
+capture-langfuse-prompts:
+	@echo "Capturing current prompts into local Langfuse..."
+	@PYTHONPATH=. $(VENV)/python scripts/capture_langfuse_prompts.py
 
 register-langfuse-evaluators:
 	@echo "Registering Langfuse Evaluators (citation-precision-ts, answer-groundedness, context-precision)..."
