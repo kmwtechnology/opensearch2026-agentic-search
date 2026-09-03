@@ -63,7 +63,7 @@ def test_enabled_returns_handler_and_inits_client_once():
         public_key="pk_test", secret_key="sk_test", base_url="http://localhost:3000"
     )
     assert handler_cls.call_count == 2
-    handler_cls.assert_called_with(public_key="pk_test")
+    handler_cls.assert_called_with(public_key="pk_test", trace_context=None)
 
 
 def test_missing_keys_returns_empty_without_importing_sdk():
@@ -125,3 +125,59 @@ def test_langfuse_absent_from_production_paths(relpath):
 def test_langfuse_present_in_dev_requirements():
     with open(os.path.join(REPO_ROOT, "langchain_agent/requirements-dev.txt")) as f:
         assert "langfuse" in f.read().lower()
+
+
+def test_record_metrics_noop_when_disabled():
+    with patch.object(lfi, "LANGFUSE_ENABLED", False):
+        lfi.record_metrics("trace123", foo=1.0)  # must not raise
+
+
+def test_record_metrics_noop_when_trace_id_none():
+    client_cls = MagicMock(name="Langfuse")
+    with _enabled(modules=_fake_sdk(client_cls=client_cls)):
+        assert lfi.get_callbacks(trace_id="t1")  # resolves _handler_cls
+        lfi.record_metrics(None, foo=1.0)  # must not raise
+    client_cls.assert_called_once()  # resolve happened, but no score created
+
+
+def test_record_metrics_noop_when_not_resolved():
+    with patch.object(lfi, "LANGFUSE_ENABLED", True), patch.object(lfi, "_handler_cls", None):
+        lfi.record_metrics("trace123", foo=1.0)  # must not raise; never imports langfuse
+
+
+def test_record_metrics_creates_score_per_metric():
+    client = MagicMock(name="client")
+    get_client = MagicMock(name="get_client", return_value=client)
+
+    with _enabled(modules=_fake_sdk(get_client=get_client)):
+        assert lfi.get_callbacks(trace_id="trace123")  # resolves _handler_cls
+        lfi.record_metrics("trace123", retriever_latency_ms=12.3, bm25_latency_ms=4.5)
+
+    get_client.assert_called_once_with(public_key="pk_test")
+    assert client.create_score.call_count == 2
+    client.create_score.assert_any_call(
+        trace_id="trace123", name="retriever_latency_ms", value=12.3, data_type="NUMERIC"
+    )
+    client.create_score.assert_any_call(
+        trace_id="trace123", name="bm25_latency_ms", value=4.5, data_type="NUMERIC"
+    )
+
+
+def test_record_metrics_swallows_errors():
+    get_client = MagicMock(name="get_client", side_effect=RuntimeError("connection error"))
+    with _enabled(modules=_fake_sdk(get_client=get_client)):
+        assert lfi.get_callbacks(trace_id="trace123")
+        lfi.record_metrics("trace123", foo=1.0)  # must not raise
+
+
+def test_new_trace_id_noop_when_disabled():
+    with patch.object(lfi, "LANGFUSE_ENABLED", False):
+        assert lfi.new_trace_id() is None
+
+
+def test_new_trace_id_delegates_to_sdk():
+    client_cls = MagicMock(name="Langfuse")
+    client_cls.create_trace_id = MagicMock(return_value="generated-id")
+    with _enabled(modules=_fake_sdk(client_cls=client_cls)):
+        assert lfi.new_trace_id(seed="thread-1") == "generated-id"
+    client_cls.create_trace_id.assert_called_once_with(seed="thread-1")
