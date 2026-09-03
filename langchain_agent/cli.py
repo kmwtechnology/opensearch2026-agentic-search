@@ -11,7 +11,7 @@ import httpx
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from config import DEFAULT_ALPHA, SEARCH_DEFAULTS, VECTOR_COLLECTION_NAME
-from integrations import get_callbacks, shutdown_tracing
+from integrations import get_callbacks, new_trace_id, shutdown_tracing
 from main import EcommerceSearchAgent
 
 
@@ -144,6 +144,7 @@ def _invoke_agent(agent, user_input: str):
             "query_analysis": "",
             "intent": "question",
             "summary_text": None,
+            "langfuse_trace_id": new_trace_id(seed=agent.thread_id),
         }
 
         # Try to apply compaction to conversation if needed
@@ -190,7 +191,7 @@ def _invoke_agent(agent, user_input: str):
             input_data,
             config={
                 "configurable": {"thread_id": agent.thread_id},
-                "callbacks": get_callbacks(),
+                "callbacks": get_callbacks(input_data["langfuse_trace_id"]),
             },
         )
 

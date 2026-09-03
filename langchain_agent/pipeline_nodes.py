@@ -31,6 +31,7 @@ from config import (
 )
 from enrichment_value_judge import EnrichmentValueJudge
 from exceptions import LLMError, SearchTimeoutError
+from integrations import record_metrics
 from judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
 from llm_content import _flatten_llm_content
 
@@ -2658,6 +2659,13 @@ Original query: {query}
         else:  # search
             logger.info(f"Retriever (search): {result_summary}")
 
+        record_metrics(
+            state.get("langfuse_trace_id"),
+            bm25_latency_ms=bm25_latency_ms,
+            stock_bm25_latency_ms=stock_bm25_latency_ms,
+            retriever_latency_ms=retriever_latency_ms,
+        )
+
         return {
             "retrieved_documents": results,
             "pre_rerank_documents": list(results),
@@ -2844,6 +2852,12 @@ Original query: {query}
         for doc, score in all_scored:
             doc.metadata["reranker_score"] = score
         all_reranked_results = [doc for doc, _ in all_scored]
+
+        record_metrics(
+            state.get("langfuse_trace_id"),
+            reranker_latency_ms=rerank_elapsed * 1000.0,
+            reranker_max_score=max_score,
+        )
 
         return {
             "retrieved_documents": results,
