@@ -34,14 +34,19 @@ logger = logging.getLogger(__name__)
 
 
 def scroll_judged_queries(os_client: OpenSearch, locale: str, limit: int) -> list:
-    """Sample distinct queries from the esci_judgments index (mirrors benchmark_esci.py)."""
+    """Sample distinct queries from the esci_judgments index.
+
+    No explicit sort: the index's `id` field (this run's document id, not a mapped
+    sortable field) isn't a reliable ordering key across ingests, and any consistent
+    subset works fine for a sample -- unlike benchmark_esci.py's full-scroll use case,
+    which does need deterministic pagination.
+    """
     resp = os_client.search(
         index="esci_judgments",
         body={
             "query": {"term": {"locale": locale}},
             "size": limit,
             "_source": ["query"],
-            "sort": [{"query_id": "asc"}],
         },
     )
     seen = []
@@ -84,7 +89,9 @@ def main() -> int:
 
     agent = EcommerceSearchAgent()
     try:
-        agent.verify_prerequisites()
+        # Not agent.verify_prerequisites(): it checks self.vector_store.client, which
+        # is None until initialize_components() runs -- a pre-existing ordering issue
+        # in cli.py's own run(), not something to route around here.
         agent.initialize_components()
         agent.create_agent_graph()
 

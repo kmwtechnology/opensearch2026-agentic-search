@@ -1010,13 +1010,21 @@ class OpenSearchVectorStore:
         """
         src = hit["_source"]
         score = retrieval_score if retrieval_score is not None else hit.get("_score")
+        # product_id: the products Lucille pipeline sets `idField: "product_id"`
+        # (see lucille-esci/conf/products.generated.conf), which consumes that
+        # parquet column as the OpenSearch document _id -- it is never also
+        # written back out as its own `product_id` field in _source. hit["_id"]
+        # (== _source.id, both always the product's ASIN) is the actual source
+        # of truth; src.get("product_id") is kept only as a defensive fallback
+        # for indices built by some other, non-Lucille ingest path.
+        product_id = hit.get("_id") or src.get("id") or src.get("product_id", "")
         metadata = {
             "source": src.get("source", ""),
             "title": src.get("title", ""),
             "doc_type": src.get("doc_type", ""),
             "url": src.get("url", ""),
             "collection_id": src.get("collection_id", ""),
-            "product_id": src.get("product_id", ""),
+            "product_id": product_id,
             "product_brand": src.get("product_brand", ""),
             "product_color": src.get("product_color", ""),
             "product_color_primary": src.get("product_color_primary", ""),

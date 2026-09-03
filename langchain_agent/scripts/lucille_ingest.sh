@@ -307,6 +307,18 @@ info "Products ingest complete."
 
 # ── Step 6: Run judgments ingest ──────────────────────────────────────────────
 if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
+  # Delete first: filterJudgmentsToProducts (judgments.conf) drops most docs
+  # rather than re-indexing them, and Lucille's OpenSearch indexer only
+  # touches docs it actually publishes -- a stale doc from a run before the
+  # products sample changed (or before filtering existed at all) would
+  # otherwise sit in the index forever with content that no longer reflects
+  # what's actually retrievable. The judgments ingest always fully repopulates
+  # from the parquet, so starting from empty is always correct here, unlike
+  # the products index (which needs --reset-index explicitly since it can be
+  # deliberately reused/appended to across ingest runs).
+  info "Clearing esci_judgments index before re-ingest..."
+  curl -s -X DELETE "$_DISPLAY_URL/esci_judgments" -o /dev/null || true
+
   info "Running Lucille judgments ingest..."
   info "  Source: $JUDGMENTS_PARQUET"
   info "  Target: $_DISPLAY_URL/esci_judgments"
@@ -316,10 +328,12 @@ if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
       -e LUCILLE_CONF=/lucille/conf/judgments.conf \
       -e JUDGMENTS_PARQUET_PATH="/lucille/data/$(basename "$JUDGMENTS_PARQUET")" \
       -e OPENSEARCH_URL="$CONTAINER_OPENSEARCH_URL" \
+      -e OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
       lucille)
   else
     JUDGMENTS_PARQUET_PATH="$JUDGMENTS_PARQUET" \
     OPENSEARCH_URL="$OPENSEARCH_URL" \
+    OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
       java \
         -Dconfig.file="$ESCI_MODULE_DIR/conf/judgments.conf" \
         -cp "$ESCI_MODULE_DIR/target/lib/*:$ESCI_MODULE_DIR/target/lucille-esci-1.0.0.jar" \
