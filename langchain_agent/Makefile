@@ -1,4 +1,4 @@
-.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval
+.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval analyze-quality-gate
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -15,6 +15,7 @@ help:
 	@echo "  make langfuse-up        - Start Langfuse tracing (docker compose --profile observability up -d)"
 	@echo "  make langfuse-down      - Stop Langfuse tracing (docker compose --profile observability down)"
 	@echo "  make langfuse-eval      - Run judged ESCI queries through the pipeline for eval scoring"
+	@echo "  make analyze-quality-gate - Report quality-gate threshold calibration vs. eval outcomes"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test               - Run all test suites"
@@ -271,5 +272,8 @@ langfuse-down:
 langfuse-eval:
 	@echo "Running ESCI judged queries through the pipeline for Langfuse eval..."
 	@PYTHONPATH=. $(VENV)/python scripts/run_langfuse_eval.py
+
+analyze-quality-gate:
+	@PYTHONPATH=. $(VENV)/python scripts/analyze_quality_gate_thresholds.py
 
 .SILENT: help

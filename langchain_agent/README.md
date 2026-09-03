@@ -128,7 +128,9 @@ Requests for a query with existing ESCI ground truth also sync that query into a
 Langfuse Dataset (`esci-ground-truth`) and score `eval_citation_precision` (are the
 cited products actually relevant per ESCI?) on the trace automatically. Run
 `make langfuse-eval` to drive a batch of known-judged queries through the pipeline
-if you want eval data without waiting on live traffic.
+if you want eval data without waiting on live traffic. `make analyze-quality-gate`
+reports whether the per-intent quality-gate thresholds actually separate high- from
+low-precision responses, based on that eval data — read-only, doesn't change anything.
 
 ### Path B: Deployment to GCP
 
