@@ -148,6 +148,16 @@ services:
       REDIS_PORT: "6379"
       REDIS_AUTH: ${LANGFUSE_REDIS_AUTH:-local-dev-redis}
       REDIS_TLS_ENABLED: "false"
+      # Code Evaluators (issue #56 /evals): local dev only, no AWS Lambda --
+      # insecure-local runs evaluator source directly inside this worker
+      # process. Only TypeScript/JavaScript is supported in this mode (not
+      # Python), and Langfuse's own docs are explicit this is not a sandbox
+      # boundary for untrusted code -- acceptable here only because every
+      # evaluator submitted is our own reviewed, tested, version-controlled
+      # source (langchain_agent/web/src/langfuse-evaluators/), not arbitrary
+      # third-party code, and this never runs in the GCP deployment.
+      LANGFUSE_CODE_EVAL_DISPATCHER: insecure-local
+      QUEUE_CONSUMER_CODE_EVAL_EXECUTION_QUEUE_IS_ENABLED: "true"
 
   langfuse-web:
     image: docker.langfuse.com/langfuse/langfuse:4
