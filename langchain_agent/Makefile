@@ -1,4 +1,4 @@
-.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down
+.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -14,6 +14,7 @@ help:
 	@echo "Observability (Local Development Only):"
 	@echo "  make langfuse-up        - Start Langfuse tracing (docker compose --profile observability up -d)"
 	@echo "  make langfuse-down      - Stop Langfuse tracing (docker compose --profile observability down)"
+	@echo "  make langfuse-eval      - Run judged ESCI queries through the pipeline for eval scoring"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test               - Run all test suites"
@@ -266,5 +267,9 @@ langfuse-down:
 	@echo "Stopping Langfuse observability stack..."
 	cd .. && docker compose --profile observability down
 	@echo "✓ Langfuse stopped"
+
+langfuse-eval:
+	@echo "Running ESCI judged queries through the pipeline for Langfuse eval..."
+	@PYTHONPATH=. $(VENV)/python scripts/run_langfuse_eval.py
 
 .SILENT: help
