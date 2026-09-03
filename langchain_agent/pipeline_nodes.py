@@ -31,7 +31,7 @@ from config import (
 )
 from enrichment_value_judge import EnrichmentValueJudge
 from exceptions import LLMError, SearchTimeoutError
-from integrations import record_metrics
+from integrations import record_citation_eval, record_metrics, sync_dataset_item
 from judge import RETRY_ELIGIBLE_CATEGORIES, JudgmentResult, LLMJudge
 from llm_content import _flatten_llm_content
 
@@ -926,6 +926,11 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             logger.info(
                 f"Agent: LLM disabled, returning {len(retrieved_documents)} raw search results"
             )
+            judgments = state.get("judgments")
+            sync_dataset_item(user_query, judgments)
+            record_citation_eval(
+                state.get("langfuse_trace_id"), citations, retrieved_documents, judgments
+            )
             return {
                 "messages": [AIMessage(content=results_md)],
                 "citations": citations,
@@ -1037,6 +1042,12 @@ CITATION & STYLE:
         elapsed = time.time() - start_time
 
         logger.info(f"Agent: generated response ({response_length} chars) in {elapsed:.3f}s")
+
+        judgments = state.get("judgments")
+        sync_dataset_item(user_query, judgments)
+        record_citation_eval(
+            state.get("langfuse_trace_id"), citations, retrieved_documents, judgments
+        )
 
         return {"messages": [response], "citations": citations}
 
