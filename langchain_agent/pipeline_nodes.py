@@ -194,6 +194,8 @@ class PipelineNodesMixin:
                     confidence = min(confidence, 0.65)
                     reasoning = f"{category_reasoning}. Need clarification on intent."
 
+        record_metrics(state.get("langfuse_trace_id"), intent=intent)
+
         return {
             "intent": intent,
             "user_query": user_query,
