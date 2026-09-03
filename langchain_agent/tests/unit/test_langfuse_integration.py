@@ -163,6 +163,24 @@ def test_record_metrics_creates_score_per_metric():
     )
 
 
+def test_record_metrics_scores_strings_as_categorical():
+    """String values (e.g. an LLM-judge verdict or hallucination category) score CATEGORICAL."""
+    client = MagicMock(name="client")
+    get_client = MagicMock(name="get_client", return_value=client)
+
+    with _enabled(modules=_fake_sdk(get_client=get_client)):
+        assert lfi.get_callbacks(trace_id="trace123")
+        lfi.record_metrics("trace123", judge_verdict="llm_response", judge_faithfulness=0.92)
+
+    assert client.create_score.call_count == 2
+    client.create_score.assert_any_call(
+        trace_id="trace123", name="judge_verdict", value="llm_response", data_type="CATEGORICAL"
+    )
+    client.create_score.assert_any_call(
+        trace_id="trace123", name="judge_faithfulness", value=0.92, data_type="NUMERIC"
+    )
+
+
 def test_record_metrics_swallows_errors():
     get_client = MagicMock(name="get_client", side_effect=RuntimeError("connection error"))
     with _enabled(modules=_fake_sdk(get_client=get_client)):
