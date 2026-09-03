@@ -113,6 +113,13 @@ Stop or clean up local services:
 Removes running services, the Docker volumes, `.venv`, `node_modules`, and
 log files. Keeps `.env` by default (prompted separately).
 
+**Optional: local-only Langfuse tracing.** `make langfuse-up` starts a self-hosted
+Langfuse v4 stack (`docker compose --profile observability`) so pipeline execution
+graphs are visible at `http://localhost:3000` (login `dev@example.com` / `localdev123`).
+Set `LANGFUSE_ENABLED=true` in `.env` and restart the agent — everything else
+(keys, host) has working defaults. This never touches the GCP deployment: the SDK
+lives only in `requirements-dev.txt` and the flag is never set in CI/deploy. `make langfuse-down` to stop.
+
 ### Path B: Deployment to GCP
 
 ```bash
@@ -738,6 +745,8 @@ langchain_agent/
 │   ├── gcp-init.sh        # Cloud SQL + product ingestion (one-time)
 │   ├── gcp-teardown.sh    # Remove GCP resources
 │   └── smoke_test.sh      # Post-deploy smoke test
+├── integrations/          # Optional external integrations (local dev only)
+│   └── langfuse_integration.py  # Langfuse tracing; gated by LANGFUSE_ENABLED, never in GCP
 ├── api/                   # FastAPI backend — see api/README.md
 │   ├── main.py            # FastAPI lifespan
 │   ├── routes/            # chat (WebSocket), conversations, health, suggest, admin, auth
