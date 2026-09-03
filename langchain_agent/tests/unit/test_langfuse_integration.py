@@ -208,16 +208,47 @@ def test_configure_playground_skips_without_google_api_key():
         assert script.main() == 0
 
 
+def _fake_playground_sdk(client_cls):
+    """Fake `langfuse` package tree for configure_langfuse_playground.py's imports:
+    `from langfuse import Langfuse` and
+    `from langfuse.api.llm_connections.types.llm_adapter import LlmAdapter`.
+    Built via sys.modules injection (not `patch("langfuse.Langfuse")`) because CI's
+    unit-test job only installs requirements.txt, never requirements-dev.txt -- the
+    real `langfuse` package is never importable there, by design (mirrors prod).
+    """
+    root = ModuleType("langfuse")
+    root.Langfuse = client_cls
+    api = ModuleType("langfuse.api")
+    llm_connections = ModuleType("langfuse.api.llm_connections")
+    types_mod = ModuleType("langfuse.api.llm_connections.types")
+    adapter_mod = ModuleType("langfuse.api.llm_connections.types.llm_adapter")
+    adapter_mod.LlmAdapter = MagicMock(name="LlmAdapter", GOOGLE_AI_STUDIO="google-ai-studio")
+    root.api = api
+    api.llm_connections = llm_connections
+    llm_connections.types = types_mod
+    types_mod.llm_adapter = adapter_mod
+    return {
+        "langfuse": root,
+        "langfuse.api": api,
+        "langfuse.api.llm_connections": llm_connections,
+        "langfuse.api.llm_connections.types": types_mod,
+        "langfuse.api.llm_connections.types.llm_adapter": adapter_mod,
+    }
+
+
 def test_configure_playground_upserts_connection():
     import scripts.configure_langfuse_playground as script
 
-    client = MagicMock(name="Langfuse")
+    client_instance = MagicMock(name="client")
+    client_cls = MagicMock(name="Langfuse", return_value=client_instance)
+
     with (
         patch.object(script, "GOOGLE_API_KEY", "test-key"),
-        patch("langfuse.Langfuse", return_value=client),
+        patch.dict(sys.modules, _fake_playground_sdk(client_cls)),
     ):
         assert script.main() == 0
-    client.api.llm_connections.upsert.assert_called_once()
-    _, kwargs = client.api.llm_connections.upsert.call_args
+
+    client_instance.api.llm_connections.upsert.assert_called_once()
+    _, kwargs = client_instance.api.llm_connections.upsert.call_args
     assert kwargs["provider"] == "google-ai-studio"
     assert kwargs["secret_key"] == "test-key"
