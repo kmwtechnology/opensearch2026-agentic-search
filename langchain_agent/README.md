@@ -124,6 +124,12 @@ Every trace carries an `intent` score alongside the per-node `*_latency_ms` and
 `judge_*` scores, so a cost/latency-by-model/node/intent view is one filtered/grouped
 **Scores** view away in the Langfuse UI — no custom dashboard code needed.
 
+Requests for a query with existing ESCI ground truth also sync that query into a
+Langfuse Dataset (`esci-ground-truth`) and score `eval_citation_precision` (are the
+cited products actually relevant per ESCI?) on the trace automatically. Run
+`make langfuse-eval` to drive a batch of known-judged queries through the pipeline
+if you want eval data without waiting on live traffic.
+
 ### Path B: Deployment to GCP
 
 ```bash
