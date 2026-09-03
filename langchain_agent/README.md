@@ -120,6 +120,10 @@ Set `LANGFUSE_ENABLED=true` in `.env` and restart the agent — everything else
 (keys, host) has working defaults. This never touches the GCP deployment: the SDK
 lives only in `requirements-dev.txt` and the flag is never set in CI/deploy. `make langfuse-down` to stop.
 
+Every trace carries an `intent` score alongside the per-node `*_latency_ms` and
+`judge_*` scores, so a cost/latency-by-model/node/intent view is one filtered/grouped
+**Scores** view away in the Langfuse UI — no custom dashboard code needed.
+
 ### Path B: Deployment to GCP
 
 ```bash
