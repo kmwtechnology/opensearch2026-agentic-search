@@ -199,3 +199,25 @@ def test_new_trace_id_delegates_to_sdk():
     with _enabled(modules=_fake_sdk(client_cls=client_cls)):
         assert lfi.new_trace_id(seed="thread-1") == "generated-id"
     client_cls.create_trace_id.assert_called_once_with(seed="thread-1")
+
+
+def test_configure_playground_skips_without_google_api_key():
+    import scripts.configure_langfuse_playground as script
+
+    with patch.object(script, "GOOGLE_API_KEY", None):
+        assert script.main() == 0
+
+
+def test_configure_playground_upserts_connection():
+    import scripts.configure_langfuse_playground as script
+
+    client = MagicMock(name="Langfuse")
+    with (
+        patch.object(script, "GOOGLE_API_KEY", "test-key"),
+        patch("langfuse.Langfuse", return_value=client),
+    ):
+        assert script.main() == 0
+    client.api.llm_connections.upsert.assert_called_once()
+    _, kwargs = client.api.llm_connections.upsert.call_args
+    assert kwargs["provider"] == "google-ai-studio"
+    assert kwargs["secret_key"] == "test-key"
