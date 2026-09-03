@@ -187,6 +187,11 @@ __all__ = [
     "LANGSMITH_API_KEY",
     "LANGSMITH_PROJECT",
     "LANGSMITH_TRACING_ENABLED",
+    # Langfuse Observability (local dev only)
+    "LANGFUSE_ENABLED",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_BASE_URL",
     # Advanced Streaming
     "ENABLE_ASTREAM_EVENTS",
     # Checkpoint Optimization
@@ -530,6 +535,24 @@ LOG_INCLUDE_TIMESTAMP = True
 LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
 LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "agentic-hybrid-search")
 LANGSMITH_TRACING_ENABLED = LANGSMITH_API_KEY is not None
+
+# ============================================================================
+# LANGFUSE OBSERVABILITY CONFIGURATION (LOCAL DEV ONLY)
+# ============================================================================
+
+# Langfuse self-hosted tracing (local development only, never set in GCP Cloud Run)
+# Enable by setting LANGFUSE_ENABLED=true in .env
+# Requires docker-compose --profile observability to start Langfuse services
+LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "false").lower() == "true"
+
+# Defaults match the LANGFUSE_INIT_PROJECT_* keys docker-compose.yml provisions on
+# first boot, so LANGFUSE_ENABLED=true is the only switch needed locally.
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "pk-lf-local-dev")
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "sk-lf-local-dev")
+
+# Base URL of the Langfuse instance (same name as the SDK's own env var); the default
+# is the docker-compose `observability` profile stack.
+LANGFUSE_BASE_URL = os.getenv("LANGFUSE_BASE_URL", "http://localhost:3000")
 
 # ============================================================================
 # ADVANCED STREAMING CONFIGURATION

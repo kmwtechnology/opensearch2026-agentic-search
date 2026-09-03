@@ -11,6 +11,7 @@ import httpx
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from config import DEFAULT_ALPHA, SEARCH_DEFAULTS, VECTOR_COLLECTION_NAME
+from integrations import get_callbacks, shutdown_tracing
 from main import EcommerceSearchAgent
 
 
@@ -187,7 +188,10 @@ def _invoke_agent(agent, user_input: str):
         # Invoke the agent to get the complete response
         result = agent.app.invoke(
             input_data,
-            config={"configurable": {"thread_id": agent.thread_id}},
+            config={
+                "configurable": {"thread_id": agent.thread_id},
+                "callbacks": get_callbacks(),
+            },
         )
 
         # Log query analysis for debugging (optional)
@@ -268,6 +272,7 @@ def run(agent):
         sys.exit(1)
     finally:
         agent.cleanup()
+        shutdown_tracing()
 
 
 def main():

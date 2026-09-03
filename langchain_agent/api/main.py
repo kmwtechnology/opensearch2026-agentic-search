@@ -42,6 +42,7 @@ from config import (
     SESSION_MAX_AGE_SECONDS,
     SESSION_SECRET,
 )
+from integrations import shutdown_tracing
 from logging_config import configure_logging, get_logger
 
 # Configure structured logging
@@ -124,6 +125,7 @@ async def lifespan(app: FastAPI):
         await chat.manager.shutdown()
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
+    shutdown_tracing()
     logger.info("api_shutdown_complete")
 
 
