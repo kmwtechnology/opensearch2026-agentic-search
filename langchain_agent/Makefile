@@ -1,4 +1,4 @@
-.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval analyze-quality-gate
+.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval register-langfuse-evaluators analyze-quality-gate
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -14,7 +14,8 @@ help:
 	@echo "Observability (Local Development Only):"
 	@echo "  make langfuse-up        - Start Langfuse tracing (docker compose --profile observability up -d)"
 	@echo "  make langfuse-down      - Stop Langfuse tracing (docker compose --profile observability down)"
-	@echo "  make langfuse-eval      - Run judged ESCI queries through the pipeline for eval scoring"
+	@echo "  make langfuse-eval      - Run a Langfuse Experiment (Dataset Run) against esci-ground-truth"
+	@echo "  make register-langfuse-evaluators - Register /evals Evaluators (Code + LLM-as-judge templates)"
 	@echo "  make analyze-quality-gate - Report quality-gate threshold calibration vs. eval outcomes"
 	@echo ""
 	@echo "Testing:"
@@ -270,8 +271,12 @@ langfuse-down:
 	@echo "✓ Langfuse stopped"
 
 langfuse-eval:
-	@echo "Running ESCI judged queries through the pipeline for Langfuse eval..."
+	@echo "Running a Langfuse Experiment (Dataset Run) against esci-ground-truth..."
 	@PYTHONPATH=. $(VENV)/python scripts/run_langfuse_eval.py
+
+register-langfuse-evaluators:
+	@echo "Registering Langfuse Evaluators (citation-precision-ts, answer-groundedness, context-precision)..."
+	@PYTHONPATH=. $(VENV)/python scripts/register_langfuse_evaluator.py
 
 analyze-quality-gate:
 	@PYTHONPATH=. $(VENV)/python scripts/analyze_quality_gate_thresholds.py
