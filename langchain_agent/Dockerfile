@@ -38,8 +38,14 @@ ENV HF_HOME=/opt/hf-cache
 RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-12-v2')"
 
 # Copy application source (context is repo root, so prefix with langchain_agent/)
+# NOTE: COPY *.py only matches top-level files, not directories — any new
+# top-level package (like integrations/) needs its own explicit COPY line here
+# or it silently won't exist in the image, crashing the app at import time on
+# boot (issue #18: api/main.py's `from integrations import ...` broke prod
+# deploys this way because this line was missed).
 COPY langchain_agent/*.py ./
 COPY langchain_agent/api/ ./api/
+COPY langchain_agent/integrations/ ./integrations/
 
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /app/web/dist ./web/dist
