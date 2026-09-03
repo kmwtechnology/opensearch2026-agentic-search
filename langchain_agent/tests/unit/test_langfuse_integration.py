@@ -163,6 +163,24 @@ def test_record_metrics_creates_score_per_metric():
     )
 
 
+def test_record_metrics_scores_strings_as_categorical():
+    """String values (e.g. an LLM-judge verdict or hallucination category) score CATEGORICAL."""
+    client = MagicMock(name="client")
+    get_client = MagicMock(name="get_client", return_value=client)
+
+    with _enabled(modules=_fake_sdk(get_client=get_client)):
+        assert lfi.get_callbacks(trace_id="trace123")
+        lfi.record_metrics("trace123", judge_verdict="llm_response", judge_faithfulness=0.92)
+
+    assert client.create_score.call_count == 2
+    client.create_score.assert_any_call(
+        trace_id="trace123", name="judge_verdict", value="llm_response", data_type="CATEGORICAL"
+    )
+    client.create_score.assert_any_call(
+        trace_id="trace123", name="judge_faithfulness", value=0.92, data_type="NUMERIC"
+    )
+
+
 def test_record_metrics_swallows_errors():
     get_client = MagicMock(name="get_client", side_effect=RuntimeError("connection error"))
     with _enabled(modules=_fake_sdk(get_client=get_client)):
@@ -181,3 +199,56 @@ def test_new_trace_id_delegates_to_sdk():
     with _enabled(modules=_fake_sdk(client_cls=client_cls)):
         assert lfi.new_trace_id(seed="thread-1") == "generated-id"
     client_cls.create_trace_id.assert_called_once_with(seed="thread-1")
+
+
+def test_configure_playground_skips_without_google_api_key():
+    import scripts.configure_langfuse_playground as script
+
+    with patch.object(script, "GOOGLE_API_KEY", None):
+        assert script.main() == 0
+
+
+def _fake_playground_sdk(client_cls):
+    """Fake `langfuse` package tree for configure_langfuse_playground.py's imports:
+    `from langfuse import Langfuse` and
+    `from langfuse.api.llm_connections.types.llm_adapter import LlmAdapter`.
+    Built via sys.modules injection (not `patch("langfuse.Langfuse")`) because CI's
+    unit-test job only installs requirements.txt, never requirements-dev.txt -- the
+    real `langfuse` package is never importable there, by design (mirrors prod).
+    """
+    root = ModuleType("langfuse")
+    root.Langfuse = client_cls
+    api = ModuleType("langfuse.api")
+    llm_connections = ModuleType("langfuse.api.llm_connections")
+    types_mod = ModuleType("langfuse.api.llm_connections.types")
+    adapter_mod = ModuleType("langfuse.api.llm_connections.types.llm_adapter")
+    adapter_mod.LlmAdapter = MagicMock(name="LlmAdapter", GOOGLE_AI_STUDIO="google-ai-studio")
+    root.api = api
+    api.llm_connections = llm_connections
+    llm_connections.types = types_mod
+    types_mod.llm_adapter = adapter_mod
+    return {
+        "langfuse": root,
+        "langfuse.api": api,
+        "langfuse.api.llm_connections": llm_connections,
+        "langfuse.api.llm_connections.types": types_mod,
+        "langfuse.api.llm_connections.types.llm_adapter": adapter_mod,
+    }
+
+
+def test_configure_playground_upserts_connection():
+    import scripts.configure_langfuse_playground as script
+
+    client_instance = MagicMock(name="client")
+    client_cls = MagicMock(name="Langfuse", return_value=client_instance)
+
+    with (
+        patch.object(script, "GOOGLE_API_KEY", "test-key"),
+        patch.dict(sys.modules, _fake_playground_sdk(client_cls)),
+    ):
+        assert script.main() == 0
+
+    client_instance.api.llm_connections.upsert.assert_called_once()
+    _, kwargs = client_instance.api.llm_connections.upsert.call_args
+    assert kwargs["provider"] == "google-ai-studio"
+    assert kwargs["secret_key"] == "test-key"

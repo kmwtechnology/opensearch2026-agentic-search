@@ -96,8 +96,10 @@ def get_callbacks(trace_id: Optional[str] = None) -> list:
         return []
 
 
-def record_metrics(trace_id: Optional[str], **metrics: float) -> None:
-    """Record numeric metrics (e.g. per-node latency) as Langfuse scores on a trace.
+def record_metrics(trace_id: Optional[str], **metrics: Any) -> None:
+    """Record metrics (e.g. per-node latency, LLM-judge scores/verdicts) as Langfuse
+    scores on a trace. Numeric values (int/float) score as NUMERIC; strings (e.g. a
+    pairwise verdict or hallucination category) score as CATEGORICAL.
 
     Safe to call unconditionally from pipeline nodes: no-op when tracing is disabled,
     unresolved, or trace_id is None (e.g. this node ran outside a traced invocation).
@@ -113,7 +115,12 @@ def record_metrics(trace_id: Optional[str], **metrics: float) -> None:
 
         client = get_client(public_key=LANGFUSE_PUBLIC_KEY)
         for name, value in metrics.items():
-            client.create_score(trace_id=trace_id, name=name, value=value, data_type="NUMERIC")
+            if isinstance(value, str):
+                client.create_score(
+                    trace_id=trace_id, name=name, value=value, data_type="CATEGORICAL"
+                )
+            else:
+                client.create_score(trace_id=trace_id, name=name, value=value, data_type="NUMERIC")
     except Exception:
         logger.debug("Langfuse record_metrics failed; continuing", exc_info=True)
 

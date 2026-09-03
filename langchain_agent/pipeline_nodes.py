@@ -32,7 +32,7 @@ from config import (
 from enrichment_value_judge import EnrichmentValueJudge
 from exceptions import LLMError, SearchTimeoutError
 from integrations import record_metrics
-from judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
+from judge import RETRY_ELIGIBLE_CATEGORIES, JudgmentResult, LLMJudge
 from llm_content import _flatten_llm_content
 
 logger = logging.getLogger(__name__)
@@ -2173,6 +2173,17 @@ Respond with JSON only. No other text."""
             elapsed_ms,
         )
 
+        def _record_judgment(judgment: "JudgmentResult") -> None:
+            record_metrics(
+                state.get("langfuse_trace_id"),
+                judge_verdict=judgment.verdict,
+                judge_faithfulness=judgment.faithfulness,
+                judge_answer_relevance=judgment.answer_relevance,
+                judge_citation_accuracy=judgment.citation_accuracy,
+                judge_context_utilization=judgment.context_utilization,
+                judge_hallucination_count=len(judgment.hallucinations),
+            )
+
         # Auto-retry path (Layer 3a). Triggered when at least one flagged
         # claim is fabrication / cross_product_bleed AND we haven't already
         # retried this turn. The faithfulness score is NOT checked here —
@@ -2194,6 +2205,7 @@ Respond with JSON only. No other text."""
                     "fabrication/cross_product_bleed (inference/overreach only).",
                     len(result.hallucinations),
                 )
+            _record_judgment(result)
             return {
                 "judgment": result.model_dump(),
                 "judge_latency_ms": elapsed_ms,
@@ -2212,6 +2224,7 @@ Respond with JSON only. No other text."""
             )
         except Exception as exc:
             logger.warning("Auto-retry regeneration failed: %s", exc, exc_info=True)
+            _record_judgment(result)
             return {
                 "judgment": result.model_dump(),
                 "judge_latency_ms": elapsed_ms,
@@ -2222,6 +2235,7 @@ Respond with JSON only. No other text."""
             new_result = self.judge.judge(query, documents, corrected, new_baseline)
         except Exception as exc:
             logger.warning("Auto-retry re-judge failed: %s", exc, exc_info=True)
+            _record_judgment(result)
             return {
                 "judgment": result.model_dump(),
                 "judge_latency_ms": elapsed_ms,
@@ -2235,6 +2249,7 @@ Respond with JSON only. No other text."""
             len(result.hallucinations),
             len(new_result.hallucinations),
         )
+        _record_judgment(new_result)
         return {
             "judgment": new_result.model_dump(),
             "original_judgment": result.model_dump(),

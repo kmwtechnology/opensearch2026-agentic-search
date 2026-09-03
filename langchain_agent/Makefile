@@ -255,7 +255,9 @@ dev:
 
 langfuse-up:
 	@echo "Starting Langfuse observability stack..."
-	cd .. && docker compose --profile observability up -d
+	cd .. && docker compose --profile observability up -d --wait
+	@echo "Configuring Playground (Google AI Studio, from GOOGLE_API_KEY)..."
+	@PYTHONPATH=. $(VENV)/python scripts/configure_langfuse_playground.py || true
 	@echo "✓ Langfuse started at http://localhost:3000"
 	@echo "  UI login: dev@example.com / localdev123"
 	@echo "  Next: set LANGFUSE_ENABLED=true in .env and restart the agent"
