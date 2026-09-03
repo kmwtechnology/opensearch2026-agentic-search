@@ -14,7 +14,7 @@ help:
 	@echo "Observability (Local Development Only):"
 	@echo "  make langfuse-up        - Start Langfuse tracing (docker compose --profile observability up -d)"
 	@echo "  make langfuse-down      - Stop Langfuse tracing (docker compose --profile observability down)"
-	@echo "  make langfuse-eval      - Run judged ESCI queries through the pipeline for eval scoring"
+	@echo "  make langfuse-eval      - Run a Langfuse Experiment (Dataset Run) against esci-ground-truth"
 	@echo "  make analyze-quality-gate - Report quality-gate threshold calibration vs. eval outcomes"
 	@echo ""
 	@echo "Testing:"
@@ -270,7 +270,7 @@ langfuse-down:
 	@echo "✓ Langfuse stopped"
 
 langfuse-eval:
-	@echo "Running ESCI judged queries through the pipeline for Langfuse eval..."
+	@echo "Running a Langfuse Experiment (Dataset Run) against esci-ground-truth..."
 	@PYTHONPATH=. $(VENV)/python scripts/run_langfuse_eval.py
 
 analyze-quality-gate:

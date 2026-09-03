@@ -125,12 +125,15 @@ Every trace carries an `intent` score alongside the per-node `*_latency_ms` and
 **Scores** view away in the Langfuse UI — no custom dashboard code needed.
 
 Requests for a query with existing ESCI ground truth also sync that query into a
-Langfuse Dataset (`esci-ground-truth`) and score `eval_citation_precision` (are the
-cited products actually relevant per ESCI?) on the trace automatically. Run
-`make langfuse-eval` to drive a batch of known-judged queries through the pipeline
-if you want eval data without waiting on live traffic. `make analyze-quality-gate`
-reports whether the per-intent quality-gate thresholds actually separate high- from
-low-precision responses, based on that eval data — read-only, doesn't change anything.
+Langfuse Dataset (`esci-ground-truth`), score `eval_citation_precision` (are the
+cited products actually relevant per ESCI?) on the trace automatically, and queue
+low-precision results onto the `low-confidence-citations` Annotation Queue for
+human review. Run `make langfuse-eval` to run a proper Langfuse **Experiment**
+(`client.run_experiment()`) against the whole dataset — a real Dataset Run you can
+compare over time under Datasets > Runs, not just scattered live scores.
+`make analyze-quality-gate` reports whether the per-intent quality-gate thresholds
+actually separate high- from low-precision responses, based on that eval data —
+read-only, doesn't change anything.
 
 ### Path B: Deployment to GCP
 
