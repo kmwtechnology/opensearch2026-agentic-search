@@ -85,6 +85,7 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 - **Event sync** — `api/schemas/events.py` must stay in sync with `web/src/types/events.ts`. Each event's `node` field pins it to pipeline step. All return paths in `agent_node` must include `"citations"` key (empty list if no citations).
 
+- **Langfuse tracing (LOCAL DEV ONLY, issue #18 Phase 1)** — `make langfuse-up` starts a self-hosted Langfuse v4 stack (`docker compose --profile observability`), and `LANGFUSE_ENABLED=true` attaches a `langfuse.langchain.CallbackHandler` to every graph invocation via `integrations.get_callbacks()` (wired in `cli.py` and `api/services/observable_agent.py`). Zero GCP footprint by construction: the flag is never set in `build-deploy.yml`/`deploy.sh`, and the SDK (plus the `langchain` meta-package it imports) lives only in `requirements-dev.txt` with lazy imports, so the prod image can't even fail on import — `tests/unit/test_langfuse_integration.py` asserts both. UI at `http://localhost:3000` (login `dev@example.com` / `localdev123`); API keys are pre-provisioned via `LANGFUSE_INIT_*` in `docker-compose.yml` and match the `config.py` defaults, so the flag is the only switch. Note: there is no pre-commit hook in `.git/hooks` despite the note below — run `make smoke-local-quick` by hand.
 - **Error hierarchy** — all custom exceptions inherit from `AgenticHybridSearchError`.
 
 ## Common Commands
@@ -95,6 +96,8 @@ All backend commands run from `langchain_agent/`. Bare imports require `PYTHONPA
 # Local services
 docker compose up -d                      # from repo root: PostgreSQL + OpenSearch + Dashboards
 docker compose down
+make langfuse-up                          # + Langfuse tracing stack (compose `observability` profile; LOCAL ONLY)
+make langfuse-down
 
 # Setup & dev
 cd langchain_agent

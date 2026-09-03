@@ -64,6 +64,7 @@ from config import (
     ENABLE_RERANKING,
     RETRIEVER_FETCH_K,
 )
+from integrations import get_callbacks
 from main import EcommerceSearchAgent
 from relevancy_metrics import (
     compute_stage_metrics,
@@ -274,7 +275,10 @@ class ObservableAgentService:
                     "optimizations": optimizations or {},
                 }
 
-                config = {"configurable": {"thread_id": thread_id}}
+                config = {
+                    "configurable": {"thread_id": thread_id},
+                    "callbacks": get_callbacks(),
+                }
 
                 # Track metrics timing
                 node_start_times: Dict[str, float] = {}
