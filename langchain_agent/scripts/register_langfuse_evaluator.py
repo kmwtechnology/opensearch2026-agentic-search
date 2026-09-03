@@ -254,7 +254,10 @@ def _register_llm_judge_evaluator(client, spec: LlmJudgeSpec) -> None:
     ]
     if spec.include_output_var:
         variable_mapping.insert(
-            1, PromptVariableMappingInput(variable="output", source=PromptVariableMappingSource.OUTPUT)
+            1,
+            PromptVariableMappingInput(
+                variable="output", source=PromptVariableMappingSource.OUTPUT
+            ),
         )
 
     model_config = EvaluatorModelConfig(provider="google-ai-studio", model=JUDGE_MODEL)
