@@ -1,4 +1,4 @@
-.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick
+.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -10,6 +10,10 @@ help:
 	@echo "  make doctor             - Check prerequisites and system health"
 	@echo "  make setup              - Run complete system setup (database, models, data)"
 	@echo "  make install-web        - Install web UI dependencies (npm install)"
+	@echo ""
+	@echo "Observability (Local Development Only):"
+	@echo "  make langfuse-up        - Start Langfuse tracing (docker compose --profile observability up -d)"
+	@echo "  make langfuse-down      - Stop Langfuse tracing (docker compose --profile observability down)"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test               - Run all test suites"
@@ -248,5 +252,17 @@ dev:
 	@echo ""
 	@echo "Or start both now (backend in background):"
 	@( PYTHONPATH=. $(VENV)/uvicorn api.main:app --reload --port 8000 & ) && cd web && npm run dev
+
+langfuse-up:
+	@echo "Starting Langfuse observability stack..."
+	cd .. && docker compose --profile observability up -d
+	@echo "✓ Langfuse started at http://localhost:3000"
+	@echo "  UI login: dev@example.com / localdev123"
+	@echo "  Next: set LANGFUSE_ENABLED=true in .env and restart the agent"
+
+langfuse-down:
+	@echo "Stopping Langfuse observability stack..."
+	cd .. && docker compose --profile observability down
+	@echo "✓ Langfuse stopped"
 
 .SILENT: help
