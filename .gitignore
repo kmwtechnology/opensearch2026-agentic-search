@@ -185,3 +185,4 @@ langchain_agent/lucille-esci/conf/products.generated.conf
 /log/
 langchain_agent/log/
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
