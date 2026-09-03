@@ -252,3 +252,29 @@ def test_configure_playground_upserts_connection():
     _, kwargs = client_instance.api.llm_connections.upsert.call_args
     assert kwargs["provider"] == "google-ai-studio"
     assert kwargs["secret_key"] == "test-key"
+
+
+def test_capture_prompts_creates_all_current_prompt_versions():
+    import scripts.capture_langfuse_prompts as script
+
+    client = MagicMock(name="client")
+    script.capture_prompts(client)
+
+    assert [call.kwargs["name"] for call in client.create_prompt.call_args_list] == [
+        "agent-system",
+        "intent-classifier",
+        "judge-system",
+        "judge-comparison",
+    ]
+    assert all(call.kwargs["type"] == "text" for call in client.create_prompt.call_args_list)
+    assert "{{" in client.create_prompt.call_args_list[0].kwargs["prompt"]
+    assert "{{" in client.create_prompt.call_args_list[1].kwargs["prompt"]
+    assert "{{" in client.create_prompt.call_args_list[3].kwargs["prompt"]
+
+
+def test_capture_script_does_not_integrate_with_application():
+    import inspect
+
+    import scripts.capture_langfuse_prompts as script
+
+    assert "get_prompt" not in inspect.getsource(script)
