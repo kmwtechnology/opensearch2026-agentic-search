@@ -142,6 +142,12 @@ dispatcher — no AWS needed) plus two of Langfuse's own built-in LLM-as-judge
 templates (`answer-groundedness`, `context-precision`), independent cross-checks
 on the same things `judge.py` already measures app-side.
 
+To capture the current hardcoded prompts as versioned Langfuse text prompts for
+local authoring, run `make capture-langfuse-prompts`. This is a one-way capture:
+the agent does not fetch or use these prompts locally or in GCP. Copy any
+validated prompt changes back into the Python prompt builders through a normal
+issue and pull request.
+
 ### Path B: Deployment to GCP
 
 ```bash
