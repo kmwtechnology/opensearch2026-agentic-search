@@ -135,6 +135,13 @@ compare over time under Datasets > Runs, not just scattered live scores.
 actually separate high- from low-precision responses, based on that eval data —
 read-only, doesn't change anything.
 
+`make register-langfuse-evaluators` registers three real Langfuse Evaluators
+under `/evals`: a TypeScript Code Evaluator (`web/src/langfuse-evaluators/`,
+type-checked and tested via `npm test`, executed locally via the `insecure-local`
+dispatcher — no AWS needed) plus two of Langfuse's own built-in LLM-as-judge
+templates (`answer-groundedness`, `context-precision`), independent cross-checks
+on the same things `judge.py` already measures app-side.
+
 ### Path B: Deployment to GCP
 
 ```bash
