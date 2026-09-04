@@ -242,15 +242,27 @@ including "Navy", "Cyan", "Teal", etc.
 3. At `start()`, each stage instance queries OpenSearch
    (`agentic_hybrid_search_attribute_mappings` index, via `AttributeMappingStore` on the
    Python side) for its `attributeType`'s variant→canonical lookup — **no bundled-file
-   fallback**; logs a warning and produces no fields for that run if OpenSearch is
-   unreachable
+   fallback**. It connects through Lucille's own `OpenSearchUtils` client, reusing the
+   indexer's `opensearch` block (URL with basic-auth userinfo, `acceptInvalidCert`) via
+   HOCON merge with only `index` overridden — so it works against the hosted cluster
+   exactly like the indexer does. A failed load is a hard `StageException` that fails the
+   ingest: the stage is only generated when its type is registered, so an unreachable or
+   unauthorized store is always a real error, and degrading silently is how the hosted
+   index ended up with zero color/material fields (#71, #72)
 4. Scans `chunk_text` (longest-match-first, word-boundary regex) and writes the canonical
    fields to every matching product in a single pass through the ingest pipeline
 
 **Configuration:**
 
 - Taxonomy: OpenSearch (`agentic_hybrid_search_attribute_mappings` index) — not a committed
-  file. Seed/rebuild via `../scripts/rebuild_attribute_taxonomies.py`; grow incrementally via
+  file. **A fresh cluster's store is empty** and nothing seeds it implicitly:
+  `../scripts/lucille_ingest.sh --seed-taxonomy` (`make seed-taxonomy`; `seed_taxonomy=true`
+  on the `Re-Index OpenSearch` workflow for the hosted cluster) runs
+  `../scripts/rebuild_attribute_taxonomies.py` between two products passes — discovery
+  samples `chunk_text` from the index, so products must be in first, and the detect stages
+  only apply on the second pass. Destructive: wipes agent-learned mappings. Step 4b of
+  `lucille_ingest.sh` warns loudly (a `::warning::` annotation in CI) whenever the store is
+  empty. Grow incrementally via
   the live enrichment flywheel (`../enrichment_service.py`, `POST /api/admin/enrich`, or the
   agent's own `trigger_enrichment` tool — see `../ARCHITECTURE.md`'s "Enrichment Flywheel")
 - Detector stage: `src/main/java/com/kmwllc/esci/AttributeDetectorStage.java`

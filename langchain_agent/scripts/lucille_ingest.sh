@@ -27,6 +27,13 @@
 #       in the OS-backed attribute mapping store; always fresh, never
 #       hand-edited (see langchain_agent/config_generator.py)
 #   5. Run Lucille products ingest (ParquetConnector → OpenSearch)
+#   5b. (--seed-taxonomy only) Rebuild the color/material attribute taxonomies
+#       in the OS-backed mapping store via discovery against the products
+#       just indexed (scripts/rebuild_attribute_taxonomies.py), regenerate
+#       products.generated.conf (now with one detect* stage per type), and
+#       run the products ingest a second time so every product gets its
+#       product_<type>_primary fields. This is how a fresh cluster (hosted or
+#       local) gets a taxonomy at all -- nothing else seeds the store (#71).
 #   6. Run Lucille judgments ingest (ParquetConnector → OpenSearch)
 #
 # Required env vars (sourced from langchain_agent/.env):
@@ -52,17 +59,24 @@
 #   --reset-index     Delete the products index, then recreate the mapping via
 #                     setup.py before ingest. Use when mappings change.
 #   --skip-judgments  Skip Step 6 (judgments ingest)
+#   --seed-taxonomy   Run Step 5b. DESTRUCTIVE to the mapping store: wipes every
+#                     color/material mapping (including agent-learned ones) and
+#                     rediscovers from scratch. Use on a cluster whose store is
+#                     empty (Step 4b warns loudly when that is the case), or to
+#                     deliberately reset the taxonomy to its seed state.
 
 set -euo pipefail
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 SKIP_JUDGMENTS=false
 RESET_INDEX=false
+SEED_TAXONOMY=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-judgments) SKIP_JUDGMENTS=true; shift ;;
     --reset-index)    RESET_INDEX=true;    shift ;;
+    --seed-taxonomy)  SEED_TAXONOMY=true;  shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -266,12 +280,41 @@ fi
 # the OS-backed attribute mapping store (config_generator.py) — always
 # regenerated immediately before the run so a reindex reflects whatever the
 # live agent enrichment flywheel has registered, with zero hand-edited config.
-info "Regenerating products.generated.conf from current OpenSearch attribute types..."
 PYTHON="${AGENT_DIR}/.venv/bin/python"
 if [[ ! -x "$PYTHON" ]]; then
   PYTHON="$(command -v python3)"
 fi
-(cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" config_generator.py)
+
+# Regenerates the conf and prints config_generator.py's summary line. Returns
+# non-zero when the store has no registered attribute types, so callers can
+# warn -- or, after --seed-taxonomy, fail -- on an empty taxonomy. A crash of
+# config_generator.py itself (OpenSearch unreachable, bad credentials) aborts
+# the whole ingest: callers invoke this inside `if !`, which suspends `set -e`,
+# so the exit has to be explicit here or a stale generated conf would be used.
+generate_products_conf() {
+  info "Regenerating products.generated.conf from current OpenSearch attribute types..."
+  local summary
+  if ! summary="$(cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" config_generator.py)"; then
+    error "config_generator.py failed -- cannot regenerate products.generated.conf, aborting."
+    exit 1
+  fi
+  echo "$summary"
+  [[ "$summary" != *"stages for: []"* ]]
+}
+
+if ! generate_products_conf; then
+  if [[ "$SEED_TAXONOMY" == "true" ]]; then
+    info "Attribute mapping store is empty -- Step 5b will seed it after the products ingest."
+  else
+    warn "Attribute mapping store at $_DISPLAY_URL has NO registered attribute types."
+    warn "No detect* stages will run: every product is indexed with no product_color_primary /"
+    warn "product_material_primary fields, so color/material filters and the enrichment flywheel"
+    warn "cannot work against this cluster. Re-run with --seed-taxonomy to seed it (see #71)."
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      echo "::warning title=Empty attribute taxonomy::Mapping store at $_DISPLAY_URL has no attribute types; products indexed without color/material fields. Re-run reindex.yml with seed_taxonomy=true."
+    fi
+  fi
+fi
 
 # ── Step 5: Run products ingest ───────────────────────────────────────────────
 PRODUCTS_PARQUET="$DATA_DIR/esci_products_sample_10000.parquet"
@@ -280,32 +323,54 @@ if [[ ! -f "$PRODUCTS_PARQUET" ]]; then
   exit 1
 fi
 
-info "Running Lucille products ingest..."
-info "  Source: $PRODUCTS_PARQUET"
-info "  Target: $_DISPLAY_URL/$OPENSEARCH_INDEX"
+run_products_ingest() {
+  info "Running Lucille products ingest..."
+  info "  Source: $PRODUCTS_PARQUET"
+  info "  Target: $_DISPLAY_URL/$OPENSEARCH_INDEX"
 
-if [[ "$LUCILLE_USE_DOCKER" == "true" ]]; then
-  # --no-deps: don't let compose start/health-check the local `opensearch`
-  # service — irrelevant (and wasted work) when CONTAINER_OPENSEARCH_URL points
-  # at a remote hosted cluster instead (CI, GCP workstation).
-  (cd "$REPO_DIR" && docker compose run --rm --no-deps \
-    -e LUCILLE_CONF=/lucille/conf/products.generated.conf \
-    -e PARQUET_PATH="/lucille/data/$(basename "$PRODUCTS_PARQUET")" \
-    -e OPENSEARCH_URL="$CONTAINER_OPENSEARCH_URL" \
-    -e OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
-    -e OPENSEARCH_VERIFY_CERTS="$OPENSEARCH_VERIFY_CERTS" \
-    lucille)
-else
-  PARQUET_PATH="$PRODUCTS_PARQUET" \
-  OPENSEARCH_URL="$OPENSEARCH_URL" \
-  OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
-    java \
-      -Dconfig.file="$ESCI_MODULE_DIR/conf/products.generated.conf" \
-      -cp "$ESCI_MODULE_DIR/target/lib/*:$ESCI_MODULE_DIR/target/lucille-esci-1.0.0.jar" \
-      com.kmwllc.lucille.core.Runner
+  if [[ "$LUCILLE_USE_DOCKER" == "true" ]]; then
+    # --no-deps: don't let compose start/health-check the local `opensearch`
+    # service — irrelevant (and wasted work) when CONTAINER_OPENSEARCH_URL points
+    # at a remote hosted cluster instead (CI, a GCP workstation).
+    (cd "$REPO_DIR" && docker compose run --rm --no-deps \
+      -e LUCILLE_CONF=/lucille/conf/products.generated.conf \
+      -e PARQUET_PATH="/lucille/data/$(basename "$PRODUCTS_PARQUET")" \
+      -e OPENSEARCH_URL="$CONTAINER_OPENSEARCH_URL" \
+      -e OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
+      -e OPENSEARCH_VERIFY_CERTS="$OPENSEARCH_VERIFY_CERTS" \
+      lucille)
+  else
+    PARQUET_PATH="$PRODUCTS_PARQUET" \
+    OPENSEARCH_URL="$OPENSEARCH_URL" \
+    OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
+      java \
+        -Dconfig.file="$ESCI_MODULE_DIR/conf/products.generated.conf" \
+        -cp "$ESCI_MODULE_DIR/target/lib/*:$ESCI_MODULE_DIR/target/lucille-esci-1.0.0.jar" \
+        com.kmwllc.lucille.core.Runner
+  fi
+
+  info "Products ingest complete."
+}
+
+run_products_ingest
+
+# ── Step 5b (optional): Seed the attribute taxonomy, then re-run products ────
+# Discovery samples chunk_text from the products index (not the parquet), so
+# it can only run after Step 5 has populated the index -- and the detect*
+# stages it enables can only apply on a second products pass. Two passes
+# instead of one is the price of reusing the exact same discovery script local
+# dev already uses (scripts/rebuild_attribute_taxonomies.py): same result on
+# the runner, a GCP workstation, or a laptop.
+if [[ "$SEED_TAXONOMY" == "true" ]]; then
+  info "Seeding color/material attribute taxonomies via discovery against $_DISPLAY_URL/$OPENSEARCH_INDEX..."
+  (cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" scripts/rebuild_attribute_taxonomies.py)
+  if ! generate_products_conf; then
+    error "Taxonomy seeding finished but the mapping store still has no attribute types -- refusing to re-run products without detect* stages."
+    exit 1
+  fi
+  info "Re-running products ingest with the seeded taxonomy..."
+  run_products_ingest
 fi
-
-info "Products ingest complete."
 
 # ── Step 6: Run judgments ingest ──────────────────────────────────────────────
 if [[ "$SKIP_JUDGMENTS" == "false" ]]; then

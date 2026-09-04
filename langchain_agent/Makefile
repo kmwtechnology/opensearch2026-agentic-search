@@ -1,4 +1,4 @@
-.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval capture-langfuse-prompts register-langfuse-evaluators analyze-quality-gate
+.PHONY: help doctor setup seed-taxonomy test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval capture-langfuse-prompts register-langfuse-evaluators analyze-quality-gate
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -10,6 +10,9 @@ help:
 	@echo "  make doctor             - Check prerequisites and system health"
 	@echo "  make setup              - Run complete system setup (database, models, data)"
 	@echo "  make install-web        - Install web UI dependencies (npm install)"
+	@echo ""
+	@echo "Data (Lucille ETL, local mechanism -- Cloud Run dispatches reindex.yml instead):"
+	@echo "  make seed-taxonomy      - Rediscover color/material taxonomy + products pass (DESTRUCTIVE: wipes agent-learned mappings)"
 	@echo ""
 	@echo "Observability (Local Development Only):"
 	@echo "  make langfuse-up        - Start Langfuse tracing (docker compose --profile observability up -d)"
@@ -60,6 +63,10 @@ doctor:
 setup:
 	@echo "[1/1] Running complete setup..."
 	PYTHONPATH=. $(VENV)/python setup.py
+
+seed-taxonomy:
+	@echo "Rediscovering color/material taxonomy from scratch (wipes agent-learned mappings), then re-running products..."
+	bash scripts/lucille_ingest.sh --seed-taxonomy --skip-judgments
 
 test:
 	@echo "[1/3] Running reranker tests..."

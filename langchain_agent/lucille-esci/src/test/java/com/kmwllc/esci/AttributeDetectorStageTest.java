@@ -1,16 +1,13 @@
 package com.kmwllc.esci;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 import com.kmwllc.lucille.core.Document;
-import com.sun.net.httpserver.HttpServer;
+import com.kmwllc.lucille.core.StageException;
 import com.typesafe.config.Config;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
+import com.typesafe.config.ConfigFactory;
+import java.util.HashMap;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -18,30 +15,27 @@ import org.junit.jupiter.api.Test;
  * that replaced the dedicated MaterialNormalizerStage/AttributeNormalizerStage
  * classes. Deliberately exercises TWO distinct attributeType values
  * ("material" and "color") to prove genericity, not just material renamed.
+ *
+ * <p>Uses real Typesafe configs (not Mockito) because the Stage constructor
+ * validates the config against SPEC, which now requires the same
+ * {@code opensearch { url, index }} block as the indexer.
  */
 class AttributeDetectorStageTest {
 
-  /** Build a stage with a fixed lookup, bypassing start()'s OpenSearch call. */
-  private AttributeDetectorStage stageWithLookup(String attributeType, Map<String, String> lookup) {
-    Config mockConfig = mock(Config.class);
-    when(mockConfig.hasPath("attributeType")).thenReturn(true);
-    when(mockConfig.getString("attributeType")).thenReturn(attributeType);
-    when(mockConfig.hasPath("openSearchUrl")).thenReturn(false);
-    AttributeDetectorStage stage = new AttributeDetectorStage(mockConfig);
-    stage.start(); // sets attributeType, field names; lookup empty since no openSearchUrl
-    stage.lookup = lookup;
-    invokeBuildVariantPattern(stage);
-    return stage;
+  private static Config configFor(String attributeType) {
+    return ConfigFactory.parseString(
+        "attributeType: \"" + attributeType + "\"\n"
+            + "opensearch { url: \"http://localhost:1\","
+            + " index: \"agentic_hybrid_search_attribute_mappings\" }");
   }
 
-  private void invokeBuildVariantPattern(AttributeDetectorStage stage) {
-    try {
-      var method = AttributeDetectorStage.class.getDeclaredMethod("buildVariantPattern");
-      method.setAccessible(true);
-      method.invoke(stage);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
+  /** Build a stage with a fixed lookup, bypassing start()'s real OpenSearch load. */
+  private AttributeDetectorStage stageWithLookup(String attributeType, Map<String, String> lookup) {
+    AttributeDetectorStage stage = new AttributeDetectorStage(configFor(attributeType));
+    stage.initFieldNames();
+    stage.lookup = lookup;
+    stage.buildVariantPattern();
+    return stage;
   }
 
   private Map<String, String> materialLookup() {
@@ -205,71 +199,36 @@ class AttributeDetectorStageTest {
     assertEquals("cotton", doc.getString("product_material_secondary"));
   }
 
-  // ── start() sourcing: OpenSearch + unreachable/unconfigured fallback ─────
+  // ── start(): config validation + hard failure on an unreachable store ────
 
   @Test
-  void testStartLoadsLookupFromOpenSearchFilteredByAttributeType() throws IOException {
-    HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-    int port = server.getAddress().getPort();
-    String responseBody =
-        "{\"hits\":{\"hits\":["
-            + "{\"_source\":{\"attribute_type\":\"material\",\"variant\":\"cowhide\",\"canonical\":\"leather\"}}"
-            + "]}}";
-    server.createContext(
-        "/agentic_hybrid_search_attribute_mappings/_search",
-        exchange -> {
-          byte[] bytes = responseBody.getBytes(StandardCharsets.UTF_8);
-          exchange.sendResponseHeaders(200, bytes.length);
-          try (OutputStream os = exchange.getResponseBody()) {
-            os.write(bytes);
-          }
-        });
-    server.start();
-
-    try {
-      Config mockConfig = mock(Config.class);
-      when(mockConfig.hasPath("attributeType")).thenReturn(true);
-      when(mockConfig.getString("attributeType")).thenReturn("material");
-      when(mockConfig.hasPath("openSearchUrl")).thenReturn(true);
-      when(mockConfig.getString("openSearchUrl")).thenReturn("http://localhost:" + port);
-
-      AttributeDetectorStage stage = new AttributeDetectorStage(mockConfig);
-      stage.start();
-
-      assertEquals("leather", stage.lookup.get("cowhide"));
-    } finally {
-      server.stop(0);
-    }
+  void testStartWithUnreachableOpenSearchThrowsStageException() {
+    // Detection must never degrade silently: an unreachable / unauthorized
+    // mapping store fails the ingest instead of producing an index with no
+    // attribute fields (#71, #72).
+    AttributeDetectorStage stage = new AttributeDetectorStage(configFor("material"));
+    StageException e = assertThrows(StageException.class, stage::start);
+    assertTrue(e.getMessage().contains("'material' mappings"), e.getMessage());
+    assertTrue(e.getMessage().contains("localhost/agentic_hybrid_search_attribute_mappings"),
+        e.getMessage());
+    assertDoesNotThrow(stage::stop);
   }
 
   @Test
-  void testStartWithUnreachableOpenSearchProducesEmptyLookupNotCrash() {
-    Config mockConfig = mock(Config.class);
-    when(mockConfig.hasPath("attributeType")).thenReturn(true);
-    when(mockConfig.getString("attributeType")).thenReturn("material");
-    when(mockConfig.hasPath("openSearchUrl")).thenReturn(true);
-    when(mockConfig.getString("openSearchUrl")).thenReturn("http://localhost:1");
-
-    AttributeDetectorStage stage = new AttributeDetectorStage(mockConfig);
-    assertDoesNotThrow(stage::start);
-
-    assertTrue(stage.lookup.isEmpty());
-    Document doc = Document.create("doc1");
-    doc.setField("chunk_text", "Leather Wallet");
-    assertDoesNotThrow(() -> stage.processDocument(doc));
-    assertFalse(doc.has("product_material"));
+  void testMissingOpensearchBlockIsRejectedByStageSpec() {
+    // The `opensearch { url, index }` parent block is required, exactly like
+    // the indexer's -- the old `openSearchUrl` key is gone, and omitting the
+    // block no longer means "detection disabled".
+    Config config = ConfigFactory.parseString("attributeType: \"material\"");
+    assertThrows(Exception.class, () -> new AttributeDetectorStage(config));
   }
 
   @Test
-  void testStartWithNoOpenSearchUrlConfiguredProducesEmptyLookup() {
-    Config mockConfig = mock(Config.class);
-    when(mockConfig.hasPath("attributeType")).thenReturn(true);
-    when(mockConfig.getString("attributeType")).thenReturn("material");
-    when(mockConfig.hasPath("openSearchUrl")).thenReturn(false);
-
-    AttributeDetectorStage stage = new AttributeDetectorStage(mockConfig);
-    assertDoesNotThrow(stage::start);
-
-    assertTrue(stage.lookup.isEmpty());
+  void testLegacyOpenSearchUrlKeyIsRejectedByStageSpec() {
+    Config config = ConfigFactory.parseString(
+        "attributeType: \"material\"\n"
+            + "openSearchUrl: \"http://localhost:1\"\n"
+            + "opensearch { url: \"http://localhost:1\", index: \"x\" }");
+    assertThrows(Exception.class, () -> new AttributeDetectorStage(config));
   }
 }

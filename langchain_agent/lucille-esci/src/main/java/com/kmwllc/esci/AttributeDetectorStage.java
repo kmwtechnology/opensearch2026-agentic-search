@@ -1,20 +1,26 @@
 package com.kmwllc.esci;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.kmwllc.lucille.core.Document;
 import com.kmwllc.lucille.core.Stage;
+import com.kmwllc.lucille.core.StageException;
 import com.kmwllc.lucille.core.spec.Spec;
 import com.kmwllc.lucille.core.spec.SpecBuilder;
+import com.kmwllc.lucille.util.OpenSearchUtils;
+import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.opensearch.client.opensearch.OpenSearchClient;
+import org.opensearch.client.opensearch.core.SearchResponse;
+import org.opensearch.client.opensearch.core.search.Hit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,9 +42,17 @@ import org.slf4j.LoggerFactory;
  * the live agent enrichment flywheel writes newly discovered variants, so a
  * full reindex always reflects the latest agent learning. There is no
  * bundled-file fallback (attribute taxonomies are OS-native, built via
- * discovery, not hand-authored) — if OpenSearch is unreachable at start(),
- * this stage logs a warning and produces no fields for that run rather than
- * hard-failing ingestion.
+ * discovery, not hand-authored).
+ *
+ * <p>Connects through Lucille's own {@link OpenSearchUtils} client, so the
+ * stage's {@code opensearch} block takes exactly the same keys (and TLS /
+ * basic-auth behaviour, including {@code acceptInvalidCert}) as the
+ * indexer's. A failure to load the lookup is a hard {@link StageException}:
+ * this stage is only emitted into products.generated.conf when its attribute
+ * type is registered in the store (see config_generator.py), so an
+ * unreachable or unauthorized store is always a real error, and degrading
+ * silently would produce an index with no attribute fields at all -- which
+ * is exactly how the hosted cluster ended up that way (#71, #72).
  *
  * <p>The generated products.conf emits one stage entry per attribute type
  * currently registered in the mapping store — e.g. a "detectColor" stage and
@@ -51,7 +65,9 @@ import org.slf4j.LoggerFactory;
  *   name: "detectMaterial"
  *   class: "com.kmwllc.esci.AttributeDetectorStage"
  *   attributeType: "material"
- *   openSearchUrl: ${OPENSEARCH_URL}
+ *   // Same client + TLS settings as the indexer's root `opensearch` block
+ *   // (HOCON merge), pointed at the mapping store index.
+ *   opensearch: ${opensearch} { index: "agentic_hybrid_search_attribute_mappings" }
  * }
  * }</pre>
  *
@@ -63,53 +79,80 @@ import org.slf4j.LoggerFactory;
  */
 public class AttributeDetectorStage extends Stage {
   private static final Logger log = LoggerFactory.getLogger(AttributeDetectorStage.class);
-  private static final String MAPPING_INDEX = "agentic_hybrid_search_attribute_mappings";
+  private static final int MAX_MAPPINGS = 10000;
 
   public static final Spec SPEC =
-      SpecBuilder.stage().requiredString("attributeType").optionalString("openSearchUrl").build();
+      SpecBuilder.stage()
+          .requiredString("attributeType")
+          .requiredParent(OpenSearchUtils.OPENSEARCH_PARENT_SPEC)
+          .build();
 
   protected String attributeType;
+  // Package-private so tests can set it directly, bypassing start()'s real
+  // OpenSearch load -- same pattern as FilterJudgmentsToProductsStage.productIds.
   protected Map<String, String> lookup;
   private Pattern variantPattern;
   private String rawFieldName;
   private String primaryFieldName;
   private String secondaryFieldName;
+  private OpenSearchClient client;
 
   public AttributeDetectorStage(com.typesafe.config.Config config) {
     super(config);
   }
 
   @Override
-  public void start() {
+  public void start() throws StageException {
+    initFieldNames();
+
+    String mappingIndex = OpenSearchUtils.getOpenSearchIndex(config);
+    String host = URI.create(OpenSearchUtils.getOpenSearchUrl(config)).getHost();
+    try {
+      client = OpenSearchUtils.getOpenSearchRestClient(config);
+      lookup = loadLookup(mappingIndex);
+    } catch (Exception e) {
+      throw new StageException(
+          "Failed to load '" + attributeType + "' mappings from " + host + "/" + mappingIndex
+              + " -- refusing to run with detection silently disabled (would index every product"
+              + " with no product_" + attributeType + "_* fields).",
+          e);
+    }
+
+    if (lookup.isEmpty()) {
+      log.warn(
+          "Loaded zero '{}' mappings from {}/{} -- no product_{}_* fields will be produced this run.",
+          attributeType, host, mappingIndex, attributeType);
+    } else {
+      log.info(
+          "Loaded {} '{}' mappings from {}/{}", lookup.size(), attributeType, host, mappingIndex);
+    }
+
+    buildVariantPattern();
+  }
+
+  @Override
+  public void stop() throws StageException {
+    if (client == null) {
+      return;
+    }
+    try {
+      client._transport().close();
+    } catch (IOException e) {
+      throw new StageException("Error closing OpenSearch client.", e);
+    }
+  }
+
+  /**
+   * Derive the attribute type and output field names from config. Split out
+   * of start() so tests can set up a stage with a fixed lookup without
+   * touching OpenSearch.
+   */
+  void initFieldNames() {
     this.attributeType = config.getString("attributeType");
     this.rawFieldName = "product_" + attributeType;
     this.primaryFieldName = "product_" + attributeType + "_primary";
     this.secondaryFieldName = "product_" + attributeType + "_secondary";
-
     this.lookup = new HashMap<>();
-
-    if (!config.hasPath("openSearchUrl")) {
-      log.warn(
-          "No openSearchUrl configured for AttributeDetectorStage(attributeType={}) — detection disabled for this run.",
-          attributeType);
-      buildVariantPattern();
-      return;
-    }
-
-    String openSearchUrl = config.getString("openSearchUrl");
-    try {
-      lookup = loadLookupFromOpenSearch(openSearchUrl);
-      log.info(
-          "Loaded {} '{}' mappings from OpenSearch ({}/{})",
-          lookup.size(), attributeType, openSearchUrl, MAPPING_INDEX);
-    } catch (Exception e) {
-      log.warn(
-          "Failed to load '{}' mappings from OpenSearch at {}: {} — detection disabled for this run.",
-          attributeType, openSearchUrl, e.getMessage());
-      lookup = new HashMap<>();
-    }
-
-    buildVariantPattern();
   }
 
   /**
@@ -118,7 +161,7 @@ public class AttributeDetectorStage extends Stage {
    * a shorter one it contains (e.g. "cotton") when both would otherwise
    * match at the same starting position.
    */
-  private void buildVariantPattern() {
+  void buildVariantPattern() {
     if (lookup.isEmpty()) {
       variantPattern = null;
       return;
@@ -143,53 +186,32 @@ public class AttributeDetectorStage extends Stage {
    * Query the OpenSearch-backed attribute mapping store for all
    * variant->canonical documents matching this stage's attributeType.
    *
-   * @param openSearchUrl base URL, e.g. http://localhost:9200
+   * @param mappingIndex the mapping store index name
    * @return variant (lowercase) -> canonical lookup map
-   * @throws Exception on any HTTP/parse failure
+   * @throws IOException on any transport/parse failure
    */
-  private Map<String, String> loadLookupFromOpenSearch(String openSearchUrl) throws Exception {
-    String searchUrl = openSearchUrl.replaceAll("/$", "") + "/" + MAPPING_INDEX + "/_search";
-    String requestBody =
-        "{\"query\":{\"term\":{\"attribute_type\":\"" + attributeType + "\"}},\"size\":10000}";
-
-    HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-    HttpRequest.Builder requestBuilder =
-        HttpRequest.newBuilder()
-            .uri(URI.create(searchUrl))
-            .timeout(Duration.ofSeconds(10))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8));
-
-    String osUser = System.getenv("OPENSEARCH_USER");
-    String osPassword = System.getenv("OPENSEARCH_PASSWORD");
-    if (osUser != null && !osUser.isBlank()) {
-      String credentials = Base64.getEncoder()
-          .encodeToString((osUser + ":" + osPassword).getBytes(StandardCharsets.UTF_8));
-      requestBuilder.header("Authorization", "Basic " + credentials);
-    }
-
-    HttpResponse<String> response =
-        client.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
-
-    if (response.statusCode() != 200) {
-      throw new RuntimeException(
-          "OpenSearch mapping query returned HTTP " + response.statusCode() + ": " + response.body());
-    }
-
-    ObjectMapper mapper = new ObjectMapper();
-    JsonNode root = mapper.readTree(response.body());
-    JsonNode hits = root.path("hits").path("hits");
+  private Map<String, String> loadLookup(String mappingIndex) throws IOException {
+    SearchResponse<ObjectNode> response = client.search(s -> s
+        .index(mappingIndex)
+        .size(MAX_MAPPINGS)
+        .source(src -> src.filter(f -> f.includes("variant", "canonical")))
+        .query(q -> q.term(t -> t
+            .field("attribute_type")
+            .value(v -> v.stringValue(attributeType)))),
+        ObjectNode.class);
 
     Map<String, String> result = new HashMap<>();
-    for (JsonNode hit : hits) {
-      JsonNode source = hit.path("_source");
+    for (Hit<ObjectNode> hit : response.hits().hits()) {
+      ObjectNode source = hit.source();
+      if (source == null) {
+        continue;
+      }
       String variant = source.path("variant").asText(null);
       String canonical = source.path("canonical").asText(null);
       if (variant != null && canonical != null) {
         result.put(variant.toLowerCase(), canonical);
       }
     }
-
     return result;
   }
 
