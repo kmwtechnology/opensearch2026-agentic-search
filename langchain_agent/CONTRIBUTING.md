@@ -513,6 +513,12 @@ Add a canonical seed vocabulary entry to `_CANONICAL_SEEDS_BY_TYPE` in
 `AttributeMappingStore.seed_from_discovery(...)` for a small hand-curated
 set, or `bulk_discover(...)` against real `chunk_text` for a from-scratch
 build (see `scripts/rebuild_attribute_taxonomies.py` for the pattern).
+For color and material specifically this is already wired end-to-end:
+`make seed-taxonomy` locally, or the `seed_taxonomy` input on the
+`Re-Index OpenSearch` workflow for the hosted cluster, runs discovery
+between two products passes (`lucille_ingest.sh --seed-taxonomy`).
+Extend `rebuild_attribute_taxonomies.py` with the new type's canonicals
+if it should be part of that seed.
 
 ### Step 2: Wire query-time filtering
 

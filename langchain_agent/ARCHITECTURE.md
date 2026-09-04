@@ -675,9 +675,17 @@ committed file:
    "Config Generation" below), zero new Java code.
    Sources its variant→canonical lookup from OpenSearch at `start()`
    (`agentic_hybrid_search_attribute_mappings` index, via
-   `AttributeMappingStore` on the Python side) — no bundled-file fallback;
-   logs a warning and produces no fields for that run if OpenSearch is
-   unreachable.
+   `AttributeMappingStore` on the Python side) — no bundled-file fallback.
+   Connects through Lucille's own `OpenSearchUtils` client, reusing the
+   indexer's `opensearch` block (URL + basic-auth userinfo,
+   `acceptInvalidCert`) via HOCON merge with only `index` overridden. A
+   failed load is a hard `StageException` that fails the ingest — the stage
+   is only generated when its type is registered in the store, so an
+   unreachable/unauthorized store is a real error, and degrading silently
+   is how the hosted index ended up with zero color/material fields
+   (#71, #72). A fresh cluster's store is empty: seed it once with
+   `lucille_ingest.sh --seed-taxonomy` (`make seed-taxonomy`, or
+   `seed_taxonomy=true` on the reindex workflow).
 2. **`BrandNormalizerStage.java`** — a small, separate, fixed transform
    (case folding, generic-placeholder consolidation like "Unknown"/"N/A").
    Not a discovered taxonomy, no OpenSearch dependency, always present.
@@ -955,7 +963,13 @@ type needs no new Java code and no hand-edited Lucille config:
    `bulk_discover` against real `chunk_text` for a from-scratch build).
    The next `lucille_ingest.sh` run picks it up automatically —
    `config_generator.py` queries OpenSearch for registered attribute
-   types and emits a new `AttributeDetectorStage` block for it.
+   types and emits a new `AttributeDetectorStage` block for it, sharing
+   the indexer's `opensearch` block (URL, auth, `acceptInvalidCert`) via
+   HOCON merge. For color/material the seed is already wired:
+   `lucille_ingest.sh --seed-taxonomy` (`make seed-taxonomy`;
+   `seed_taxonomy=true` on the reindex workflow) runs
+   `scripts/rebuild_attribute_taxonomies.py` between two products passes —
+   add a new type's canonicals there if it should be part of that seed.
 2. Add a filter block to `_extract_attributes()` in `pipeline_nodes.py` for the new
    type — decide up front whether it needs color's hard-filter semantics
    (rare/exact terms) or material's soft-filter + relaxation semantics
