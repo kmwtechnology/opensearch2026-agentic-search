@@ -72,7 +72,7 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 - **Hybrid search** — RRF fusion (k=60); `alpha` ∈ [0,1] weights lexical→semantic.
 
-- **Attribute detection** — integrated into Lucille ETL via `AttributeDetectorStage`, one generic Java stage (`langchain_agent/lucille-esci/src/main/java`) parameterized per attribute type (color, material). Outputs `product_<type>_primary`/`_secondary` keyword fields. Taxonomy lives in OpenSearch, not a committed file — rules-based detection, auditable, no AI at ingest time. `BrandNormalizerStage` handles brand separately (fixed transform).
+- **Attribute detection** — integrated into Lucille ETL via `AttributeDetectorStage`, one generic Java stage (`langchain_agent/lucille-esci/src/main/java`) parameterized per attribute type (color, material). Outputs `product_<type>_primary`/`_secondary` keyword fields. Taxonomy lives in OpenSearch, not a committed file — rules-based detection, auditable, no AI at ingest time. **A fresh cluster's taxonomy store is empty and nothing seeds it implicitly** (the hosted one was, #71): seed once with `make seed-taxonomy` locally or `seed_taxonomy=true` on `reindex.yml` (`lucille_ingest.sh --seed-taxonomy` — discovery between two products passes; destructive to agent-learned mappings). The stage uses Lucille's `OpenSearchUtils` client via the indexer's `opensearch` block and hard-fails the ingest if the lookup can't load — never soft-fail a store lookup in a custom stage (#72). `BrandNormalizerStage` handles brand separately (fixed transform).
 
 - **Agentic taxonomy growth & correction** — the agent can grow *or fix* the live color/material taxonomy itself via one tool, `trigger_enrichment(attribute_type, variant, canonical)` (gated by `ENABLE_ENRICHMENT_TOOL`, default off), which writes the mapping to OpenSearch and triggers a real Lucille reindex (~19–20s). Gap case: color's unresolved-term filter is hard (reliably triggers the gap signal live through chat); material's is soft + subject to filter relaxation (won't trigger via chat, only via `/api/admin/enrich`). Correction case (the live demo's centerpiece): a shopper disputes an existing wrong tag (e.g. shipped taxonomy bug `tan → yellow`, should be `brown`, affects 29 products) — `agent_node`'s `_detect_correction_signal` + `_try_correction_tool` catch dispute language on `refinement`/`follow_up` turns and call the same tool with the corrected canonical; `enrich_attribute` tracks this via `EnrichmentResult.corrected_from`. This case matters because the wrong result still **passes** the quality gate — invisible to any automated check. See `langchain_agent/ARCHITECTURE.md`'s "Taxonomy Growth & Correction" section and `langchain_agent/DEMO.md`.
 
@@ -113,6 +113,7 @@ make stop
 
 # ESCI ingestion via Lucille ETL
 bash scripts/lucille_ingest.sh            # products + judgments, no API calls (default: Docker-based)
+make seed-taxonomy                        # rediscover color/material taxonomy + products pass (DESTRUCTIVE; needed once per fresh cluster)
 
 # Benchmarks (requires docker compose up -d)
 make benchmark-esci-fast                  # ~5 min, deterministic (no LLM)

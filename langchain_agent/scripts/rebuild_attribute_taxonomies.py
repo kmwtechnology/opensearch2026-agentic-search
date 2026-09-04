@@ -12,6 +12,17 @@ indexed) seeded by COLOR_CANONICALS/MATERIAL_CANONICALS.
 Used to validate discovery quality ahead of the live demo, and to rehearse
 the two-act flow end-to-end before the conference.
 
+Also the seeding step behind `scripts/lucille_ingest.sh --seed-taxonomy`
+(`make seed-taxonomy`; the `seed_taxonomy` input on the Re-Index OpenSearch
+workflow), which runs it between two products passes so a cluster whose
+mapping store is empty -- the hosted one was, see #71 -- ends up with
+product_color_primary / product_material_primary populated. Targets
+whatever cluster config.py's OPENSEARCH_* point at, so it needs nothing
+beyond requirements-setup.txt (no torch/pandas).
+
+DESTRUCTIVE: every existing color/material mapping is deleted first,
+including agent-learned ones from the enrichment flywheel.
+
 Usage:
     PYTHONPATH=. python3 scripts/rebuild_attribute_taxonomies.py [--dry-run]
 """

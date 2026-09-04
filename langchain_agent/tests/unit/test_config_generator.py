@@ -40,6 +40,26 @@ class TestGenerateProductsConf:
 
         assert 'attributeType: "material"' in conf
 
+    def test_stage_reuses_indexer_opensearch_block_pointed_at_mapping_index(self):
+        """The detector stage shares the indexer's `opensearch` block via HOCON
+        merge (same URL, basic-auth userinfo, acceptInvalidCert) and only
+        overrides `index` to the mapping store -- so the stage cannot silently
+        diverge from the indexer's TLS/auth behaviour on the hosted cluster
+        (#71, #72). Pins the exact rendered line."""
+        conf = generate_products_conf(["material"])
+
+        assert (
+            'opensearch: ${opensearch} { index: "agentic_hybrid_search_attribute_mappings" }'
+            in conf
+        )
+
+    def test_legacy_opensearchurl_key_is_gone(self):
+        """AttributeDetectorStage's Spec rejects unknown keys, so emitting the
+        old `openSearchUrl` would fail Lucille's pre-run validation."""
+        conf = generate_products_conf(["color", "material"])
+
+        assert "openSearchUrl" not in conf
+
     def test_output_field_names_documented_per_type(self):
         conf = generate_products_conf(["material"])
 

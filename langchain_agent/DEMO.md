@@ -538,6 +538,11 @@ value live** — not a reshuffled leaderboard. Lead with that.
 - **Already corrected from a prior rehearsal and you want a clean
   restart**: same restore commands as above — this both re-seeds the
   bug mapping and re-indexes, undoing a prior on-stage correction.
+  `make seed-taxonomy` is the heavier equivalent: it wipes *every*
+  color/material mapping (including anything the agent learned in
+  rehearsals) and rediscovers from scratch, which lands back on the
+  shipped `tan → yellow` seed bug, then runs the products pass. Use it
+  when the store has drifted in more ways than the one mapping.
 
 ---
 
