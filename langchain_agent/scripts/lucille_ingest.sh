@@ -287,11 +287,17 @@ fi
 
 # Regenerates the conf and prints config_generator.py's summary line. Returns
 # non-zero when the store has no registered attribute types, so callers can
-# warn -- or, after --seed-taxonomy, fail -- on an empty taxonomy.
+# warn -- or, after --seed-taxonomy, fail -- on an empty taxonomy. A crash of
+# config_generator.py itself (OpenSearch unreachable, bad credentials) aborts
+# the whole ingest: callers invoke this inside `if !`, which suspends `set -e`,
+# so the exit has to be explicit here or a stale generated conf would be used.
 generate_products_conf() {
   info "Regenerating products.generated.conf from current OpenSearch attribute types..."
   local summary
-  summary="$(cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" config_generator.py)"
+  if ! summary="$(cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" config_generator.py)"; then
+    error "config_generator.py failed -- cannot regenerate products.generated.conf, aborting."
+    exit 1
+  fi
   echo "$summary"
   [[ "$summary" != *"stages for: []"* ]]
 }
