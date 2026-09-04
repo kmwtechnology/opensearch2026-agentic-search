@@ -84,6 +84,7 @@ services:
       - JAVA_OPTS
       - OPENSEARCH_URL
       - OPENSEARCH_INDEX
+      - OPENSEARCH_VERIFY_CERTS
       - PARQUET_PATH
       - JUDGMENTS_PARQUET_PATH
     volumes:
