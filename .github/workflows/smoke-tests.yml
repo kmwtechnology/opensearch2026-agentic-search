@@ -1,0 +1,192 @@
+name: Smoke Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      service_url:
+        description: 'Cloud Run service URL (e.g., https://agentic-hybrid-search-xxx.us-central1.run.app)'
+        required: false
+        type: string
+      timeout_minutes:
+        description: 'Test timeout in minutes'
+        required: false
+        default: '15'
+        type: string
+
+env:
+  PROJECT_ID: gen-lang-client-0250737934
+  REGION: us-central1
+  SERVICE_NAME: agentic-hybrid-search
+
+jobs:
+  smoke-tests:
+    name: Post-Deployment Smoke Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJson(inputs.timeout_minutes) || 15 }}
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          version: latest
+
+      - name: Determine service URL
+        id: service-url
+        run: |
+          # If provided explicitly, use that; otherwise, fetch from gcloud
+          if [ -n "${{ inputs.service_url }}" ]; then
+            SERVICE_URL="${{ inputs.service_url }}"
+          else
+            SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+              --region=${{ env.REGION }} \
+              --format='value(status.url)')
+          fi
+          echo "SERVICE_URL=$SERVICE_URL" >> "$GITHUB_OUTPUT"
+          echo "Using service: $SERVICE_URL"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          cd langchain_agent
+          pip install pytest pytest-asyncio pytest-timeout httpx websockets
+
+      - name: Get credentials from Secret Manager
+        id: creds
+        run: |
+          API_KEY=$(gcloud secrets versions access latest \
+            --secret=agentic-hybrid-search-api-key \
+            --project="${{ env.PROJECT_ID }}" 2>/dev/null)
+          echo "::add-mask::$API_KEY"
+          echo "API_KEY=$API_KEY" >> "$GITHUB_OUTPUT"
+
+          LOGIN_PASSWORD=$(gcloud secrets versions access latest \
+            --secret=agentic-hybrid-search-login-password \
+            --project="${{ env.PROJECT_ID }}" 2>/dev/null)
+          echo "::add-mask::$LOGIN_PASSWORD"
+          echo "LOGIN_PASSWORD=$LOGIN_PASSWORD" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for service to be ready
+        run: |
+          SERVICE_URL="${{ steps.service-url.outputs.SERVICE_URL }}"
+          max_retries=5
+          retry_count=0
+
+          echo "Waiting for Cloud Run service to be ready..."
+          while [ $retry_count -lt $max_retries ]; do
+            response=$(curl -s "$SERVICE_URL/api/health" 2>/dev/null || echo "{}")
+            if echo "$response" | grep -q '"status"' && \
+               echo "$response" | grep -q '"postgres"' && \
+               echo "$response" | grep -q '"google_ai"' && \
+               echo "$response" | grep -q '"vector_store"'; then
+              echo "✓ Service is ready"
+              exit 0
+            fi
+            echo "⏳ Attempt $((retry_count + 1))/$max_retries - Service not ready yet"
+            retry_count=$((retry_count + 1))
+            sleep 3
+          done
+
+          echo "❌ Service failed to become ready after $max_retries attempts"
+          exit 1
+
+      - name: Run e2e smoke tests (parallel)
+        env:
+          CLOUD_RUN_URL: ${{ steps.service-url.outputs.SERVICE_URL }}
+          API_KEY: ${{ steps.creds.outputs.API_KEY }}
+          LOGIN_PASSWORD: ${{ steps.creds.outputs.LOGIN_PASSWORD }}
+          PYTHONPATH: langchain_agent
+        run: |
+          cd langchain_agent
+
+          # --timeout=240: WEBSOCKET_TIMEOUT is 180s (model load + processing);
+          # 240s provides 60s buffer above the inner timeout for setup/teardown.
+          # The three suites are independent (no shared state) so run in parallel
+          # to cut wall-clock time from ~9-15 min sequential to ~3-5 min.
+          # Each pipeline runs in a subshell with pipefail set, so `$!` captures
+          # the subshell (not `tee`'s PID) and `wait` returns pytest's real exit
+          # status instead of tee's (see issue #22 — bare `cmd | tee f &` makes
+          # this gate report green regardless of test outcome).
+          ( set -o pipefail; pytest tests/e2e/test_deployment_smoke.py \
+            -v -ra --tb=short -m "e2e and slow" \
+            --timeout=240 --asyncio-mode=auto \
+            2>&1 | tee smoke-test-results.txt ) &
+          pid1=$!
+
+          ( set -o pipefail; pytest tests/e2e/test_cloud_run_deployment.py \
+            -v -ra --tb=short -m "e2e and slow" \
+            --timeout=240 --asyncio-mode=auto \
+            2>&1 | tee cloud-run-test-results.txt ) &
+          pid2=$!
+
+          ( set -o pipefail; pytest tests/e2e/test_deployment_data.py \
+            -v -ra --tb=short -m "e2e and slow" \
+            --timeout=240 --asyncio-mode=auto \
+            2>&1 | tee data-test-results.txt ) &
+          pid3=$!
+
+          wait $pid1; exit1=$?
+          wait $pid2; exit2=$?
+          wait $pid3; exit3=$?
+
+          # `wait` returning only guarantees the subshell/tee processes have
+          # exited, not that their buffered writes have reached disk before
+          # the next step's upload-artifact reads these files 5s later --
+          # observed truncating data-test-results.txt mid-line twice (see #23
+          # investigation). Force the flush explicitly.
+          sync
+
+          [ "$exit1" -eq 0 ] && echo "✓ Smoke tests passed"      || echo "❌ Smoke tests failed"
+          [ "$exit2" -eq 0 ] && echo "✓ Cloud Run tests passed"  || echo "❌ Cloud Run tests failed"
+          [ "$exit3" -eq 0 ] && echo "✓ Data tests passed"       || echo "❌ Data tests failed"
+
+          [ $((exit1 + exit2 + exit3)) -eq 0 ] || exit 1
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-test-results
+          path: |
+            langchain_agent/smoke-test-results.txt
+            langchain_agent/cloud-run-test-results.txt
+            langchain_agent/data-test-results.txt
+          retention-days: 30
+
+      - name: Report smoke test results
+        if: always()
+        run: |
+          {
+            echo "## Smoke Test Report"
+            echo ""
+            echo "**Service URL:** ${{ steps.service-url.outputs.SERVICE_URL }}"
+            echo ""
+            echo "### Test Summary"
+            if [ -f "langchain_agent/smoke-test-results.txt" ]; then
+              test_count=$(grep -c "PASSED\|FAILED" langchain_agent/smoke-test-results.txt || echo "?")
+              echo "- **Smoke Tests:** $test_count tests"
+            fi
+            if [ -f "langchain_agent/cloud-run-test-results.txt" ]; then
+              test_count=$(grep -c "PASSED\|FAILED" langchain_agent/cloud-run-test-results.txt || echo "?")
+              echo "- **Cloud Run Tests:** $test_count tests"
+            fi
+            if [ -f "langchain_agent/data-test-results.txt" ]; then
+              test_count=$(grep -c "PASSED\|FAILED" langchain_agent/data-test-results.txt || echo "?")
+              echo "- **Data Tests:** $test_count tests"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
