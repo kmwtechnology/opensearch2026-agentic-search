@@ -50,6 +50,7 @@ import org.slf4j.LoggerFactory;
  *   class: "com.kmwllc.esci.FilterJudgmentsToProductsStage"
  *   openSearchUrl: ${OPENSEARCH_URL}
  *   productsIndex: ${OPENSEARCH_INDEX}
+ *   acceptInvalidCert: true  // optional; defaults to false. Set to true for self-signed certs.
  * }
  * }</pre>
  */
@@ -62,7 +63,6 @@ public class FilterJudgmentsToProductsStage extends Stage {
       SpecBuilder.stage()
           .requiredString("openSearchUrl")
           .requiredString("productsIndex")
-          .optionalBoolean("acceptInvalidCert", false)
           .build();
 
   // Package-private (not `private`) so tests can set it directly, bypassing
@@ -77,7 +77,7 @@ public class FilterJudgmentsToProductsStage extends Stage {
   public void start() {
     String openSearchUrl = config.getString("openSearchUrl");
     String productsIndex = config.getString("productsIndex");
-    boolean acceptInvalidCert = config.getBoolean("acceptInvalidCert");
+    boolean acceptInvalidCert = config.hasPath("acceptInvalidCert") ? config.getBoolean("acceptInvalidCert") : false;
     try {
       productIds = loadProductIds(openSearchUrl, productsIndex, acceptInvalidCert);
       log.info("Loaded {} product ids from {}/{} for judgments filtering",
