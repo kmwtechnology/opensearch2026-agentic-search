@@ -19,6 +19,7 @@ Usage:
 from pathlib import Path
 from typing import List, Optional
 
+from attribute_mapping_store import INDEX_NAME as MAPPING_INDEX_NAME
 from attribute_mapping_store import AttributeMappingStore
 
 CONF_DIR = Path(__file__).parent / "lucille-esci" / "conf"
@@ -157,11 +158,13 @@ def _render_attribute_stage(attribute_type: str) -> str:
       # type currently registered in the OS-backed mapping store.
       # Outputs: product_{attribute_type}, product_{attribute_type}_primary,
       # product_{attribute_type}_secondary.
+      # Same client + TLS/auth settings as the indexer's root `opensearch`
+      # block (HOCON merge), pointed at the mapping store index.
       {{
         name: "{_stage_name(attribute_type)}"
         class: "com.kmwllc.esci.AttributeDetectorStage"
         attributeType: "{attribute_type}"
-        openSearchUrl: ${{OPENSEARCH_URL}}
+        opensearch: ${{opensearch}} {{ index: "{MAPPING_INDEX_NAME}" }}
       }}
 """
 
