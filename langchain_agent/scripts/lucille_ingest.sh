@@ -107,6 +107,7 @@ OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
 OPENSEARCH_SCHEME="${OPENSEARCH_USE_SSL:-false}"
 OPENSEARCH_USER="${OPENSEARCH_USER:-}"
 OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD:-}"
+OPENSEARCH_VERIFY_CERTS="${OPENSEARCH_VERIFY_CERTS:-true}"
 
 # Lucille reads credentials from the URL itself (user:pass@host).
 # Embed them only when both are set (local Docker has no auth).
@@ -292,6 +293,7 @@ if [[ "$LUCILLE_USE_DOCKER" == "true" ]]; then
     -e PARQUET_PATH="/lucille/data/$(basename "$PRODUCTS_PARQUET")" \
     -e OPENSEARCH_URL="$CONTAINER_OPENSEARCH_URL" \
     -e OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
+    -e OPENSEARCH_VERIFY_CERTS="$OPENSEARCH_VERIFY_CERTS" \
     lucille)
 else
   PARQUET_PATH="$PRODUCTS_PARQUET" \
@@ -329,6 +331,7 @@ if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
       -e JUDGMENTS_PARQUET_PATH="/lucille/data/$(basename "$JUDGMENTS_PARQUET")" \
       -e OPENSEARCH_URL="$CONTAINER_OPENSEARCH_URL" \
       -e OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
+      -e OPENSEARCH_VERIFY_CERTS="$OPENSEARCH_VERIFY_CERTS" \
       lucille)
   else
     JUDGMENTS_PARQUET_PATH="$JUDGMENTS_PARQUET" \
