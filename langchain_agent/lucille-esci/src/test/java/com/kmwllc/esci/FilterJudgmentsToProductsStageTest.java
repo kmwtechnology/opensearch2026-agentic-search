@@ -1,12 +1,12 @@
 package com.kmwllc.esci;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kmwllc.lucille.core.Document;
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -20,14 +20,11 @@ class FilterJudgmentsToProductsStageTest {
   private final ObjectMapper mapper = new ObjectMapper();
 
   private FilterJudgmentsToProductsStage stageWithProductIds(Set<String> productIds) {
-    Config mockConfig = mock(Config.class);
-    when(mockConfig.hasPath("openSearchUrl")).thenReturn(true);
-    when(mockConfig.getString("openSearchUrl")).thenReturn("http://localhost:1");
-    when(mockConfig.hasPath("productsIndex")).thenReturn(true);
-    when(mockConfig.getString("productsIndex")).thenReturn("test_products");
+    Config config = ConfigFactory.parseString(
+        "opensearch { url: \"http://localhost:1\", index: \"test_products\" }");
     // start() (the real OpenSearch scroll) is deliberately never called --
     // productIds is set directly, same bypass AttributeDetectorStageTest uses.
-    FilterJudgmentsToProductsStage stage = new FilterJudgmentsToProductsStage(mockConfig);
+    FilterJudgmentsToProductsStage stage = new FilterJudgmentsToProductsStage(config);
     stage.productIds = productIds;
     return stage;
   }

@@ -5,21 +5,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.kmwllc.lucille.core.Document;
 import com.kmwllc.lucille.core.Stage;
+import com.kmwllc.lucille.core.StageException;
 import com.kmwllc.lucille.core.spec.Spec;
 import com.kmwllc.lucille.core.spec.SpecBuilder;
+import com.kmwllc.lucille.util.OpenSearchUtils;
+import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
-import java.security.cert.X509Certificate;
+import org.opensearch.client.opensearch.OpenSearchClient;
+import org.opensearch.client.opensearch.core.ScrollResponse;
+import org.opensearch.client.opensearch.core.SearchResponse;
+import org.opensearch.client.opensearch.core.search.Hit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,14 +42,20 @@ import org.slf4j.LoggerFactory;
  * needs to support), not per-document -- same one-time-load-then-reuse
  * pattern as {@link AttributeDetectorStage}'s mapping lookup.
  *
+ * <p>Connects through Lucille's own {@link OpenSearchUtils} client, so the
+ * stage's {@code opensearch} block takes exactly the same keys (and TLS
+ * behaviour, including {@code acceptInvalidCert}) as the indexer's.
+ *
  * <p>Configuration:
  * <pre>{@code
  * {
  *   name: "filterJudgmentsToProducts"
  *   class: "com.kmwllc.esci.FilterJudgmentsToProductsStage"
- *   openSearchUrl: ${OPENSEARCH_URL}
- *   productsIndex: ${OPENSEARCH_INDEX}
- *   acceptInvalidCert: true  // optional; defaults to false. Set to true for self-signed certs.
+ *   opensearch {
+ *     url: ${OPENSEARCH_URL}
+ *     index: ${OPENSEARCH_INDEX}   // the PRODUCTS index, not the judgments target
+ *     acceptInvalidCert: true
+ *   }
  * }
  * }</pre>
  */
@@ -60,40 +65,50 @@ public class FilterJudgmentsToProductsStage extends Stage {
   private static final String SCROLL_KEEPALIVE = "1m";
 
   public static final Spec SPEC =
-      SpecBuilder.stage()
-          .requiredString("openSearchUrl")
-          .requiredString("productsIndex")
-          .optionalBoolean("acceptInvalidCert")
-          .build();
+      SpecBuilder.stage().requiredParent(OpenSearchUtils.OPENSEARCH_PARENT_SPEC).build();
 
   // Package-private (not `private`) so tests can set it directly, bypassing
   // start()'s real OpenSearch scroll -- same pattern as AttributeDetectorStage.lookup.
   Set<String> productIds;
+
+  private OpenSearchClient client;
 
   public FilterJudgmentsToProductsStage(com.typesafe.config.Config config) {
     super(config);
   }
 
   @Override
-  public void start() {
-    String openSearchUrl = config.getString("openSearchUrl");
-    String productsIndex = config.getString("productsIndex");
-    boolean acceptInvalidCert = config.hasPath("acceptInvalidCert") ? config.getBoolean("acceptInvalidCert") : false;
+  public void start() throws StageException {
+    String productsIndex = OpenSearchUtils.getOpenSearchIndex(config);
+    String host = URI.create(OpenSearchUtils.getOpenSearchUrl(config)).getHost();
     try {
-      productIds = loadProductIds(openSearchUrl, productsIndex, acceptInvalidCert);
+      client = OpenSearchUtils.getOpenSearchRestClient(config);
+      productIds = loadProductIds(productsIndex);
       log.info("Loaded {} product ids from {}/{} for judgments filtering",
-          productIds.size(), openSearchUrl, productsIndex);
+          productIds.size(), host, productsIndex);
     } catch (Exception e) {
-      throw new RuntimeException(
-          "Failed to load product ids from " + openSearchUrl + "/" + productsIndex
+      throw new StageException(
+          "Failed to load product ids from " + host + "/" + productsIndex
               + " -- refusing to run unfiltered (would silently keep every judgment). "
               + "Run the products ingest before the judgments ingest.",
           e);
     }
     if (productIds.isEmpty()) {
-      throw new RuntimeException(
-          "Loaded zero product ids from " + openSearchUrl + "/" + productsIndex
+      throw new StageException(
+          "Loaded zero product ids from " + host + "/" + productsIndex
               + " -- products index is empty or not yet ingested. Run the products ingest first.");
+    }
+  }
+
+  @Override
+  public void stop() throws StageException {
+    if (client == null) {
+      return;
+    }
+    try {
+      client._transport().close();
+    } catch (IOException e) {
+      throw new StageException("Error closing OpenSearch client.", e);
     }
   }
 
@@ -124,87 +139,43 @@ public class FilterJudgmentsToProductsStage extends Stage {
     return null;
   }
 
-  private Set<String> loadProductIds(String openSearchUrl, String productsIndex, boolean acceptInvalidCert) throws Exception {
-    HttpClient client = createHttpClient(acceptInvalidCert);
-    ObjectMapper mapper = new ObjectMapper();
+  private Set<String> loadProductIds(String productsIndex) throws IOException {
     Set<String> ids = new HashSet<>();
 
-    String initUrl = openSearchUrl.replaceAll("/$", "") + "/" + productsIndex
-        + "/_search?scroll=" + SCROLL_KEEPALIVE;
-    String initBody = "{\"size\":" + SCROLL_PAGE_SIZE + ",\"_source\":false,\"query\":{\"match_all\":{}}}";
-
-    JsonNode response = postJson(client, mapper, initUrl, initBody);
-    String scrollId = response.path("_scroll_id").asText(null);
-    JsonNode hits = response.path("hits").path("hits");
+    SearchResponse<Void> response = client.search(s -> s
+        .index(productsIndex)
+        .size(SCROLL_PAGE_SIZE)
+        .scroll(t -> t.time(SCROLL_KEEPALIVE))
+        .source(src -> src.fetch(false))
+        .query(q -> q.matchAll(m -> m)),
+        Void.class);
+    String scrollId = response.scrollId();
+    List<Hit<Void>> hits = response.hits().hits();
     addIds(hits, ids);
 
-    while (scrollId != null && hits.size() > 0) {
-      String scrollUrl = openSearchUrl.replaceAll("/$", "") + "/_search/scroll";
-      String scrollBody = "{\"scroll\":\"" + SCROLL_KEEPALIVE + "\",\"scroll_id\":\"" + scrollId + "\"}";
-      response = postJson(client, mapper, scrollUrl, scrollBody);
-      scrollId = response.path("_scroll_id").asText(null);
-      hits = response.path("hits").path("hits");
+    while (scrollId != null && !hits.isEmpty()) {
+      String currentScrollId = scrollId;
+      ScrollResponse<Void> scrollResponse = client.scroll(r -> r
+          .scrollId(currentScrollId)
+          .scroll(t -> t.time(SCROLL_KEEPALIVE)),
+          Void.class);
+      scrollId = scrollResponse.scrollId();
+      hits = scrollResponse.hits().hits();
       addIds(hits, ids);
     }
 
+    if (scrollId != null) {
+      String finalScrollId = scrollId;
+      client.clearScroll(c -> c.scrollId(finalScrollId));
+    }
     return ids;
   }
 
-  private void addIds(JsonNode hits, Set<String> ids) {
-    for (JsonNode hit : hits) {
-      String id = hit.path("_id").asText(null);
-      if (id != null) {
-        ids.add(id);
+  private void addIds(List<Hit<Void>> hits, Set<String> ids) {
+    for (Hit<Void> hit : hits) {
+      if (hit.id() != null) {
+        ids.add(hit.id());
       }
-    }
-  }
-
-  private JsonNode postJson(HttpClient client, ObjectMapper mapper, String url, String body) throws Exception {
-    HttpRequest.Builder requestBuilder =
-        HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .timeout(Duration.ofSeconds(30))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
-
-    HttpResponse<String> response =
-        client.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
-    if (response.statusCode() != 200) {
-      throw new RuntimeException("OpenSearch request to " + url + " returned HTTP "
-          + response.statusCode() + ": " + response.body());
-    }
-    return mapper.readTree(response.body());
-  }
-
-  private HttpClient createHttpClient(boolean acceptInvalidCert) throws Exception {
-    if (acceptInvalidCert) {
-      // A permissive TrustManager only skips chain validation; java.net.http still enforces
-      // hostname/IP-SAN matching and exposes no HostnameVerifier hook. The JDK reads this
-      // property once at class-init, so it must be set before any HttpClient class loads.
-      System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");
-    }
-
-    HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5));
-
-    if (acceptInvalidCert) {
-      SSLContext sslContext = SSLContext.getInstance("TLS");
-      sslContext.init(null, new TrustManager[] {new PermissiveTrustManager()}, null);
-      builder.sslContext(sslContext);
-    }
-
-    return builder.build();
-  }
-
-  private static class PermissiveTrustManager implements X509TrustManager {
-    @Override
-    public void checkClientTrusted(X509Certificate[] chain, String authType) {}
-
-    @Override
-    public void checkServerTrusted(X509Certificate[] chain, String authType) {}
-
-    @Override
-    public X509Certificate[] getAcceptedIssuers() {
-      return new X509Certificate[0];
     }
   }
 }
