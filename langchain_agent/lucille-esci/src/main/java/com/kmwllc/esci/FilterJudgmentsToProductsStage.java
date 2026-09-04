@@ -177,6 +177,13 @@ public class FilterJudgmentsToProductsStage extends Stage {
   }
 
   private HttpClient createHttpClient(boolean acceptInvalidCert) throws Exception {
+    if (acceptInvalidCert) {
+      // A permissive TrustManager only skips chain validation; java.net.http still enforces
+      // hostname/IP-SAN matching and exposes no HostnameVerifier hook. The JDK reads this
+      // property once at class-init, so it must be set before any HttpClient class loads.
+      System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");
+    }
+
     HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5));
 
     if (acceptInvalidCert) {
