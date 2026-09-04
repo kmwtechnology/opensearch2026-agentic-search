@@ -138,3 +138,47 @@ class TestTriggerEnrichmentTool:
         canonical_desc = schema["properties"]["canonical"]["description"]
         assert "leather" in canonical_desc  # a material bucket
         assert "black" in canonical_desc  # a color bucket
+
+    @patch("tools.enrichment_tool.enrich_attribute")
+    def test_github_mode_reports_dispatch_and_run_url(self, mock_enrich):
+        mock_enrich.return_value = EnrichmentResult(
+            success=True,
+            attribute_type="color",
+            variant="tan",
+            canonical="brown",
+            corrected_from="yellow",
+            reindex_triggered=True,
+            reindex_success=True,
+            reindex_mode="github",
+            reindex_run_url="https://github.com/org/repo/actions/runs/42",
+        )
+
+        result = trigger_enrichment.invoke(
+            {"attribute_type": "color", "variant": "tan", "canonical": "brown"}
+        )
+
+        assert "Corrected 'tan' from 'yellow' to 'brown'" in result
+        assert "dispatched" in result
+        assert "https://github.com/org/repo/actions/runs/42" in result
+        assert "9618" not in result
+
+    @patch("tools.enrichment_tool.enrich_attribute")
+    def test_reindex_failure_includes_error_detail(self, mock_enrich):
+        mock_enrich.return_value = EnrichmentResult(
+            success=True,
+            attribute_type="material",
+            variant="cowhide",
+            canonical="leather",
+            reindex_triggered=True,
+            reindex_success=False,
+            reindex_mode="github",
+            reindex_error="GitHub API returned HTTP 404: Not Found",
+        )
+
+        result = trigger_enrichment.invoke(
+            {"attribute_type": "material", "variant": "cowhide", "canonical": "leather"}
+        )
+
+        assert "failed to complete" in result
+        assert "HTTP 404" in result
+        assert "mapping is saved" in result

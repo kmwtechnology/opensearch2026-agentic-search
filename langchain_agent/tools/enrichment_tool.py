@@ -54,8 +54,9 @@ def trigger_enrichment(attribute_type: str, variant: str, canonical: str) -> str
        the catalog currently thinks tan means yellow). Pass the variant
        and its CORRECT canonical; the existing wrong mapping is replaced.
 
-    This performs a REAL, live catalog re-index (takes about 15-25
-    seconds) — only call it when you're confident the term is a genuine
+    This performs a REAL, live catalog re-index (about 15-25 seconds when
+    run locally; on the hosted deployment it is dispatched to a CI workflow
+    that finishes in about 8 minutes) — only call it when you're confident the term is a genuine
     color or material and you know what the correct bucket should be, not
     for typos or unrelated query terms.
     """
@@ -71,9 +72,17 @@ def trigger_enrichment(attribute_type: str, variant: str, canonical: str) -> str
     )
 
     if not result.reindex_success:
+        detail = f" ({result.reindex_error})" if result.reindex_error else ""
         return (
-            f"{action} in the taxonomy, but the catalog re-index failed to complete — "
+            f"{action} in the taxonomy, but the catalog re-index failed to complete{detail} — "
             f"the mapping is saved and will take effect on the next successful re-index."
+        )
+
+    if result.reindex_mode == "github":
+        return (
+            f"{action}. Catalog re-index dispatched to GitHub Actions "
+            f"({result.reindex_run_url}); it takes about 8 minutes and the fix goes "
+            f"live when it finishes."
         )
 
     return (

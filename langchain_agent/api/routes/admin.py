@@ -217,6 +217,9 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
         reindex_success=result.reindex_success,
         docs_processed=result.docs_processed,
         duration_seconds=result.duration_seconds,
+        reindex_mode=result.reindex_mode,
+        reindex_run_url=result.reindex_run_url,
+        reindex_error=result.reindex_error,
     )
 
 
