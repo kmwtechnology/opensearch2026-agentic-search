@@ -63,6 +63,7 @@ public class FilterJudgmentsToProductsStage extends Stage {
       SpecBuilder.stage()
           .requiredString("openSearchUrl")
           .requiredString("productsIndex")
+          .optionalBoolean("acceptInvalidCert")
           .build();
 
   // Package-private (not `private`) so tests can set it directly, bypassing
