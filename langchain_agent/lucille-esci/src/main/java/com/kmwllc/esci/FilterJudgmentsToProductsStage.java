@@ -16,6 +16,10 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import java.security.cert.X509Certificate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +59,11 @@ public class FilterJudgmentsToProductsStage extends Stage {
   private static final String SCROLL_KEEPALIVE = "1m";
 
   public static final Spec SPEC =
-      SpecBuilder.stage().requiredString("openSearchUrl").requiredString("productsIndex").build();
+      SpecBuilder.stage()
+          .requiredString("openSearchUrl")
+          .requiredString("productsIndex")
+          .optionalBoolean("acceptInvalidCert", false)
+          .build();
 
   // Package-private (not `private`) so tests can set it directly, bypassing
   // start()'s real OpenSearch scroll -- same pattern as AttributeDetectorStage.lookup.
@@ -69,8 +77,9 @@ public class FilterJudgmentsToProductsStage extends Stage {
   public void start() {
     String openSearchUrl = config.getString("openSearchUrl");
     String productsIndex = config.getString("productsIndex");
+    boolean acceptInvalidCert = config.getBoolean("acceptInvalidCert");
     try {
-      productIds = loadProductIds(openSearchUrl, productsIndex);
+      productIds = loadProductIds(openSearchUrl, productsIndex, acceptInvalidCert);
       log.info("Loaded {} product ids from {}/{} for judgments filtering",
           productIds.size(), openSearchUrl, productsIndex);
     } catch (Exception e) {
@@ -114,8 +123,8 @@ public class FilterJudgmentsToProductsStage extends Stage {
     return null;
   }
 
-  private Set<String> loadProductIds(String openSearchUrl, String productsIndex) throws Exception {
-    HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+  private Set<String> loadProductIds(String openSearchUrl, String productsIndex, boolean acceptInvalidCert) throws Exception {
+    HttpClient client = createHttpClient(acceptInvalidCert);
     ObjectMapper mapper = new ObjectMapper();
     Set<String> ids = new HashSet<>();
 
@@ -164,5 +173,30 @@ public class FilterJudgmentsToProductsStage extends Stage {
           + response.statusCode() + ": " + response.body());
     }
     return mapper.readTree(response.body());
+  }
+
+  private HttpClient createHttpClient(boolean acceptInvalidCert) throws Exception {
+    HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5));
+
+    if (acceptInvalidCert) {
+      SSLContext sslContext = SSLContext.getInstance("TLS");
+      sslContext.init(null, new TrustManager[] {new PermissiveTrustManager()}, null);
+      builder.sslContext(sslContext);
+    }
+
+    return builder.build();
+  }
+
+  private static class PermissiveTrustManager implements X509TrustManager {
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+    @Override
+    public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+    @Override
+    public X509Certificate[] getAcceptedIssuers() {
+      return new X509Certificate[0];
+    }
   }
 }
