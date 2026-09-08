@@ -46,6 +46,7 @@ RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cro
 COPY langchain_agent/*.py ./
 COPY langchain_agent/api/ ./api/
 COPY langchain_agent/integrations/ ./integrations/
+COPY langchain_agent/tools/ ./tools/
 
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /app/web/dist ./web/dist
