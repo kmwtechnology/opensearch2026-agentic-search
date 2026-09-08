@@ -63,7 +63,7 @@ PYTHONPATH=. pytest tests/integration/ -m "integration and not slow" -v
 | `test_conversations.py` | Conversation CRUD, checkpoint-backed state, session behavior | `integration`, `database` |
 | `test_websocket_integration.py` | WebSocket lifecycle, auth, event ordering | `integration`, `websocket` |
 | `test_suggest.py` | `/api/suggest` typeahead: prefix matches, spell correction, fuzzy fallback | `integration`, `search` |
-| `test_admin_reindex.py` | `/api/admin/reindex` background job, status polling, index health | `integration` |
+| `test_admin_enrich_route.py` | `POST /api/admin/enrich` request/response contract, `ENABLE_ENRICHMENT_TOOL` gating | `integration` |
 | `test_edge_cases.py` | Empty retrievals, malformed input, low-confidence intents | `integration` |
 
 ## What's Tested

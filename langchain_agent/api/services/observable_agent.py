@@ -397,7 +397,7 @@ class ObservableAgentService:
             logger.info("AgentCompleteEvent emitted successfully")
 
             # Generate and persist conversation title in background (non-blocking)
-            asyncio.create_task(self._generate_title_async(thread_id, message, final_response))
+            asyncio.create_task(self._generate_title_async(thread_id, final_response))
 
             # Emit metrics
             await emit(
@@ -1193,7 +1193,6 @@ class ObservableAgentService:
     async def _generate_title_async(
         self,
         thread_id: str,
-        user_message: str,
         _response: Optional[str],
     ) -> None:
         """Generate and persist conversation title in background (non-blocking).
