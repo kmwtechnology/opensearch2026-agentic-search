@@ -473,6 +473,11 @@ jobs:
           # is visible in plain text via `gcloud run services describe`.
           # Move it to Secret Manager (matching the others) if that's not
           # an acceptable tradeoff.
+          #
+          # ENABLE_ENRICHMENT_TOOL=true: the code default is off (see
+          # config.py); prod needs it on so the agent's trigger_enrichment
+          # tool -- and the taxonomy self-correction demo built on it -- work
+          # against the live deployment.
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
@@ -494,6 +499,7 @@ jobs:
           LOG_LEVEL=INFO,\
           LOG_FORMAT=json,\
           REINDEX_TRIGGER=github,\
+          ENABLE_ENRICHMENT_TOOL=true,\
           ADMIN_TOKEN=${{ secrets.ADMIN_TOKEN }}" \
             --set-secrets="\
           API_KEY=agentic-hybrid-search-api-key:latest,\
