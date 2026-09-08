@@ -97,19 +97,22 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 All backend commands run from `langchain_agent/`. Bare imports require `PYTHONPATH=.`.
 
 ```bash
-# Local services
-docker compose up -d                      # from repo root: PostgreSQL + OpenSearch + Dashboards
-docker compose down
-make langfuse-up                          # + Langfuse tracing stack (compose `observability` profile; LOCAL ONLY)
-make langfuse-down
-
-# Setup & dev
+# Local services — FULL STARTUP with Langfuse (recommended for demos)
+cd /path/to/opensearch2026-agentic-search
+docker compose up -d                                           # from repo root: PostgreSQL + OpenSearch + Dashboards
+docker compose --profile observability up -d                  # add Langfuse stack (LOCAL DEV ONLY)
 cd langchain_agent
-python3 setup.py                          # one-time DB + index setup
-make dev-api                              # FastAPI :8000 (--reload)
-make dev-web                              # React :5173
-make dev                                  # both (backend backgrounded)
-make stop
+LANGFUSE_ENABLED=true make dev                                # Backend + Frontend + Langfuse tracing (http://localhost:3000)
+# OR restart backend after the fact:
+#   pkill -f 'uvicorn api.main'
+#   PYTHONPATH=. LANGFUSE_ENABLED=true .venv/bin/uvicorn api.main:app --reload --port 8000 &
+
+# Local services — minimal (no tracing)
+docker compose up -d && make dev                              # PostgreSQL + OpenSearch + API + Frontend
+
+# Cleanup
+docker compose down
+docker compose --profile observability down
 
 # ESCI ingestion via Lucille ETL
 bash scripts/lucille_ingest.sh            # products + judgments, no API calls (default: Docker-based)
