@@ -1,8 +1,8 @@
 """
 Integration tests for enrichment_service.enrich_attribute — the generic
 (color/material/any future type) synchronous flow the live agent enrichment
-tool calls: classify -> write mapping -> ensure index fields -> regenerate
-config -> trigger a real Lucille reindex.
+tool calls: classify -> write mapping -> ensure index fields -> trigger a
+real Lucille reindex (which regenerates products.generated.conf itself).
 
 Most tests mock the reindex subprocess call (subprocess.run) so they stay
 fast and don't require a full ~20s Lucille run for every assertion — the
@@ -61,9 +61,8 @@ def _mock_successful_subprocess():
 class TestEnrichAttributeClassification:
     """Classification/mapping logic, subprocess mocked."""
 
-    @patch("enrichment_service.write_generated_conf")
     @patch("subprocess.run")
-    def test_dictionary_match_succeeds_without_llm(self, mock_run, mock_write_conf, store):
+    def test_dictionary_match_succeeds_without_llm(self, mock_run, store):
         mock_run.return_value = _mock_successful_subprocess()
 
         result = enrichment_service.enrich_attribute("material", "cowhide", store=store)
@@ -73,9 +72,8 @@ class TestEnrichAttributeClassification:
         assert result.reindex_success is True
         assert result.docs_processed == 9618
 
-    @patch("enrichment_service.write_generated_conf")
     @patch("subprocess.run")
-    def test_color_attribute_type_works_too(self, mock_run, mock_write_conf, store):
+    def test_color_attribute_type_works_too(self, mock_run, store):
         mock_run.return_value = _mock_successful_subprocess()
 
         result = enrichment_service.enrich_attribute("color", "charcoal", store=store)
@@ -83,9 +81,8 @@ class TestEnrichAttributeClassification:
         assert result.success is True
         assert result.canonical == "black"
 
-    @patch("enrichment_service.write_generated_conf")
     @patch("subprocess.run")
-    def test_llm_fallback_invoked_for_novel_term(self, mock_run, mock_write_conf, store):
+    def test_llm_fallback_invoked_for_novel_term(self, mock_run, store):
         mock_run.return_value = _mock_successful_subprocess()
 
         def fake_llm(term, canonicals):
@@ -139,11 +136,8 @@ class TestEnrichAttributeClassification:
         assert result.reindex_triggered is False
         assert result.corrected_from is None
 
-    @patch("enrichment_service.write_generated_conf")
     @patch("subprocess.run")
-    def test_explicit_canonical_differing_from_existing_corrects_the_mapping(
-        self, mock_run, mock_write_conf, store
-    ):
+    def test_explicit_canonical_differing_from_existing_corrects_the_mapping(self, mock_run, store):
         """The real bug this exists for: 'tan' was mis-seeded to 'yellow'.
         Supplying a different explicit_canonical overwrites the wrong
         mapping instead of bouncing off the 'already mapped' guard --
@@ -162,9 +156,8 @@ class TestEnrichAttributeClassification:
         # The store itself must reflect the correction, not just the result.
         assert store.get_lookup_table("color")["tan"] == "brown"
 
-    @patch("enrichment_service.write_generated_conf")
     @patch("subprocess.run")
-    def test_fresh_mapping_has_no_corrected_from(self, mock_run, mock_write_conf, store):
+    def test_fresh_mapping_has_no_corrected_from(self, mock_run, store):
         """A genuinely new (not previously mapped) variant is an addition,
         not a correction -- corrected_from must stay None so callers don't
         say "corrected" for something that was never wrong."""
@@ -182,9 +175,8 @@ class TestEnrichAttributeClassification:
         assert result.success is False
         assert result.reason == "empty term"
 
-    @patch("enrichment_service.write_generated_conf")
     @patch("subprocess.run")
-    def test_explicit_canonical_bypasses_classification(self, mock_run, mock_write_conf, store):
+    def test_explicit_canonical_bypasses_classification(self, mock_run, store):
         mock_run.return_value = _mock_successful_subprocess()
 
         def failing_classify(term, canonicals):
@@ -209,25 +201,20 @@ class TestEnrichAttributeClassification:
         assert result.success is False
         assert "not a known canonical" in result.reason
 
-    @patch("enrichment_service.write_generated_conf")
     @patch("subprocess.run")
-    def test_writes_mapping_before_triggering_reindex(self, mock_run, mock_write_conf, store):
+    def test_writes_mapping_before_triggering_reindex(self, mock_run, store):
         mock_run.return_value = _mock_successful_subprocess()
 
         enrichment_service.enrich_attribute("material", "cowhide", store=store)
 
         lookup = store.get_lookup_table("material")
         assert lookup.get("cowhide") == "leather"
-        mock_write_conf.assert_called_once()
         mock_run.assert_called_once()
 
 
 class TestReindexFailureHandling:
-    @patch("enrichment_service.write_generated_conf")
     @patch("subprocess.run")
-    def test_nonzero_exit_code_reports_reindex_failure_not_overall_failure(
-        self, mock_run, mock_write_conf, store
-    ):
+    def test_nonzero_exit_code_reports_reindex_failure_not_overall_failure(self, mock_run, store):
         """Mapping was still written (real taxonomy growth) even if the
         triggered reindex itself failed — success=True, reindex_success=False."""
         result = MagicMock()
@@ -246,9 +233,8 @@ class TestReindexFailureHandling:
         # Mapping was still persisted despite the reindex failure
         assert store.get_lookup_table("material").get("cowhide") == "leather"
 
-    @patch("enrichment_service.write_generated_conf")
     @patch("subprocess.run")
-    def test_timeout_reports_reindex_failure(self, mock_run, mock_write_conf, store):
+    def test_timeout_reports_reindex_failure(self, mock_run, store):
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="lucille_ingest.sh", timeout=180)
 
         outcome = enrichment_service.enrich_attribute("material", "cowhide", store=store)
