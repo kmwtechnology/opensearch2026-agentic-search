@@ -26,7 +26,7 @@ tests/
 │   └── test_relevancy_metrics.py
 │
 ├── integration/                   # Multi-component; requires services
-│   ├── test_admin_reindex.py
+│   ├── test_admin_enrich_route.py
 │   ├── test_agent_response.py
 │   ├── test_conversations.py
 │   ├── test_edge_cases.py
@@ -130,7 +130,6 @@ services — everything is mocked through `conftest.py`.
 | `test_routing_functions.py` | LangGraph edge routing logic |
 | `test_search_optimizations.py` | BM25 synonym expansion, fuzzy, phrase-boost, phonetic config |
 | `test_vector_store.py` | `OpenSearchVectorStore` hybrid search, RRF fusion, facets, collapse |
-| `test_admin_reindex.py` | `/api/admin/reindex` background job, status polling, index health |
 | `test_e2e_ws_url_routes.py` | Pre-flight guard: every `/ws/*` URL referenced in `tests/e2e/` must resolve to a registered FastAPI WebSocket route — catches path/query-style mismatches locally before they reach Cloud Run |
 | `test_e2e_event_types.py` | Pre-flight guard: every `event["type"] == "..."` literal in `tests/e2e/` must be declared in `api/schemas/events.py`; flags use of `event["event_type"]` (wire field is `type`) |
 | `test_e2e_payload_shapes.py` | Pre-flight guard: every `json.dumps({...})` WS payload in `tests/e2e/` must match the `chat_message` / `stop_execution` contract enforced by `api/routes/chat.py` (catches stale `{"query":, "session_id":}` shapes) |
@@ -153,7 +152,7 @@ pre-commit, CI fast lane.
 | `test_conversations.py` | Conversation CRUD, checkpoint-backed state, session behavior |
 | `test_websocket_integration.py` | WebSocket lifecycle, auth, event ordering |
 | `test_suggest.py` | `/api/suggest` typeahead: prefix matches, spell correction (Levenshtein + ratio), fuzzy distance-1 fallback, corpus-token and prefix guards |
-| `test_admin_reindex.py` | `/api/admin/reindex` background job, `/api/admin/reindex/status` polling, `/api/admin/health` index status |
+| `test_admin_enrich_route.py` | `POST /api/admin/enrich` request/response contract, `ENABLE_ENRICHMENT_TOOL` gating, delegation to `enrichment_service` |
 | `test_edge_cases.py` | Empty retrievals, malformed input, low-confidence intents |
 
 **Run time:** ~5–60 s. **Requires:** PostgreSQL + OpenSearch running

@@ -222,7 +222,7 @@ def _invoke_agent(agent, user_input: str):
         # Display the final response with streaming
         if final_response:
             print("Agent (response):")
-            _stream_text(agent, final_response)
+            _stream_text(final_response)
         else:
             print("Agent: Processing complete")
 
@@ -242,7 +242,7 @@ def _invoke_agent(agent, user_input: str):
         traceback.print_exc()
 
 
-def _stream_text(agent, text: str, chunk_size: int = 1) -> None:
+def _stream_text(text: str) -> None:
     """
     Display text output from LLM response without artificial delays.
 
@@ -251,7 +251,6 @@ def _stream_text(agent, text: str, chunk_size: int = 1) -> None:
 
     Args:
         text: The text to display to the console.
-        chunk_size: Not used in current implementation (kept for compatibility).
     """
     # Display text immediately without artificial delays
     # True streaming happens via _stream_llm_response and LLM chunk events
