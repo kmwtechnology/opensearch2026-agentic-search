@@ -200,6 +200,11 @@ __all__ = [
     "CHECKPOINT_COMPACTION_DAYS",
     # Agentic Enrichment Flywheel
     "ENABLE_ENRICHMENT_TOOL",
+    "REINDEX_TRIGGER",
+    "REINDEX_LOCAL_TIMEOUT_SECONDS",
+    "GITHUB_REPO",
+    "GITHUB_REINDEX_REF",
+    "GITHUB_REINDEX_TOKEN",
 ]
 
 # ============================================================================
@@ -588,3 +593,16 @@ CHECKPOINT_COMPACTION_DAYS = 7
 # OpenSearch-backed attribute mapping store, so it's kept opt-in outside the
 # conference demo environment.
 ENABLE_ENRICHMENT_TOOL = os.getenv("ENABLE_ENRICHMENT_TOOL", "false").lower() == "true"
+
+# How enrich_attribute triggers the catalog reindex after writing a mapping:
+#   local  -- run scripts/lucille_ingest.sh as a subprocess (dev: Docker on this
+#             host, ~20s, synchronous).
+#   github -- dispatch the reindex.yml GitHub Actions workflow (Cloud Run: the
+#             image has no Docker/Lucille; fire-and-forget, ~8 min).
+REINDEX_TRIGGER = os.getenv("REINDEX_TRIGGER", "local").strip().lower()
+REINDEX_LOCAL_TIMEOUT_SECONDS = int(os.getenv("REINDEX_LOCAL_TIMEOUT_SECONDS", "180"))
+GITHUB_REPO = os.getenv("GITHUB_REPO", "kmwtechnology/opensearch2026-agentic-search")
+GITHUB_REINDEX_REF = os.getenv("GITHUB_REINDEX_REF", "main")
+# Fine-grained PAT with Actions: read/write on GITHUB_REPO only. Required when
+# REINDEX_TRIGGER=github (Secret Manager on Cloud Run); never needed locally.
+GITHUB_REINDEX_TOKEN = os.getenv("GITHUB_REINDEX_TOKEN")

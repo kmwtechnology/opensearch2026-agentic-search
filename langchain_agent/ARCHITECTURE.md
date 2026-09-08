@@ -818,11 +818,30 @@ explicit action) bypasses this gate.
 classify (or use the LLM-supplied canonical directly) → write the
 mapping to OpenSearch → additively ensure the index mapping has the
 `product_<type>` fields → regenerate `products.generated.conf` →
-trigger `scripts/lucille_ingest.sh` as a real subprocess (~19-20s for
-9,618 products — a genuine full reindex, not a scoped patch). A
-follow-up query (gap case) or a direct field check (correction case,
-since ranking itself barely moves — see `DEMO.md`) now reflects the
-fix.
+trigger a real catalog reindex through `reindex_trigger.py`. Same
+result, two mechanisms, selected by `REINDEX_TRIGGER`:
+
+- `local` (default, dev): `LocalReindexTrigger` runs
+  `scripts/lucille_ingest.sh --skip-judgments` as a subprocess and waits
+  (~19-20s for 9,618 products — a genuine full reindex, not a scoped
+  patch). `make reindex` / `make reindex-products` are the human-facing
+  entry points to the same script.
+- `github` (Cloud Run): `GitHubActionsReindexTrigger` dispatches the
+  `reindex.yml` workflow via the GitHub API (fine-grained PAT in
+  `GITHUB_REINDEX_TOKEN`, Actions: read/write on this repo only) and
+  returns immediately with the run URL — the prod image has no
+  Docker/Lucille. The runner regenerates `products.generated.conf` from
+  the hosted mapping store, which now contains the new mapping, so
+  nothing else needs plumbing. Fire-and-forget: ~8 minutes, and
+  `reindex.yml`'s `concurrency: reindex-opensearch` queues overlapping
+  dispatches rather than running them concurrently.
+
+`EnrichmentResult.reindex_mode` / `reindex_run_url` / `reindex_error`
+carry which path ran; the agent tool phrases its reply accordingly
+("re-indexed N products in Xs" vs. "dispatched … goes live when it
+finishes"). A follow-up query (gap case) or a direct field check
+(correction case, since ranking itself barely moves — see `DEMO.md`)
+now reflects the fix — immediately locally, after the run on Cloud Run.
 
 **Filter relaxation** (`pipeline_nodes.py` retriever, pre-existing, load-bearing
 for the gap-mechanism asymmetry above): when an

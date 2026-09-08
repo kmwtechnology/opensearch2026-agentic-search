@@ -217,12 +217,16 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
         reindex_success=result.reindex_success,
         docs_processed=result.docs_processed,
         duration_seconds=result.duration_seconds,
+        reindex_mode=result.reindex_mode,
+        reindex_run_url=result.reindex_run_url,
+        reindex_error=result.reindex_error,
     )
 
 
 def _enrich_sync(attribute_type: str, variant: str, canonical: Optional[str]):
-    """enrich_attribute triggers a real Lucille reindex subprocess -- measured
-    ~17-20s (see enrichment_service.py). Called directly on the event loop
+    """enrich_attribute triggers a real catalog reindex -- locally a Lucille
+    subprocess measured at ~17-20s, on Cloud Run a workflow dispatch that still
+    makes blocking HTTP calls (see reindex_trigger.py). Called directly on the event loop
     this would freeze every in-flight WebSocket chat stream for the whole
     duration; run_in_threadpool (see #25) keeps it off the loop. The live
     agent's own trigger_enrichment tool call is unaffected by this bug --

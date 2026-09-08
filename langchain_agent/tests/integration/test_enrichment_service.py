@@ -25,6 +25,7 @@ import pytest
 
 import attribute_mapping_store as store_module
 import enrichment_service
+import reindex_trigger
 from attribute_mapping_store import AttributeMappingStore
 
 pytestmark = pytest.mark.integration
@@ -308,10 +309,10 @@ class TestParseDocsSucceeded:
         output = (
             "esciProductsConnector: complete. 9618 docs succeeded. 0 docs failed. 0 docs dropped."
         )
-        assert enrichment_service._parse_docs_succeeded(output) == 9618
+        assert reindex_trigger._parse_docs_succeeded(output) == 9618
 
     def test_returns_zero_when_no_match(self):
-        assert enrichment_service._parse_docs_succeeded("some unrelated output") == 0
+        assert reindex_trigger._parse_docs_succeeded("some unrelated output") == 0
 
 
 class TestRealReindexEndToEnd:

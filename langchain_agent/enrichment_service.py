@@ -17,8 +17,10 @@ on-stage trigger):
      (keyword) fields — additive, only when the attribute type is new.
   4. Regenerate products.generated.conf (config_generator) so the next
      Lucille run picks up the new mapping.
-  5. Trigger a REAL full Lucille reindex (scripts/lucille_ingest.sh) as a
-     subprocess and measure it.
+  5. Trigger a REAL full catalog reindex through reindex_trigger: locally
+     that runs scripts/lucille_ingest.sh as a subprocess and waits (~20s);
+     on Cloud Run (REINDEX_TRIGGER=github) it dispatches the reindex.yml
+     workflow and returns immediately (~8 min, fire-and-forget).
 
 This supersedes an earlier scoped update_by_query design — a real reindex
 was measured fast enough (~17-20s) to run live, so there's no need for a
@@ -26,20 +28,15 @@ narrower, faster-but-less-authentic patch mechanism.
 """
 
 import logging
-import re
-import subprocess
-import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, single_term_classify
 from attribute_mapping_store import AttributeMappingStore
 from config_generator import write_generated_conf
+from reindex_trigger import ReindexTrigger, build_reindex_trigger
 
 logger = logging.getLogger(__name__)
-
-LANGCHAIN_AGENT_DIR = Path(__file__).parent
 
 # Canonical bucket vocabularies by attribute type. Add an entry here when a
 # new attribute type gets a discovery seed dict in attribute_discovery.py.
@@ -62,6 +59,9 @@ class EnrichmentResult:
     reindex_success: bool = False
     docs_processed: int = 0
     duration_seconds: float = 0.0
+    reindex_mode: str = "local"  # "local" (subprocess) or "github" (workflow dispatch)
+    reindex_run_url: Optional[str] = None  # github mode: the dispatched run
+    reindex_error: Optional[str] = None  # short detail when reindex_success is False
     # Set when this replaced an existing (wrong) mapping rather than adding a
     # new one — e.g. correcting the shipped "tan"->"yellow" mis-mapping to
     # "tan"->"brown". Lets callers say "corrected X: was A, now B" instead of
@@ -75,6 +75,7 @@ def enrich_attribute(
     llm_classify_fn: Optional[Callable[[str, list], Optional[str]]] = None,
     store: Optional[AttributeMappingStore] = None,
     explicit_canonical: Optional[str] = None,
+    trigger: Optional[ReindexTrigger] = None,
 ) -> EnrichmentResult:
     """
     Classify a new attribute variant, write it to the mapping store, ensure
@@ -90,6 +91,8 @@ def enrich_attribute(
         explicit_canonical: skip classification entirely and use this
             canonical directly (e.g. admin/ops use). Still validated against
             the attribute type's canonical buckets.
+        trigger: ReindexTrigger to run after the mapping is written
+            (built from config.REINDEX_TRIGGER if None).
 
     Returns:
         EnrichmentResult — success=False with a `reason` if the attribute
@@ -176,17 +179,20 @@ def enrich_attribute(
     _ensure_attribute_fields_mapped(store, attribute_type)
     write_generated_conf()
 
-    reindex_success, docs_processed, duration = _trigger_reindex()
+    outcome = (trigger or build_reindex_trigger()).trigger()
 
     return EnrichmentResult(
         success=True,
         attribute_type=attribute_type,
         variant=variant,
         canonical=canonical,
-        reindex_triggered=True,
-        reindex_success=reindex_success,
-        docs_processed=docs_processed,
-        duration_seconds=duration,
+        reindex_triggered=outcome.triggered,
+        reindex_success=outcome.success,
+        docs_processed=outcome.docs_processed,
+        duration_seconds=outcome.duration_seconds,
+        reindex_mode=outcome.mode,
+        reindex_run_url=outcome.run_url,
+        reindex_error=outcome.error,
         corrected_from=existing_canonical,
     )
 
@@ -227,43 +233,3 @@ def _ensure_attribute_fields_mapped(store: AttributeMappingStore, attribute_type
         },
     )
     logger.info("Enrichment: added index mapping fields for attribute_type '%s'", attribute_type)
-
-
-def _trigger_reindex() -> tuple:
-    """
-    Run a real Lucille products reindex as a subprocess. Returns (success,
-    docs_processed, duration_seconds).
-    """
-    start = time.monotonic()
-    try:
-        result = subprocess.run(
-            ["bash", "scripts/lucille_ingest.sh", "--skip-judgments"],
-            cwd=LANGCHAIN_AGENT_DIR,
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-    except subprocess.TimeoutExpired:
-        duration = time.monotonic() - start
-        logger.error("Enrichment: reindex timed out after %.1fs", duration)
-        return False, 0, duration
-
-    duration = time.monotonic() - start
-
-    if result.returncode != 0:
-        logger.error(
-            "Enrichment: reindex failed (exit %d): %s", result.returncode, result.stderr[-2000:]
-        )
-        return False, 0, duration
-
-    docs_processed = _parse_docs_succeeded(result.stdout)
-    logger.info(
-        "Enrichment: reindex complete, %d docs processed in %.1fs", docs_processed, duration
-    )
-    return True, docs_processed, duration
-
-
-def _parse_docs_succeeded(lucille_output: str) -> int:
-    """Extract the doc count from Lucille's 'N docs succeeded' summary line."""
-    match = re.search(r"(\d+)\s+docs succeeded", lucille_output)
-    return int(match.group(1)) if match else 0

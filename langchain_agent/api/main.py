@@ -35,6 +35,7 @@ from api.middleware.auth import AuthConfigurationError
 from api.middleware.client_ip import get_client_ip
 from api.routes import admin, auth, chat, conversations, health, suggest
 from config import (
+    ENABLE_ENRICHMENT_TOOL,
     LOGIN_PASSWORD,
     RATE_LIMIT_ENABLED,
     SESSION_COOKIE_NAME,
@@ -44,6 +45,7 @@ from config import (
 )
 from integrations import shutdown_tracing
 from logging_config import configure_logging, get_logger
+from reindex_trigger import build_reindex_trigger
 
 # Configure structured logging
 configure_logging()
@@ -91,6 +93,10 @@ async def lifespan(app: FastAPI):
             "SESSION_SECRET must be set to a value of at least 32 characters. "
             "Generate one with `openssl rand -hex 32`."
         )
+    if ENABLE_ENRICHMENT_TOOL:
+        # Fail fast on REINDEX_TRIGGER misconfiguration (e.g. github mode with no
+        # token) instead of discovering it on the first live enrichment.
+        build_reindex_trigger()
 
     # Initialize the agent (LLM clients, graph, reranker) and wait for
     # warmup to complete *before* the ASGI server starts accepting
