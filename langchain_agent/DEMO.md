@@ -320,7 +320,7 @@ correction-framed prompt including recent conversation history and
 offers the LLM the same `trigger_enrichment` tool, which — if the LLM
 agrees a real mistagging occurred — writes the corrected mapping and
 triggers a genuine full Lucille reindex of the whole 9,618-product
-catalog (~19–20s, measured — not a mock, not a scoped patch).
+catalog (~19–20s, measured — not a mock, not a scoped patch). That timing is the **local** mechanism (`REINDEX_TRIGGER=local`, Lucille subprocess); on Cloud Run the same tool call dispatches the `reindex.yml` workflow instead (~8 min, fire-and-forget), so run the live demo against local dev.
 
 ### The demo
 
@@ -600,7 +600,7 @@ A: We use Amazon ESCI dataset (~1.2M US products). Demo often uses a 10K sample 
 
 **Q: Is the reindex you just showed actually processing the whole catalog, or just the affected products?**
 
-A: The whole catalog — a real, full Lucille pipeline run (~19–20s for 9,618 products), not a scoped patch. We measured that a full reindex is fast enough to run live, so there's no need for a narrower, faster-but-less-authentic mechanism.
+A: The whole catalog — a real, full Lucille pipeline run (~19–20s for 9,618 products), not a scoped patch. We measured that a full reindex is fast enough to run live, so there's no need for a narrower, faster-but-less-authentic mechanism. (On the hosted deployment the same call dispatches the `reindex.yml` GitHub Actions workflow and reports the run URL — same result, different mechanism, chosen by `REINDEX_TRIGGER`.)
 
 **Q: What stops the agent from writing garbage into the taxonomy?**
 

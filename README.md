@@ -126,7 +126,7 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   shopper disputes it (e.g. the shipped taxonomy maps "tan" to "yellow"
   instead of "brown" — a real bug affecting 29 products, invisible to
   automated quality gates since the wrong result still scores above
-  threshold). Either way, a genuine full Lucille reindex runs (~19–20s) —
+  threshold). Either way, a genuine full Lucille reindex runs (~19–20s locally; on Cloud Run the app dispatches the `reindex.yml` workflow instead, ~8 min, fire-and-forget — see `REINDEX_TRIGGER`) —
   see `langchain_agent/ARCHITECTURE.md` and `langchain_agent/DEMO.md`
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
   boosting, and field boosting, displayed in the observability panel's

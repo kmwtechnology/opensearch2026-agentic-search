@@ -493,9 +493,11 @@ jobs:
           EMBEDDINGS_MODEL=models/gemini-embedding-001,\
           LOG_LEVEL=INFO,\
           LOG_FORMAT=json,\
+          REINDEX_TRIGGER=github,\
           ADMIN_TOKEN=${{ secrets.ADMIN_TOKEN }}" \
             --set-secrets="\
           API_KEY=agentic-hybrid-search-api-key:latest,\
+          GITHUB_REINDEX_TOKEN=agentic-hybrid-search-github-reindex-token:latest,\
           GOOGLE_API_KEY=agentic-hybrid-search-google-api-key:latest,\
           POSTGRES_PASSWORD=agentic-hybrid-search-db-password:latest,\
           OPENSEARCH_USER=agentic-hybrid-search-opensearch-user:latest,\
