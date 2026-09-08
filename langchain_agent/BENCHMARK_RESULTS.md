@@ -239,7 +239,7 @@ Adaptive             0.3897      0.5467      0.4243      5000
 2. **Native hybrid vs RRF fallback:** If the OpenSearch neural-search plugin is enabled, native hybrid uses static `[0.5, 0.5]` weights (alpha has no effect). The benchmark logs which path is active at startup.
 
 3. **Intent classification mode:**
-   - `--fast` mode: uses keyword heuristics + alpha fast-path table (deterministic)
+   - `--fast` mode: skips LLM intent classification, uses `alpha=0.65` for all `search`/`follow_up` queries (deterministic)
    - Full mode: calls Gemini intent classifier (non-deterministic, results vary by model version/temperature)
 
 4. **Cross-encoder model:** Currently `cross-encoder/ms-marco-MiniLM-L-12-v2` (deterministic, cached locally after first load).
@@ -250,8 +250,7 @@ Adaptive             0.3897      0.5467      0.4243      5000
 
 - [ ] ESCI dataset cloned to `../esci/`
 - [ ] Services running: `docker compose up -d`
-- [ ] Products ingested: `python ingest_esci_products.py --limit 1200000 --locale us`
-- [ ] Judgments ingested: `python ingest_esci_judgments.py --locale us --reset`
+- [ ] Products + judgments ingested: `bash scripts/lucille_ingest.sh` (Lucille ETL; the older standalone `ingest_esci_*.py` scripts were removed in PR #48)
 - [ ] Verify OpenSearch: `curl http://localhost:9200/esci_judgments/_count`
 - [ ] Dry-run: `python benchmark_esci.py --limit 2 --fast`
 - [ ] Full run: `make benchmark-esci-fast` (~5 min)
