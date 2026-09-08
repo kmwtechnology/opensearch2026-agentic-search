@@ -15,12 +15,14 @@ on-stage trigger):
   3. Ensure the OpenSearch index mapping has product_<attribute_type>
      (dual-mapped text) + product_<attribute_type>_primary/_secondary
      (keyword) fields — additive, only when the attribute type is new.
-  4. Regenerate products.generated.conf (config_generator) so the next
-     Lucille run picks up the new mapping.
-  5. Trigger a REAL full catalog reindex through reindex_trigger: locally
+  4. Trigger a REAL full catalog reindex through reindex_trigger: locally
      that runs scripts/lucille_ingest.sh as a subprocess and waits (~20s);
      on Cloud Run (REINDEX_TRIGGER=github) it dispatches the reindex.yml
-     workflow and returns immediately (~8 min, fire-and-forget).
+     workflow and returns immediately (~8 min, fire-and-forget). Either
+     way, scripts/lucille_ingest.sh regenerates products.generated.conf
+     (config_generator.py) itself as part of every ingest run -- this
+     service never writes that file directly, since it lives alongside
+     the Lucille ETL source, which isn't present in the Cloud Run image.
 
 This supersedes an earlier scoped update_by_query design — a real reindex
 was measured fast enough (~17-20s) to run live, so there's no need for a
@@ -33,7 +35,6 @@ from typing import Callable, Dict, Optional
 
 from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, single_term_classify
 from attribute_mapping_store import AttributeMappingStore
-from config_generator import write_generated_conf
 from reindex_trigger import ReindexTrigger, build_reindex_trigger
 
 logger = logging.getLogger(__name__)
@@ -177,7 +178,6 @@ def enrich_attribute(
         )
 
     _ensure_attribute_fields_mapped(store, attribute_type)
-    write_generated_conf()
 
     outcome = (trigger or build_reindex_trigger()).trigger()
 
