@@ -289,6 +289,9 @@ class RerankerResultEvent(BaseEvent):
     node: Literal["reranker"] = "reranker"
     results: List[RerankedDocument]
     reranking_changed_order: bool = False
+    # The actually configured RERANKER_TYPE ("cross-encoder" or "gemini") —
+    # lets the UI describe the real reranker instead of assuming one (#87).
+    reranker_type: str = "cross-encoder"
 
 
 # ============================================================================

@@ -168,5 +168,47 @@ describe('SearchDetails (reranker mode)', () => {
       await user.click(viewMoreButtons[0])
       expect(screen.getAllByText('Best headphones').length).toBeGreaterThan(0)
     })
+
+    describe('reranker explanation text (#87)', () => {
+      const stepWithRerankerType = (reranker_type: string) => [
+        {
+          id: 'reranker-1',
+          node: 'reranker',
+          status: 'done' as const,
+          startTime: new Date(),
+          events: [
+            {
+              type: 'reranker_result',
+              node: 'reranker',
+              results: rerankedDocs,
+              reranking_changed_order: false,
+              reranker_type,
+            },
+          ],
+          summary: undefined,
+        },
+      ]
+
+      it('describes the local cross-encoder when reranker_type is cross-encoder', () => {
+        useObservabilityStore.setState({ steps: stepWithRerankerType('cross-encoder') as any })
+        render(<SearchDetails mode="reranker" />)
+        expect(screen.getByText(/local cross-encoder/i)).toBeInTheDocument()
+        expect(screen.queryByText(/\(Gemini\)/i)).not.toBeInTheDocument()
+      })
+
+      it('describes Gemini/LLM-based scoring when reranker_type is gemini', () => {
+        useObservabilityStore.setState({ steps: stepWithRerankerType('gemini') as any })
+        render(<SearchDetails mode="reranker" />)
+        expect(screen.getByText(/\(Gemini\)/i)).toBeInTheDocument()
+        expect(screen.getByText(/LLM-based semantic scoring/i)).toBeInTheDocument()
+      })
+
+      it('falls back to a neutral description when no reranker_result event is present', () => {
+        const { container } = render(<SearchDetails mode="reranker" />)
+        expect(screen.queryByText(/\(Gemini\)/i)).not.toBeInTheDocument()
+        expect(screen.queryByText(/local cross-encoder/i)).not.toBeInTheDocument()
+        expect(container.textContent).toMatch(/reranker.*then scores each document for relevance/i)
+      })
+    })
   })
 })

@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { useObservabilityStore } from '../../../stores/observabilityStore'
 import { FileText, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Loader2, ExternalLink, Filter, Eye } from 'lucide-react'
 import clsx from 'clsx'
-import type { OpenSearchQueryEvent } from '../../../types/events'
+import type { OpenSearchQueryEvent, RerankerResultEvent } from '../../../types/events'
 import { DslViewerModal } from '../DslViewerModal'
 
 interface SearchDetailsProps {
@@ -39,6 +39,14 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
     e => (e.query_type ?? 'hybrid') === 'hybrid'
   )
   const retryQueryEvent = opensearchEvents.find(e => e.query_type === 'quality_gate_retry')
+
+  // Which reranker actually scored this query — used to describe it
+  // accurately below instead of assuming one (#87).
+  const rerankerStep = steps.find(s => s.node === 'reranker')
+  const rerankerResultEvent = (rerankerStep?.events ?? []).find(
+    (e): e is RerankerResultEvent => e.type === 'reranker_result'
+  )
+  const rerankerType = rerankerResultEvent?.reranker_type
 
   // Toggle document expansion
   const toggleDocExpansion = (index: number) => {
@@ -364,8 +372,19 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
       <div className="text-xs text-gray-500 border-t border-gray-700 pt-3">
         <p>
           <strong>Hybrid search</strong> combines BM25 (keyword) and vector similarity.
-          The <strong>reranker</strong> (Gemini) then scores each document for
-          relevance using LLM-based semantic scoring.
+          {rerankerType === 'cross-encoder' ? (
+            <>
+              {' '}The <strong>reranker</strong> (local cross-encoder) then scores
+              each document for relevance offline, with no added API latency.
+            </>
+          ) : rerankerType ? (
+            <>
+              {' '}The <strong>reranker</strong> (Gemini) then scores each document
+              for relevance using LLM-based semantic scoring.
+            </>
+          ) : (
+            <> The <strong>reranker</strong> then scores each document for relevance.</>
+          )}
         </p>
       </div>
     </div>
