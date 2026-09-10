@@ -11,6 +11,7 @@ import type {
   SummaryEvent,
   QualityGateEvent,
   EnrichmentTriggeredEvent,
+  RerankerResultEvent,
 } from '../../types/events'
 import { QueryEvaluatorDetails } from './details/QueryEvaluatorDetails'
 import { SearchDetails } from './details/SearchDetails'
@@ -43,7 +44,9 @@ const nodeConfig: Record<string, { label: string; color: string; bgColor: string
     bgColor: 'bg-violet-500/20 border-violet-500/50',
   },
   reranker: {
-    label: 'LLM Reranker',
+    // Overridden below once we know the actual reranker_type for this step
+    // (#87) — this is only the fallback before that event arrives.
+    label: 'Reranker',
     color: 'text-indigo-300',
     bgColor: 'bg-indigo-500/20 border-indigo-500/50',
   },
@@ -65,7 +68,7 @@ export function StepCard({ step, index }: StepCardProps) {
 
   const enrichmentEvent = step.events.find(isEnrichmentTriggeredEvent)
 
-  const config = enrichmentEvent
+  const baseConfig = enrichmentEvent
     ? {
         label: 'LLM Agent',
         color: 'text-emerald-300',
@@ -76,6 +79,23 @@ export function StepCard({ step, index }: StepCardProps) {
         color: 'text-gray-400',
         bgColor: 'bg-gray-500/10 border-gray-500/30',
       }
+
+  // The reranker's label depends on which reranker actually ran this turn —
+  // never assume Gemini/LLM-based when the (default) local cross-encoder is
+  // configured (#87). Spread into a fresh object rather than mutating
+  // baseConfig, which for known nodes is a direct reference into the
+  // shared, module-level nodeConfig map.
+  let config = baseConfig
+  if (!enrichmentEvent && step.node === 'reranker') {
+    const rerankerResultEvent = step.events.find(
+      (e): e is RerankerResultEvent => e.type === 'reranker_result'
+    )
+    if (rerankerResultEvent?.reranker_type === 'cross-encoder') {
+      config = { ...baseConfig, label: 'Cross-Encoder Reranker' }
+    } else if (rerankerResultEvent?.reranker_type) {
+      config = { ...baseConfig, label: 'LLM Reranker' }
+    }
+  }
 
   const statusColors = {
     idle: 'bg-gray-500',

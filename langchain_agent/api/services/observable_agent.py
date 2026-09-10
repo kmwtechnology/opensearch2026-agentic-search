@@ -62,6 +62,7 @@ ConfidenceProxyModel = ConfidenceProxy
 StageMetricsModel = StageMetrics
 from config import (
     ENABLE_RERANKING,
+    RERANKER_TYPE,
     RETRIEVER_FETCH_K,
 )
 from integrations import get_callbacks, new_trace_id
@@ -906,6 +907,7 @@ class ObservableAgentService:
                     RerankerResultEvent(
                         results=reranked_docs,
                         reranking_changed_order=reranking_changed_order,
+                        reranker_type=RERANKER_TYPE,
                     )
                 )
 

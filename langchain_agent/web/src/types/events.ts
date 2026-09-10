@@ -150,6 +150,7 @@ export interface RerankerResultEvent extends BaseEvent {
   node: 'reranker'
   results: RerankedDocument[]
   reranking_changed_order: boolean
+  reranker_type: string
 }
 
 // Search progress events
