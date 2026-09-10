@@ -64,7 +64,7 @@ class TestTryEnrichmentTool:
         agent.llm.bind_tools.assert_called_once_with([trigger_enrichment])
 
     @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("tools.enrichment_tool.enrich_attribute")
+    @patch("enrichment_service.enrich_attribute")
     def test_tool_call_executes_and_returns_state(self, mock_enrich, mock_store_cls):
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
@@ -98,10 +98,51 @@ class TestTryEnrichmentTool:
         assert result["enrichment_attribute_type"] == "material"
         assert result["enrichment_variant"] == "chrome"
         assert result["enrichment_canonical"] == "metal"
+        assert result["enrichment_duration_seconds"] == 18.3
+        assert result["enrichment_docs_processed"] == 9618
         mock_enrich.assert_called_once_with("material", "chrome", explicit_canonical="metal")
 
     @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("tools.enrichment_tool.enrich_attribute")
+    @patch("enrichment_service.enrich_attribute")
+    def test_duration_and_docs_processed_omitted_when_reindex_fails(
+        self, mock_enrich, mock_store_cls
+    ):
+        """If the mapping wrote successfully but the reindex itself failed,
+        docs_processed/duration_seconds describe a re-index that didn't
+        actually complete -- surfacing them as real numbers would be
+        misleading, so they're omitted (None) rather than shown (#80)."""
+        mock_store_cls.return_value.get_lookup_table.return_value = {}
+        mock_enrich.return_value = EnrichmentResult(
+            success=True,
+            attribute_type="material",
+            variant="chrome",
+            canonical="metal",
+            reindex_triggered=True,
+            reindex_success=False,
+            reindex_error="docker daemon not running",
+            docs_processed=0,
+            duration_seconds=2.1,
+        )
+
+        tool_call_response = AIMessage(content="")
+        tool_call_response.tool_calls = [
+            {
+                "name": "trigger_enrichment",
+                "args": {"attribute_type": "material", "variant": "chrome", "canonical": "metal"},
+                "id": "call_1",
+            }
+        ]
+        final = AIMessage(content="I tried to fix that, but the re-index failed.")
+        agent = _agent_with_llm(tool_call_response, final_response=final)
+
+        result = agent._try_enrichment_tool("chrome bar table")
+
+        assert result["enrichment_triggered"] is True
+        assert result["enrichment_duration_seconds"] is None
+        assert result["enrichment_docs_processed"] is None
+
+    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("enrichment_service.enrich_attribute")
     def test_tool_message_has_matching_tool_call_id(self, mock_enrich, mock_store_cls):
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
@@ -130,7 +171,7 @@ class TestTryEnrichmentTool:
         assert tool_messages[0].tool_call_id == "call_xyz"
 
     @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("tools.enrichment_tool.enrich_attribute")
+    @patch("enrichment_service.enrich_attribute")
     def test_classification_failure_still_returns_state_with_final_response(
         self, mock_enrich, mock_store_cls
     ):
@@ -167,7 +208,7 @@ class TestEnrichmentValueGate:
     assessment must prevent the real write + reindex entirely."""
 
     @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("tools.enrichment_tool.enrich_attribute")
+    @patch("enrichment_service.enrich_attribute")
     def test_declined_assessment_never_invokes_the_tool(self, mock_enrich, mock_store_cls):
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         tool_call_response = AIMessage(content="")
@@ -197,7 +238,7 @@ class TestEnrichmentValueGate:
         assert "reddish" in result["messages"][0].content
 
     @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("tools.enrichment_tool.enrich_attribute")
+    @patch("enrichment_service.enrich_attribute")
     def test_declined_assessment_via_correction_path_never_invokes_the_tool(
         self, mock_enrich, mock_store_cls
     ):
@@ -241,7 +282,7 @@ class TestEnrichmentValueGate:
             }
         ]
         agent = _agent_with_llm(tool_call_response)
-        with patch("tools.enrichment_tool.enrich_attribute") as mock_enrich:
+        with patch("enrichment_service.enrich_attribute") as mock_enrich:
             mock_enrich.return_value = EnrichmentResult(
                 success=True, attribute_type="color", variant="tan", canonical="brown"
             )

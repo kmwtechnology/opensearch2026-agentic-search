@@ -67,6 +67,38 @@ describe('LLMAgentDetails', () => {
     expect(screen.getByText(/catalog re-indexed/i)).toBeInTheDocument()
   })
 
+  it('shows the real measured duration and doc count once complete (#80)', () => {
+    const step = makeStep({
+      status: 'complete',
+      events: [makeEnrichmentEvent({ duration_seconds: 21.5, docs_processed: 9618 })],
+    })
+    const { container } = render(<LLMAgentDetails step={step} />)
+
+    expect(container.textContent).toContain('9618 products in 21.5s')
+  })
+
+  it('falls back to generic completed copy when duration_seconds is not available', () => {
+    const step = makeStep({
+      status: 'complete',
+      events: [makeEnrichmentEvent({ duration_seconds: undefined, docs_processed: undefined })],
+    })
+    const { container } = render(<LLMAgentDetails step={step} />)
+
+    expect(container.textContent).not.toMatch(/\d+(\.\d+)?s/)
+    expect(screen.getByText(/catalog re-indexed\. this query/i)).toBeInTheDocument()
+  })
+
+  it('does not show a live/running duration while the step is still in progress', () => {
+    const step = makeStep({
+      status: 'running',
+      events: [makeEnrichmentEvent({ duration_seconds: 21.5, docs_processed: 9618 })],
+    })
+    render(<LLMAgentDetails step={step} />)
+
+    expect(screen.getByText(/re-indexing the catalog live/i)).toBeInTheDocument()
+    expect(screen.queryByText(/9618 products/i)).not.toBeInTheDocument()
+  })
+
   it('omits the canonical clause when the tool call did not resolve one', () => {
     const step = makeStep({
       events: [makeEnrichmentEvent({ canonical: undefined })],
