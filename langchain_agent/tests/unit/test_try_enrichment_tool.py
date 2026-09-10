@@ -282,7 +282,7 @@ class TestEnrichmentValueGate:
             }
         ]
         agent = _agent_with_llm(tool_call_response)
-        with patch("tools.enrichment_tool.enrich_attribute") as mock_enrich:
+        with patch("enrichment_service.enrich_attribute") as mock_enrich:
             mock_enrich.return_value = EnrichmentResult(
                 success=True, attribute_type="color", variant="tan", canonical="brown"
             )
