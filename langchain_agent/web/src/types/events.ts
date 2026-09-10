@@ -217,6 +217,8 @@ export interface EnrichmentTriggeredEvent extends BaseEvent {
   attribute_type: string
   variant: string
   canonical?: string
+  duration_seconds?: number
+  docs_processed?: number
 }
 
 // Completion events
