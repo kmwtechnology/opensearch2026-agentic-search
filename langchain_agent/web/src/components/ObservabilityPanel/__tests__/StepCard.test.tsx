@@ -85,3 +85,45 @@ describe('StepCard', () => {
     expect(screen.getByText('LLM Agent')).toBeInTheDocument()
   })
 })
+
+describe('StepCard reranker label (#87)', () => {
+  function makeRerankerStep(reranker_type?: string): ObservabilityStep {
+    return {
+      id: 'reranker-1',
+      node: 'reranker',
+      status: 'complete',
+      startTime: new Date(),
+      summary: '40 documents reranked (max=0.558)',
+      events: reranker_type
+        ? [
+            {
+              type: 'reranker_result',
+              timestamp: new Date().toISOString(),
+              node: 'reranker',
+              results: [],
+              reranking_changed_order: false,
+              reranker_type,
+            } as any,
+          ]
+        : [],
+    }
+  }
+
+  it('labels the step "Cross-Encoder Reranker" when reranker_type is cross-encoder', () => {
+    render(<StepCard step={makeRerankerStep('cross-encoder')} index={4} />)
+    expect(screen.getByText('Cross-Encoder Reranker')).toBeInTheDocument()
+    expect(screen.queryByText('LLM Reranker')).not.toBeInTheDocument()
+  })
+
+  it('labels the step "LLM Reranker" when reranker_type is gemini', () => {
+    render(<StepCard step={makeRerankerStep('gemini')} index={4} />)
+    expect(screen.getByText('LLM Reranker')).toBeInTheDocument()
+  })
+
+  it('falls back to a neutral "Reranker" label before the result event arrives', () => {
+    render(<StepCard step={makeRerankerStep()} index={4} />)
+    expect(screen.getByText('Reranker')).toBeInTheDocument()
+    expect(screen.queryByText('LLM Reranker')).not.toBeInTheDocument()
+    expect(screen.queryByText('Cross-Encoder Reranker')).not.toBeInTheDocument()
+  })
+})
