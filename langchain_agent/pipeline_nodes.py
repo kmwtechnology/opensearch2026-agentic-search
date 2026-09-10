@@ -1072,7 +1072,8 @@ CITATION & STYLE:
         to the existing canned response), or a full agent_node return dict
         (messages, citations, enrichment_* state fields) if it did.
         """
-        from tools.enrichment_tool import trigger_enrichment
+        from enrichment_service import enrich_attribute
+        from tools.enrichment_tool import format_enrichment_message, trigger_enrichment
 
         gap_prompt = (
             prompt or f"""A shopper searched for "{user_query or 'their query'}" and the catalog \
@@ -1139,21 +1140,29 @@ the query looks like a color/material gap, don't call the tool; just say so brie
                 "enrichment_evaluation_reasoning": assessment.reasoning,
             }
 
-        tool_result = trigger_enrichment.invoke(call["args"])
+        # Call enrich_attribute() directly rather than trigger_enrichment.invoke()
+        # so we get the structured EnrichmentResult (duration_seconds,
+        # docs_processed) for observability, without triggering a second,
+        # real re-index — format_enrichment_message() builds the exact same
+        # ToolMessage text the tool itself would return (#80).
+        enrichment_result = enrich_attribute(attribute_type, variant, explicit_canonical=canonical)
+        tool_result = format_enrichment_message(enrichment_result)
         tool_messages.append(response)
         tool_messages.append(ToolMessage(content=tool_result, tool_call_id=call["id"]))
 
         final_response = self.llm.invoke(tool_messages)
 
-        # Best-effort state population — the tool's return string is the
-        # source of truth shown to the user; these fields are for
-        # observability (WebSocket event, frontend badge), so a parsing
-        # miss shouldn't break the turn.
         enrichment_state: Dict[str, Any] = {
             "enrichment_triggered": True,
             "enrichment_attribute_type": call["args"].get("attribute_type"),
             "enrichment_variant": call["args"].get("variant"),
             "enrichment_canonical": call["args"].get("canonical"),
+            "enrichment_duration_seconds": (
+                enrichment_result.duration_seconds if enrichment_result.reindex_success else None
+            ),
+            "enrichment_docs_processed": (
+                enrichment_result.docs_processed if enrichment_result.reindex_success else None
+            ),
         }
 
         return {

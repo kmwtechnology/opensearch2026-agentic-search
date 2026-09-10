@@ -84,9 +84,21 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
               )}
             </div>
             <div className="text-xs text-emerald-300/90 mt-1">
-              {agentStep.status === 'running'
-                ? 'Writing the new mapping and re-indexing the catalog live (~15-20s)...'
-                : 'New mapping written; catalog re-indexed. This query — and future ones — now resolve it.'}
+              {agentStep.status === 'running' ? (
+                'Writing the new mapping and re-indexing the catalog live (~15-20s)...'
+              ) : enrichmentEvent.duration_seconds != null ? (
+                <>
+                  New mapping written; catalog re-indexed —{' '}
+                  <span className="font-mono">
+                    {enrichmentEvent.docs_processed != null &&
+                      `${enrichmentEvent.docs_processed} products in `}
+                    {enrichmentEvent.duration_seconds.toFixed(1)}s
+                  </span>
+                  . This query — and future ones — now resolve it.
+                </>
+              ) : (
+                'New mapping written; catalog re-indexed. This query — and future ones — now resolve it.'
+              )}
             </div>
           </div>
         </div>

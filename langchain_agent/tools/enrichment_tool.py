@@ -14,7 +14,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS
-from enrichment_service import enrich_attribute
+from enrichment_service import EnrichmentResult, enrich_attribute
 
 _CANONICAL_BUCKETS_DESCRIPTION = (
     f"Valid canonical buckets by attribute_type: "
@@ -35,6 +35,45 @@ class TriggerEnrichmentInput(BaseModel):
             "The canonical bucket this variant belongs to, chosen from the "
             f"valid buckets for the given attribute_type. {_CANONICAL_BUCKETS_DESCRIPTION}"
         )
+    )
+
+
+def format_enrichment_message(result: EnrichmentResult) -> str:
+    """
+    Human-readable description of an enrichment attempt. Shared between the
+    trigger_enrichment tool's return value (below) and any direct caller
+    that already has the EnrichmentResult in hand — e.g. pipeline_nodes.py's
+    _try_enrichment_tool, which calls enrich_attribute() itself (not via
+    this tool's .invoke()) so it can also thread duration_seconds/
+    docs_processed into observability state without triggering a second,
+    real re-index (#80).
+    """
+    if not result.success:
+        return f"Could not enrich '{result.variant}' as {result.attribute_type}: {result.reason}"
+
+    action = (
+        f"Corrected '{result.variant}' from '{result.corrected_from}' to '{result.canonical}'"
+        if result.corrected_from
+        else f"Added '{result.variant}' as a '{result.canonical}' {result.attribute_type}"
+    )
+
+    if not result.reindex_success:
+        detail = f" ({result.reindex_error})" if result.reindex_error else ""
+        return (
+            f"{action} in the taxonomy, but the catalog re-index failed to complete{detail} — "
+            f"the mapping is saved and will take effect on the next successful re-index."
+        )
+
+    if result.reindex_mode == "github":
+        return (
+            f"{action}. Catalog re-index dispatched to GitHub Actions "
+            f"({result.reindex_run_url}); it takes about 8 minutes and the fix goes "
+            f"live when it finishes."
+        )
+
+    return (
+        f"{action}. Re-indexed {result.docs_processed} products in "
+        f"{result.duration_seconds:.1f}s — the fix is now live."
     )
 
 
@@ -61,31 +100,4 @@ def trigger_enrichment(attribute_type: str, variant: str, canonical: str) -> str
     for typos or unrelated query terms.
     """
     result = enrich_attribute(attribute_type, variant, explicit_canonical=canonical)
-
-    if not result.success:
-        return f"Could not enrich '{variant}' as {attribute_type}: {result.reason}"
-
-    action = (
-        f"Corrected '{variant}' from '{result.corrected_from}' to '{result.canonical}'"
-        if result.corrected_from
-        else f"Added '{variant}' as a '{result.canonical}' {attribute_type}"
-    )
-
-    if not result.reindex_success:
-        detail = f" ({result.reindex_error})" if result.reindex_error else ""
-        return (
-            f"{action} in the taxonomy, but the catalog re-index failed to complete{detail} — "
-            f"the mapping is saved and will take effect on the next successful re-index."
-        )
-
-    if result.reindex_mode == "github":
-        return (
-            f"{action}. Catalog re-index dispatched to GitHub Actions "
-            f"({result.reindex_run_url}); it takes about 8 minutes and the fix goes "
-            f"live when it finishes."
-        )
-
-    return (
-        f"{action}. Re-indexed {result.docs_processed} products in "
-        f"{result.duration_seconds:.1f}s — the fix is now live."
-    )
+    return format_enrichment_message(result)

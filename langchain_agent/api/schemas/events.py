@@ -583,6 +583,11 @@ class EnrichmentTriggeredEvent(BaseEvent):
     attribute_type: str  # "color" or "material"
     variant: str  # the raw term the agent recognized, e.g. "chrome"
     canonical: Optional[str] = None  # the canonical bucket it resolved to, e.g. "metal"
+    # Measured, real numbers from the completed reindex — None until it
+    # finishes (or if it failed) — so the UI can show actual elapsed time
+    # instead of only a static estimate (#80).
+    duration_seconds: Optional[float] = None
+    docs_processed: Optional[int] = None
 
 
 # ============================================================================

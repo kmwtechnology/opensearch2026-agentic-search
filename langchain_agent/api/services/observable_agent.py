@@ -941,6 +941,8 @@ class ObservableAgentService:
                         attribute_type=output.get("enrichment_attribute_type") or "",
                         variant=output.get("enrichment_variant") or "",
                         canonical=output.get("enrichment_canonical"),
+                        duration_seconds=output.get("enrichment_duration_seconds"),
+                        docs_processed=output.get("enrichment_docs_processed"),
                     )
                 )
 
