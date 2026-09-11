@@ -30,7 +30,7 @@ gh auth status
 ! gh auth login -h github.com -p https -w
 ```
 
-### 2. Get Your PR Number (Or Retrieve from Branch)
+### 2. Get Your PR Number
 
 You need a PR number to run this skill. Pass it with `--pr <N>`.
 
@@ -41,10 +41,7 @@ You need a PR number to run this skill. Pass it with `--pr <N>`.
 gh pr view --repo kmwtechnology/opensearch2026-agentic-search --json number -q '.number'
 ```
 
-**If you don't have a PR yet:**
-1. Go back and run `/workflow-start <issue-number>` to create the branch
-2. Create the PR with `gh pr create --draft` (optionally done in workflow-start step 8)
-3. Then run this skill with the PR number
+**If you don't have a PR yet:** Run `/workflow-start <issue-number>` first. workflow-start always creates a draft PR.
 
 After setup, the rest of this skill assumes auth is ready and you have a PR number.
 
