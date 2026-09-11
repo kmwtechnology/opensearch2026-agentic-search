@@ -69,23 +69,23 @@ If you disagree with feedback:
 Once the PR has a green CI and approval, merge to `main` using **squash** strategy:
 
 ```bash
-gh pr merge <PR-number> --squash --auto
+gh pr merge <PR-number> --squash --delete-branch
 ```
 
 **Why squash?** Keeps `main`'s history clean; the PR description lives in GitHub for future reference.
 
-### What `--squash --auto` does
-
-- Waits for CI to pass (if not green, errors immediately)
-- Squashes all commits on the feature branch into one
-- Merges to `main` with the PR title as the commit message
-- Automatically deletes the feature branch on GitHub (but not locally)
-
-### Manual fallback (if `--auto` is not available)
+**Verified repo settings (`gh repo view --json deleteBranchOnMerge,squashMergeAllowed`):** `squashMergeAllowed: true`, but **`deleteBranchOnMerge: false` at the repo level** — the repo will NOT auto-delete branches on merge unless you pass `--delete-branch` explicitly. This repo also has no branch protection configured (private repo, requires GitHub Pro), so there's no required-status-check gate enforcing green CI before merge — **you must confirm CI is green yourself** before merging; `gh pr merge` will let you merge on red CI unless you check first.
 
 ```bash
-gh pr merge <PR-number> --squash
-# OR interactively:
+gh pr checks <PR-number>        # confirm green BEFORE merging — nothing else enforces this
+gh pr merge <PR-number> --squash --delete-branch
+```
+
+**Note on `--auto`:** GitHub's auto-merge feature requires "Allow auto-merge" to be enabled on the repo, which hasn't been verified here — don't rely on `--auto` to gate the merge on CI. Merge manually once `gh pr checks` shows green.
+
+### Interactive fallback
+
+```bash
 gh pr merge <PR-number>
 ```
 
@@ -103,38 +103,48 @@ The PR is merged. Now verify it shipped and close the issue.
 
 ### 1. Watch CI/Deployment
 
-The `build-deploy.yml` workflow runs automatically on pushes to `main`:
+There is **no separate manual deploy script** — `deploy.sh`/`gcp-init.sh` do not exist in this repo despite older docs mentioning them. Deployment is fully automated: pushing to `main` triggers `build-deploy.yml`, which runs `unit-tests`, `integration-tests`, `lint-backend`, `frontend-tests`, `shellcheck`, and `build-docker` in parallel, then `deploy-cloud-run` runs `gcloud run deploy` — but **only after all of those jobs succeed** (`needs: [build-docker, unit-tests, integration-tests, lint-backend, frontend-tests, shellcheck]`). One flaky test blocks the deploy.
 
 ```bash
 gh run list --workflow build-deploy.yml --branch main --limit 1
-gh run view <run-id> --log
+gh run watch <run-id>          # or: gh run view <run-id> --log
 ```
 
-**Expected time:** ~3–5 minutes for full build/test/push to Cloud Run.
+**Real project constants** (from `build-deploy.yml` / `smoke-tests.yml`):
+- `PROJECT_ID`: `gen-lang-client-0250737934`
+- `REGION`: `us-central1`
+- `SERVICE_NAME`: `agentic-hybrid-search`
 
 **Check status:**
 ```bash
 gh run list --workflow build-deploy.yml --branch main --limit 5
-# All green?
+# All jobs green, including deploy-cloud-run specifically?
 ```
 
 ### 2. Verify in Production (GCP Cloud Run)
 
-Once `build-deploy.yml` is green, the image is deployed to Cloud Run.
-
-**Quick checks:**
+Once `deploy-cloud-run` is green, the image is live. Cloud Run URLs are hash-suffixed, not derivable from the project ID — fetch the real URL first:
 
 ```bash
-# Is the app healthy? (substitute your project ID)
-curl -s https://agentic-search-<project>.run.app/health | jq .
-
-# Test an API endpoint (requires auth)
-curl -s -H "X-Admin-Token: $ADMIN_TOKEN" \
-  https://agentic-search-<project>.run.app/api/config | jq .
-
-# Or check GCP directly:
-gcloud run services describe agentic-search --region us-central1 --project <project> | grep imageUrl
+gcloud run services describe agentic-hybrid-search \
+  --region us-central1 --project gen-lang-client-0250737934 \
+  --format 'value(status.url)'
 ```
+
+**Quick manual checks** (substitute `$SERVICE_URL` from above):
+```bash
+curl -s $SERVICE_URL/health | jq .
+curl -s -H "X-Admin-Token: $ADMIN_TOKEN" $SERVICE_URL/api/config | jq .
+```
+
+**Automated smoke suite (preferred):** the repo has a dedicated `smoke-tests.yml` workflow built exactly for this — a manual `workflow_dispatch` against a live service URL:
+
+```bash
+gh workflow run smoke-tests.yml -f service_url="$SERVICE_URL" -f timeout_minutes=15
+gh run watch $(gh run list --workflow smoke-tests.yml --limit 1 --json databaseId -q '.[0].databaseId')
+```
+
+Note: per `maintenance_audit_2026_09_01.md` in memory, the *old* post-deploy smoke gate had a bug where `tee`'s PID masked real failures — confirm you're looking at the actual job conclusion (`gh run view <id>`), not just "workflow completed."
 
 **User-facing check:** Try a search in the live web UI and verify your fix works.
 
@@ -182,7 +192,7 @@ Then update `memory/MEMORY.md` with a pointer.
 | Issue | Recovery |
 |-------|----------|
 | Build failed in CI after merge | Diagnose via `gh run view <run-id> --log`; commit a fix, push to `main`; CI re-runs automatically. |
-| Image pushed but not deployed to Cloud Run | Check `gcloud run services describe` and service account IAM. Likely a WIF/auth issue — see `memory/reference_gcp_wif_iam_per_repo_binding.md`. |
+| `build-docker` succeeded but `deploy-cloud-run` didn't run/failed | Check whether `unit-tests`/`integration-tests`/`lint-backend`/`frontend-tests`/`shellcheck` all passed — `deploy-cloud-run` is gated on ALL of them, not just the build. If it ran but failed, check WIF auth — see `memory/reference_gcp_wif_iam_per_repo_binding.md`. |
 | Production app is broken | Revert the commit (`git revert <commit-sha>`), push, CI redeploys. Then debug locally and re-open a new PR. |
 | Issue didn't auto-close | Manually close with `gh issue close <N>` + a descriptive comment. |
 | Deployment took >10 min | Likely Lucille Docker image rebuild (one-time cost if Lucille base image changed). Check `build-deploy.yml` logs. |
