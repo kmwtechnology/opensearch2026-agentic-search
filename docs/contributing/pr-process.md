@@ -4,6 +4,8 @@ Branch naming, commit conventions, PR template, and review checklist.
 
 **Parent:** [Contributing Guide](README.md)
 
+> ⚠️ **For the authoritative workflow guide**, see [CLAUDE.md](../../CLAUDE.md) — it documents the current 14-step working session workflow, including the project-level workflow skills (`/workflow-start`, `/workflow-check`, `/workflow-deploy`). This page serves as a reference for branch/commit conventions and code review patterns.
+
 ---
 
 ## Branch Naming
