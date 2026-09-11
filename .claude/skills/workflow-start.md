@@ -37,7 +37,8 @@ Wait for user confirmation before proceeding.
 Check:
 ```bash
 git status                    # must be clean
-git branch -v | head -5       # confirm main is up to date locally
+git checkout main
+git pull origin main          # actually sync with remote — `git branch -v` alone only shows local refs
 ```
 
 If uncommitted changes exist, ask the user to stash or commit first.
@@ -58,7 +59,7 @@ git push -u origin <branch-name>
 ### 6. Break Into Tasks
 
 For multi-step work, use TaskCreate to list discrete, completable steps. Examples:
-- "Read current Reranker implementation (langchain_agent/modules/reranker.py)"
+- "Read current Reranker implementation (langchain_agent/reranker.py)"
 - "Add latency capture to reranker_node"
 - "Update integration tests"
 - "Run smoke-local-quick locally"
