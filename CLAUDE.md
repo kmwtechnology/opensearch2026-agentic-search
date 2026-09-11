@@ -149,10 +149,9 @@ gh workflow run smoke-tests.yml -f service_url=<CLOUD_RUN_URL>   # post-deploy v
 
 ## Reference Docs
 
-Detailed information has been moved to memory to keep CLAUDE.md concise:
-- **Recent fixes & status** → `memory/project_status_recent_fixes.md`
-- **Repository layout** → `memory/reference_repository_layout.md`
-- **ESCI data & Lucille ingest** → `memory/reference_esci_data_lucille_ingest.md`
-- **CI/CD workflows** → `memory/reference_cicd_github_actions.md`
-- **Environment variables & scripts** → `memory/reference_environment_vars_scripts.md`
-- **Testing & troubleshooting** → `memory/reference_testing_troubleshooting.md`
+Detailed information is stored in home directory memory. To view current notes on recent fixes, architecture decisions, or troubleshooting, check the memory index at:
+```
+~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md
+```
+
+CLAUDE.md stays concise; memory files capture ongoing decisions, known gotchas, and project context that would otherwise rot in a checked-in document.
