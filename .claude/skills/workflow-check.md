@@ -75,9 +75,9 @@ gh pr view <PR-number> \
 
 This skill walks through steps 1–11 of the 14-step workflow, adapted for this project.
 
-### Step 1: Discuss ✓ (Context Review)
+### Step 1: Verify Context ✓ (No Scope Changes)
 
-**Confirm:** You reviewed memory, CLAUDE.md, and prior work on this issue.
+**Confirm:** Nothing changed that would invalidate the approved plan.
 
 ```bash
 # Get issue number from PR body (extract "Closes #N")
@@ -90,13 +90,13 @@ if [ -z "$ISSUE_NUM" ]; then
   exit 1
 fi
 
-# View full issue
+# Quick check: is issue still OPEN?
 gh issue view $ISSUE_NUM \
   --repo kmwtechnology/opensearch2026-agentic-search \
-  --json number,title,body,state,comments
+  --json state -q '.state'
 ```
 
-**Ask:** Any surprises or scope changes since you started? Is the issue still OPEN (or should it be)?
+**Ask:** Any scope changes since the plan was approved? Is the issue still OPEN?
 
 ### Step 2: Plan ✓ (Approach & Approval)
 
@@ -230,36 +230,32 @@ git log main..$BRANCH --pretty=format:"%H %s"
 
 **Ask the user:** What changed that future-you should know? If nothing, say so explicitly — that's valid.
 
-### Step 8: Push & Open PR ✓
+### Step 8: Verify PR is Updated ✓
 
-**Confirm:** You pushed the feature branch and opened (or already opened) a PR.
+**Confirm:** The draft PR created in workflow-start has your latest commits pushed.
 
-**If PR already exists:** Skip to step 9.
-
-**If creating a new PR:**
 ```bash
-gh pr create \
+# Verify PR exists and has latest commits
+gh pr view <PR-number> \
   --repo kmwtechnology/opensearch2026-agentic-search \
-  --draft \
-  --title "Fix issue title (under 70 chars)" \
-  --body "$(cat <<'EOF'
-## Summary
-- What changed (1–3 bullets)
+  --json number,draft,commits
 
-## Test Plan
-- [x] PYTHONPATH=. pytest tests/unit/
-- [x] make smoke-local-quick
-- [x] make ci
-
-## Closes
-Closes #<issue-number>
-EOF
-)"
+# Verify commits are pushed (check against main)
+git log main..<branch-name> --oneline | head -5
 ```
 
-**Title:** Keep under 70 characters; explain *what* changed.
+**Check:**
+- PR is still in DRAFT state? (Should be, until workflow-check Step 11)
+- Latest commits are included?
+- PR title and body are accurate?
 
-**Body:** Explain *why* in 1–3 bullets. **Must include "Closes #<N>"** for auto-close on merge.
+**If PR title/body need updates:**
+```bash
+gh pr edit <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --title "New title" \
+  --body "New body"
+```
 
 ### Step 9: CI Watch ✓
 
