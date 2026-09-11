@@ -17,7 +17,6 @@ Before pushing code to `main` or triggering a manual deploy:
   - `build-deploy.yml` `--set-secrets` (for Cloud Run startup)
   - Checklist: `GOOGLE_API_KEY`, `LOGIN_PASSWORD`, `SESSION_SECRET`, `SESSION_COOKIE_SECURE=true`
 - [ ] PR is merged to `main` and GitHub Actions workflow has started
-- [ ] Manual deploy (optional): `./scripts/deploy.sh --project <GCP_PROJECT_ID>`
 
 ---
 
