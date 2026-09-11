@@ -1,3 +1,8 @@
+---
+name: workflow-check
+description: "Audit a PR in opensearch2026-agentic-search against the 14-step workflow before marking it ready for review. Steps 1-11."
+---
+
 # workflow-check — Opensearch2026 Project
 
 Audit your work against the 14-step workflow. Run this when you have a PR number and believe the code is ready for review.
