@@ -364,7 +364,7 @@ score variance, and rank-churn count between hybrid and reranked — bucketed
 into `high` / `medium` / `low`.
 
 Pure-Python metric implementations live in
-[`langchain_agent/relevancy_metrics.py`](langchain_agent/relevancy_metrics.py)
+[`langchain_agent/observability/relevancy_metrics.py`](langchain_agent/observability/relevancy_metrics.py)
 (no NumPy). Event payload is `PipelineSummaryEvent` in
 `api/schemas/events.py`; the UI lives in
 `web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx`.
@@ -398,21 +398,16 @@ opensearch2026-agentic-search/
 │   └── esci_judgments_aggregated.parquet
 ├── langchain_agent/              # Main application (see langchain_agent/README.md)
 │   ├── main.py                   # EcommerceSearchAgent: setup, graph wiring, lifecycle (~600 lines)
-│   ├── pipeline_nodes.py         # PipelineNodesMixin: the 8 LangGraph nodes + helpers (~3,000 lines)
-│   ├── conversation_management.py  # ConversationManagementMixin: threads, titles, summarize/compact
 │   ├── cli.py                    # Interactive terminal REPL (dev only)
-│   ├── agent_state.py            # CustomAgentState TypedDict
-│   ├── config.py                 # All configuration constants
-│   ├── vector_store.py           # OpenSearchVectorStore + retriever (RRF fusion)
-│   ├── reranker.py               # CrossEncoderReranker (default, ~2s/40-doc batch) + GeminiReranker (fallback, ~500ms/batch)
-│   ├── link_verifier.py          # URL validation w/ TTL cache
-│   ├── embedding_cache.py        # Query embedding cache
-│   ├── relevancy_metrics.py      # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)
-│   ├── bigquery_batch_embeddings.py  # Parallel embedding via BigQuery ML
-│   ├── generate_embeddings.py    # Serial embedding fallback
-│   ├── benchmark_search.py       # Latency benchmarks
-│   ├── checkpoint_maintenance.py # Checkpoint GC
-│   ├── checkpoint_optimizer.py   # Checkpoint optimization utility
+│   ├── setup.py                  # DB + index init; invoked by scripts/setup.sh and gcp-init.sh
+│   ├── config_generator.py       # Regenerates the Lucille products.conf from OpenSearch
+│   ├── core/                     # agent_state (CustomAgentState), config, exceptions, logging_config
+│   ├── pipeline/                 # pipeline_nodes (the 8 LangGraph nodes), conversation_management, reindex_trigger
+│   ├── retrieval/                # vector_store (RRF fusion), reranker, attribute_*, link_verifier, doc_replacer
+│   ├── quality/                  # judge (LLM Judge), enrichment_service, enrichment_value_judge
+│   ├── observability/            # relevancy_metrics, embedding_cache, llm_content
+│   ├── checkpoints/              # checkpoint_maintenance (GC), checkpoint_optimizer
+│   ├── benchmarks/               # benchmark_esci (relevancy), benchmark_search (latency)
 │   ├── api/                      # FastAPI backend — see api/README.md
 │   ├── web/                      # React frontend — see web/README.md
 │   ├── scripts/                  # Lifecycle scripts — see scripts/README.md
@@ -460,10 +455,10 @@ opensearch2026-agentic-search/
 
 ### Key Tunables
 
-**Note:** Most retriever and reranker knobs are hardcoded in `langchain_agent/config.py` and cannot be changed via `.env` — setting them there has no effect. To modify them, edit `config.py` directly and redeploy.
+**Note:** Most retriever and reranker knobs are hardcoded in `langchain_agent/core/config.py` and cannot be changed via `.env` — setting them there has no effect. To modify them, edit `core/config.py` directly and redeploy.
 
 ```python
-# langchain_agent/config.py
+# langchain_agent/core/config.py
 RETRIEVER_K = 10                 # Final documents returned
 RETRIEVER_FETCH_K = 40           # Candidates fetched before reranking
 RETRIEVER_ALPHA = 0.25           # Default lexical/semantic balance

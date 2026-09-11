@@ -85,7 +85,7 @@ gcloud compute firewall-rules list --filter="sourceRanges:10.0.0.0/8" --project=
    ```
    If small instance, consider upgrading.
 
-3. **Is the retriever fetching too many documents?** `RETRIEVER_FETCH_K` is **not** a Cloud Run env var — it's a hardcoded literal in `langchain_agent/config.py` (currently 40), so a `gcloud run services describe | grep` here always returns nothing. Check the value directly in `config.py` on the deployed commit; to change it, edit `config.py` and redeploy.
+3. **Is the retriever fetching too many documents?** `RETRIEVER_FETCH_K` is **not** a Cloud Run env var — it's a hardcoded literal in `langchain_agent/core/config.py` (currently 40), so a `gcloud run services describe | grep` here always returns nothing. Check the value directly in `core/config.py` on the deployed commit; to change it, edit `core/config.py` and redeploy.
 
 4. **Are Gemini API calls slow?** Monitor Gemini API quota usage (Google Cloud Console → Gemini API).
 

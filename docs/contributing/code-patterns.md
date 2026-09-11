@@ -75,10 +75,10 @@ async def agent_node(state: CustomAgentState):
 
 ## Exception Hierarchy
 
-All custom exceptions inherit from `AgenticHybridSearchError` (defined in `exceptions.py`). Never catch bare `Exception`.
+All custom exceptions inherit from `AgenticHybridSearchError` (defined in `core/exceptions.py`). Never catch bare `Exception`.
 
 ```python
-from exceptions import (
+from core.exceptions import (
     AgenticHybridSearchError,
     SearchTimeoutError,
     DocumentRetrievalError,
@@ -222,7 +222,7 @@ Both must pass for protected routes.
 
 ## Logging
 
-Use structured logging via `logger` (from `logging_config.py`):
+Use structured logging via `logger` (from `core/logging_config.py`):
 
 ```python
 import logging

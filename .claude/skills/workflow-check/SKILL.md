@@ -188,7 +188,7 @@ git log main..$BRANCH --pretty=format:"%H %s"
 - Have been run through formatters:
   ```bash
   cd langchain_agent
-  .venv/bin/black . && .venv/bin/isort . && .venv/bin/flake8 . && .venv/bin/mypy main.py config.py --ignore-missing-imports
+  .venv/bin/black . && .venv/bin/isort . && .venv/bin/flake8 . && .venv/bin/mypy main.py core/config.py --ignore-missing-imports
   ```
 - **Important:** There is NO local code-quality hook. `.git/hooks/pre-push` is Git LFS's own hook only. **You must run formatters by hand before pushing.** If CI catches formatting issues, fix them (`make format-fix`), commit, and push again.
 
