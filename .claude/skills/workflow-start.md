@@ -1,6 +1,6 @@
 # workflow-start — Opensearch2026 Project
 
-Start a new work session: retrieve issue, confirm scope, create feature branch, and open a draft PR.
+Start a new work session: retrieve issue, plan the approach, create feature branch, and open a draft PR.
 
 ## Setup & Auth (Run Once)
 
@@ -44,7 +44,7 @@ If uncommitted changes exist, stash first: `git stash`
 
 ---
 
-## Main Steps
+## Main Steps (3 Steps)
 
 ### 1. Retrieve Issue Context
 
@@ -63,14 +63,30 @@ gh issue view <N> \
 
 **Save:** Issue #, title, state for the rest of the workflow.
 
-### 2. Restate Scope
+### 2. Plan the Approach
 
-Propose a concise scope statement (2–3 sentences) to the user:
+Restate scope (2–3 sentences) to the user:
 - **What** we're fixing/adding
 - **Why** (user impact, blocker, or motivation)
 - **Non-goals** (what we're explicitly NOT doing)
 
-Wait for user confirmation before proceeding.
+Then enter planning mode to propose an implementation strategy:
+
+```
+/plan
+Issue #<N>: <title>
+Scope: <2-3 sentence restatement>
+[Issue body and any relevant context]
+```
+
+The plan should propose:
+- **Approach:** high-level strategy
+- **Critical files:** what needs to change
+- **Architecture tradeoffs:** alternatives considered
+- **Risk mitigations:** edge cases, testing strategy
+- **Tasks:** step-by-step breakdown
+
+Wait for user approval of the plan before proceeding to branch creation.
 
 ### 3. Create Feature Branch
 
@@ -114,18 +130,19 @@ gh pr create \
 
 Get the PR number from the output; you'll need it for `/workflow-check`.
 
-### 5. Confirm & Proceed to Coding
+### 5. Proceed to Coding
 
-Summarize what's been set up:
+You're ready to start coding. You have:
 
 ```
 Issue #<N>: <title>
 Branch: <branch-name>
 PR: #<PR-number> (draft)
-Scope: <2-3 sentence restatement>
+Plan: approved
+Tasks: from plan breakdown
 ```
 
-Ask user for a green light, then proceed to coding.
+The branch is created, PR is drafted, and the plan is approved. Proceed to implementing the tasks from the plan.
 
 ---
 
