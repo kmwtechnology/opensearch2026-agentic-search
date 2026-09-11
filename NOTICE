@@ -3,6 +3,8 @@ Copyright 2026 KMW Technology, LLC
 
 This product includes software developed by other parties:
 
+## Backend Framework & LLM
+
 - LangChain (<https://github.com/langchain-ai/langchain>)
   Licensed under the Apache License, Version 2.0
 
@@ -12,14 +14,69 @@ This product includes software developed by other parties:
 - FastAPI (<https://github.com/tiangolo/fastapi>)
   Licensed under the MIT License
 
+- Uvicorn (<https://github.com/encode/uvicorn>)
+  Licensed under the BSD License
+
 - Pydantic (<https://github.com/pydantic/pydantic>)
   Licensed under the MIT License
 
-- React (<https://github.com/facebook/react>)
-  Licensed under the MIT License
+- langchain-google-genai (<https://github.com/langchain-ai/langchain-google>)
+  Licensed under the Apache License, Version 2.0
+
+## Data & Search
+
+- OpenSearch Python Client (<https://github.com/opensearch-project/opensearch-py>)
+  Licensed under the Apache License, Version 2.0
 
 - sentence-transformers (<https://github.com/UKPLab/sentence-transformers>)
   Licensed under the Apache License, Version 2.0
 
-- opensearch-py (<https://github.com/opensearch-project/opensearch-py>)
+- psycopg (<https://github.com/psycopg/psycopg>)
+  Licensed under the GNU Lesser General Public License v3.0 or later
+
+## API & WebSocket
+
+- websockets (<https://github.com/aaugustin/websockets>)
+  Licensed under the BSD License
+
+- httpx (<https://github.com/encode/httpx>)
+  Licensed under the BSD License
+
+- slowapi (<https://github.com/laurenceisla/slowapi>)
+  Licensed under the Apache License, Version 2.0
+
+## Frontend
+
+- React (<https://github.com/facebook/react>)
+  Licensed under the MIT License
+
+- TypeScript (<https://github.com/microsoft/TypeScript>)
+  Licensed under the Apache License, Version 2.0
+
+- Tailwind CSS (<https://github.com/tailwindlabs/tailwindcss>)
+  Licensed under the MIT License
+
+- Zustand (<https://github.com/pmndrs/zustand>)
+  Licensed under the MIT License
+
+- Vite (<https://github.com/vitejs/vite>)
+  Licensed under the MIT License
+
+## Utilities
+
+- python-dotenv (<https://github.com/theskumar/python-dotenv>)
+  Licensed under the BSD License
+
+- itsdangerous (<https://github.com/pallets/itsdangerous>)
+  Licensed under the BSD License
+
+## Infrastructure
+
+- OpenSearch (<https://github.com/opensearch-project/OpenSearch>)
+  Licensed under the Elastic License 2.0 and Server Side Public License (SSPL)
+
+- PostgreSQL (<https://www.postgresql.org>)
+  Licensed under the PostgreSQL License (BSD-like)
+
+- Lucille (<https://github.com/kmwtechnology/lucille>)
   Licensed under the Apache License, Version 2.0
