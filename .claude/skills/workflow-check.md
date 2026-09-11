@@ -6,39 +6,44 @@ Audit your work against the 14-step workflow. Run this when you have a PR number
 
 **This skill is self-contained.** You can run it independently at any time.
 
-### 1. Authenticate with gh (Account: agileresearchservices)
+### 1. Ensure gh Account is agileresearchservices
 
 ```bash
-# Check current auth status
-CURRENT_ACCOUNT=$(gh auth status 2>&1 | grep -oP 'Logged in to.*as \K\S+' | head -1)
+# Check which account is currently active
+ACTIVE_ACCOUNT=$(gh auth status 2>&1 | sed -n 's/.*Logged in to github.com account \([^ (]*\).*/\1/p' | head -1)
 
-if [ -z "$CURRENT_ACCOUNT" ]; then
-  # Not authenticated — authenticate now
-  gh auth login -h github.com -p https -w
-  # Select: "Authorize with a web browser", then follow prompts
-elif [ "$CURRENT_ACCOUNT" != "agileresearchservices" ]; then
-  # Wrong account — switch to agileresearchservices
-  echo "Current account: $CURRENT_ACCOUNT. Switching to agileresearchservices..."
+if [ "$ACTIVE_ACCOUNT" != "agileresearchservices" ]; then
+  echo "Current account: $ACTIVE_ACCOUNT. Switching to agileresearchservices..."
   gh auth switch -u agileresearchservices
+  echo "✓ Switched to agileresearchservices"
 else
-  # Already on correct account
-  echo "✓ Already authenticated as agileresearchservices"
+  echo "✓ Already using agileresearchservices"
 fi
+
+# Verify auth succeeded
+gh auth status
 ```
 
-**If you see a Codex sandbox issue:** Skip the browser login and paste a PAT instead.
+**If auth fails:** You need to authenticate manually.
 ```bash
-# PAT must have: repo, workflow, admin:repo_hook, admin:public_key scopes
-gh auth login --with-token < ~/.github-pat-agileresearchservices
+# Run this and follow the web login:
+! gh auth login -h github.com -p https -w
 ```
 
-### 2. Verify You Have a PR Number
+### 2. Get Your PR Number (Or Retrieve from Branch)
 
-You need a PR number to run this skill (pass `--pr <N>`).
+You need a PR number to run this skill. Pass it with `--pr <N>`.
 
-If you don't have a PR number yet:
+**If you already have the PR number:** Skip to Step 3.
+
+**If you're on the feature branch and don't remember the PR number:**
+```bash
+gh pr view --repo kmwtechnology/opensearch2026-agentic-search --json number -q '.number'
+```
+
+**If you don't have a PR yet:**
 1. Go back and run `/workflow-start <issue-number>` to create the branch
-2. Create the PR with `gh pr create --draft`
+2. Create the PR with `gh pr create --draft` (optionally done in workflow-start step 8)
 3. Then run this skill with the PR number
 
 After setup, the rest of this skill assumes auth is ready and you have a PR number.
@@ -53,10 +58,10 @@ gh pr view <PR-number> \
   --repo kmwtechnology/opensearch2026-agentic-search \
   --json number,title,body,state,draft,baseRefName,headRefName,commits,reviews,checks
 
-# Get linked issue (look for "Closes #N" in body)
+# Get linked issue (extract "Closes #N" from body)
 gh pr view <PR-number> \
   --repo kmwtechnology/opensearch2026-agentic-search \
-  --json body -q '.body' | grep -i "closes\|fixes\|resolves"
+  --json body -q '.body' | sed -n 's/.*Closes #\([0-9]*\).*/\1/p'
 
 # Get the branch name
 gh pr view <PR-number> \
@@ -78,10 +83,15 @@ This skill walks through steps 1–11 of the 14-step workflow, adapted for this 
 **Confirm:** You reviewed memory, CLAUDE.md, and prior work on this issue.
 
 ```bash
-# Get issue details from PR
+# Get issue number from PR body (extract "Closes #N")
 ISSUE_NUM=$(gh pr view <PR-number> \
   --repo kmwtechnology/opensearch2026-agentic-search \
-  --json body -q '.body' | grep -oP 'Closes #\K\d+' | head -1)
+  --json body -q '.body' | sed -n 's/.*Closes #\([0-9]*\).*/\1/p')
+
+if [ -z "$ISSUE_NUM" ]; then
+  echo "Error: Could not find 'Closes #N' in PR body"
+  exit 1
+fi
 
 # View full issue
 gh issue view $ISSUE_NUM \
@@ -340,12 +350,11 @@ gh pr view <PR-number> \
 
 | What | Where |
 |------|-------|
-| **GH auth account** | `agileresearchservices` (verify with `gh auth status`) |
+| **GH auth account** | `agileresearchservices` (switch with `gh auth switch -u agileresearchservices`) |
 | **Repo** | `kmwtechnology/opensearch2026-agentic-search` |
-| **Get issue from PR** | `gh pr view <PR> --json body \| grep "Closes #"` |
+| **Get issue from PR** | `gh pr view <PR> --json body \| sed -n 's/.*Closes #\([0-9]*\).*/\1/p'` |
 | **Get PR CI status** | `gh pr checks <PR>` |
 | **Mark PR ready** | `gh pr ready <PR>` |
-| **Mark PR draft** | `gh pr convert-to-draft <PR>` |
 | **View PR diff** | `gh pr diff <PR>` |
 | **Test commands** | `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` |
 | **Format fix** | `make format-fix` (or manually: `black .`, `isort .`, `flake8 .`, `mypy main.py ...`) |

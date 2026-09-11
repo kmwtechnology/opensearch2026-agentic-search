@@ -6,30 +6,28 @@ Start a new work session: review context, plan the approach, create a feature br
 
 **This skill is self-contained.** You can run it independently at any time.
 
-### 1. Authenticate with gh (Account: agileresearchservices)
+### 1. Ensure gh Account is agileresearchservices
 
 ```bash
-# Check current auth status
-CURRENT_ACCOUNT=$(gh auth status 2>&1 | grep -oP 'Logged in to.*as \K\S+' | head -1)
+# Check which account is currently active
+ACTIVE_ACCOUNT=$(gh auth status 2>&1 | sed -n 's/.*Logged in to github.com account \([^ (]*\).*/\1/p' | head -1)
 
-if [ -z "$CURRENT_ACCOUNT" ]; then
-  # Not authenticated — authenticate now
-  gh auth login -h github.com -p https -w
-  # Select: "Authorize with a web browser", then follow prompts
-elif [ "$CURRENT_ACCOUNT" != "agileresearchservices" ]; then
-  # Wrong account — switch to agileresearchservices
-  echo "Current account: $CURRENT_ACCOUNT. Switching to agileresearchservices..."
+if [ "$ACTIVE_ACCOUNT" != "agileresearchservices" ]; then
+  echo "Current account: $ACTIVE_ACCOUNT. Switching to agileresearchservices..."
   gh auth switch -u agileresearchservices
+  echo "✓ Switched to agileresearchservices"
 else
-  # Already on correct account
-  echo "✓ Already authenticated as agileresearchservices"
+  echo "✓ Already using agileresearchservices"
 fi
+
+# Verify auth succeeded
+gh auth status
 ```
 
-**If you see a Codex sandbox issue:** Skip the browser login and paste a PAT instead.
+**If auth fails:** You need to authenticate manually.
 ```bash
-# PAT must have: repo, workflow, admin:repo_hook, admin:public_key scopes
-gh auth login --with-token < ~/.github-pat-agileresearchservices
+# Run this and follow the web login:
+! gh auth login -h github.com -p https -w
 ```
 
 ### 2. Verify Local Context
@@ -143,6 +141,23 @@ Tasks: <list or "straightforward, proceeding directly to code">
 ```
 
 Wait for a green light from the user, then proceed to coding.
+
+### 8. (Optional) Create Draft PR Immediately
+
+To establish the issue↔branch↔PR link now (rather than waiting until after coding), create a draft PR:
+
+```bash
+gh pr create \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --draft \
+  --title "[WIP] Issue #<N>: <title>" \
+  --body "Closes #<N>
+
+## Summary
+(To be filled in as work progresses)"
+```
+
+This links the issue to the PR from the start, making context retrieval easier later. If you skip this, create the PR after coding with `/workflow-check`.
 
 ## Breadcrumbs & Self-Contained Context
 
