@@ -1,115 +1,248 @@
 # workflow-check — Opensearch2026 Project
 
-Audit your work against the 14-step workflow BEFORE declaring done. Run this when you believe the PR is ready for review.
+Audit your work against the 14-step workflow. Run this when you have a PR number and believe the code is ready for review.
 
-## Audit Checklist
+## Setup & Auth (Run Once)
 
-This skill walks through steps 1–11 of the global 14-step workflow, adapted for this project's GitHub-based workflows.
+**This skill is self-contained.** You can run it independently at any time.
 
-### Step 1: Discuss ✓
+### 1. Authenticate with gh (Account: agileresearchservices)
+
+```bash
+# Check current auth status
+CURRENT_ACCOUNT=$(gh auth status 2>&1 | grep -oP 'Logged in to.*as \K\S+' | head -1)
+
+if [ -z "$CURRENT_ACCOUNT" ]; then
+  # Not authenticated — authenticate now
+  gh auth login -h github.com -p https -w
+  # Select: "Authorize with a web browser", then follow prompts
+elif [ "$CURRENT_ACCOUNT" != "agileresearchservices" ]; then
+  # Wrong account — switch to agileresearchservices
+  echo "Current account: $CURRENT_ACCOUNT. Switching to agileresearchservices..."
+  gh auth switch -u agileresearchservices
+else
+  # Already on correct account
+  echo "✓ Already authenticated as agileresearchservices"
+fi
+```
+
+**If you see a Codex sandbox issue:** Skip the browser login and paste a PAT instead.
+```bash
+# PAT must have: repo, workflow, admin:repo_hook, admin:public_key scopes
+gh auth login --with-token < ~/.github-pat-agileresearchservices
+```
+
+### 2. Verify You Have a PR Number
+
+You need a PR number to run this skill (pass `--pr <N>`).
+
+If you don't have a PR number yet:
+1. Go back and run `/workflow-start <issue-number>` to create the branch
+2. Create the PR with `gh pr create --draft`
+3. Then run this skill with the PR number
+
+After setup, the rest of this skill assumes auth is ready and you have a PR number.
+
+## Quick PR Info Retrieval
+
+If you have a PR number but lost context, retrieve it here:
+
+```bash
+# Get full PR details
+gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json number,title,body,state,draft,baseRefName,headRefName,commits,reviews,checks
+
+# Get linked issue (look for "Closes #N" in body)
+gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json body -q '.body' | grep -i "closes\|fixes\|resolves"
+
+# Get the branch name
+gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json headRefName -q '.headRefName'
+```
+
+**Save these for reference:**
+- PR number (`#<PR-number>`)
+- Issue number (from "Closes #<N>" in body)
+- Branch name (should be `feat/issue-<N>-*` or `fix/issue-<N>-*`)
+
+## Audit Checklist — Steps 1–11
+
+This skill walks through steps 1–11 of the 14-step workflow, adapted for this project.
+
+### Step 1: Discuss ✓ (Context Review)
+
 **Confirm:** You reviewed memory, CLAUDE.md, and prior work on this issue.
 
 ```bash
-gh issue view <N> --json title,body,comments
+# Get issue details from PR
+ISSUE_NUM=$(gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json body -q '.body' | grep -oP 'Closes #\K\d+' | head -1)
+
+# View full issue
+gh issue view $ISSUE_NUM \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json number,title,body,state,comments
 ```
 
-**Ask:** Any surprises or changes in scope since work started?
+**Ask:** Any surprises or scope changes since you started? Is the issue still OPEN (or should it be)?
 
-### Step 2: Plan ✓
+### Step 2: Plan ✓ (Approach & Approval)
+
 **Confirm:** You proposed an approach and got user approval before coding.
 
-**Check:** Does your commit message / PR body explain the *why*, not just the *what*?
+**Check:** Does your PR body explain the *why*, not just the *what*?
 
-### Step 3: Tasks ✓
-**Confirm:** For multi-step work, you created tasks and marked them done as you went.
-
-If this was a quick fix, skip; otherwise, check:
 ```bash
-git log --oneline <feature-branch>..main | head -10
+gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json body -q '.body'
 ```
 
-Do the commits align with the tasks you planned?
+**Good PR body examples:**
+- ✓ "Fixes timeout issue by increasing reranker batch size. Quality gate now retries on low scores (fixes #38)."
+- ✓ "Add Langfuse tracing for cost visibility. Wrapped `langfuse.CallbackHandler` in config; zero prod overhead (fixes #18)."
+- ✗ "Update reranker" ← too vague, no why
+- ✗ "Change line 88" ← implementation detail, not rationale
 
-### Step 4: Code ✓
-**Confirm:** You edited existing files first. Only create new files if the task explicitly requires it.
+### Step 3: Tasks ✓ (Multi-Step Work)
 
-**Check file changes:**
+**Confirm:** For multi-step work, you tracked tasks and committed aligned with them.
+
 ```bash
-git diff main..<feature-branch> --name-status | head -20
+# Get all commits in this PR
+gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json commits -q '.commits[] | "\(.oid | .[0:7]) \(.messageHeadline)"'
+
+# OR: view commits in branch
+BRANCH=$(gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json headRefName -q '.headRefName')
+git log main..$BRANCH --oneline
 ```
 
-- Any new `.py` files created without good reason?
-- Any dead code, incomplete implementations, or overly premature abstractions?
+**For quick fixes:** Skip this if straightforward (one commit).
 
-### Step 5: Test ✓
-**Confirm:** You ran the local test suite and all tests pass.
+**For multi-step work:** Confirm that commits align with tasks planned in `/workflow-start`.
 
-**Run:**
+### Step 4: Code ✓ (File Changes)
+
+**Confirm:** You edited existing files first; only created new files when the task explicitly required it.
+
 ```bash
-cd langchain_agent
-PYTHONPATH=. pytest tests/unit/ -v --tb=short
-make ci
-make smoke-local-quick
+BRANCH=$(gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json headRefName -q '.headRefName')
+git diff main..$BRANCH --name-status
 ```
 
-**Check frontend (if touched):**
-```bash
-cd langchain_agent/web
-npm run lint && npm run test
-```
+**Look for:**
+- Any new `.py` files created without explicit need? (Question them.)
+- Any new test files? (Good, if testing the new code.)
+- Lots of deletions? (Code removal is good; refactoring should be minimal and intentional.)
 
-**Artifact:** Failures? Commit any fixes and re-run before moving to step 6.
+### Step 5: Test ✓ (Local Suite)
 
-### Step 6: Commit ✓
+**Confirm:** You ran the local test suite before pushing. All tests pass.
+
+**Checklist:**
+- [ ] `cd langchain_agent && PYTHONPATH=. pytest tests/unit/ -v --tb=short` — all pass?
+- [ ] `make ci` — black/isort/flake8/mypy/frontend tests all pass?
+- [ ] `make smoke-local-quick` — ~13s search-intent smoke test pass?
+- [ ] Frontend touched? `cd langchain_agent/web && npm run lint && npm run test` — all pass?
+
+**If tests fail locally:**
+- Commit fixes, push, then re-run this audit.
+- Do NOT proceed to "ready for review" until tests pass locally.
+
+### Step 6: Commit ✓ (Message Quality & Formatting)
+
 **Confirm:** Commits are logical and messages are clear.
 
-**Check:**
 ```bash
-git log <feature-branch>..main --pretty=format:"%H %s" | head -10
+BRANCH=$(gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json headRefName -q '.headRefName')
+git log main..$BRANCH --pretty=format:"%H %s"
 ```
 
 **Each commit should:**
 - Have a clear, imperative-mood message (e.g., "Add latency tracking to reranker node")
-- Reference the issue in the PR body, not in individual commit messages (this project doesn't use `TICKET-NNN-` prefixes)
-- Pass `black`, `isort`, `flake8`, `mypy` — **run these yourself**, don't rely on a hook (see note below)
+- Have been run through formatters:
+  ```bash
+  cd langchain_agent
+  .venv/bin/black . && .venv/bin/isort . && .venv/bin/flake8 . && .venv/bin/mypy main.py config.py --ignore-missing-imports
+  ```
+- **Important:** There is NO local code-quality hook. `.git/hooks/pre-push` is Git LFS's own hook only. **You must run formatters by hand before pushing.** If CI catches formatting issues, fix them (`make format-fix`), commit, and push again.
 
-**Important — no local code-quality hook exists.** `.git/hooks/pre-push` in this repo is Git LFS's own hook (`git lfs pre-push`) — it has nothing to do with formatting, lint, or tests. There is no `pre-commit` hook at all. CLAUDE.md's "pre-commit fires on backend changes" language is aspirational, not actual. **You must run `make ci` and `make smoke-local-quick` by hand before pushing** — nothing local will stop you from pushing broken formatting; only CI will catch it, later and more expensively.
+**PR body should:**
+- Reference the issue: `Closes #<N>` (auto-closes on merge)
+- Explain *why* in 1–3 bullets
+- Include test checklist (done ☑ before pushing)
 
-### Step 7: Update Docs & Memory ⭐ **MOST CRITICAL**
-**Confirm:** You updated memory and project docs BEFORE pushing the PR.
+### Step 7: Update Docs & Memory ⭐ (MOST CRITICAL)
 
-**Check & update:**
+**Confirm:** You updated CLAUDE.md and memory BEFORE pushing the PR. (This is the #1 skipped step and causes stale guidance.)
 
-1. **Project `CLAUDE.md`** — If design or architecture changed, rewrite the relevant memory sections (don't append). Examples:
-   - New env var → update `Environment Variables & Scripts` section
-   - New test pattern → update `Common Commands` section
-   - Architecture change → update `Key Patterns` section
+**Checklist:**
 
-2. **Memory files** — Stale information misleads the next session. Update or create:
-   - `memory/project_status_recent_fixes.md` — what's shipping now
-   - `memory/reference_*.md` files — if reference docs changed
-   - New memory files for non-obvious findings (e.g., a gotcha discovered, a design tradeoff documented)
+1. **Did architecture/design change?** → Update `CLAUDE.md`:
+   - New env var? → Update `Key Patterns` section
+   - New test pattern? → Update `Common Commands`
+   - New auth flow? → Update `Auth` section
+   - If in doubt, rewrite the affected section (don't append)
 
-3. **Index** — Add/update pointers in `memory/MEMORY.md` if you created new memory files.
+2. **Create or update memory if you discovered something non-obvious:**
+   ```bash
+   cat > ~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/finding_<date>_<slug>.md <<'EOF'
+   ---
+   name: <kebab-case-slug>
+   description: <one-line hook>
+   metadata:
+     type: feedback | project | reference
+   ---
+   
+   [Your finding]
+   
+   **Why:** [Why this matters]
+   
+   **How to apply:** [When to use this]
+   EOF
+   ```
 
-**Ask:** What changed that future-you should know? If nothing, say so explicitly — that's valid.
+3. **Update memory index:**
+   ```bash
+   # Add a line to the index
+   echo "- [Finding Title](finding_<date>_<slug>.md) — one-line summary" >> ~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md
+   ```
+
+**Ask the user:** What changed that future-you should know? If nothing, say so explicitly — that's valid.
 
 ### Step 8: Push & Open PR ✓
-**Confirm:** You pushed the feature branch and opened a PR.
 
-**Check:**
+**Confirm:** You pushed the feature branch and opened (or already opened) a PR.
+
+**If PR already exists:** Skip to step 9.
+
+**If creating a new PR:**
 ```bash
-git push -u origin <feature-branch>
-gh pr create --draft \
-  --title "<short title>" \
+gh pr create \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --draft \
+  --title "Fix issue title (under 70 chars)" \
   --body "$(cat <<'EOF'
 ## Summary
-- <1–3 bullet points on what changed>
+- What changed (1–3 bullets)
 
 ## Test Plan
-- [ ] Ran PYTHONPATH=. pytest tests/unit/
-- [ ] Ran make smoke-local-quick
-- [ ] Ran make ci if touching frontend
+- [x] PYTHONPATH=. pytest tests/unit/
+- [x] make smoke-local-quick
+- [x] make ci
 
 ## Closes
 Closes #<issue-number>
@@ -117,80 +250,121 @@ EOF
 )"
 ```
 
-**PR title:** Keep under 70 characters; explain *what* changed.
+**Title:** Keep under 70 characters; explain *what* changed.
 
-**PR body:** Explain *why* in 1–3 bullets. Include "Closes #N" to auto-close on squash-merge.
+**Body:** Explain *why* in 1–3 bullets. **Must include "Closes #<N>"** for auto-close on merge.
 
 ### Step 9: CI Watch ✓
-**Confirm:** CI passed (or you dismissed false positives with a reason).
 
-**Check:**
+**Confirm:** CI passed (or you documented false positives with reasons).
+
 ```bash
-gh pr checks <PR-number>
+gh pr checks <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search
 ```
 
-**Expected checks (all from `build-deploy.yml`, triggered on PRs touching `langchain_agent/**`, `.github/workflows/build-deploy.yml`, `docker-compose.yml`, or `.dockerignore`):**
-- `unit-tests` (Phase 1)
-- `integration-tests` (Phase 2)
-- `lint-backend` (black/isort/flake8/mypy)
-- `frontend-tests`
-- `shellcheck`
-- `build-docker` (only builds/pushes on `main`/`workflow_dispatch`, not on PRs)
+**Expected checks (from `build-deploy.yml`):**
+- `unit-tests` ✓
+- `integration-tests` ✓
+- `lint-backend` (black/isort/flake8/mypy) ✓
+- `frontend-tests` ✓
+- `shellcheck` ✓
 
-A trailing `notify` job (needs all the above + `build-docker`/`deploy-cloud-run`) posts one consolidated pass/fail summary to the run's `$GITHUB_STEP_SUMMARY` — check that first for a quick read before diving into individual job logs.
+**Note:** `build-docker` and `deploy-cloud-run` only run on `main`, not on PRs.
 
-(No `reindex.yml` unless you touched Lucille ETL stages; no `smoke-tests.yml` on PRs — that's a manual `workflow_dispatch` for post-deploy verification, see `/workflow-deploy`.)
-
-**Note:** if your change touches only files outside those paths (e.g. root `scripts/**`, `docker/**`), build-deploy.yml won't run at all on the PR — flag this to the user rather than assuming CI covered it (see #24 in commit history for why this gap is intentional-but-risky).
-
-**If CI fails:** Diagnose, fix on the branch, push — the PR auto-updates.
+**If CI fails:**
+- Diagnose the failure
+- Commit fixes, push
+- Wait for CI to re-run (it auto-updates the PR)
+- Re-check `gh pr checks` once CI goes green
 
 ### Step 10: Self-Review ✓
-**Confirm:** You read the full diff end-to-end before asking for review.
 
-**Do:**
+**Confirm:** You read the full diff end-to-end before requesting review.
+
 ```bash
-git diff main..<feature-branch> | less
+BRANCH=$(gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json headRefName -q '.headRefName')
+git diff main..$BRANCH | less
 # OR
-gh pr diff <PR-number> | less
+gh pr diff <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search | less
 ```
 
 **Look for:**
-- Stale comments from earlier rounds (delete them)
-- Dead code or incomplete implementations (remove or finish)
-- Security issues (SQLi, XSS, auth bypass, credential leaks) — fix immediately
-- "This looks fine" comments that explain *what* instead of *why* — delete them
+- ✓ Stale comments from earlier rounds → delete them
+- ✓ Dead code or incomplete implementations → remove or finish
+- ✓ Security issues (SQLi, XSS, auth bypass, credential leaks) → fix immediately
+- ✓ Comments that say *what* instead of *why* → delete them
+- ✓ Obvious simplifications → commit them now
 
-**Ask:** Any regrets? Any simplifications you could make? If yes, commit them now.
+**Ask the user:** Any regrets? Any last simplifications?
 
 ### Step 11: Flip Draft → Ready ✓
-**Confirm:** Once CI is green and self-review is done, mark the PR ready for review.
+
+**Confirm:** CI is green, self-review is done. Mark the PR ready for review.
 
 ```bash
-gh pr ready <PR-number>
+# Confirm CI is green one more time
+gh pr checks <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search
+
+# Mark ready (flip from draft to ready)
+gh pr ready <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search
 ```
 
-**You are now done with this skill.** Next: wait for review feedback (handled by `/workflow-deploy`).
+**Verify:**
+```bash
+gh pr view <PR-number> \
+  --repo kmwtechnology/opensearch2026-agentic-search \
+  --json draft
+# Should return: {"draft": false}
+```
+
+✅ **You are now done with this skill.** Next: wait for review feedback, then run `/workflow-deploy <PR-number>`.
 
 ## Common Blockers & Recovery
 
 | Blocker | Recovery |
 |---------|----------|
-| Tests fail locally but pass in CI | Run tests twice; check for flakiness. If CI green, it's likely an env issue on your machine. |
-| CI fails on formatting (black/isort) after push | No local hook would have caught this. Run `make format-fix` (auto-fixes black + isort) locally, commit, push. |
-| Self-review finds a bug | Commit the fix (new commit, don't amend), push, let CI re-run. |
-| Stale memory from prior session | Update `CLAUDE.md` and memory files *now*, before merging. |
-| PR title/body unclear | Edit the PR with `gh pr edit` and clarify before requesting review. |
+| Tests fail locally but pass in CI | Run tests twice; check for flakiness. If CI is green, it's likely an env issue on your machine. |
+| CI fails on formatting (black/isort) after push | Run `make format-fix`, commit, push. |
+| Self-review finds a bug | Commit the fix (new commit, don't amend), push. CI re-runs. Re-check and re-request review. |
+| Stale memory from prior session | Update `CLAUDE.md` and memory files NOW before continuing. Future-you will thank you. |
+| PR title/body unclear | Use `gh pr edit <PR-number>` to clarify before requesting review. |
+| CI won't go green | Check if your change touches only root-level files outside the monitored paths — if so, `build-deploy.yml` won't run CI at all (intentional but risky). Flag this to the user. |
 
-## Notes
+## Breadcrumbs & Quick Reference
 
-- **This is a GATE.** Many sessions skip step 7 (memory update) and pay for it in the next session. Do not cut this corner.
-- **GitHub Issues, not Jira** — all issue references use `#N`, not `TICKET-NNN`.
-- **No Slack** — skip any "post to Slack" steps. All tracking is in GitHub.
-- **Local test suite is authoritative** — CI mirrors it, but if your local tests fail and CI passes, something is wrong with your environment.
+| What | Where |
+|------|-------|
+| **GH auth account** | `agileresearchservices` (verify with `gh auth status`) |
+| **Repo** | `kmwtechnology/opensearch2026-agentic-search` |
+| **Get issue from PR** | `gh pr view <PR> --json body \| grep "Closes #"` |
+| **Get PR CI status** | `gh pr checks <PR>` |
+| **Mark PR ready** | `gh pr ready <PR>` |
+| **Mark PR draft** | `gh pr convert-to-draft <PR>` |
+| **View PR diff** | `gh pr diff <PR>` |
+| **Test commands** | `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` |
+| **Format fix** | `make format-fix` (or manually: `black .`, `isort .`, `flake8 .`, `mypy main.py ...`) |
+| **Memory location** | `~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md` |
+| **Project config** | `CLAUDE.md` (source of truth) |
+
+## Notes & Common Gotchas
+
+- **Step 7 is CRITICAL** — many sessions skip memory updates and rot guidance. Do not cut this corner.
+- **No local hook stops you** — only CI catches formatting issues. Run `make ci` locally before pushing.
+- **GitHub Issues, not Jira** — all references use `#N`, not `TICKET-NNN`.
+- **No Slack** — skip any "post to Slack" steps.
+- **CI doesn't run on root files** — if your change touches only files outside `langchain_agent/`, `.github/workflows/`, `docker-compose.yml`, `.dockerignore`, CI won't trigger. This is intentional but risky — flag it.
 
 ## See Also
 
-- Global `/workflow-check` (this skill builds on it)
-- Project `CLAUDE.md` for the full 14-step workflow
-- `memory/MEMORY.md` for what to update
+- **Previous step:** `/workflow-start <issue-number>` to create the branch
+- **Next step:** `/workflow-deploy <PR-number>` once review is done (step 12–14)
+- **Project `CLAUDE.md`** — source of truth for tech stack, patterns, commands
+- **Home memory:** `~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md`
+- **View all PRs:** `gh pr list --repo kmwtechnology/opensearch2026-agentic-search`
+- **View all issues:** `gh issue list --repo kmwtechnology/opensearch2026-agentic-search --state open`
