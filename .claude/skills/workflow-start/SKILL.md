@@ -1,3 +1,8 @@
+---
+name: workflow-start
+description: "Start a work session on a GitHub issue in opensearch2026-agentic-search: retrieve the issue, plan the approach, create a feature branch, and open a draft PR. Steps 1-8 of the project workflow."
+---
+
 # workflow-start — Opensearch2026 Project
 
 Start a new work session: retrieve issue, plan the approach, create feature branch, and open a draft PR.

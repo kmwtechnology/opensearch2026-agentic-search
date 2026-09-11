@@ -1,3 +1,8 @@
+---
+name: workflow-deploy
+description: "Address review feedback, merge the PR, and verify the Cloud Run deployment for opensearch2026-agentic-search. Steps 12-14."
+---
+
 # workflow-deploy — Opensearch2026 Project
 
 Final steps: address review feedback, merge the PR, and verify in production. Runs steps 12–14 of the 14-step workflow.
