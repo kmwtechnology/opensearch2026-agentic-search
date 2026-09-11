@@ -34,7 +34,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from api.middleware.auth import AuthConfigurationError
 from api.middleware.client_ip import get_client_ip
 from api.routes import admin, auth, chat, conversations, health, suggest
-from config import (
+from core.config import (
     ENABLE_ENRICHMENT_TOOL,
     LOGIN_PASSWORD,
     RATE_LIMIT_ENABLED,
@@ -43,9 +43,9 @@ from config import (
     SESSION_MAX_AGE_SECONDS,
     SESSION_SECRET,
 )
+from core.logging_config import configure_logging, get_logger
 from integrations import shutdown_tracing
-from logging_config import configure_logging, get_logger
-from reindex_trigger import build_reindex_trigger
+from pipeline.reindex_trigger import build_reindex_trigger
 
 # Configure structured logging
 configure_logging()

@@ -32,7 +32,7 @@ def test_update_conversation_title_uses_passed_thread_id_not_self(bare_agent):
     }
     agent.generate_conversation_title = MagicMock(return_value="A Title")
 
-    with patch("conversation_management.psycopg.connect") as mock_connect:
+    with patch("pipeline.conversation_management.psycopg.connect") as mock_connect:
         mock_conn = MagicMock()
         mock_connect.return_value.__enter__.return_value = mock_conn
         mock_cursor = MagicMock()

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from reindex_trigger import (
+from pipeline.reindex_trigger import (
     GitHubActionsReindexTrigger,
     LocalReindexTrigger,
     ReindexConfigurationError,
@@ -150,18 +150,18 @@ class TestLocalReindexTrigger:
 
 
 class TestBuildReindexTrigger:
-    @patch("reindex_trigger.REINDEX_TRIGGER", "local")
+    @patch("pipeline.reindex_trigger.REINDEX_TRIGGER", "local")
     def test_default_is_local(self):
         assert isinstance(build_reindex_trigger(), LocalReindexTrigger)
 
-    @patch("reindex_trigger.GITHUB_REINDEX_TOKEN", None)
+    @patch("pipeline.reindex_trigger.GITHUB_REINDEX_TOKEN", None)
     def test_github_without_token_raises(self):
         with pytest.raises(ReindexConfigurationError, match="GITHUB_REINDEX_TOKEN"):
             build_reindex_trigger("github")
 
-    @patch("reindex_trigger.GITHUB_REINDEX_REF", "release")
-    @patch("reindex_trigger.GITHUB_REPO", "org/repo")
-    @patch("reindex_trigger.GITHUB_REINDEX_TOKEN", "t0k")
+    @patch("pipeline.reindex_trigger.GITHUB_REINDEX_REF", "release")
+    @patch("pipeline.reindex_trigger.GITHUB_REPO", "org/repo")
+    @patch("pipeline.reindex_trigger.GITHUB_REINDEX_TOKEN", "t0k")
     def test_github_with_token_uses_config(self):
         trigger = build_reindex_trigger("github")
 

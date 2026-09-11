@@ -10,8 +10,8 @@ agentic_hybrid_search_attribute_mappings index.
 
 import pytest
 
-import attribute_mapping_store as store_module
-from attribute_mapping_store import AttributeMappingStore
+from retrieval import attribute_mapping_store as store_module
+from retrieval.attribute_mapping_store import AttributeMappingStore
 
 pytestmark = pytest.mark.integration
 

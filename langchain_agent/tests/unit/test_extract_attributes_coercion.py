@@ -53,7 +53,7 @@ def _no_live_opensearch():
     An empty lookup still exercises real classification via the static
     COLOR_CANONICALS/MATERIAL_CANONICALS seed dicts, which is all these
     coercion-focused tests need."""
-    with patch("attribute_mapping_store.AttributeMappingStore") as mock_store_cls:
+    with patch("retrieval.attribute_mapping_store.AttributeMappingStore") as mock_store_cls:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         yield
 

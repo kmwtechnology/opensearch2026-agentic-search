@@ -5,7 +5,7 @@ Excludes large fields from checkpoint storage while preserving essential state
 for conversation recovery. This reduces checkpoint size and improves write performance.
 
 Usage:
-    from checkpoint_optimizer import SelectiveJsonPlusSerializer
+    from checkpoints.checkpoint_optimizer import SelectiveJsonPlusSerializer
     checkpointer = PostgresSaver(pool, serde=SelectiveJsonPlusSerializer())
 """
 

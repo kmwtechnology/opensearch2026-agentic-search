@@ -26,8 +26,8 @@ from api.schemas.events import (
     BaseEvent,
     ConnectionEstablished,
 )
-from config import RATE_LIMIT_CHAT
-from logging_config import get_logger
+from core.config import RATE_LIMIT_CHAT
+from core.logging_config import get_logger
 
 logger = get_logger(__name__)
 

@@ -40,7 +40,7 @@ from typing import Dict, List, Optional, Set
 from langchain_core.documents import Document
 from opensearchpy import OpenSearch
 
-from config import (
+from core.config import (
     EMBEDDINGS_MODEL,
     OPENSEARCH_HOST,
     OPENSEARCH_PASSWORD,
@@ -49,9 +49,9 @@ from config import (
     OPENSEARCH_VERIFY_CERTS,
     VECTOR_DIMENSION,
 )
-from relevancy_metrics import StageMetrics, compute_stage_metrics
-from reranker import CrossEncoderReranker
-from vector_store import OpenSearchVectorStore
+from observability.relevancy_metrics import StageMetrics, compute_stage_metrics
+from retrieval.reranker import CrossEncoderReranker
+from retrieval.vector_store import OpenSearchVectorStore
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-8s | %(message)s")

@@ -5,7 +5,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.documents import Document
 
-from vector_store import OpenSearchRetriever, OpenSearchVectorStore, _scrub_body_for_display
+from retrieval.vector_store import (
+    OpenSearchRetriever,
+    OpenSearchVectorStore,
+    _scrub_body_for_display,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -238,7 +242,7 @@ def _make_full_store():
     store._hybrid_supported = None
 
     # Attach a disabled embedding cache so _get_embedding always hits the mock
-    from embedding_cache import EmbeddingCache
+    from observability.embedding_cache import EmbeddingCache
 
     store._embedding_cache = EmbeddingCache(enabled=False)
     return store, mock_client, mock_embeddings
@@ -276,7 +280,7 @@ class TestGetEmbedding:
         assert len(result) == 768
 
     def test_raises_embedding_error_on_failure(self):
-        from exceptions import EmbeddingError
+        from core.exceptions import EmbeddingError
 
         store, _, mock_emb = _make_full_store()
         mock_emb.embed_query.side_effect = Exception("API down")
@@ -356,14 +360,14 @@ class TestSimilaritySearch:
 @pytest.mark.unit
 class TestHybridSearch:
     def test_raises_on_invalid_k(self):
-        from exceptions import SearchValidationError
+        from core.exceptions import SearchValidationError
 
         store, _, _ = _make_full_store()
         with pytest.raises(SearchValidationError):
             store.hybrid_search("query", k=0)
 
     def test_raises_when_fetch_k_less_than_k(self):
-        from exceptions import SearchValidationError
+        from core.exceptions import SearchValidationError
 
         store, _, _ = _make_full_store()
         with pytest.raises(SearchValidationError):
@@ -390,7 +394,7 @@ class TestHybridSearch:
         assert mock_client.search.call_count == 1
 
     def test_raises_search_validation_error_for_bad_alpha(self):
-        from exceptions import SearchValidationError
+        from core.exceptions import SearchValidationError
 
         store, _, _ = _make_full_store()
         store._hybrid_supported = False  # skip native path

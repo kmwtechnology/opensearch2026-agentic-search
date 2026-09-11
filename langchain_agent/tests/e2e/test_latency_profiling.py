@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from config import (
+from core.config import (
     EMBEDDINGS_MODEL,
     LLM_MODEL,
     QUERY_EVAL_MODEL,
@@ -44,8 +44,8 @@ from config import (
     VECTOR_COLLECTION_NAME,
     VECTOR_DIMENSION,
 )
-from reranker import GeminiReranker
-from vector_store import OpenSearchVectorStore
+from retrieval.reranker import GeminiReranker
+from retrieval.vector_store import OpenSearchVectorStore
 
 PROFILING_RESULTS_DIR = Path(__file__).parent.parent / "profiling_results"
 PROFILING_RESULTS_DIR.mkdir(exist_ok=True)

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from vector_store import OpenSearchVectorStore
+from retrieval.vector_store import OpenSearchVectorStore
 
 
 @pytest.mark.unit

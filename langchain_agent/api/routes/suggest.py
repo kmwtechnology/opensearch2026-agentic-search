@@ -15,8 +15,8 @@ from fastapi import APIRouter, Query
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from config import OPENSEARCH_INDEX_NAME
-from vector_store import get_shared_opensearch_client
+from core.config import OPENSEARCH_INDEX_NAME
+from retrieval.vector_store import get_shared_opensearch_client
 
 logger = logging.getLogger(__name__)
 

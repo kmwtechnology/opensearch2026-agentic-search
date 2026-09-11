@@ -38,7 +38,7 @@ def _agent_returning_attributes(payload: dict) -> EcommerceSearchAgent:
 @pytest.mark.unit
 @pytest.mark.phase1
 class TestColorClassification:
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_canonical_color_resolves_to_itself(self, mock_store_cls) -> None:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         agent = _agent_returning_attributes({"color": "black"})
@@ -47,7 +47,7 @@ class TestColorClassification:
 
         assert filters == [{"match": {"product_color_primary": {"query": "black"}}}]
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_variant_spelling_resolves_to_canonical(self, mock_store_cls) -> None:
         """'grey' must resolve to 'gray' — the index is only ever tagged
         with the canonical spelling, so the raw variant would silently
@@ -59,7 +59,7 @@ class TestColorClassification:
 
         assert filters == [{"match": {"product_color_primary": {"query": "gray"}}}]
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_unresolved_color_falls_back_to_raw_term(self, mock_store_cls) -> None:
         """Unlike material_or_feature, color has no lexical multi_match
         fallback — an unclassified term is used as-is, matching the
@@ -71,7 +71,7 @@ class TestColorClassification:
 
         assert filters == [{"match": {"product_color_primary": {"query": "iridescent"}}}]
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_agent_learned_variant_from_os_resolves(self, mock_store_cls) -> None:
         """A variant the live flywheel wrote to OpenSearch (not in the
         static COLOR_CANONICALS seed dict) must also resolve."""
@@ -82,7 +82,7 @@ class TestColorClassification:
 
         assert filters == [{"match": {"product_color_primary": {"query": "blue"}}}]
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_opensearch_unavailable_falls_back_gracefully(self, mock_store_cls) -> None:
         """If OS is unreachable, classification degrades to the static seed
         dict rather than crashing — 'black' still resolves via dictionary
@@ -94,7 +94,7 @@ class TestColorClassification:
 
         assert filters == [{"match": {"product_color_primary": {"query": "black"}}}]
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_mixed_query_classifies_color_and_material_independently(self, mock_store_cls) -> None:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         agent = _agent_returning_attributes(

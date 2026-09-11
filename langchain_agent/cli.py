@@ -10,7 +10,7 @@ from typing import List, Sequence
 import httpx
 from langchain_core.messages import BaseMessage, HumanMessage
 
-from config import DEFAULT_ALPHA, SEARCH_DEFAULTS, VECTOR_COLLECTION_NAME
+from core.config import DEFAULT_ALPHA, SEARCH_DEFAULTS, VECTOR_COLLECTION_NAME
 from integrations import get_callbacks, new_trace_id, shutdown_tracing
 from main import EcommerceSearchAgent
 

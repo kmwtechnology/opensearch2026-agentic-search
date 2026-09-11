@@ -16,9 +16,8 @@ from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel
 
-from agent_state import CustomAgentState
-from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, single_term_classify
-from config import (
+from core.agent_state import CustomAgentState
+from core.config import (
     DEFAULT_ALPHA,
     ENABLE_RERANKING,
     RERANKER_FETCH_K,
@@ -29,11 +28,16 @@ from config import (
     SEARCH_DEFAULTS,
     VECTOR_COLLECTION_NAME,
 )
-from enrichment_value_judge import EnrichmentValueJudge
-from exceptions import LLMError, SearchTimeoutError
+from core.exceptions import LLMError, SearchTimeoutError
 from integrations import record_citation_eval, record_metrics, sync_dataset_item
-from judge import RETRY_ELIGIBLE_CATEGORIES, JudgmentResult, LLMJudge
-from llm_content import _flatten_llm_content
+from observability.llm_content import _flatten_llm_content
+from quality.enrichment_value_judge import EnrichmentValueJudge
+from quality.judge import RETRY_ELIGIBLE_CATEGORIES, JudgmentResult, LLMJudge
+from retrieval.attribute_discovery import (
+    COLOR_CANONICALS,
+    MATERIAL_CANONICALS,
+    single_term_classify,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -702,7 +706,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         - Replaces broken-link documents to maintain document count
         - Emits observability events for link verification
         """
-        from config import ENABLE_LINK_VERIFICATION, MIN_VALID_DOCUMENTS
+        from core.config import ENABLE_LINK_VERIFICATION, MIN_VALID_DOCUMENTS
 
         start_time = time.time()
         messages = list(state["messages"])
@@ -765,7 +769,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         # meaningful when there's prior conversation to dispute — the cheap
         # keyword gate combined with intent already scoped to continuation
         # turns keeps this from firing on a fresh, standalone query.
-        from config import ENABLE_ENRICHMENT_TOOL as _correction_flag
+        from core.config import ENABLE_ENRICHMENT_TOOL as _correction_flag
 
         if (
             _correction_flag
@@ -824,7 +828,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 f"max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD})"
             )
 
-            from config import ENABLE_ENRICHMENT_TOOL
+            from core.config import ENABLE_ENRICHMENT_TOOL
 
             if ENABLE_ENRICHMENT_TOOL:
                 enrichment_result = self._try_enrichment_tool(user_query)
@@ -1072,7 +1076,7 @@ CITATION & STYLE:
         to the existing canned response), or a full agent_node return dict
         (messages, citations, enrichment_* state fields) if it did.
         """
-        from enrichment_service import enrich_attribute
+        from quality.enrichment_service import enrich_attribute
         from tools.enrichment_tool import format_enrichment_message, trigger_enrichment
 
         gap_prompt = (
@@ -1104,11 +1108,11 @@ the query looks like a color/material gap, don't call the tool; just say so brie
         canonical = call["args"].get("canonical", "")
 
         if self.enrichment_value_judge is None:
-            from config import JUDGE_MODEL
+            from core.config import JUDGE_MODEL
 
             self.enrichment_value_judge = EnrichmentValueJudge(model_name=JUDGE_MODEL)
 
-        from attribute_mapping_store import AttributeMappingStore
+        from retrieval.attribute_mapping_store import AttributeMappingStore
 
         current_mapping = (
             AttributeMappingStore().get_lookup_table(attribute_type).get(variant.lower())
@@ -1568,7 +1572,7 @@ Query: "{query}" """
             return None
 
         try:
-            from attribute_mapping_store import AttributeMappingStore
+            from retrieval.attribute_mapping_store import AttributeMappingStore
 
             lookup = AttributeMappingStore().get_lookup_table(attribute_type)
         except Exception as exc:  # noqa: BLE001 - OS unreachable falls back to lexical
@@ -2174,7 +2178,7 @@ Respond with JSON only. No other text."""
 
         # Lazy-init the judge so users who never enable it pay no startup cost.
         if self.judge is None:
-            from config import (  # local import to avoid circular at module load
+            from core.config import (  # local import to avoid circular at module load
                 JUDGE_MODEL,
             )
 
@@ -2971,7 +2975,7 @@ Original query: {query}
             }
             → Continues to agent_node with current best results
         """
-        from config import ENABLE_QUALITY_GATE, QUALITY_GATE_THRESHOLD
+        from core.config import ENABLE_QUALITY_GATE, QUALITY_GATE_THRESHOLD
 
         current_alpha = state.get("alpha", DEFAULT_ALPHA)
         max_score = state.get("reranker_max_score", 0.0)

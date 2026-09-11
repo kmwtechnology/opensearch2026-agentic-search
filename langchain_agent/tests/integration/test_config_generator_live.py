@@ -16,9 +16,9 @@ import re
 
 import pytest
 
-import attribute_mapping_store as store_module
-from attribute_mapping_store import AttributeMappingStore
 from config_generator import generate_products_conf
+from retrieval import attribute_mapping_store as store_module
+from retrieval.attribute_mapping_store import AttributeMappingStore
 
 pytestmark = pytest.mark.integration
 

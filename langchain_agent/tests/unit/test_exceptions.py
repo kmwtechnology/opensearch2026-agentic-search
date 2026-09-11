@@ -7,7 +7,7 @@ the recoverable flag for every exception class.
 
 import pytest
 
-from exceptions import (
+from core.exceptions import (
     AgentError,
     AgenticHybridSearchError,
     AgentTimeoutError,

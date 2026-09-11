@@ -6,7 +6,7 @@ Provides utilities for managing checkpoint storage:
 - Cleanup: Remove checkpoints for deleted conversations
 
 Usage:
-    from checkpoint_maintenance import compact_checkpoints, cleanup_orphaned_checkpoints
+    from checkpoints.checkpoint_maintenance import compact_checkpoints, cleanup_orphaned_checkpoints
 
     # Compact all threads, keeping last 3 versions
     deleted = compact_checkpoints(keep_versions=3)
@@ -23,7 +23,7 @@ from typing import Optional
 
 import psycopg
 
-from config import CHECKPOINT_COMPACTION_DAYS, CHECKPOINT_KEEP_VERSIONS, DATABASE_URL
+from core.config import CHECKPOINT_COMPACTION_DAYS, CHECKPOINT_KEEP_VERSIONS, DATABASE_URL
 
 
 def compact_checkpoints(

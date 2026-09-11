@@ -60,14 +60,14 @@ from api.schemas.events import (
 # colliding with the relevancy_metrics dataclasses we also import below.
 ConfidenceProxyModel = ConfidenceProxy
 StageMetricsModel = StageMetrics
-from config import (
+from core.config import (
     ENABLE_RERANKING,
     RERANKER_TYPE,
     RETRIEVER_FETCH_K,
 )
 from integrations import get_callbacks, new_trace_id
 from main import EcommerceSearchAgent
-from relevancy_metrics import (
+from observability.relevancy_metrics import (
     compute_stage_metrics,
     confidence_from_scores,
     count_rank_changes,
@@ -137,7 +137,7 @@ class ObservableAgentService:
 
     async def _warmup_reranker(self) -> None:
         """Warm up reranker in background (non-blocking)."""
-        from config import ENABLE_RERANKING, RERANKER_WARMUP_ENABLED
+        from core.config import ENABLE_RERANKING, RERANKER_WARMUP_ENABLED
 
         if not (ENABLE_RERANKING and RERANKER_WARMUP_ENABLED):
             async with self._warmup_lock:
@@ -266,7 +266,7 @@ class ObservableAgentService:
 
                 # Build initial state
                 # Reset per-query state while preserving conversation history via checkpoint
-                from config import DEFAULT_ALPHA
+                from core.config import DEFAULT_ALPHA
 
                 langfuse_trace_id = new_trace_id(seed=thread_id)
                 initial_state = {
@@ -912,7 +912,7 @@ class ObservableAgentService:
                 )
 
         elif node_name == "quality_gate":
-            from config import DEFAULT_ALPHA, QUALITY_GATE_THRESHOLD
+            from core.config import DEFAULT_ALPHA, QUALITY_GATE_THRESHOLD
 
             reason = output.get("quality_gate_reason", "")
             triggered = reason.startswith("RETRY")

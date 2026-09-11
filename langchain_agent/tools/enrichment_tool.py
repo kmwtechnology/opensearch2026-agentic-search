@@ -13,8 +13,8 @@ when that flag is on (see main.py's agent_node gap-signal branch).
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
-from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS
-from enrichment_service import EnrichmentResult, enrich_attribute
+from quality.enrichment_service import EnrichmentResult, enrich_attribute
+from retrieval.attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS
 
 _CANONICAL_BUCKETS_DESCRIPTION = (
     f"Valid canonical buckets by attribute_type: "

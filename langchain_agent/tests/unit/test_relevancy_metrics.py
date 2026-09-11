@@ -2,7 +2,7 @@
 
 import pytest
 
-from relevancy_metrics import (
+from observability.relevancy_metrics import (
     ConfidenceProxy,
     StageMetrics,
     compute_stage_metrics,
