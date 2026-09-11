@@ -19,10 +19,7 @@ docs/
 **/node_modules/
 log/
 .pytest_cache/
-.vscode/
 .mvn/
-scripts/
-tests/
 
 # Repeated inside langchain_agent/ too, but harmless to state twice
 langchain_agent/.venv/
