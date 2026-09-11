@@ -25,15 +25,14 @@ help:
 	@echo "  make analyze-quality-gate - Report quality-gate threshold calibration vs. eval outcomes"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test               - Run all test suites"
-	@echo "  make test-reranker      - Run reranker tests only"
-	@echo "  make test-hybrid        - Run hybrid search tests only"
-	@echo "  make test-query         - Run query evaluator tests only"
+	@echo "  make test               - Run the unit suite (tests/unit/, no services needed)"
+	@echo "  make test-reranker      - Run reranker unit tests only"
+	@echo "  make test-hybrid        - Run hybrid search integration tests (needs OpenSearch)"
+	@echo "  make test-query         - Run query evaluator unit tests only"
 	@echo ""
 	@echo "Code Quality:"
-	@echo "  make lint               - Run code quality checks (pylint)"
-	@echo "  make format             - Format code with black"
-	@echo "  make type-check         - Check types with mypy (if installed)"
+	@echo "  make lint               - Run the real lint gate (flake8 + mypy), same as CI"
+	@echo "  make format             - Format code with black + isort"
 	@echo ""
 	@echo "Benchmarking & Performance:"
 	@echo "  make benchmark-esci     - ESCI relevancy benchmark (full, with adaptive intent)"
@@ -77,40 +76,31 @@ seed-taxonomy:
 	bash scripts/lucille_ingest.sh --seed-taxonomy --skip-judgments
 
 test:
-	@echo "[1/3] Running reranker tests..."
-	PYTHONPATH=. $(VENV)/python test_reranker.py || exit 1
-	@echo ""
-	@echo "[2/3] Running hybrid search tests..."
-	PYTHONPATH=. $(VENV)/python test_hybrid_search.py || exit 1
-	@echo ""
-	@echo "[3/3] Running query evaluator tests..."
-	PYTHONPATH=. $(VENV)/python test_query_evaluator.py || exit 1
-	@echo ""
-	@echo "✓ All tests passed!"
+	@echo "Running unit tests (no services required)..."
+	PYTHONPATH=. $(VENV)/pytest tests/unit/ -q
 
 test-reranker:
 	@echo "Running reranker tests..."
-	PYTHONPATH=. $(VENV)/python test_reranker.py
+	PYTHONPATH=. $(VENV)/pytest tests/unit/test_reranker.py -q
 
 test-hybrid:
-	@echo "Running hybrid search tests..."
-	PYTHONPATH=. $(VENV)/python test_hybrid_search.py
+	@echo "Running hybrid search tests (requires OpenSearch)..."
+	PYTHONPATH=. $(VENV)/pytest tests/integration/test_retriever_reranker.py -q
 
 test-query:
 	@echo "Running query evaluator tests..."
-	PYTHONPATH=. $(VENV)/python test_query_evaluator.py
+	PYTHONPATH=. $(VENV)/pytest tests/unit/evaluator/test_query_evaluator.py -q
 
-lint:
-	@echo "Running code quality checks..."
-	$(VENV)/pylint main.py config.py setup.py --disable=missing-docstring || true
+lint: ci-tools
+	@echo "[lint] flake8 . --count"
+	$(VENV)/flake8 . --count
+	@echo "[lint] mypy main.py"
+	$(VENV)/mypy main.py
 
 format:
-	@echo "Formatting code with black..."
-	$(VENV)/black main.py config.py setup.py test_*.py
-
-type-check:
-	@echo "Checking types with mypy..."
-	$(VENV)/mypy main.py config.py --ignore-missing-imports --check-untyped-defs || true
+	@echo "Formatting code with black + isort..."
+	$(VENV)/black .
+	$(VENV)/isort .
 
 # ----------------------------------------------------------------------------
 # CI parity: `make ci` is the pre-push gate. ci-format/ci-lint run the exact
