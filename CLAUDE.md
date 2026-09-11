@@ -8,17 +8,21 @@ When a new work session begins (especially when picking up an issue, feature, or
 
 ## Working Session Skills (`/workflow-start`, `/workflow-check`, `/workflow-deploy`)
 
-These three skills are **global** (`~/.claude/skills/`), shared across every project. Their written instructions default to Nasuni/Hyrule's Jira/Slack world. **None of that applies here.** This repo tracks work in **GitHub Issues** (`kmwtechnology/opensearch2026-agentic-search`):
+**Project-level versions of these three skills live in `.claude/skills/` in this repo (added 2026-09-11) and take precedence over the global ones (`~/.claude/skills/`) when working here.** The global skills default to Nasuni/Hyrule's Jira/Slack world, which doesn't apply — the project skills are GitHub-native and verified against this repo's actual CI/deploy setup. Key facts they encode (verified against the live repo, not assumed):
 
-| Skill step | Default (ignore) | This project |
-|---|---|---|
-| Ticket lookup / "Done" check | Nasuni Jira | `gh issue view <N>`; "done" = `state == CLOSED` |
-| Branch name | `TICKET-NNN-slug` | `feat/issue-N-slug` / `fix/issue-N-slug` |
-| Commit / PR prefix | Jira ticket ID | Reference issue in PR body (`Closes #N`); no commit prefix needed |
-| Local tests | `./run_app_tests.sh hyrule_api` (doesn't exist) | `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` / `make smoke-local` |
-| Ready-for-review / deploy announcement | Slack `#nasuni-int` | **Skip entirely** — no Slack channel configured for this project |
-| Deploy-outcome close-out | Jira comment + transition | `gh issue close <N> --comment "..."`; Obsidian tag `#opensearch2026-agentic-search` not `#nasuni` |
-| CI/deploy watch | Hyrule k8s workflows | `.github/workflows/build-deploy.yml` (PR + main) and `.github/workflows/reindex.yml` (manual Lucille ETL) |
+| Fact | Reality |
+|---|---|
+| Ticket tracking | GitHub Issues (`kmwtechnology/opensearch2026-agentic-search`); `gh issue view <N>`; "done" = `state == CLOSED` |
+| Branch name | `feat/issue-N-slug` / `fix/issue-N-slug` |
+| Commit / PR | Reference issue in PR body (`Closes #N`); no commit prefix needed |
+| **Local pre-push hook** | **`.git/hooks/pre-push` is Git LFS's own hook only — no code-quality gate exists locally.** Run `make ci` / `make smoke-local-quick` by hand; nothing stops a push with broken formatting except CI. |
+| Local tests | `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` / `make smoke-local` |
+| Deploy mechanism | **No `scripts/deploy.sh` or `gcp-init.sh` exist.** Deploy is fully automated: push to `main` → `build-deploy.yml`'s `deploy-cloud-run` job, gated on `build-docker` + `unit-tests` + `integration-tests` + `lint-backend` + `frontend-tests` + `shellcheck` all passing. A trailing `notify` job posts one consolidated summary. |
+| Cloud Run service | `agentic-hybrid-search`, region `us-central1`, project `gen-lang-client-0250737934` — get the live URL via `gcloud run services describe agentic-hybrid-search --region us-central1 --project gen-lang-client-0250737934 --format 'value(status.url)'` (hash-suffixed, not derivable from project ID) |
+| Post-deploy verification | `smoke-tests.yml` — manual `workflow_dispatch` against a live service URL |
+| Merge | `gh pr merge --squash --delete-branch` — repo has `deleteBranchOnMerge: false`, so `--delete-branch` must be passed explicitly. No branch protection configured (private repo, requires GitHub Pro) — CI must be checked manually (`gh pr checks`) before merging, not assumed via `--auto` |
+| Ready-for-review / deploy announcement | **Skip entirely** — no Slack channel configured for this project |
+| Deploy-outcome close-out | `gh issue close <N> --comment "..."`; Obsidian tag `#opensearch2026-agentic-search` not `#nasuni` |
 
 When skills say "load `mcp__atlassian-nasuni__*`" or "post to `#nasuni-int`," treat as inapplicable. Use GitHub equivalents instead.
 
