@@ -6,30 +6,28 @@ Final steps: address review feedback, merge the PR, and verify in production. Ru
 
 **This skill is self-contained.** You can run it independently at any time.
 
-### 1. Authenticate with gh (Account: agileresearchservices)
+### 1. Ensure gh Account is agileresearchservices
 
 ```bash
-# Check current auth status
-CURRENT_ACCOUNT=$(gh auth status 2>&1 | grep -oP 'Logged in to.*as \K\S+' | head -1)
+# Check which account is currently active
+ACTIVE_ACCOUNT=$(gh auth status 2>&1 | sed -n 's/.*Logged in to github.com account \([^ (]*\).*/\1/p' | head -1)
 
-if [ -z "$CURRENT_ACCOUNT" ]; then
-  # Not authenticated — authenticate now
-  gh auth login -h github.com -p https -w
-  # Select: "Authorize with a web browser", then follow prompts
-elif [ "$CURRENT_ACCOUNT" != "agileresearchservices" ]; then
-  # Wrong account — switch to agileresearchservices
-  echo "Current account: $CURRENT_ACCOUNT. Switching to agileresearchservices..."
+if [ "$ACTIVE_ACCOUNT" != "agileresearchservices" ]; then
+  echo "Current account: $ACTIVE_ACCOUNT. Switching to agileresearchservices..."
   gh auth switch -u agileresearchservices
+  echo "✓ Switched to agileresearchservices"
 else
-  # Already on correct account
-  echo "✓ Already authenticated as agileresearchservices"
+  echo "✓ Already using agileresearchservices"
 fi
+
+# Verify auth succeeded
+gh auth status
 ```
 
-**If you see a Codex sandbox issue:** Skip the browser login and paste a PAT instead.
+**If auth fails:** You need to authenticate manually.
 ```bash
-# PAT must have: repo, workflow, admin:repo_hook, admin:public_key scopes
-gh auth login --with-token < ~/.github-pat-agileresearchservices
+# Run this and follow the web login:
+! gh auth login -h github.com -p https -w
 ```
 
 ### 2. Verify You Have a PR Number
@@ -102,10 +100,11 @@ gh pr view <PR-number> \
   --repo kmwtechnology/opensearch2026-agentic-search \
   --json reviewRequests -q '.reviewRequests[] | .login'
 
-# Re-request (repeat for each reviewer)
-gh pr review <PR-number> \
+# Re-request review from one or more reviewers
+gh pr edit <PR-number> \
   --repo kmwtechnology/opensearch2026-agentic-search \
-  --request-review <reviewer-handle>
+  --add-reviewer <reviewer-handle>
+# OR multiple: --add-reviewer user1,user2,user3
 ```
 
 ### Commit Guidelines for Feedback
@@ -364,12 +363,12 @@ Before calling this step "done":
 
 | What | Where |
 |------|-------|
-| **GH auth account** | `agileresearchservices` |
+| **GH auth account** | `agileresearchservices` (switch with `gh auth switch -u agileresearchservices`) |
 | **Repo** | `kmwtechnology/opensearch2026-agentic-search` |
 | **Merge command** | `gh pr merge <PR> --squash --delete-branch` |
-| **Mark PR draft** | `gh pr convert-to-draft <PR>` |
 | **Get PR comments** | `gh pr view <PR> --json comments` |
 | **Post PR comment** | `gh pr comment <PR> --body "..."` |
+| **Add reviewer** | `gh pr edit <PR> --add-reviewer <handle>` |
 | **Get live service URL** | `gcloud run services describe agentic-hybrid-search --region us-central1 --project gen-lang-client-0250737934 --format 'value(status.url)'` |
 | **Run smoke tests** | `gh workflow run smoke-tests.yml -f service_url="..."` |
 | **Check deployment status** | `gh run list --workflow build-deploy.yml --branch main --limit 1` |
