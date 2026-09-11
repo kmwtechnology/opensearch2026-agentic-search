@@ -150,6 +150,7 @@ gh workflow run smoke-tests.yml -f service_url=<CLOUD_RUN_URL>   # post-deploy v
 ## Reference Docs
 
 Detailed information is stored in home directory memory. To view current notes on recent fixes, architecture decisions, or troubleshooting, check the memory index at:
+
 ```
 ~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md
 ```
