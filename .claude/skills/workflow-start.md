@@ -44,7 +44,7 @@ If uncommitted changes exist, stash first: `git stash`
 
 ---
 
-## Main Steps (3 Steps)
+## Main Steps
 
 ### 1. Retrieve Issue Context
 
@@ -107,11 +107,28 @@ git branch -vv
 # Should show: "* <branch-name> <hash> [origin/<branch-name>]"
 ```
 
-### 4. Create Draft PR
+### 4. Proceed to Coding
 
-Always open a draft PR to establish the issue↔branch↔PR link:
+You're ready to start implementing the plan. You have:
+
+```
+Issue #<N>: <title>
+Branch: <branch-name>
+Plan: approved
+Tasks: from plan breakdown
+```
+
+Start coding and committing to the branch. Once you've made some progress and have code to push, proceed to step 5.
+
+### 5. Create Draft PR
+
+After you've started coding and made your first commit, create a draft PR:
 
 ```bash
+# Make sure your changes are committed and pushed
+git push
+
+# Create draft PR to establish the issue↔branch↔PR link
 gh pr create \
   --repo kmwtechnology/opensearch2026-agentic-search \
   --draft \
@@ -128,21 +145,7 @@ gh pr create \
 
 **Note:** The PR is created in draft state. `/workflow-check` will audit and mark it ready for review once work is complete.
 
-Get the PR number from the output; you'll need it for `/workflow-check`.
-
-### 5. Proceed to Coding
-
-You're ready to start coding. You have:
-
-```
-Issue #<N>: <title>
-Branch: <branch-name>
-PR: #<PR-number> (draft)
-Plan: approved
-Tasks: from plan breakdown
-```
-
-The branch is created, PR is drafted, and the plan is approved. Proceed to implementing the tasks from the plan.
+Save the PR number; you'll need it when you run `/workflow-check <PR-number>`.
 
 ---
 
