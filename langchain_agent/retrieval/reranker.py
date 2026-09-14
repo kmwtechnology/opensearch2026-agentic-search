@@ -464,7 +464,23 @@ class CrossEncoderReranker:
         sigmoid_scores = 1.0 / (1.0 + np.exp(-raw_scores_array))
 
         # If all scores are very low (< 0.15), apply rescaling to ensure citations work
-        # This handles cases where the raw logits are heavily negative
+        # This handles cases where the raw logits are heavily negative.
+        #
+        # The rescale ceiling MUST stay below every quality_gate_node intent
+        # threshold (0.45-0.55, see pipeline_nodes.py's `intent_thresholds`).
+        # This range previously stretched all the way to 1.0, which meant a
+        # query where every candidate is genuinely irrelevant (raw scores
+        # uniformly near-zero) could still produce a rescaled max_score of
+        # 1.0 — a false "high confidence" reading that silently defeated the
+        # Quality Gate's retry logic. Confirmed live: the query "laptop
+        # sleeve for a 17-inch computer running Linux with RGB lighting and
+        # waterproof" (no such product exists in the catalog) rescaled an
+        # unrelated gaming laptop to a perfect 1.000 and the Quality Gate
+        # passed on the first try instead of retrying. Capping the ceiling
+        # at 0.3 keeps citations from being suppressed (still >= the 0.10
+        # MIN_CITATION_RELEVANCE floor) while guaranteeing a uniformly-bad
+        # batch still reads as low confidence to the Quality Gate.
+        RESCALE_CEILING = 0.3
         score_max = float(np.max(sigmoid_scores))
         if score_max < 0.15:
             logger.info(
@@ -472,12 +488,17 @@ class CrossEncoderReranker:
                 score_max,
                 extra={"raw_min": float(np.min(raw_scores_array)), "raw_max": score_max},
             )
-            # Linear rescale to [0.1, 1.0] range to ensure citations work
+            # Linear rescale to [0.1, RESCALE_CEILING] to ensure citations work
+            # without masquerading as a confident result.
             score_min = float(np.min(sigmoid_scores))
             if score_max > score_min:  # Avoid division by zero
-                sigmoid_scores = 0.1 + (sigmoid_scores - score_min) / (score_max - score_min) * 0.9
+                sigmoid_scores = 0.1 + (sigmoid_scores - score_min) / (score_max - score_min) * (
+                    RESCALE_CEILING - 0.1
+                )
             else:
-                sigmoid_scores = np.full_like(sigmoid_scores, 0.5)  # Fallback: all 0.5
+                # All scores identical — flat fallback, still below every
+                # quality-gate threshold.
+                sigmoid_scores = np.full_like(sigmoid_scores, 0.2)
 
         scores = np.clip(sigmoid_scores, 0.0, 1.0).tolist()
 

@@ -233,18 +233,25 @@ Then immediately: `Make them waterproof` (refinement)
 - Retrieves again with adjusted α (opposite direction)
 - New results score higher
 
-**Not reliable as written — confirmed live 2026-09-14, no code fix applied
-yet.** This exact query passed the quality gate on the first try (`max_score
-1.000 >= threshold 0.45`, no retry) because the cross-encoder reranker gave a
-**completely unrelated gaming laptop** (not a sleeve) a perfect 1.000 score —
-term overlap ("17-inch", RGB-adjacent gaming language) fooled the reranker
-into a confident-looking top score for the wrong product category. That's a
-real reranker weakness worth mentioning if it comes up, but it also means
-this query can't be trusted to reproduce the retry live. Before presenting:
-re-verify this query still triggers a retry against your current index (the
-reranker's behavior can shift with reindexing), and have a backup
-niche/impossible query ready (e.g. try combining several
-rarely-co-occurring attributes from your own catalog) in case it doesn't.
+**Root-caused and fixed 2026-09-14.** This query originally passed the
+quality gate on the first try (`max_score 1.000 >= threshold 0.45`, no
+retry) — not a fluke, a real bug in `retrieval/reranker.py`'s
+`CrossEncoderReranker.score_documents`. When every candidate's raw
+cross-encoder score is genuinely low (sigmoid max < 0.15 — exactly what
+"nothing in the catalog matches" looks like), the code linearly rescales
+scores up into `[0.1, 1.0]` so citations don't get suppressed. That rescale
+had no ceiling below the quality-gate thresholds, so a batch of uniformly
+*irrelevant* documents (a gaming laptop, for this query) could get
+rescaled all the way to a false-confident 1.000 — silently defeating the
+retry this whole demo part is about. Fixed by capping the rescale ceiling
+at 0.3 (still above the 0.10 citation-suppression floor, comfortably below
+every quality-gate threshold of 0.45+) — see the fix's inline comment in
+`reranker.py` and its regression tests in `test_reranker.py`
+(`test_rescale_ceiling_stays_below_quality_gate_thresholds`,
+`test_rescale_flat_fallback_stays_below_quality_gate_thresholds`).
+Confirmed live post-fix: this exact query now correctly shows `RETRY
+(attribute_filter): score 0.300 < 0.45, alpha → 0.55` in the Quality Gate
+step.
 
 **Observe** in Observability Panel (when a retry *does* fire):
 

@@ -248,6 +248,42 @@ class TestCrossEncoderReranker:
         assert 0.0 <= score_high <= 1.0
         assert score_high > score_low
 
+    def test_rescale_ceiling_stays_below_quality_gate_thresholds(self):
+        """A uniformly-irrelevant batch (all raw sigmoid scores < 0.15) gets
+        linearly rescaled so citations aren't suppressed, but the rescale
+        must not produce a score that reads as confident to quality_gate_node
+        (thresholds range 0.45-0.55). Regression test for a live-confirmed
+        bug where the old [0.1, 1.0] rescale range could turn a genuinely
+        irrelevant top document into a false-confident 1.000, silently
+        defeating the Quality Gate's low-confidence retry."""
+        reranker = _make_cross_reranker()
+        docs = [_doc("A"), _doc("B"), _doc("C")]
+        reranker.model = MagicMock()
+        # All raw logits heavily negative -> sigmoid scores well under 0.15,
+        # triggering the rescale path.
+        reranker.model.predict.return_value = np.array([-8.0, -6.0, -7.0])
+        result = reranker.score_documents("query", docs)
+        scores = [s for _, s in result]
+        assert max(scores) < 0.45, (
+            f"rescaled max score {max(scores)} would falsely pass every "
+            "quality_gate_node intent threshold (lowest is 0.45)"
+        )
+        # Still above the citation-suppression floor so citations aren't
+        # wrongly hidden for a merely miscalibrated (not irrelevant) batch.
+        assert min(scores) >= 0.10
+
+    def test_rescale_flat_fallback_stays_below_quality_gate_thresholds(self):
+        """All-identical raw scores hit the flat-fallback branch of the
+        rescale; that fallback must also stay below every quality-gate
+        threshold (0.45-0.55), not the old flat 0.5."""
+        reranker = _make_cross_reranker()
+        docs = [_doc("A"), _doc("B")]
+        reranker.model = MagicMock()
+        reranker.model.predict.return_value = np.array([-8.0, -8.0])
+        result = reranker.score_documents("query", docs)
+        scores = [s for _, s in result]
+        assert all(s < 0.45 for s in scores)
+
     def test_truncates_document_content_to_500_chars(self):
         reranker = _make_cross_reranker()
         long_content = "x" * 1000
