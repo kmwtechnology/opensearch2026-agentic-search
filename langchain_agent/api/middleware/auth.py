@@ -2,7 +2,7 @@
 Authentication error types shared across middleware modules.
 """
 
-from exceptions import ConfigurationError
+from core.exceptions import ConfigurationError
 
 
 class AuthConfigurationError(ConfigurationError):

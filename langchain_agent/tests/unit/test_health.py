@@ -13,9 +13,9 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-import vector_store
 from api.main import app
 from api.routes.chat import manager as chat_manager
+from retrieval import vector_store
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def _reset_shared_client():
 # ---------------------------------------------------------------------------
 
 _PSYCOPG = "api.routes.health.psycopg"
-_OS_CLIENT = "vector_store.get_shared_opensearch_client"
+_OS_CLIENT = "retrieval.vector_store.get_shared_opensearch_client"
 _API_KEY = "api.routes.health.GOOGLE_API_KEY"
 
 

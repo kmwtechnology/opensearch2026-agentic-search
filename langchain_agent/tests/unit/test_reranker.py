@@ -12,7 +12,7 @@ import pytest
 from langchain_core.documents import Document
 from pydantic import ValidationError
 
-from reranker import CrossEncoderReranker, GeminiReranker, RerankerScore, RerankerScores
+from retrieval.reranker import CrossEncoderReranker, GeminiReranker, RerankerScore, RerankerScores
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,7 +28,7 @@ def _doc(title: str, score: float = 0.0) -> Document:
 
 def _make_reranker() -> GeminiReranker:
     """Return a GeminiReranker with a mocked LLM (no real API calls)."""
-    with patch("reranker.ChatGoogleGenerativeAI"):
+    with patch("retrieval.reranker.ChatGoogleGenerativeAI"):
         reranker = GeminiReranker(model_name="gemini-3.1-flash-lite-preview")
     return reranker
 
@@ -150,7 +150,7 @@ class TestScoreDocuments:
         assert any(abs(s - 0.5) < 0.001 for s in score_map.values())
 
     def test_llm_error_raises_reranker_llm_error(self):
-        from exceptions import RerankerLLMError
+        from core.exceptions import RerankerLLMError
 
         reranker = _make_reranker()
         docs = [_doc("A")]

@@ -45,8 +45,18 @@ RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cro
 # deploys this way because this line was missed).
 COPY langchain_agent/*.py ./
 COPY langchain_agent/api/ ./api/
+COPY langchain_agent/core/ ./core/
+COPY langchain_agent/pipeline/ ./pipeline/
+COPY langchain_agent/retrieval/ ./retrieval/
+COPY langchain_agent/quality/ ./quality/
+COPY langchain_agent/observability/ ./observability/
+COPY langchain_agent/checkpoints/ ./checkpoints/
 COPY langchain_agent/integrations/ ./integrations/
 COPY langchain_agent/tools/ ./tools/
+# benchmarks/ and scripts/ are deliberately NOT copied: they are local dev
+# entry points invoked from the Makefile, never imported at runtime.
+# tests/unit/test_dockerfile_package_copy.py enforces the rule above -- it
+# fails if any package imported at runtime is missing a COPY line here.
 
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /app/web/dist ./web/dist

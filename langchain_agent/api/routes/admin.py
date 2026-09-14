@@ -59,8 +59,8 @@ def _diagnose_sync(q: str) -> dict:
     run_in_threadpool (see #25) so a slow/hanging index probe never stalls
     concurrent chat WebSocket traffic."""
     try:
-        from config import OPENSEARCH_INDEX_NAME
-        from vector_store import get_shared_opensearch_client
+        from core.config import OPENSEARCH_INDEX_NAME
+        from retrieval.vector_store import get_shared_opensearch_client
 
         client = get_shared_opensearch_client()
 
@@ -132,8 +132,8 @@ def _admin_health_sync() -> dict:
     """Blocking OpenSearch calls for /admin/health, run off the event loop
     via run_in_threadpool (see #25)."""
     try:
-        from config import OPENSEARCH_INDEX_NAME
-        from vector_store import get_shared_opensearch_client
+        from core.config import OPENSEARCH_INDEX_NAME
+        from retrieval.vector_store import get_shared_opensearch_client
 
         client = get_shared_opensearch_client()
 
@@ -196,7 +196,7 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
     except HTTPException:
         await verify_admin_token(request)
 
-    from config import ENABLE_ENRICHMENT_TOOL
+    from core.config import ENABLE_ENRICHMENT_TOOL
 
     if not ENABLE_ENRICHMENT_TOOL:
         raise HTTPException(
@@ -232,6 +232,6 @@ def _enrich_sync(attribute_type: str, variant: str, canonical: Optional[str]):
     agent's own trigger_enrichment tool call is unaffected by this bug --
     it already runs inside a LangGraph node, which astream_events dispatches
     to an executor thread, not the event loop."""
-    from enrichment_service import enrich_attribute
+    from quality.enrichment_service import enrich_attribute
 
     return enrich_attribute(attribute_type, variant, explicit_canonical=canonical)

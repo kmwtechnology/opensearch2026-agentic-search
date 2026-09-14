@@ -12,7 +12,7 @@ This guide explains how to extend the Agentic Hybrid Search agent with new featu
 
 ### Step 1: Implement Keyword Patterns (Fast-Path)
 
-In `pipeline_nodes.py`, find `_build_intent_prompt()` docstring and intent list. Add your intent:
+In `pipeline/pipeline_nodes.py`, find `_build_intent_prompt()` docstring and intent list. Add your intent:
 
 ```python
 # In intent_classifier_node docstring and _build_intent_prompt()
@@ -104,7 +104,7 @@ def test_product_alert_llm_fallback():
 
 ### Step 1: Define State Fields
 
-In `agent_state.py`, add fields for your node:
+In `core/agent_state.py`, add fields for your node:
 
 ```python
 class CustomAgentState(TypedDict, total=False):
@@ -117,7 +117,7 @@ class CustomAgentState(TypedDict, total=False):
 
 ### Step 2: Implement Node Function
 
-In `pipeline_nodes.py` (`PipelineNodesMixin`; graph wiring stays in `main.py`):
+In `pipeline/pipeline_nodes.py` (`PipelineNodesMixin`; graph wiring stays in `main.py`):
 
 ```python
 async def sentiment_analyzer_node(state: CustomAgentState) -> Dict[str, Any]:
@@ -267,7 +267,7 @@ pip install openai
 # (or update pyproject.toml, requirements.txt)
 ```
 
-### Step 2: Update config.py
+### Step 2: Update core/config.py
 
 ```python
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "google")  # NEW
@@ -293,7 +293,7 @@ else:
 
 ### Step 4: Update embeddings
 
-In `vector_store.py`:
+In `retrieval/vector_store.py`:
 
 ```python
 from langchain_openai import OpenAIEmbeddings
@@ -308,7 +308,7 @@ else:
 
 ### Step 5: Update reranker
 
-In `reranker.py`:
+In `retrieval/reranker.py`:
 
 ```python
 from langchain_openai import ChatOpenAI
@@ -342,7 +342,7 @@ this needs **no new Java code and no hand-edited pipeline config**:
 ### Step 1: Seed the taxonomy
 
 Add a canonical seed vocabulary entry to `_CANONICAL_SEEDS_BY_TYPE` in
-`attribute_discovery.py`, then seed it into OpenSearch — either
+`retrieval/attribute_discovery.py`, then seed it into OpenSearch — either
 `AttributeMappingStore.seed_from_discovery(...)` for a small hand-curated
 set, or `bulk_discover(...)` against real `chunk_text` for a from-scratch
 build (see `scripts/rebuild_attribute_taxonomies.py` for the pattern).
@@ -355,7 +355,7 @@ if it should be part of that seed.
 
 ### Step 2: Wire query-time filtering
 
-Add a filter block to `_extract_attributes()` in `pipeline_nodes.py` for the new
+Add a filter block to `_extract_attributes()` in `pipeline/pipeline_nodes.py` for the new
 type. Decide up front whether it needs a **hard** exact-match fallback
 (like color — reliable, but excludes non-taxonomy terms outright) or a
 **soft** lexical `multi_match` fallback (like material — protects
@@ -366,7 +366,7 @@ Flywheel" section for why color and material differ here.
 
 ### Step 3: Add BM25 scoring weight
 
-Add the new field to `vector_store.py`'s `_build_multi_match` boost list.
+Add the new field to `retrieval/vector_store.py`'s `_build_multi_match` boost list.
 Not automatic — a documented tradeoff to avoid an extra OpenSearch
 round-trip per query for a small, known set of attribute types.
 
@@ -416,7 +416,7 @@ interface NodeLatencyEvent extends BaseEvent {
 
 ### Step 3: Emit from Nodes
 
-In `pipeline_nodes.py`, wrap node functions with timing:
+In `pipeline/pipeline_nodes.py`, wrap node functions with timing:
 
 ```python
 async def timed_node(node_func, state):

@@ -140,7 +140,7 @@ under `/evals`: a TypeScript Code Evaluator (`web/src/langfuse-evaluators/`,
 type-checked and tested via `npm test`, executed locally via the `insecure-local`
 dispatcher — no AWS needed) plus two of Langfuse's own built-in LLM-as-judge
 templates (`answer-groundedness`, `context-precision`), independent cross-checks
-on the same things `judge.py` already measures app-side.
+on the same things `quality/judge.py` already measures app-side.
 
 To capture the current hardcoded prompts as versioned Langfuse text prompts for
 local authoring, run `make capture-langfuse-prompts`. This is a one-way capture:
@@ -297,7 +297,7 @@ Summarize our conversation
 
 ## Configuration
 
-Everything lives in `config.py`; most (but not all) values are `.env`-overridable — see `.env.example` for the current, authoritative list of what's genuinely read from the environment vs. hardcoded.
+Everything lives in `core/config.py`; most (but not all) values are `.env`-overridable — see `.env.example` for the current, authoritative list of what's genuinely read from the environment vs. hardcoded.
 
 ### Models
 
@@ -311,7 +311,7 @@ QUERY_EVAL_TEMPERATURE=0
 QUERY_EVAL_MAX_TOKENS=1024
 ```
 
-`VECTOR_DIMENSION` (768) is **not** on this list — it's a hardcoded literal in `config.py`, not an env override, despite living right next to `EMBEDDINGS_MODEL` in the source.
+`VECTOR_DIMENSION` (768) is **not** on this list — it's a hardcoded literal in `core/config.py`, not an env override, despite living right next to `EMBEDDINGS_MODEL` in the source.
 
 ### Data stores
 
@@ -332,7 +332,7 @@ POSTGRES_DB=langchain_agent
 
 ### Retrieval / reranking
 
-**None of these are `.env`-settable** — they're plain Python literals in `config.py`. Values shown are the actual current defaults; edit `config.py` and redeploy to change them.
+**None of these are `.env`-settable** — they're plain Python literals in `core/config.py`. Values shown are the actual current defaults; edit `core/config.py` and redeploy to change them.
 
 ```python
 RETRIEVER_K = 10              # Final docs
@@ -438,7 +438,7 @@ once. Prevents low-relevance outputs without an infinite loop.
 Every citation URL is validated before reaching the LLM. Results cached
 for 60 minutes (thread-safe); URLs timing out above 2 s are marked
 invalid. Broken links are replaced with valid alternatives via
-`doc_replacer.py`.
+`retrieval/doc_replacer.py`.
 
 ### Typeahead autocomplete
 
@@ -494,12 +494,12 @@ or `low`. The latency table still renders without the lift column.
 
 Implementation:
 
-- [`relevancy_metrics.py`](relevancy_metrics.py) — pure-Python (no NumPy)
+- [`observability/relevancy_metrics.py`](observability/relevancy_metrics.py) — pure-Python (no NumPy)
   module with `ndcg_at_k`, `mrr`, `recall_at_k`, `precision_at_k`,
   `compute_stage_metrics`, `confidence_from_scores`,
   `count_rank_changes`, `latency_cost_benefit`. 43 unit tests in
   [`tests/unit/test_relevancy_metrics.py`](tests/unit/test_relevancy_metrics.py).
-- [`vector_store.py`](vector_store.py) — `bm25_only_search()` (BM25
+- [`retrieval/vector_store.py`](retrieval/vector_store.py) — `bm25_only_search()` (BM25
   baseline) and `lookup_judgments(query)` (judgments index lookup).
 - [`api/services/observable_agent.py`](api/services/observable_agent.py) —
   accumulates pipeline state across the LangGraph stream
@@ -630,7 +630,7 @@ below 0.5, the quality gate retries with α adjusted by ±0.3.
 
 ### State
 
-`CustomAgentState` (see [agent_state.py](agent_state.py)) is a `total=False`
+`CustomAgentState` (see [core/agent_state.py](core/agent_state.py)) is a `total=False`
 TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
 
 | Added by | Fields |
@@ -682,14 +682,14 @@ one-time GCP setup and flags.
 ### Benchmarks
 
 ```bash
-PYTHONPATH=. python benchmark_search.py
+PYTHONPATH=. python benchmarks/benchmark_search.py
 ```
 
 ### Checkpoint maintenance
 
 ```bash
-PYTHONPATH=. python checkpoint_maintenance.py   # garbage-collect old checkpoints
-PYTHONPATH=. python checkpoint_optimizer.py     # tune checkpoint performance
+PYTHONPATH=. python checkpoints/checkpoint_maintenance.py   # garbage-collect old checkpoints
+PYTHONPATH=. python checkpoints/checkpoint_optimizer.py     # tune checkpoint performance
 ```
 
 ### Testing
@@ -797,28 +797,44 @@ langchain_agent/
 │   ├── unit/              # Fast, no external services (~0.5s, 612 tests)
 │   ├── integration/       # Multi-component, live services — see tests/integration/README.md
 │   └── e2e/               # Deployed Cloud Run checks — see tests/e2e/README.md
+│
+│  # --- Entry points (stay at root: invoked by path from shell scripts/CI) ---
 ├── main.py                # EcommerceSearchAgent: setup, graph wiring, routers, lifecycle (~600 lines)
-├── pipeline_nodes.py      # PipelineNodesMixin: the 8 LangGraph nodes + helpers (~3,000 lines)
-├── conversation_management.py  # ConversationManagementMixin: threads, titles, summarize/compact
 ├── cli.py                 # Interactive terminal REPL (dev only; `make run`)
-├── llm_content.py         # _flatten_llm_content (Gemini content-block normalization)
-├── agent_state.py         # CustomAgentState TypedDict
-├── config.py              # All configuration constants
-├── exceptions.py          # Custom exception hierarchy
-├── vector_store.py        # OpenSearchVectorStore + retriever (RRF)
-├── reranker.py            # CrossEncoderReranker (default) + GeminiReranker (fallback)
-├── embedding_cache.py     # Thread-safe query embedding cache
-├── link_verifier.py       # URL validation w/ TTL cache
-├── doc_replacer.py        # Broken-link replacement
-├── logging_config.py      # structlog setup (JSON/console)
 ├── setup.py               # DB + index init; also calls lucille_ingest.sh for ESCI data
-├── relevancy_metrics.py           # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)
-├── bigquery_batch_embeddings.py   # Parallel embedding via BigQuery ML
-├── generate_embeddings.py         # Serial embedding fallback
-├── benchmark_search.py            # Latency benchmarks
-├── checkpoint_maintenance.py      # Checkpoint GC
-├── checkpoint_optimizer.py        # Checkpoint tuning
-├── migrate_to_hnsw.py             # Index migration utility
+├── config_generator.py    # Regenerates lucille-esci/conf/products.generated.conf from OpenSearch
+│
+│  # --- Packages ---
+├── core/
+│   ├── agent_state.py     # CustomAgentState TypedDict
+│   ├── config.py          # All configuration constants
+│   ├── exceptions.py      # Custom exception hierarchy
+│   └── logging_config.py  # structlog setup (JSON/console)
+├── pipeline/
+│   ├── pipeline_nodes.py  # PipelineNodesMixin: the 8 LangGraph nodes + helpers (~3,000 lines)
+│   ├── conversation_management.py  # ConversationManagementMixin: threads, titles, summarize/compact
+│   └── reindex_trigger.py # local subprocess vs. reindex.yml dispatch
+├── retrieval/
+│   ├── vector_store.py    # OpenSearchVectorStore + retriever (RRF)
+│   ├── reranker.py        # CrossEncoderReranker (default) + GeminiReranker (fallback)
+│   ├── attribute_discovery.py      # Attribute/taxonomy discovery
+│   ├── attribute_mapping_store.py  # OpenSearch-backed taxonomy store
+│   ├── link_verifier.py   # URL validation w/ TTL cache
+│   └── doc_replacer.py    # Broken-link replacement
+├── quality/
+│   ├── judge.py           # LLM Judge (hallucination detection)
+│   ├── enrichment_service.py       # enrich_attribute + reindex orchestration
+│   └── enrichment_value_judge.py   # Value gate on proposed taxonomy edits
+├── observability/
+│   ├── relevancy_metrics.py  # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)
+│   ├── embedding_cache.py    # Thread-safe query embedding cache
+│   └── llm_content.py        # _flatten_llm_content (Gemini content-block normalization)
+├── checkpoints/
+│   ├── checkpoint_maintenance.py  # Checkpoint GC
+│   └── checkpoint_optimizer.py    # Checkpoint tuning
+├── benchmarks/
+│   ├── benchmark_esci.py     # ESCI relevancy benchmark (`make benchmark-esci`)
+│   └── benchmark_search.py   # Latency benchmarks
 ├── Dockerfile             # Multi-stage (Node + Python)
 ├── cloudbuild.yaml
 ├── Makefile

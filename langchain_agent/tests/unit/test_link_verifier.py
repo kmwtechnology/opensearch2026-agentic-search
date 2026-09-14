@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from link_verifier import LinkCache, LinkVerifier
+from retrieval.link_verifier import LinkCache, LinkVerifier
 
 
 @pytest.mark.unit

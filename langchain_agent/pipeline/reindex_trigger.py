@@ -23,14 +23,14 @@ from typing import Any, Dict, Optional, Protocol
 
 import httpx
 
-from config import (
+from core.config import (
     GITHUB_REINDEX_REF,
     GITHUB_REINDEX_TOKEN,
     GITHUB_REPO,
     REINDEX_LOCAL_TIMEOUT_SECONDS,
     REINDEX_TRIGGER,
 )
-from exceptions import ConfigurationError
+from core.exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
 

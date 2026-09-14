@@ -9,7 +9,7 @@ import pytest
 from langchain_core.documents import Document
 from pydantic import ValidationError
 
-from judge import (
+from quality.judge import (
     RETRY_ELIGIBLE_CATEGORIES,
     FlaggedClaim,
     HallucinationCategory,

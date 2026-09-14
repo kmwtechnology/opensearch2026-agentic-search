@@ -38,7 +38,7 @@ def _agent_returning_attributes(payload: dict) -> EcommerceSearchAgent:
 @pytest.mark.unit
 @pytest.mark.phase1
 class TestMaterialClassification:
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_known_material_gets_exact_filter(self, mock_store_cls) -> None:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         agent = _agent_returning_attributes({"material_or_feature": "leather"})
@@ -47,7 +47,7 @@ class TestMaterialClassification:
 
         assert filters == [{"match": {"product_material_primary": {"query": "leather"}}}]
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_material_variant_resolves_to_canonical(self, mock_store_cls) -> None:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         agent = _agent_returning_attributes({"material_or_feature": "cowhide"})
@@ -56,7 +56,7 @@ class TestMaterialClassification:
 
         assert filters == [{"match": {"product_material_primary": {"query": "leather"}}}]
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_non_material_feature_falls_back_to_lexical(self, mock_store_cls) -> None:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         agent = _agent_returning_attributes({"material_or_feature": "waterproof"})
@@ -73,7 +73,7 @@ class TestMaterialClassification:
             }
         ]
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_agent_learned_variant_from_os_resolves(self, mock_store_cls) -> None:
         """A variant the live flywheel wrote to OpenSearch (not in the static
         MATERIAL_CANONICALS seed dict) must also resolve, proving the OS
@@ -85,7 +85,7 @@ class TestMaterialClassification:
 
         assert filters == [{"match": {"product_material_primary": {"query": "leather"}}}]
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_opensearch_unavailable_falls_back_gracefully(self, mock_store_cls) -> None:
         """If OS is unreachable, classification degrades to the static seed
         dict rather than crashing — "leather" still resolves via dictionary
@@ -97,7 +97,7 @@ class TestMaterialClassification:
 
         assert filters == [{"match": {"product_material_primary": {"query": "leather"}}}]
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_mixed_query_classifies_material_and_leaves_others_intact(self, mock_store_cls) -> None:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         agent = _agent_returning_attributes(

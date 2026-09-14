@@ -19,7 +19,7 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import sql
 from psycopg_pool import ConnectionPool
 
-from config import (
+from core.config import (
     DATABASE_URL,
     DB_CONNECTION_KWARGS,
     DB_POOL_MAX_SIZE,
@@ -96,7 +96,7 @@ def create_opensearch_index(reset: bool = False):
     print("\n[2/7] Creating OpenSearch index...")
 
     try:
-        from vector_store import INDEX_MAPPING, create_opensearch_client
+        from retrieval.vector_store import INDEX_MAPPING, create_opensearch_client
 
         client = create_opensearch_client()
 
@@ -128,7 +128,7 @@ def create_search_pipeline():
     print("\n[3/7] Creating search pipeline...")
 
     try:
-        from vector_store import SEARCH_PIPELINE, create_opensearch_client
+        from retrieval.vector_store import SEARCH_PIPELINE, create_opensearch_client
 
         client = create_opensearch_client()
 

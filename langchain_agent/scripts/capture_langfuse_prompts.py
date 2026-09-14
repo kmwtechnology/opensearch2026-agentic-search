@@ -11,7 +11,7 @@ from typing import Dict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+from core.config import LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
 
 PROMPTS: Dict[str, str] = {
     "agent-system": """You are a helpful e-commerce product search assistant. Answer questions using a knowledge base of Amazon product listings.

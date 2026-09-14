@@ -33,9 +33,13 @@ import logging
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional
 
-from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, single_term_classify
-from attribute_mapping_store import AttributeMappingStore
-from reindex_trigger import ReindexTrigger, build_reindex_trigger
+from pipeline.reindex_trigger import ReindexTrigger, build_reindex_trigger
+from retrieval.attribute_discovery import (
+    COLOR_CANONICALS,
+    MATERIAL_CANONICALS,
+    single_term_classify,
+)
+from retrieval.attribute_mapping_store import AttributeMappingStore
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +208,7 @@ def _ensure_attribute_fields_mapped(store: AttributeMappingStore, attribute_type
     keyword), mirroring product_material's mapping. No-op if already present
     — safe to call every time.
     """
-    from config import OPENSEARCH_INDEX_NAME
+    from core.config import OPENSEARCH_INDEX_NAME
 
     client = store.client
     current_mapping = client.indices.get_mapping(index=OPENSEARCH_INDEX_NAME)

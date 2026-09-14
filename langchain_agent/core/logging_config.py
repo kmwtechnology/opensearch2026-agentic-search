@@ -12,7 +12,7 @@ import sys
 import structlog
 from structlog.types import Processor
 
-from config import LOG_FORMAT, LOG_INCLUDE_TIMESTAMP, LOG_LEVEL
+from core.config import LOG_FORMAT, LOG_INCLUDE_TIMESTAMP, LOG_LEVEL
 
 
 def configure_logging() -> None:

@@ -16,7 +16,7 @@ from langchain_core.documents import Document
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from opensearchpy import OpenSearch, RequestsHttpConnection
 
-from config import (
+from core.config import (
     EMBEDDING_CACHE_MAX_SIZE,
     ENABLE_EMBEDDING_CACHE,
     OPENSEARCH_HOST,
@@ -32,8 +32,13 @@ from config import (
     RETRIEVER_FETCH_K,
     RETRIEVER_K,
 )
-from embedding_cache import EmbeddingCache
-from exceptions import EmbeddingError, SearchFailureError, SearchTimeoutError, SearchValidationError
+from core.exceptions import (
+    EmbeddingError,
+    SearchFailureError,
+    SearchTimeoutError,
+    SearchValidationError,
+)
+from observability.embedding_cache import EmbeddingCache
 
 # Suppress InsecureRequestWarning for self-signed certs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)

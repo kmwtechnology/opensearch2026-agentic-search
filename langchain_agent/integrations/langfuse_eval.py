@@ -22,7 +22,12 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from config import LANGFUSE_BASE_URL, LANGFUSE_ENABLED, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+from core.config import (
+    LANGFUSE_BASE_URL,
+    LANGFUSE_ENABLED,
+    LANGFUSE_PUBLIC_KEY,
+    LANGFUSE_SECRET_KEY,
+)
 from integrations.langfuse_integration import record_metrics
 
 logger = logging.getLogger(__name__)

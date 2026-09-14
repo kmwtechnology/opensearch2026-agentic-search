@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import NotFoundError
 
-from vector_store import get_shared_opensearch_client
+from retrieval.vector_store import get_shared_opensearch_client
 
 INDEX_NAME = "agentic_hybrid_search_attribute_mappings"
 

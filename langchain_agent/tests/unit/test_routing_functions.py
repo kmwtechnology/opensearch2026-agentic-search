@@ -267,7 +267,7 @@ class TestLlmJudgeNodeHallucinationRetry:
     def test_retries_when_faithfulness_low_and_hallucinations_found(self):
         from langchain_core.documents import Document
 
-        from judge import HallucinationCategory
+        from quality.judge import HallucinationCategory
 
         first_flag = MagicMock()
         first_flag.claim = "fake claim"
@@ -316,7 +316,7 @@ class TestLlmJudgeNodeHallucinationRetry:
     def test_does_not_retry_when_retry_already_used(self):
         from langchain_core.documents import Document
 
-        from judge import HallucinationCategory
+        from quality.judge import HallucinationCategory
 
         first_flag = MagicMock()
         first_flag.claim = "fake claim"
@@ -356,7 +356,7 @@ class TestLlmJudgeNodeHallucinationRetry:
         answer worse, not better."""
         from langchain_core.documents import Document
 
-        from judge import HallucinationCategory
+        from quality.judge import HallucinationCategory
 
         inference_flag = MagicMock()
         inference_flag.claim = "designed to aid plaque removal"
@@ -399,7 +399,7 @@ class TestLlmJudgeNodeHallucinationRetry:
         """One retry-worthy flag in a mixed list is enough to trigger retry."""
         from langchain_core.documents import Document
 
-        from judge import HallucinationCategory
+        from quality.judge import HallucinationCategory
 
         inference_flag = MagicMock()
         inference_flag.claim = "minor over-paraphrase"
@@ -461,7 +461,7 @@ class TestLlmJudgeNodeHallucinationRetry:
         """
         from langchain_core.documents import Document
 
-        from judge import HallucinationCategory
+        from quality.judge import HallucinationCategory
 
         flag1 = MagicMock()
         flag1.claim = "Made in the USA"

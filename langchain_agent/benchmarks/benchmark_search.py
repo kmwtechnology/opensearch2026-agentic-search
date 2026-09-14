@@ -30,14 +30,14 @@ from typing import Any, Dict, List
 import psycopg
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from config import (
+from core.config import (
     DATABASE_URL,
     EMBEDDINGS_MODEL,
     VECTOR_COLLECTION_NAME,
     VECTOR_DIMENSION,
 )
-from reranker import GeminiReranker
-from vector_store import OpenSearchVectorStore
+from retrieval.reranker import GeminiReranker
+from retrieval.vector_store import OpenSearchVectorStore
 
 logger = logging.getLogger(__name__)
 

@@ -26,8 +26,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import verify_same_origin
-from config import LOGIN_PASSWORD, RATE_LIMIT_LOGIN
-from logging_config import get_logger
+from core.config import LOGIN_PASSWORD, RATE_LIMIT_LOGIN
+from core.logging_config import get_logger
 
 logger = get_logger(__name__)
 

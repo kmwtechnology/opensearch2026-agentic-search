@@ -186,7 +186,7 @@ previously only described the alternative LLM-based path):
 - Emits `RerankerProgressEvent` with per-document scores and top-K selection
 - Sets `reranker_max_score` for Quality Gate decision
 
-An LLM-based alternative (`RERANKER_TYPE=gemini`) exists (`reranker.py`'s `GeminiReranker`):
+An LLM-based alternative (`RERANKER_TYPE=gemini`) exists (`retrieval/reranker.py`'s `GeminiReranker`):
 batch-scores documents via structured-output Gemini calls instead of a local model. Not
 the shipped default; both deploy paths (`build-deploy.yml`, `scripts/deploy.sh`) set
 `RERANKER_TYPE=cross-encoder` explicitly.
@@ -781,7 +781,7 @@ the live demo's centerpiece — see `DEMO.md` Part 4.5):
    ("Corrected 'tan' from 'yellow' to 'brown'", never "Added").
 
 **Making a mis-mapping visible without a dev tool**: `_build_grounded_context`
-(`pipeline_nodes.py`, the FACTS-block builder every `agent_node` response is
+(`pipeline/pipeline_nodes.py`, the FACTS-block builder every `agent_node` response is
 generated from) includes both a product's raw `product_color` and its
 derived `product_color_primary` as separate FACTS lines when both are
 present, and a grounding rule instructs the agent to flag it directly in
@@ -789,18 +789,18 @@ prose when the indexed category isn't a plausible family for the listed
 color (e.g. "Tan" indexed as "yellow"). This is what lets a shopper (or
 a conference audience) see the mismatch straight from the chat response,
 not just the observability panel's DSL viewer. Two supporting fixes were
-needed: `vector_store.py`'s `_hit_to_document` didn't include
+needed: `retrieval/vector_store.py`'s `_hit_to_document` didn't include
 `product_color_primary` in document metadata at all until this was
-added; and `judge.py`'s `_format_docs_for_prompt` — the *separate* doc
+added; and `quality/judge.py`'s `_format_docs_for_prompt` — the *separate* doc
 rendering the LLM-judge pass grades against — needed the same two lines,
 or the judge flags the grounded mismatch note as an unsupported
 fabrication and the auto-correction retry strips it back out.
 
-**Value gate** (`EnrichmentValueJudge`, `enrichment_value_judge.py` —
+**Value gate** (`EnrichmentValueJudge`, `quality/enrichment_value_judge.py` —
 applies to both the gap and correction mechanisms, since both funnel
-through `pipeline_nodes.py`'s shared `_try_enrichment_tool`): before the tool
+through `pipeline/pipeline_nodes.py`'s shared `_try_enrichment_tool`): before the tool
 actually executes, a second, independent structured-output LLM call
-(same bias-mitigation pattern as `judge.py`'s `LLMJudge` — a different,
+(same bias-mitigation pattern as `quality/judge.py`'s `LLMJudge` — a different,
 cheap model via `config.JUDGE_MODEL`, temperature 0) evaluates whether
 the proposed `variant -> canonical` change would genuinely improve
 search quality for real shoppers, given what the term is currently
@@ -818,7 +818,7 @@ explicit action) bypasses this gate.
 classify (or use the LLM-supplied canonical directly) → write the
 mapping to OpenSearch → additively ensure the index mapping has the
 `product_<type>` fields → regenerate `products.generated.conf` →
-trigger a real catalog reindex through `reindex_trigger.py`. Same
+trigger a real catalog reindex through `pipeline/reindex_trigger.py`. Same
 result, two mechanisms, selected by `REINDEX_TRIGGER`:
 
 - `local` (default, dev): `LocalReindexTrigger` runs
@@ -843,7 +843,7 @@ finishes"). A follow-up query (gap case) or a direct field check
 (correction case, since ranking itself barely moves — see `DEMO.md`)
 now reflects the fix — immediately locally, after the run on Cloud Run.
 
-**Filter relaxation** (`pipeline_nodes.py` retriever, pre-existing, load-bearing
+**Filter relaxation** (`pipeline/pipeline_nodes.py` retriever, pre-existing, load-bearing
 for the gap-mechanism asymmetry above): when an
 `attribute_filter`/`refinement` query's fully-filtered result count is
 under 3, the retriever automatically retries without `multi_match`
@@ -977,7 +977,7 @@ The detection stage and config generation are already generic — a third
 type needs no new Java code and no hand-edited Lucille config:
 
 1. Add a canonical seed vocabulary (`_CANONICAL_SEEDS_BY_TYPE` in
-   `attribute_discovery.py`), then seed the taxonomy via
+   `retrieval/attribute_discovery.py`), then seed the taxonomy via
    `AttributeMappingStore.seed_from_discovery(...)` (or
    `bulk_discover` against real `chunk_text` for a from-scratch build).
    The next `lucille_ingest.sh` run picks it up automatically —
@@ -989,12 +989,12 @@ type needs no new Java code and no hand-edited Lucille config:
    `seed_taxonomy=true` on the reindex workflow) runs
    `scripts/rebuild_attribute_taxonomies.py` between two products passes —
    add a new type's canonicals there if it should be part of that seed.
-2. Add a filter block to `_extract_attributes()` in `pipeline_nodes.py` for the new
+2. Add a filter block to `_extract_attributes()` in `pipeline/pipeline_nodes.py` for the new
    type — decide up front whether it needs color's hard-filter semantics
    (rare/exact terms) or material's soft-filter + relaxation semantics
    (see "Taxonomy Growth & Correction" above); this is a deliberate
    per-type choice, not something to default to one or the other.
-3. Add the new type's field to `vector_store.py`'s `_build_multi_match`
+3. Add the new type's field to `retrieval/vector_store.py`'s `_build_multi_match`
    boost list to give it BM25 scoring weight — not automatic (a
    deliberate, documented limitation to avoid an extra OpenSearch
    round-trip per query for two known types).
@@ -1004,7 +1004,7 @@ type needs no new Java code and no hand-edited Lucille config:
 ### Swapping the LLM Provider
 
 1. Replace `ChatGoogleGenerativeAI` with `ChatOpenAI`, `ChatAnthropic`, etc. in `main.py`
-2. Update model names in `config.py`
+2. Update model names in `core/config.py`
 3. Ensure all models support structured output (required for reranker)
 4. Update temperature/token settings if needed
 5. Test: `PYTHONPATH=. python3 setup.py` to validate API connection
@@ -1052,7 +1052,7 @@ Open browser DevTools → Network tab. WebSocket messages show every event emitt
 
 ### Log Structured Output
 
-Structured logging (`json` format) in `logging_config.py` makes it easy to grep specific fields:
+Structured logging (`json` format) in `core/logging_config.py` makes it easy to grep specific fields:
 
 ```bash
 grep '"node":"retriever"' app.log
@@ -1061,7 +1061,7 @@ grep '"node":"retriever"' app.log
 ### Verify Vector Embeddings
 
 ```python
-from vector_store import get_embeddings
+from retrieval.vector_store import get_embeddings
 emb = get_embeddings("wireless headphones")
 print(len(emb))  # Should be 768
 ```
@@ -1069,7 +1069,7 @@ print(len(emb))  # Should be 768
 ### Test RRF Fusion
 
 ```python
-from vector_store import OpenSearchRetriever
+from retrieval.vector_store import OpenSearchRetriever
 retriever.invoke("query", search_type="hybrid", alpha=0.5)
 ```
 
