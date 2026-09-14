@@ -133,6 +133,45 @@ describe('narrate', () => {
     expect(line?.text).toContain('Passed')
   })
 
+  it('does not call it a pass when the score is still under the bar', () => {
+    // Observed live on DEMO.md turn 1: after the retry was spent the gate
+    // emitted triggered=false with max_score 0.34 against a 0.45 threshold,
+    // and the panel announced "Passed the quality bar — 0.34 against 0.45".
+    const line = narrate({
+      type: 'quality_gate',
+      node: 'quality_gate',
+      timestamp: TS,
+      triggered: false,
+      original_alpha: 0.55,
+      max_score: 0.34,
+      threshold: 0.45,
+      reason: 'Accepted after retry',
+    } as AgentEvent)
+
+    expect(line?.text).not.toMatch(/passed/i)
+    expect(line?.text).toContain('Still under the bar')
+    expect(line?.text).toContain('best available')
+  })
+
+  it('never claims a pass when nothing was retrieved to score', () => {
+    // Observed live on DEMO.md's first query: filters matched no products, so
+    // the reranker never ran and max_score was 0 — and the panel announced
+    // "Passed the quality bar — 0.00 against 0.45", which is self-refuting.
+    const line = narrate({
+      type: 'quality_gate',
+      node: 'quality_gate',
+      timestamp: TS,
+      triggered: false,
+      original_alpha: 0.25,
+      max_score: 0,
+      threshold: 0.45,
+      reason: 'PASS',
+    } as AgentEvent)
+
+    expect(line?.text).not.toMatch(/passed/i)
+    expect(line?.text).toContain('Nothing came back to score')
+  })
+
   it('ignores events that are not worth saying out loud', () => {
     expect(
       narrate({

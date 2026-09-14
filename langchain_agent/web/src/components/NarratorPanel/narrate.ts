@@ -170,6 +170,40 @@ function qualityGateLine(e: QualityGateEvent): NarratorLine {
       weight: 'moment',
     }
   }
+  // A max score of exactly zero means nothing was retrieved to score in the
+  // first place — usually filters that matched no products. Reporting that as
+  // "Passed the quality bar — 0.00 against 0.45" is worse than saying nothing:
+  // it is visibly self-contradictory to an audience, and it claims a check
+  // succeeded when it never ran. Observed live on DEMO.md's first query.
+  if (e.max_score === 0) {
+    return {
+      id: `gate-${e.timestamp}`,
+      node: 'quality_gate',
+      label: 'Quality Gate',
+      text: 'Nothing came back to score — no product matched those filters.',
+      weight: 'step',
+    }
+  }
+
+  // Three outcomes, not two — and `triggered` alone cannot tell them apart.
+  // After a retry has been spent the gate emits triggered=false even when the
+  // score is STILL under the bar, which is "this is the best available", not
+  // "passed". Observed live: 0.34 against 0.45 announced as a pass.
+  //
+  // Comparing the two numbers we already have is both honest and robust; the
+  // alternative is sniffing e.reason for the string "Accepted after retry".
+  if (e.max_score < e.threshold) {
+    return {
+      id: `gate-${e.timestamp}`,
+      node: 'quality_gate',
+      label: 'Quality Gate',
+      text:
+        `Still under the bar after retrying — ${e.max_score.toFixed(2)} against ` +
+        `${e.threshold.toFixed(2)}. Answering with the best available matches.`,
+      weight: 'step',
+    }
+  }
+
   return {
     id: `gate-${e.timestamp}`,
     node: 'quality_gate',
