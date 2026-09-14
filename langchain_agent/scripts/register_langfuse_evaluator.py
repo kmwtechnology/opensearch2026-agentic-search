@@ -25,7 +25,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from config import LANGFUSE_BASE_URL, LANGFUSE_ENABLED, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+from core.config import (
+    LANGFUSE_BASE_URL,
+    LANGFUSE_ENABLED,
+    LANGFUSE_PUBLIC_KEY,
+    LANGFUSE_SECRET_KEY,
+)
 
 JUDGE_MODEL = "gemini-3.1-flash-lite-preview"  # matches config.JUDGE_MODEL
 

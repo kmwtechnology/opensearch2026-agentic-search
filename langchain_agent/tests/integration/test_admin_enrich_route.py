@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 from api.routes.auth import limiter as auth_limiter
-from enrichment_service import EnrichmentResult
+from quality.enrichment_service import EnrichmentResult
 
 
 @pytest.fixture
@@ -43,8 +43,8 @@ def _login(client: TestClient) -> None:
     assert resp.status_code == 200, f"test login failed: {resp.text}"
 
 
-@patch("config.ENABLE_ENRICHMENT_TOOL", True)
-@patch("enrichment_service.enrich_attribute")
+@patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
+@patch("quality.enrichment_service.enrich_attribute")
 def test_successful_enrichment_returns_200(mock_enrich, client) -> None:
     mock_enrich.return_value = EnrichmentResult(
         success=True,
@@ -84,8 +84,8 @@ def test_successful_enrichment_returns_200(mock_enrich, client) -> None:
     mock_enrich.assert_called_once_with("material", "chrome", explicit_canonical=None)
 
 
-@patch("config.ENABLE_ENRICHMENT_TOOL", True)
-@patch("enrichment_service.enrich_attribute")
+@patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
+@patch("quality.enrichment_service.enrich_attribute")
 def test_classification_failure_returns_200_with_reason(mock_enrich, client) -> None:
     """A failed classification is a normal (non-exceptional) result, not an
     HTTP error — the caller checks `success` in the body."""
@@ -110,8 +110,8 @@ def test_classification_failure_returns_200_with_reason(mock_enrich, client) -> 
     assert body["reason"] == "could not classify to a known material bucket"
 
 
-@patch("config.ENABLE_ENRICHMENT_TOOL", True)
-@patch("enrichment_service.enrich_attribute")
+@patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
+@patch("quality.enrichment_service.enrich_attribute")
 def test_color_attribute_type_works_too(mock_enrich, client) -> None:
     mock_enrich.return_value = EnrichmentResult(
         success=True, attribute_type="color", variant="camel", canonical="brown"
@@ -130,8 +130,8 @@ def test_color_attribute_type_works_too(mock_enrich, client) -> None:
     mock_enrich.assert_called_once_with("color", "camel", explicit_canonical=None)
 
 
-@patch("config.ENABLE_ENRICHMENT_TOOL", True)
-@patch("enrichment_service.enrich_attribute")
+@patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
+@patch("quality.enrichment_service.enrich_attribute")
 def test_explicit_canonical_is_passed_through(mock_enrich, client) -> None:
     """A term the dictionary can't classify (e.g. 'chrome' for material) needs
     an explicit canonical supplied, the same way the live agent tool does."""
@@ -152,7 +152,7 @@ def test_explicit_canonical_is_passed_through(mock_enrich, client) -> None:
     mock_enrich.assert_called_once_with("material", "chrome", explicit_canonical="metal")
 
 
-@patch("config.ENABLE_ENRICHMENT_TOOL", False)
+@patch("core.config.ENABLE_ENRICHMENT_TOOL", False)
 def test_disabled_flag_returns_403(client) -> None:
     with client:
         _login(client)
@@ -165,7 +165,7 @@ def test_disabled_flag_returns_403(client) -> None:
     assert r.status_code == 403
 
 
-@patch("config.ENABLE_ENRICHMENT_TOOL", True)
+@patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
 def test_empty_variant_rejected_by_schema_validation(client) -> None:
     with client:
         _login(client)
@@ -178,7 +178,7 @@ def test_empty_variant_rejected_by_schema_validation(client) -> None:
     assert r.status_code == 422
 
 
-@patch("config.ENABLE_ENRICHMENT_TOOL", True)
+@patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
 def test_missing_variant_field_rejected(client) -> None:
     with client:
         _login(client)
@@ -191,7 +191,7 @@ def test_missing_variant_field_rejected(client) -> None:
     assert r.status_code == 422
 
 
-@patch("config.ENABLE_ENRICHMENT_TOOL", True)
+@patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
 def test_missing_attribute_type_field_rejected(client) -> None:
     with client:
         _login(client)

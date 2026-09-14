@@ -20,8 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import verify_same_origin
 from api.middleware.session_auth import verify_session
-from config import DATABASE_URL, RATE_LIMIT_CONVERSATIONS
-from logging_config import get_logger
+from core.config import DATABASE_URL, RATE_LIMIT_CONVERSATIONS
+from core.logging_config import get_logger
 
 # Thread ID validation pattern (alphanumeric, underscore, hyphen, 1-64 chars)
 THREAD_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")

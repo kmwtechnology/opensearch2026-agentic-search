@@ -21,7 +21,7 @@ import sys
 import uuid
 from types import SimpleNamespace
 
-from config import LANGFUSE_ENABLED
+from core.config import LANGFUSE_ENABLED
 from integrations import get_callbacks, shutdown_tracing
 from integrations.langfuse_eval import DATASET_NAME, citation_precision
 from main import EcommerceSearchAgent
@@ -98,7 +98,7 @@ def main(argv=None) -> int:
 
     from langfuse import Langfuse
 
-    from config import LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+    from core.config import LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
 
     client = Langfuse(
         public_key=LANGFUSE_PUBLIC_KEY, secret_key=LANGFUSE_SECRET_KEY, base_url=LANGFUSE_BASE_URL

@@ -12,9 +12,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from enrichment_service import EnrichmentResult
-from enrichment_value_judge import EnrichmentValueAssessment
 from main import EcommerceSearchAgent
+from quality.enrichment_service import EnrichmentResult
+from quality.enrichment_value_judge import EnrichmentValueAssessment
 
 
 def _agent_with_llm(bound_llm_response, final_response=None, enrichment_assessment=None):
@@ -63,8 +63,8 @@ class TestTryEnrichmentTool:
 
         agent.llm.bind_tools.assert_called_once_with([trigger_enrichment])
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("enrichment_service.enrich_attribute")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    @patch("quality.enrichment_service.enrich_attribute")
     def test_tool_call_executes_and_returns_state(self, mock_enrich, mock_store_cls):
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
@@ -102,8 +102,8 @@ class TestTryEnrichmentTool:
         assert result["enrichment_docs_processed"] == 9618
         mock_enrich.assert_called_once_with("material", "chrome", explicit_canonical="metal")
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("enrichment_service.enrich_attribute")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    @patch("quality.enrichment_service.enrich_attribute")
     def test_duration_and_docs_processed_omitted_when_reindex_fails(
         self, mock_enrich, mock_store_cls
     ):
@@ -141,8 +141,8 @@ class TestTryEnrichmentTool:
         assert result["enrichment_duration_seconds"] is None
         assert result["enrichment_docs_processed"] is None
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("enrichment_service.enrich_attribute")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    @patch("quality.enrichment_service.enrich_attribute")
     def test_tool_message_has_matching_tool_call_id(self, mock_enrich, mock_store_cls):
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
@@ -170,8 +170,8 @@ class TestTryEnrichmentTool:
         assert len(tool_messages) == 1
         assert tool_messages[0].tool_call_id == "call_xyz"
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("enrichment_service.enrich_attribute")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    @patch("quality.enrichment_service.enrich_attribute")
     def test_classification_failure_still_returns_state_with_final_response(
         self, mock_enrich, mock_store_cls
     ):
@@ -207,8 +207,8 @@ class TestEnrichmentValueGate:
     trigger_enrichment' and the tool actually executing -- a declined
     assessment must prevent the real write + reindex entirely."""
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("enrichment_service.enrich_attribute")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    @patch("quality.enrichment_service.enrich_attribute")
     def test_declined_assessment_never_invokes_the_tool(self, mock_enrich, mock_store_cls):
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         tool_call_response = AIMessage(content="")
@@ -237,8 +237,8 @@ class TestEnrichmentValueGate:
         )
         assert "reddish" in result["messages"][0].content
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
-    @patch("enrichment_service.enrich_attribute")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    @patch("quality.enrichment_service.enrich_attribute")
     def test_declined_assessment_via_correction_path_never_invokes_the_tool(
         self, mock_enrich, mock_store_cls
     ):
@@ -270,7 +270,7 @@ class TestEnrichmentValueGate:
         assert result["enrichment_triggered"] is False
         assert result["enrichment_evaluation_declined"] is True
 
-    @patch("attribute_mapping_store.AttributeMappingStore")
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_evaluate_called_with_current_mapping_from_store(self, mock_store_cls):
         mock_store_cls.return_value.get_lookup_table.return_value = {"tan": "yellow"}
         tool_call_response = AIMessage(content="")
@@ -282,7 +282,7 @@ class TestEnrichmentValueGate:
             }
         ]
         agent = _agent_with_llm(tool_call_response)
-        with patch("enrichment_service.enrich_attribute") as mock_enrich:
+        with patch("quality.enrichment_service.enrich_attribute") as mock_enrich:
             mock_enrich.return_value = EnrichmentResult(
                 success=True, attribute_type="color", variant="tan", canonical="brown"
             )
@@ -329,7 +329,7 @@ class TestAgentNodeGapDetection:
             "quality_gate_retried": quality_gate_retried,
         }
 
-    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    @patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
     def test_zero_result_attribute_filter_triggers_enrichment_offer(self, bare_agent):
         agent = self._agent_for_gap_check(bare_agent)
         state = self._base_state("attribute_filter", [], quality_gate_retried=False)
@@ -339,7 +339,7 @@ class TestAgentNodeGapDetection:
         agent._try_enrichment_tool.assert_called_once_with("show me camel colored coats")
         assert result["messages"][0].content == "handled"
 
-    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    @patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
     def test_zero_result_non_attribute_filter_does_not_trigger(self, bare_agent):
         """A plain search intent with no results is a real 'nothing found'
         case, not an attribute-taxonomy gap -- must not offer the tool.
@@ -412,7 +412,7 @@ class TestAgentNodeCorrectionDetection:
             "quality_gate_retried": False,
         }
 
-    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    @patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
     def test_dispute_on_refinement_turn_triggers_correction_offer(self, bare_agent):
         agent = self._agent_for_correction_check(bare_agent)
         state = self._base_state("refinement", "that's not tan, that's yellow")
@@ -422,7 +422,7 @@ class TestAgentNodeCorrectionDetection:
         agent._try_correction_tool.assert_called_once()
         assert result["messages"][0].content == "corrected"
 
-    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    @patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
     def test_dispute_on_follow_up_turn_triggers_correction_offer(self, bare_agent):
         agent = self._agent_for_correction_check(bare_agent)
         state = self._base_state("follow_up", "actually that tag looks wrong")
@@ -431,7 +431,7 @@ class TestAgentNodeCorrectionDetection:
 
         agent._try_correction_tool.assert_called_once()
 
-    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    @patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
     def test_dispute_on_fresh_search_intent_does_not_trigger(self, bare_agent):
         """A standalone search/attribute_filter turn can't be disputing a
         prior tag -- there's no established conversation to dispute. Even
@@ -443,7 +443,7 @@ class TestAgentNodeCorrectionDetection:
 
         agent._try_correction_tool.assert_not_called()
 
-    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    @patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
     def test_ordinary_refinement_without_dispute_language_does_not_trigger(self, bare_agent):
         agent = self._agent_for_correction_check(bare_agent)
         state = self._base_state("refinement", "only show me the waterproof ones")
@@ -452,7 +452,7 @@ class TestAgentNodeCorrectionDetection:
 
         agent._try_correction_tool.assert_not_called()
 
-    @patch("config.ENABLE_ENRICHMENT_TOOL", False)
+    @patch("core.config.ENABLE_ENRICHMENT_TOOL", False)
     def test_disabled_flag_never_triggers_even_with_dispute_language(self, bare_agent):
         agent = self._agent_for_correction_check(bare_agent)
         state = self._base_state("refinement", "that's not tan, that's yellow")
@@ -461,7 +461,7 @@ class TestAgentNodeCorrectionDetection:
 
         agent._try_correction_tool.assert_not_called()
 
-    @patch("config.ENABLE_ENRICHMENT_TOOL", True)
+    @patch("core.config.ENABLE_ENRICHMENT_TOOL", True)
     def test_llm_declining_falls_through_to_normal_response_not_canned_message(self, bare_agent):
         """When the LLM isn't confident this is a real correction,
         _try_correction_tool returns None -- agent_node must fall through

@@ -6,7 +6,7 @@ real reindex.
 
 from unittest.mock import patch
 
-from enrichment_service import EnrichmentResult
+from quality.enrichment_service import EnrichmentResult
 from tools.enrichment_tool import trigger_enrichment
 
 

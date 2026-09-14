@@ -29,7 +29,7 @@ For regeneration:
 2. Re-embed products with Gemini:
    ```bash
    cd langchain_agent
-   PYTHONPATH=. python bigquery_batch_embeddings.py \
+   PYTHONPATH=. python scripts/bigquery_batch_embeddings.py \
      --project <GCP_PROJECT> \
      --parquet-input ../esci/products.parquet \
      --parquet-output data/esci_products_sample_<size>.parquet
@@ -84,7 +84,7 @@ git lfs pull
 **Re-embedding is slow:**
 ```bash
 # For large samples, use BigQuery:
-PYTHONPATH=. python bigquery_batch_embeddings.py \
+PYTHONPATH=. python scripts/bigquery_batch_embeddings.py \
   --project <GCP_PROJECT> \
   --parquet-input esci/shopping_queries_dataset/esci_products_sample_100000.parquet \
   --parquet-output data/esci_products_sample_100000.parquet

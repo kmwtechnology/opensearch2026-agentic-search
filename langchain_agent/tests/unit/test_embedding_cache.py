@@ -6,7 +6,7 @@ import threading
 
 import pytest
 
-from embedding_cache import EmbeddingCache
+from observability.embedding_cache import EmbeddingCache
 
 EMBEDDING = [0.1] * 768
 

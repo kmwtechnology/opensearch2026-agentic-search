@@ -35,15 +35,15 @@ from langgraph.graph import END, StateGraph
 from psycopg_pool import AsyncConnectionPool, ConnectionPool
 
 # Import extracted modules
-from agent_state import CustomAgentState
-from conversation_management import ConversationManagementMixin
-from doc_replacer import DocumentReplacer
-from enrichment_value_judge import EnrichmentValueJudge
-from judge import LLMJudge
-from link_verifier import LinkVerifier
-from pipeline_nodes import AlphaEstimation, IntentClassification, PipelineNodesMixin
-from reranker import CrossEncoderReranker, GeminiReranker
-from vector_store import OpenSearchVectorStore
+from core.agent_state import CustomAgentState
+from pipeline.conversation_management import ConversationManagementMixin
+from pipeline.pipeline_nodes import AlphaEstimation, IntentClassification, PipelineNodesMixin
+from quality.enrichment_value_judge import EnrichmentValueJudge
+from quality.judge import LLMJudge
+from retrieval.doc_replacer import DocumentReplacer
+from retrieval.link_verifier import LinkVerifier
+from retrieval.reranker import CrossEncoderReranker, GeminiReranker
+from retrieval.vector_store import OpenSearchVectorStore
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ if os.getenv("LANGSMITH_API_KEY"):
     os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGSMITH_PROJECT", "agentic-hybrid-search")
 
 
-from config import (
+from core.config import (
     CROSS_ENCODER_MODEL,
     DATABASE_URL,
     DB_CONNECTION_KWARGS,
@@ -218,7 +218,7 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         self.alpha_estimator_llm = None  # Lightweight model for query evaluation
 
         # Link verification and document replacement
-        from config import LINK_CACHE_TTL_MINUTES, LINK_VERIFICATION_TIMEOUT_MS
+        from core.config import LINK_CACHE_TTL_MINUTES, LINK_VERIFICATION_TIMEOUT_MS
 
         self.link_verifier = LinkVerifier(
             timeout_ms=LINK_VERIFICATION_TIMEOUT_MS,
@@ -252,7 +252,7 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
 
         # Check if OpenSearch index has data
         try:
-            from config import OPENSEARCH_INDEX_NAME
+            from core.config import OPENSEARCH_INDEX_NAME
 
             count = self.vector_store.client.count(
                 index=OPENSEARCH_INDEX_NAME,
@@ -526,10 +526,10 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
 
         # Create checkpointer if not already created (must be done in async context)
         if self.checkpointer is None:
-            from config import CHECKPOINT_SELECTIVE_SERIALIZATION
+            from core.config import CHECKPOINT_SELECTIVE_SERIALIZATION
 
             if CHECKPOINT_SELECTIVE_SERIALIZATION:
-                from checkpoint_optimizer import SelectiveJsonPlusSerializer
+                from checkpoints.checkpoint_optimizer import SelectiveJsonPlusSerializer
 
                 self.checkpointer = AsyncPostgresSaver(
                     self.async_pool, serde=SelectiveJsonPlusSerializer()

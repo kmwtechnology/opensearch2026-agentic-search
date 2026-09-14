@@ -2,7 +2,7 @@
 
 import pytest
 
-from attribute_discovery import (
+from retrieval.attribute_discovery import (
     COLOR_CANONICALS,
     MATERIAL_CANONICALS,
     bulk_discover,

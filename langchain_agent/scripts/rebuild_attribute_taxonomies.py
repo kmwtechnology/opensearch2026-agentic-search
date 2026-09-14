@@ -34,9 +34,9 @@ from typing import List
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, bulk_discover
-from attribute_mapping_store import INDEX_NAME, AttributeMappingStore
-from config import OPENSEARCH_INDEX_NAME
+from core.config import OPENSEARCH_INDEX_NAME
+from retrieval.attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, bulk_discover
+from retrieval.attribute_mapping_store import INDEX_NAME, AttributeMappingStore
 
 
 def fetch_chunk_texts(store: AttributeMappingStore) -> List[str]:

@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vector_store import OpenSearchRetriever, OpenSearchVectorStore
+from retrieval.vector_store import OpenSearchRetriever, OpenSearchVectorStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -417,7 +417,7 @@ class TestRerankerToggle:
 
     def test_reranking_on_runs_reranker(self, bare_agent, monkeypatch):
         # Force ENABLE_RERANKING true regardless of env
-        import pipeline_nodes as main_module
+        from pipeline import pipeline_nodes as main_module
 
         monkeypatch.setattr(main_module, "ENABLE_RERANKING", True)
 
@@ -454,7 +454,7 @@ class TestRerankerToggle:
 
     def test_reranking_default_true_when_key_missing(self, bare_agent, monkeypatch):
         """If the optimizations dict is empty, reranking should run (default True)."""
-        import pipeline_nodes as main_module
+        from pipeline import pipeline_nodes as main_module
 
         monkeypatch.setattr(main_module, "ENABLE_RERANKING", True)
 
@@ -479,7 +479,7 @@ class TestRerankerToggle:
     def test_global_enable_reranking_false_overrides_toggle_on(self, bare_agent, monkeypatch):
         """When the env-level ENABLE_RERANKING is False, the per-query toggle
         cannot turn it on."""
-        import pipeline_nodes as main_module
+        from pipeline import pipeline_nodes as main_module
 
         monkeypatch.setattr(main_module, "ENABLE_RERANKING", False)
 

@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-import vector_store
 from api.main import app
+from retrieval import vector_store
 
 
 @pytest.fixture(autouse=True)

@@ -5,7 +5,7 @@ Unit tests for doc_replacer — DocumentReplacer logic for replacing broken-link
 import pytest
 from langchain_core.documents import Document
 
-from doc_replacer import DocumentReplacer
+from retrieval.doc_replacer import DocumentReplacer
 
 
 def _doc(content="text", source="docs/foo.md", url="https://example.com/foo", score=0.8, **meta):

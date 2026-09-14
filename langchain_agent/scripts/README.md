@@ -83,7 +83,7 @@ Installed by `setup.sh` as local `.git/hooks/` (not tracked by git).
 
 Runs on every `git commit`:
 - Black + isort + flake8 on staged `.py` files
-- Smoke gate (`make smoke-local-quick`) if `api/services/`, `api/routes/`, `main.py`, `agent_state.py` staged AND Docker up
+- Smoke gate (`make smoke-local-quick`) if `api/services/`, `api/routes/`, `main.py`, `core/agent_state.py` staged AND Docker up
   - Smoke gate fails open if Docker is down (prevents blocking hotfixes)
   - Smoke gate fails hard if tests fail (catches WebSocket/observability regressions before push)
 

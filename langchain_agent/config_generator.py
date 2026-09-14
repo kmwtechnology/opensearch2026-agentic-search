@@ -19,8 +19,8 @@ Usage:
 from pathlib import Path
 from typing import List, Optional
 
-from attribute_mapping_store import INDEX_NAME as MAPPING_INDEX_NAME
-from attribute_mapping_store import AttributeMappingStore
+from retrieval.attribute_mapping_store import INDEX_NAME as MAPPING_INDEX_NAME
+from retrieval.attribute_mapping_store import AttributeMappingStore
 
 CONF_DIR = Path(__file__).parent / "lucille-esci" / "conf"
 GENERATED_CONF_PATH = CONF_DIR / "products.generated.conf"

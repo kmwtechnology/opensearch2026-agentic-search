@@ -7,7 +7,11 @@ is mocked throughout so these never make a real API call.
 
 from unittest.mock import MagicMock, patch
 
-from enrichment_value_judge import EnrichmentValueAssessment, EnrichmentValueJudge, _build_prompt
+from quality.enrichment_value_judge import (
+    EnrichmentValueAssessment,
+    EnrichmentValueJudge,
+    _build_prompt,
+)
 
 
 class TestBuildPrompt:
@@ -33,7 +37,7 @@ class TestBuildPrompt:
 
 class TestEnrichmentValueJudge:
     def _judge_with_mocked_response(self, assessment: EnrichmentValueAssessment):
-        with patch("enrichment_value_judge.ChatGoogleGenerativeAI"):
+        with patch("quality.enrichment_value_judge.ChatGoogleGenerativeAI"):
             judge = EnrichmentValueJudge(model_name="gemini-3.1-flash-lite-preview")
         judge.structured_llm = MagicMock()
         judge.structured_llm.invoke.return_value = assessment

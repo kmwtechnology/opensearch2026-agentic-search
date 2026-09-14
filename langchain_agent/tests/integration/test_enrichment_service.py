@@ -23,10 +23,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import attribute_mapping_store as store_module
-import enrichment_service
-import reindex_trigger
-from attribute_mapping_store import AttributeMappingStore
+from pipeline import reindex_trigger
+from quality import enrichment_service
+from retrieval import attribute_mapping_store as store_module
+from retrieval.attribute_mapping_store import AttributeMappingStore
 
 pytestmark = pytest.mark.integration
 
@@ -264,7 +264,7 @@ class TestEnsureAttributeFieldsMapped:
         store.client.indices.delete(index=test_docs_index, ignore=[404])
         store.client.indices.create(index=test_docs_index, body=_MINIMAL_ANALYSIS_SETTINGS)
 
-        with patch("config.OPENSEARCH_INDEX_NAME", test_docs_index):
+        with patch("core.config.OPENSEARCH_INDEX_NAME", test_docs_index):
             enrichment_service._ensure_attribute_fields_mapped(store, "pattern")
 
             mapping = store.client.indices.get_mapping(index=test_docs_index)
@@ -283,7 +283,7 @@ class TestEnsureAttributeFieldsMapped:
             body={"mappings": {"properties": {"product_material_primary": {"type": "keyword"}}}},
         )
 
-        with patch("config.OPENSEARCH_INDEX_NAME", test_docs_index):
+        with patch("core.config.OPENSEARCH_INDEX_NAME", test_docs_index):
             # Should not raise, should not error on an existing field
             enrichment_service._ensure_attribute_fields_mapped(store, "material")
 

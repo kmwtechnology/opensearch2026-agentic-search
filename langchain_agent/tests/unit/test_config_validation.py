@@ -26,7 +26,7 @@ class TestRequiredEnvironmentVariables:
 
     def test_google_api_key_in_config_all(self):
         """GOOGLE_API_KEY must be exported from config so callers can import it."""
-        import config
+        from core import config
 
         assert "GOOGLE_API_KEY" in config.__all__
 
@@ -131,7 +131,7 @@ class TestRequiredEnvironmentVariables:
         re-parse a hardcoded default string locally instead of importing and
         checking the real `config` module attribute -- this one does.
         """
-        import config
+        from core import config
 
         assert isinstance(config.LLM_TEMPERATURE, float)
 

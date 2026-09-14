@@ -28,7 +28,7 @@ from typing import Any, List
 import pytest
 from langchain_core.messages import HumanMessage
 
-from llm_content import _flatten_llm_content
+from observability.llm_content import _flatten_llm_content
 
 GEMINI_BLOCKS: List[dict] = [
     {"type": "text", "text": "wireless headphones "},

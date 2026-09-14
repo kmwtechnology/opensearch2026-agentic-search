@@ -11,7 +11,7 @@ import httpx
 import psycopg
 from langchain_core.messages import BaseMessage, SystemMessage
 
-from config import (
+from core.config import (
     COMPACTION_THRESHOLD_PCT,
     DATABASE_URL,
     ENABLE_COMPACTION,
@@ -20,7 +20,7 @@ from config import (
     MIN_MESSAGES_FOR_COMPACTION,
     TOKEN_CHAR_RATIO,
 )
-from llm_content import _flatten_llm_content
+from observability.llm_content import _flatten_llm_content
 
 logger = logging.getLogger(__name__)
 

@@ -234,7 +234,7 @@ python main.py
 
 **Good news:** The Makefile sets this automatically. So these work fine:
 ```bash
-make lint        # black, isort, flake8, mypy
+make lint        # flake8 + mypy (the real gate; black/isort live in `make format`)
 make ci          # full CI gate
 make test        # unit tests
 make smoke-local-quick  # smoke tests
@@ -268,7 +268,7 @@ Common targets for daily development:
 | `make dev` | Start backend + frontend (Docker must be up) | Daily development |
 | `make dev-api` | Start backend only | Testing backend in isolation |
 | `make dev-web` | Start frontend only | Testing frontend in isolation |
-| `make lint` | Run black, isort, flake8, mypy | Before committing |
+| `make lint` | Run flake8 + mypy (same checks as CI's lint job) | Before committing |
 | `make test` | Run unit tests | Before pushing |
 | `make format-fix` | Auto-format code (black + isort) | Fix linting errors |
 | `make ci` | Full CI gate (lint + tests + frontend build) | Before pushing |

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes how to reproduce the hard-query relevancy measurements used in the slide deck (Slide 21). The results table below comes from running `benchmark_esci.py` on the Amazon ESCI dataset with three retrieval configurations measured against ground-truth relevance judgments.
+This document describes how to reproduce the hard-query relevancy measurements used in the slide deck (Slide 21). The results table below comes from running `benchmarks/benchmark_esci.py` on the Amazon ESCI dataset with three retrieval configurations measured against ground-truth relevance judgments.
 
 The benchmark focuses on **hard queries** (bottom-quartile by standard-hybrid NDCG@10) because that's where adaptive retrieval strategies provide the most value. For completeness, full-set results are also reported in the appendix.
 
@@ -100,7 +100,7 @@ make benchmark-esci
 
 ```bash
 cd langchain_agent
-PYTHONPATH=. python benchmark_esci.py --limit 2 --fast
+PYTHONPATH=. python benchmarks/benchmark_esci.py --limit 2 --fast
 ```
 
 **Runtime:** ~10 seconds.
@@ -109,7 +109,7 @@ PYTHONPATH=. python benchmark_esci.py --limit 2 --fast
 
 ```bash
 cd langchain_agent
-PYTHONPATH=. python benchmark_esci.py --limit 5000 --hard-only --fast \
+PYTHONPATH=. python benchmarks/benchmark_esci.py --limit 5000 --hard-only --fast \
   --output benchmark_results_$(date +%Y%m%d_%H%M%S).json
 ```
 
@@ -146,7 +146,7 @@ Output JSON structure:
 
 ## Hyperparameters
 
-All benchmarks use these fixed values (defined in `benchmark_esci.py` and Makefile targets):
+All benchmarks use these fixed values (defined in `benchmarks/benchmark_esci.py` and Makefile targets):
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
@@ -163,7 +163,7 @@ All benchmarks use these fixed values (defined in `benchmark_esci.py` and Makefi
 ### Last Run
 
 **Date:** 2026-04-30 14:54:46 UTC  
-**Commit:** (run benchmark_esci.py --limit 5000 --fast)  
+**Commit:** (run benchmarks/benchmark_esci.py --limit 5000 --fast)  
 **Mode:** `--fast` (deterministic, no Gemini)  
 **Query sample:** 5000 judged US queries (industry-standard scale)  
 **Hard-query count:** 1250 / 5000 (bottom-quartile NDCG@10 <= 0.2393)
@@ -252,10 +252,10 @@ Adaptive             0.3897      0.5467      0.4243      5000
 - [ ] Services running: `docker compose up -d`
 - [ ] Products + judgments ingested: `bash scripts/lucille_ingest.sh` (Lucille ETL; the older standalone `ingest_esci_*.py` scripts were removed in PR #48)
 - [ ] Verify OpenSearch: `curl http://localhost:9200/esci_judgments/_count`
-- [ ] Dry-run: `python benchmark_esci.py --limit 2 --fast`
+- [ ] Dry-run: `python benchmarks/benchmark_esci.py --limit 2 --fast`
 - [ ] Full run: `make benchmark-esci-fast` (~5 min)
 - [ ] Results printed to stdout
-- [ ] (Optional) Save JSON: `python benchmark_esci.py --limit 5000 --hard-only --fast --output results.json`
+- [ ] (Optional) Save JSON: `python benchmarks/benchmark_esci.py --limit 5000 --hard-only --fast --output results.json`
 
 ## Troubleshooting
 

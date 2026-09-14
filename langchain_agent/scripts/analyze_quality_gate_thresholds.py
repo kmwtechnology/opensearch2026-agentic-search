@@ -21,7 +21,12 @@ from collections import defaultdict
 from statistics import mean, pstdev
 from typing import Dict, Optional
 
-from config import LANGFUSE_BASE_URL, LANGFUSE_ENABLED, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+from core.config import (
+    LANGFUSE_BASE_URL,
+    LANGFUSE_ENABLED,
+    LANGFUSE_PUBLIC_KEY,
+    LANGFUSE_SECRET_KEY,
+)
 
 # Mirrors pipeline_nodes.py's quality_gate_node intent_thresholds -- kept here only
 # for display/comparison, not imported (that dict is a local, not a module constant).

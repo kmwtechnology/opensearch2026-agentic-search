@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 # Add parent directory to path for config import (dynamic, not hardcoded)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from config import DATABASE_URL, GOOGLE_API_KEY, OPENSEARCH_INDEX_NAME, VECTOR_COLLECTION_NAME
+from core.config import DATABASE_URL, GOOGLE_API_KEY, OPENSEARCH_INDEX_NAME, VECTOR_COLLECTION_NAME
 
 router = APIRouter()
 
@@ -46,7 +46,7 @@ def _health_check_sync() -> dict:
 
     # Check OpenSearch vector store has documents
     try:
-        from vector_store import get_shared_opensearch_client
+        from retrieval.vector_store import get_shared_opensearch_client
 
         client = get_shared_opensearch_client()
         result = client.count(

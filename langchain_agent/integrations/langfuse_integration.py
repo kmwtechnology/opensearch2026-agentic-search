@@ -8,7 +8,12 @@ production image without the package can never fail at import time.
 import logging
 from typing import Any, Optional
 
-from config import LANGFUSE_BASE_URL, LANGFUSE_ENABLED, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+from core.config import (
+    LANGFUSE_BASE_URL,
+    LANGFUSE_ENABLED,
+    LANGFUSE_PUBLIC_KEY,
+    LANGFUSE_SECRET_KEY,
+)
 
 logger = logging.getLogger(__name__)
 

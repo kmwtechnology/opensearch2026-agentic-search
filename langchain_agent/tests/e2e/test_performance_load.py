@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from config import (
+from core.config import (
     DATABASE_URL,
     EMBEDDINGS_MODEL,
     POSTGRES_HOST,
@@ -47,8 +47,8 @@ from config import (
     VECTOR_COLLECTION_NAME,
     VECTOR_DIMENSION,
 )
-from reranker import GeminiReranker
-from vector_store import OpenSearchVectorStore
+from retrieval.reranker import GeminiReranker
+from retrieval.vector_store import OpenSearchVectorStore
 
 # Configuration
 DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")

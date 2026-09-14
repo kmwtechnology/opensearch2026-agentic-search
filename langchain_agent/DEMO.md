@@ -493,9 +493,9 @@ value live** — not a reshuffled leaderboard. Lead with that.
   per-product "Listed as Tan (indexed as yellow)" lines, and that after
   correction the same query is silent about it (no mismatch to flag).
   This required two fixes beyond the grounded-context change itself:
-  `vector_store.py`'s `_hit_to_document` wasn't including
+  `retrieval/vector_store.py`'s `_hit_to_document` wasn't including
   `product_color_primary` in the metadata handed to the agent at all
-  (silently empty, not just unused); and `judge.py`'s `_format_docs_for_prompt`
+  (silently empty, not just unused); and `quality/judge.py`'s `_format_docs_for_prompt`
   builds a *separate* doc rendering for the LLM-judge pass that didn't
   include the new fact lines either, causing the judge to flag the
   grounded mismatch note as an unsupported fabrication and the
@@ -592,7 +592,7 @@ value live** — not a reshuffled leaderboard. Lead with that.
        -d '{"attribute_type":"color","variant":"tan","canonical":"yellow","source":"seed","added_at":"'"$(date -u +%Y-%m-%dT%H:%M:%S)"'"}'
      ```
      The doc id is always `<attribute_type>#<variant lowercased>` (see
-     `attribute_mapping_store.py`'s `add_mapping`), so `color#tan` is
+     `retrieval/attribute_mapping_store.py`'s `add_mapping`), so `color#tan` is
      stable across environments.
   2. **Dispatch a real, non-destructive reindex** to propagate the
      mapping into product documents (a direct OpenSearch write to the
