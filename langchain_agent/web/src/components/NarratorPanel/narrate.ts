@@ -28,10 +28,13 @@ import type {
   RerankerResultEvent,
 } from '../../types/events'
 
-/** Which pipeline stage a line came from — drives colour and icon. */
+/** Which pipeline stage a line came from — drives color and icon. */
 export type NarratorNode =
   | 'intent_classifier'
   | 'query_evaluator'
+  // The rewriter is its own stage, not part of the retriever, precisely so
+  // collapsing one-line-per-stage cannot swallow it behind the search line.
+  | 'query_rewriter'
   | 'retriever'
   | 'reranker'
   | 'quality_gate'
@@ -113,7 +116,7 @@ function expansionLine(e: QueryExpansionEvent): NarratorLine | null {
   if (!e.expanded_query || e.expanded_query === e.original_query) return null
   return {
     id: `expand-${e.timestamp}`,
-    node: 'retriever',
+    node: 'query_rewriter',
     label: 'Query Rewriter',
     text: `Understood “${e.original_query}” as “${e.expanded_query}”.`,
     weight: 'step',
@@ -297,31 +300,34 @@ export function narrate(event: AgentEvent): NarratorLine | null {
 }
 
 /**
- * The visible tail of the narration.
+ * Reduce a turn's events to the lines the panel shows.
  *
- * Capped so the panel never scrolls — a presenter should not have to chase a
- * line that has slid off the bottom. Enrichment lines supersede earlier
- * enrichment lines rather than stacking, so the lifecycle reads as one thing
- * progressing instead of four separate announcements.
+ * ONE LINE PER PIPELINE STAGE, in the order the stages first ran, latest
+ * content winning. Two reasons:
+ *
+ *  - Nothing gets skipped. The previous version kept a sliding window of the
+ *    most recent N lines, which silently dropped the earliest stages: a normal
+ *    turn emits five or six narratable events, so "Intent Classifier" — the
+ *    first thing a presenter explains — fell off the top before anyone saw it.
+ *  - A quality-gate retry re-runs search and reranking, which under a
+ *    sliding window pushed the whole first half of the turn out of view. Those
+ *    repeats now update their existing line instead of appending a duplicate;
+ *    the retry itself is still narrated, because the gate's own wording says
+ *    so ("Still under the bar after retrying", "Searched the catalog again").
+ *
+ * The result is bounded by the number of pipeline stages, not by how many
+ * events fired, so the panel cannot outgrow its height. Ordering by stage also
+ * lets the audience follow the same top-to-bottom path as the architecture
+ * diagram they were just shown.
  */
-// Four, not five. Measured against a real 1920x1080 window: browser chrome
-// eats ~200px, leaving ~870px of viewport, and five lines at projector type
-// clipped the oldest one behind overflow-hidden — silently, which is the
-// worst way to lose it. Four fits with room to spare even in a window, and
-// fills the panel properly in fullscreen.
-export const MAX_VISIBLE_LINES = 4
+export const MAX_VISIBLE_LINES = 7
 
 export function visibleLines(lines: NarratorLine[]): NarratorLine[] {
-  const collapsed: NarratorLine[] = []
+  const byNode = new Map<NarratorNode, NarratorLine>()
   for (const line of lines) {
-    if (line.node === 'enrichment') {
-      const priorIndex = collapsed.findIndex((l) => l.node === 'enrichment')
-      if (priorIndex !== -1) {
-        collapsed[priorIndex] = line
-        continue
-      }
-    }
-    collapsed.push(line)
+    byNode.set(line.node, line)
   }
-  return collapsed.slice(-MAX_VISIBLE_LINES)
+  // Map preserves insertion order, and a re-set key keeps its original
+  // position — exactly the "first-seen order, latest content" we want.
+  return [...byNode.values()].slice(-MAX_VISIBLE_LINES)
 }

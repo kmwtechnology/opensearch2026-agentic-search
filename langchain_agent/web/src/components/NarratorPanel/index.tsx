@@ -10,17 +10,18 @@
  */
 
 import { useMemo } from 'react'
-import { Brain, Compass, Search, ListOrdered, ShieldCheck, Sparkles } from 'lucide-react'
+import { Brain, Compass, ListOrdered, Pencil, Search, ShieldCheck, Sparkles } from 'lucide-react'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import { EnrichmentMoment } from './EnrichmentMoment'
 import { narrate, visibleLines, type NarratorLine, type NarratorNode } from './narrate'
 
 // Same hue assignments the observability panel has always used, so the two
-// views read as the same app. Every entry pairs a colour WITH an icon and a
-// label — nothing here is distinguished by colour alone.
+// views read as the same app. Every entry pairs a color WITH an icon and a
+// label — nothing here is distinguished by color alone.
 const NODE_STYLE: Record<NarratorNode, { fg: string; tint: string; Icon: typeof Brain }> = {
   intent_classifier: { fg: '#065F46', tint: '#ECFDF5', Icon: Brain },
   query_evaluator: { fg: '#1E40AF', tint: '#EFF6FF', Icon: Compass },
+  query_rewriter: { fg: '#0F766E', tint: '#F0FDFA', Icon: Pencil },
   retriever: { fg: '#5B21B6', tint: '#F5F3FF', Icon: Search },
   reranker: { fg: '#3730A3', tint: '#EEF2FF', Icon: ListOrdered },
   quality_gate: { fg: '#9A3412', tint: '#FFF7ED', Icon: ShieldCheck },
@@ -39,12 +40,12 @@ function Line({ line, lead }: { line: NarratorLine; lead: boolean }) {
         style={{
           borderColor: style.fg,
           backgroundColor: style.tint,
-          width: lead ? 52 : 44,
-          height: lead ? 52 : 44,
+          width: 44,
+          height: 44,
         }}
         aria-hidden="true"
       >
-        <Icon style={{ color: style.fg }} strokeWidth={2.5} size={lead ? 28 : 24} />
+        <Icon style={{ color: style.fg }} strokeWidth={2.5} size={24} />
       </span>
       <span className="flex flex-col gap-1.5 min-w-0">
         <span
@@ -56,8 +57,8 @@ function Line({ line, lead }: { line: NarratorLine; lead: boolean }) {
         <span
           className={
             lead
-              ? 'text-[length:var(--text-stage-lead)] font-bold leading-tight text-[var(--color-stage-ink)]'
-              : 'text-[length:var(--text-stage-step)] font-semibold leading-snug text-[var(--color-stage-ink-muted)]'
+              ? 'text-[length:var(--text-stage-step)] font-bold leading-snug text-[var(--color-stage-ink)]'
+              : 'text-[length:var(--text-stage-step)] font-medium leading-snug text-[var(--color-stage-ink-muted)]'
           }
         >
           {line.text}
@@ -84,9 +85,13 @@ export function NarratorPanel({ onRerun, rerunPending, onShowDetails }: Props) {
     return visibleLines(narrated)
   }, [steps])
 
-  // Newest first: on a projector, reading top-down beats tracking a feed that
-  // grows downward off the edge of the panel.
-  const ordered = [...lines].reverse()
+  // Pipeline order, top to bottom — the same path as the architecture diagram
+  // the audience was just shown. (This used to render newest-first, which made
+  // sense when the panel was a sliding feed; now that every stage keeps its own
+  // line for the whole turn, following the pipeline reads better and stays put
+  // while the presenter talks through it.)
+  const ordered = lines
+  const latestId = lines.length > 0 ? lines[lines.length - 1].id : null
 
   return (
     <section
@@ -105,14 +110,14 @@ export function NarratorPanel({ onRerun, rerunPending, onShowDetails }: Props) {
         )}
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 overflow-hidden px-7 py-7">
+      <div className="flex flex-1 flex-col gap-5 overflow-hidden px-7 py-6">
         {ordered.length === 0 && (
           <p className="text-[length:var(--text-stage-body)] font-medium text-[var(--color-stage-ink-soft)]">
             Ask a question and the pipeline's reasoning appears here, one step at a time.
           </p>
         )}
 
-        {ordered.map((line, index) =>
+        {ordered.map((line) =>
           line.node === 'enrichment' ? (
             <EnrichmentMoment
               key={line.id}
@@ -122,7 +127,7 @@ export function NarratorPanel({ onRerun, rerunPending, onShowDetails }: Props) {
               rerunPending={rerunPending}
             />
           ) : (
-            <Line key={line.id} line={line} lead={index === 0} />
+            <Line key={line.id} line={line} lead={line.id === latestId} />
           )
         )}
       </div>

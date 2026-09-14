@@ -12,9 +12,9 @@
    *     always used (StepCard.tsx) so the two views stay recognisably the
    *     same app, but each is pushed to an 800-weight shade to clear 7:1
    *     contrast on white.
-   *   - Nothing is distinguished by colour alone anywhere in the UI; hue is
+   *   - Nothing is distinguished by color alone anywhere in the UI; hue is
    *     always paired with an icon and a word, because projectors shift
-   *     colour and some of the room is colourblind.
+   *     color and some of the room is colorblind.
    * ------------------------------------------------------------------- */
   --color-stage-bg: #f7f6f3;
   --color-stage-surface: #ffffff;

@@ -85,7 +85,7 @@ export function EnrichmentMoment({ line, startedAt, onRerun, rerunPending }: Pro
       </p>
 
       {/* The before/after pair, only when this was a correction rather than a
-          brand-new term. Never colour alone — each half is labelled. */}
+          brand-new term. Never color alone — each half is labelled. */}
       {line.correctedFrom && line.enrichment === 'complete' && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-5 rounded-xl border-2 border-[#9A3412] bg-white px-6 py-4">

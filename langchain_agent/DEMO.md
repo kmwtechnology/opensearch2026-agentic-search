@@ -308,6 +308,23 @@ of the previous 7.
 
 ## Part 4.5: Taxonomy Self-Correction (2–3 min) — THE centerpiece
 
+> ### ⚠ Run `make demo-reset` before every rehearsal of this part
+>
+> This demo destroys its own setup. It works because the catalog mis-tags tan
+> boots as `yellow`; when it succeeds, the mapping becomes `tan → brown` and
+> all 9,618 products are re-indexed to match. Run it a second time without
+> resetting and turn 1 looks completely normal — no mismatch to notice, no
+> reason for the shopper to object, nothing to correct. The demo does not
+> error; it just quietly stops demonstrating anything, which is far worse to
+> discover on stage.
+>
+> `make demo-reset` restores `tan → yellow` and re-indexes (~20s). It touches
+> only that one mapping, unlike `make seed-taxonomy`, which rediscovers the
+> whole taxonomy and wipes everything the agent has learned.
+>
+> Verify it took: the script prints `tan -> yellow` and a non-zero count of
+> products indexed as yellow.
+
 **This is the "the agent is confidently wrong, and only a human catches
 it" moment.** Earlier demo parts show the system reacting to its own
 low confidence (quality gate retry). This part shows something harder:

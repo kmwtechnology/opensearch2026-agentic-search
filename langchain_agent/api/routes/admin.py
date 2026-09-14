@@ -235,3 +235,58 @@ def _enrich_sync(attribute_type: str, variant: str, canonical: Optional[str]):
     from quality.enrichment_service import enrich_attribute
 
     return enrich_attribute(attribute_type, variant, explicit_canonical=canonical)
+
+
+@router.post("/demo-reset")
+async def demo_reset(request: Request) -> dict:
+    """
+    Re-arm the taxonomy self-correction demo (#103).
+
+    **Authentication:** Requires session (user login) OR X-Admin-Token header.
+
+    The demo destroys its own preconditions: it works because the catalog
+    mis-tags tan boots as ``yellow``, and succeeding rewrites that mapping to
+    ``brown`` and re-indexes every product to match. A second run then shows
+    nothing wrong — no mismatch to spot, nothing for the shopper to dispute.
+    It does not fail, it just silently stops demonstrating anything, which is
+    the worst way to find out mid-talk.
+
+    This restores ``tan -> yellow`` and re-tags the affected products. It uses
+    the fast path — one mapping row plus an ``_update_by_query`` over the ~35
+    products actually listed as tan — because this runs on a button click
+    between rehearsals and a full 20s re-ingest per click is unusable.
+    Deliberately surgical: it undoes this demo and nothing else, unlike
+    seeding, which rediscovers the whole taxonomy and discards everything the
+    agent has learned.
+
+    Gated on ENABLE_ENRICHMENT_TOOL — same switch as the rest of the demo
+    machinery, so a deployment that cannot run the demo cannot reset it either.
+    """
+    await verify_same_origin(request)
+    try:
+        await verify_session(request)
+    except HTTPException:
+        await verify_admin_token(request)
+
+    from core.config import ENABLE_ENRICHMENT_TOOL
+
+    if not ENABLE_ENRICHMENT_TOOL:
+        raise HTTPException(
+            status_code=404,
+            detail="Demo reset is unavailable: ENABLE_ENRICHMENT_TOOL is off.",
+        )
+
+    return await run_in_threadpool(_demo_reset_sync)
+
+
+def _demo_reset_sync() -> dict:
+    """Blocking mapping write + re-tag, kept off the event loop.
+
+    Defaults to the FAST path: the demo is reset by a presenter clicking a
+    button between rehearsals, and a 20s full re-ingest on every click is not
+    something anyone will wait through. The fast path is a surgical undo of
+    exactly what the demo changed — see quality.demo_reset.
+    """
+    from quality.demo_reset import reset_demo_taxonomy
+
+    return reset_demo_taxonomy(full_reindex=False)

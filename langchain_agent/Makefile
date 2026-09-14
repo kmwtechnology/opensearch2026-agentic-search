@@ -1,4 +1,4 @@
-.PHONY: help doctor setup reindex reindex-products seed-taxonomy test lint format clean run stop teardown test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval capture-langfuse-prompts register-langfuse-evaluators analyze-quality-gate
+.PHONY: help doctor setup reindex reindex-products seed-taxonomy demo-reset test lint format clean run stop teardown test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval capture-langfuse-prompts register-langfuse-evaluators analyze-quality-gate
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -15,6 +15,7 @@ help:
 	@echo "  make reindex            - Full local reindex: products + judgments (bash scripts/lucille_ingest.sh)"
 	@echo "  make reindex-products   - Products only (--skip-judgments), what the enrichment flywheel runs"
 	@echo "  make seed-taxonomy      - Rediscover color/material taxonomy + products pass (DESTRUCTIVE: wipes agent-learned mappings)"
+	@echo "  make demo-reset         - Re-arm the taxonomy demo (restore tan->yellow + reindex). Run BETWEEN rehearsals."
 	@echo ""
 	@echo "Observability (Local Development Only — make setup/dev/stop already manage this automatically):"
 	@echo "  make langfuse-up        - Start just Langfuse tracing (docker compose --profile observability up -d)"
@@ -70,6 +71,9 @@ reindex-products:
 
 setup:
 	@bash scripts/setup.sh
+
+demo-reset:
+	@bash scripts/reset_demo_taxonomy.sh
 
 seed-taxonomy:
 	@echo "Rediscovering color/material taxonomy from scratch (wipes agent-learned mappings), then re-running products..."

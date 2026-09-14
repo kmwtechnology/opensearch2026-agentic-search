@@ -255,36 +255,88 @@ describe('narrate — enrichment lifecycle', () => {
 })
 
 describe('visibleLines', () => {
-  const step = (id: string) => ({
-    id,
-    node: 'retriever' as const,
-    label: 'Knowledge Search',
-    text: id,
-    weight: 'step' as const,
+  const line = (node: string, id: string) =>
+    ({
+      id,
+      node,
+      label: node,
+      text: id,
+      weight: 'step',
+    }) as never
+
+  it('keeps one line per pipeline stage, in the order the stages first ran', () => {
+    const shown = visibleLines([
+      line('intent_classifier', 'intent'),
+      line('query_evaluator', 'alpha'),
+      line('retriever', 'search'),
+      line('reranker', 'rerank'),
+      line('quality_gate', 'gate'),
+    ])
+
+    expect(shown.map((l) => l.node)).toEqual([
+      'intent_classifier',
+      'query_evaluator',
+      'retriever',
+      'reranker',
+      'quality_gate',
+    ])
   })
 
-  it('never returns more lines than the panel can show without scrolling', () => {
-    const lines = Array.from({ length: 12 }, (_, i) => step(`s${i}`))
-    expect(visibleLines(lines)).toHaveLength(MAX_VISIBLE_LINES)
+  it('never drops the earliest stage, however many events a turn fires', () => {
+    // The regression this replaces: a sliding window of the most recent N
+    // lines pushed "Intent Classifier" off the top before it was ever read.
+    const shown = visibleLines([
+      line('intent_classifier', 'intent'),
+      line('query_evaluator', 'alpha'),
+      line('query_rewriter', 'rewrite'),
+      line('retriever', 'search'),
+      line('reranker', 'rerank'),
+      line('quality_gate', 'gate'),
+    ])
+
+    expect(shown[0].node).toBe('intent_classifier')
+    expect(shown).toHaveLength(6)
   })
 
-  it('keeps the newest lines', () => {
-    const lines = Array.from({ length: 8 }, (_, i) => step(`s${i}`))
-    expect(visibleLines(lines).at(-1)?.id).toBe('s7')
+  it('collapses a quality-gate retry instead of duplicating half the turn', () => {
+    // A retry re-runs search and reranking. Those must update their existing
+    // lines, not append — otherwise one turn produces eight lines and the
+    // opening stages scroll away.
+    const shown = visibleLines([
+      line('intent_classifier', 'intent'),
+      line('retriever', 'search-1'),
+      line('reranker', 'rerank-1'),
+      line('quality_gate', 'gate-retry'),
+      line('retriever', 'search-2'),
+      line('reranker', 'rerank-2'),
+      line('quality_gate', 'gate-final'),
+    ])
+
+    expect(shown).toHaveLength(4)
+    expect(shown.map((l) => l.id)).toEqual(['intent', 'search-2', 'rerank-2', 'gate-final'])
+    // and the stage keeps the slot it first occupied
+    expect(shown[1].node).toBe('retriever')
   })
 
-  it('collapses the enrichment lifecycle into one advancing line, not four', () => {
-    const lines = [
-      step('a'),
+  it('cannot outgrow the panel — bounded by stage count, not event count', () => {
+    const many = Array.from({ length: 40 }, (_, i) => line('retriever', `s${i}`))
+    expect(visibleLines(many)).toHaveLength(1)
+    expect(visibleLines(many)[0].id).toBe('s39')
+  })
+
+  it('shows the enrichment lifecycle as one advancing line', () => {
+    const shown = visibleLines([
+      line('intent_classifier', 'intent'),
       narrate(enrichment({ status: 'started' }))!,
       narrate(enrichment({ status: 'complete', canonical: 'brown', corrected_from: 'yellow' }))!,
-    ]
-    const shown = visibleLines(lines)
+    ])
     const enrichmentLines = shown.filter((l) => l.node === 'enrichment')
 
     expect(enrichmentLines).toHaveLength(1)
     expect(enrichmentLines[0].enrichment).toBe('complete')
-    // and it holds the position the lifecycle started in
-    expect(shown[1].node).toBe('enrichment')
+  })
+
+  it('respects the safety cap', () => {
+    expect(MAX_VISIBLE_LINES).toBeGreaterThanOrEqual(6)
   })
 })
