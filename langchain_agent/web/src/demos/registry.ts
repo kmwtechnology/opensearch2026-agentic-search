@@ -58,44 +58,53 @@ export const DEMOS: Demo[] = [
     id: 'adaptive-query',
     title: 'Adaptive Query Enhancements',
     subtitle:
-      'The agent reads each question differently, keeps its place in the conversation, and notices when its own results are not good enough.',
+      'One shopper, one conversation. Each question is read differently from the last, and the agent carries what it already knows from turn to turn.',
+    /*
+     * ONE shopper, ONE conversation, three turns that narrow — the way a person
+     * actually shops. No turn starts a new thread and no turn contradicts an
+     * earlier one, which is what makes it a story rather than a feature list.
+     *
+     * The spine, visible in the narrator panel as it runs, is ALPHA MOVING:
+     * 0.25 lexical-heavy → 0.35 balanced → 0.70 semantic-heavy. The dial swings
+     * as the questions get less literal, and nobody configured that per query.
+     *
+     * Every turn below was run end-to-end against the live local stack as a
+     * single conversation before being written down; the numbers in `watchFor`
+     * are measured, not estimated.
+     *
+     * Two queries were tested and REJECTED, for reasons worth keeping:
+     *   - "only the lightweight ones" — "lightweight" appears nowhere in the
+     *     shoe documents, so filter relaxation widened to the whole catalog and
+     *     the agent answered a running-shoe question with MGEOY Girls Rain
+     *     Jackets. Refine only on attributes the current results actually have.
+     *   - "which of these is best for trail running?" — "these" promises the
+     *     answer comes from the products already on screen, but the agent
+     *     re-searches and introduces a shoe that was not in that list. The
+     *     vaguer "what about trail running?" makes no such promise, and it
+     *     exercises the rewriter harder anyway.
+     *
+     * Intent labels are deliberately NOT promised per turn. The classifier is
+     * stable on turns 1 and 2 but has returned both "refinement" and "search"
+     * for conversational turns like turn 3 across runs. Narrate the BEHAVIOR —
+     * the filters, the pinning, the rewrite — all of which hold every time.
+     */
     turns: [
       {
-        query: 'Find wireless headphones',
+        query: 'Show me blue running shoes',
         watchFor:
-          'Intent "search". Alpha is assigned by the LLM per query, not configured once — and the reranker clears the bar comfortably.',
-        note: 'Deliberately no price. The catalog has no price data at all, so "under $100" scores far worse and the agent has to say so.',
+          'Alpha 0.25 — lexical-heavy, BM25 dominant. "blue" and "running" are real indexed attributes, so there is something concrete to filter on: watch the filter line read color: blue, feature: running.',
+        note: 'Never ask this catalog about price, here or off-script. There is no price field in any form, so every turn stays on attributes that exist: color, size, material, brand, feature.',
       },
       {
-        query: 'only noise cancelling ones',
+        query: 'only size 10',
         watchFor:
-          'Intent "refinement" — two filter groups now: the new match PLUS a filter pinning results to the previous turn\'s products. Context is kept, not re-searched.',
+          'Three words. Alpha moves to 0.35 and a THIRD filter appears (feature: 10) while the results stay pinned to the products from turn 1 — the reply says so out loud: "From the 10 products I showed you earlier". Context is narrowed, not re-searched.',
+        note: 'This is the turn that was silently broken until the product_id filter was fixed — it matched zero documents and the agent said it found nothing.',
       },
       {
-        query: 'Show me blue running shoes size 10',
+        query: 'what about trail running?',
         watchFor:
-          'Intent "attribute_filter" at alpha 0.25 — BM25 dominant. Correctly so: "blue" is a real indexed attribute, so there is something concrete to filter on rather than only something to match semantically.',
-        // Fresh thread on purpose. The intent rules bias hard toward
-        // "refinement" whenever a prior product search exists, and refinement
-        // pins results to the PREVIOUS turn's product ids — so asked after the
-        // headphones pair this would be constrained to headphones, return
-        // nothing, and contradict the label above. The arc is three mini
-        // threads, which is also how each was validated.
-        requiresNewConversation: true,
-      },
-      {
-        query: 'gift ideas for hair dresser',
-        // Same reason, and the quality-gate retry was only ever verified from
-        // a clean thread.
-        requiresNewConversation: true,
-        watchFor:
-          'Semantic-heavy alpha for a conceptual query — then the quality gate fires: the best match falls under the bar, so the agent rebalances and searches AGAIN on its own.',
-        note: 'The retry returns the SAME max score — the cross-encoder is deterministic. Narrate the loop firing, never "the second try scored better".',
-      },
-      {
-        query: 'how about cheaper',
-        watchFor:
-          'Three words with no subject. Watch the rewriter turn it into a self-contained query using the conversation so far.',
+          'Four words, no subject, no colour, no size — and the rewriter turns it into "Show me blue trail running shoes in size 10", carrying BOTH earlier constraints forward. Alpha jumps to 0.70, semantic-heavy, because this question is about purpose rather than a literal attribute.',
       },
     ],
   },
@@ -104,7 +113,7 @@ export const DEMOS: Demo[] = [
     title: 'Taxonomy & Ingestion',
     needsArming: true,
     subtitle:
-      'The harder case: the catalog itself is wrong. A shopper disputes a tag, and the agent fixes the data — live, in about twenty seconds.',
+      'A different person: the developer who owns this catalog. They spot a tag that is wrong, say so, and the agent repairs the data itself — live, in about twenty seconds.',
     turns: [
       {
         query: 'show me tan boots',

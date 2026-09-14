@@ -74,7 +74,7 @@ function HighlightedText({ fragment, fallback }: { fragment?: string; fallback: 
     }
     const inner = fragment.slice(start + HL_PRE.length, end)
     nodes.push(
-      <mark key={key++} className="bg-yellow-500/30 text-yellow-100 rounded px-0.5">
+      <mark key={key++} className="bg-[#FEF3C7] text-[#92400E] rounded px-0.5">
         {inner}
       </mark>
     )
@@ -118,7 +118,7 @@ function Row({
   const isSpelling = row.type === 'spelling'
   const isRecent = row.type === 'recent'
   const Icon = isSpelling ? SpellCheck2 : isRecent ? History : Search
-  const iconClass = isSpelling ? 'text-amber-400' : 'text-[var(--color-stage-ink-soft)]'
+  const iconClass = isSpelling ? 'text-[#92400E]' : 'text-[var(--color-stage-ink-soft)]'
 
   return (
     <button
@@ -141,7 +141,7 @@ function Row({
         <div className="flex-1 min-w-0">
           {isSpelling ? (
             <div className="truncate">
-              <span className="text-[1.25rem] text-amber-400 font-medium">Did you mean: </span>
+              <span className="text-[1.25rem] text-[#92400E] font-medium">Did you mean: </span>
               <span className="font-medium">{row.title}</span>
             </div>
           ) : (
@@ -275,7 +275,7 @@ export function TypeaheadSuggestions({
       {/* Section 1: Did you mean */}
       {showSpellSection && spelling && (
         <div>
-          <SectionHeader icon={<SpellCheck2 className="w-3 h-3 text-amber-400" />} label="Did you mean" />
+          <SectionHeader icon={<SpellCheck2 className="w-3 h-3 text-[#92400E]" />} label="Did you mean" />
           <Row
             row={spelling}
             optionId={`typeahead-option-${spellOffset}`}
@@ -303,7 +303,7 @@ export function TypeaheadSuggestions({
           )}
 
           {error && !isLoading && (
-            <div role="status" aria-live="polite" className="px-4 py-3 text-[1.375rem] text-red-400">
+            <div role="status" aria-live="polite" className="px-4 py-3 text-[1.375rem] text-[#991B1B]">
               Could not load suggestions
             </div>
           )}

@@ -200,7 +200,7 @@ export function MessageInput() {
               'text-[var(--color-stage-ink)] placeholder-gray-400',
               'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent',
               'disabled:opacity-50 disabled:cursor-not-allowed',
-              isConnected ? 'border-[var(--color-stage-border)]' : 'border-yellow-600'
+              isConnected ? 'border-[var(--color-stage-border)]' : 'border-[#92400E]'
             )}
             style={{
               minHeight: '44px',
@@ -240,7 +240,7 @@ export function MessageInput() {
           id="connection-status"
           className={clsx(
             'mt-2 text-[1.25rem] font-medium',
-            connectionError ? 'text-red-400' : 'text-yellow-500'
+            connectionError ? 'text-[#991B1B]' : 'text-[#92400E]'
           )}
         >
           {connectionError ? (
@@ -250,7 +250,7 @@ export function MessageInput() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="inline-block w-1.5 h-1.5 bg-yellow-500 rounded-full animate-pulse" />
+              <span className="inline-block w-1.5 h-1.5 bg-[#92400E] rounded-full animate-pulse" />
               Connecting to server...
             </div>
           )}

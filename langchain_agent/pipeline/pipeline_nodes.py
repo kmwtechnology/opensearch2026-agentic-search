@@ -764,7 +764,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                     "little more about what you're looking for? For example:\n\n"
                     '- A category or use case ("headphones for the gym", "a gift for a coffee lover")\n'
                     "- A brand, color, or feature you care about\n"
-                    "- A budget range\n\n"
+                    "- Who it is for, or the occasion\n\n"
                     "Even a rough idea helps me narrow things down."
                 )
             logger.info(
@@ -866,7 +866,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 "match in the catalog. A few things that usually help:\n\n"
                 '- Try a more specific phrase — a brand ("Sony"), a use case '
                 '("wireless earbuds for running"), or a feature ("noise cancelling")\n'
-                '- Add a price range ("under $50") or a color\n'
+                "- Add a color, a material, or a size\n"
                 "- Or describe who it's for and what they'd use it for, and I'll suggest "
                 "categories worth exploring\n\n"
                 "Want to try one of those?"
@@ -976,16 +976,16 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         # Intent-specific instructions
         if intent == "comparison":
             intent_instruction = """Your task is to COMPARE the retrieved products, highlighting key differences and trade-offs:
-- Discuss quality, features, performance, price, and other relevant dimensions
+- Discuss quality, features, performance, and other relevant dimensions
 - Help the user understand which product is best for their specific needs
 - Clearly indicate product names and key differentiators
 - Use a structured format (e.g., "Product A is better for X because..., while Product B excels at Y...")"""
         elif intent == "attribute_filter":
             intent_instruction = """Your task is to filter and present products matching specific criteria:
-- Focus on products that match the requested attributes (color, size, price, features, etc.)
+- Focus on products that match the requested attributes (color, size, features, etc.)
 - For each product, clearly state which attributes it matches and which it doesn't
 - Recommend the best matches first
-- Be specific: e.g., "This product comes in blue and costs $45"
+- Be specific: e.g., "This product comes in blue and is listed in size 10"
 - If some requested attributes aren't available, note that clearly"""
         elif intent == "refinement":
             # Extract prior search category for explicit feedback
@@ -1012,7 +1012,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         elif intent == "follow_up":
             intent_instruction = """Your task is to refine your previous search results based on the user's follow-up:
 - Connect this response to your previous recommendation(s)
-- Address what the user is asking for (cheaper, different color, better features, etc.)
+- Address what the user is asking for (a different color, other features, etc.)
 - Clearly show how new suggestions compare to earlier recommendations"""
         else:  # search (default)
             intent_instruction = """Your task is to help the user find products matching their needs:
@@ -1029,7 +1029,8 @@ INTENT: {intent.upper()}
 {intent_instruction}
 
 GROUNDING RULES (override creativity preferences — non-negotiable):
-1. Every factual claim about a specific product (origin / "Made in X", material, certifications like "FDA-approved" or "BPA-free", size, manufacturer claims, pricing) MUST be supported by THAT product's FACTS block above.
+1. Every factual claim about a specific product (origin / "Made in X", material, certifications like "FDA-approved" or "BPA-free", size, manufacturer claims) MUST be supported by THAT product's FACTS block above.
+1a. NEVER mention price, cost, budget, "cheaper", "affordable", "value for money", or any currency amount — not for a product, not as a comparison, not as a follow-up question, and not as a suggestion for how to narrow the search. This catalog carries NO price data in any field, so anything you say about price is invented, and a made-up dollar figure is the single most damaging thing you can put on screen. If the user asks about price or asks for something cheaper, say plainly that you do not have pricing information, then help them on an attribute you DO have (color, size, material, brand, feature).
 2. Facts are PER-PRODUCT. If "Made in USA" appears in Product 3's FACTS but not in Product 1's FACTS, you MUST NOT attribute "Made in USA" to Product 1, even if it's the same brand or category.
 3. If a fact is not in any FACTS block, OMIT it. Do not infer from brand reputation, product category, prior knowledge, or implication.
 4. Comparison tables/summaries: every cell or claim must trace to a specific product's FACTS block. Leave cells blank rather than fabricating.

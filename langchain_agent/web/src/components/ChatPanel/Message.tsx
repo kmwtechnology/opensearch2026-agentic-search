@@ -276,7 +276,7 @@ export function Message({ message }: MessageProps) {
                     ? `Faithfulness improved ${Math.round(message.originalFaithfulness * 100)}% → ${Math.round(message.correctedFaithfulness * 100)}%`
                     : 'Response corrected by AI judge'
                 }
-                className="text-[1.25rem] text-amber-400 border border-amber-400/30 rounded px-1.5 py-0.5 cursor-default select-none"
+                className="text-[1.25rem] text-[#92400E] border border-[#92400E]/40 rounded px-1.5 py-0.5 cursor-default select-none"
               >
                 AI-corrected
               </span>
@@ -291,8 +291,8 @@ export function Message({ message }: MessageProps) {
               )}
             </div>
             {showOriginal && message.originalContent && (
-              <div className="pl-3 border-l-2 border-amber-400/30">
-                <p className="text-[1.25rem] text-amber-400/70 font-semibold mb-1">Original (before correction):</p>
+              <div className="pl-3 border-l-2 border-[#92400E]/40">
+                <p className="text-[1.25rem] text-[#92400E] font-semibold mb-1">Original (before correction):</p>
                 <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] whitespace-pre-wrap">{message.originalContent}</p>
               </div>
             )}
