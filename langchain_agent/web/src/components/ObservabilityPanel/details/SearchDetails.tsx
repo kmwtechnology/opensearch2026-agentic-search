@@ -69,7 +69,7 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
   // Show waiting message only if nothing is happening and no results
   if (!documents && candidates.length === 0 && searchStatus === 'idle' && rerankerStatus === 'idle') {
     return (
-      <div className="text-sm text-gray-500">
+      <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
         Waiting for search results...
       </div>
     )
@@ -83,12 +83,12 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <Filter className="w-4 h-4 text-yellow-400 flex-shrink-0" />
-              <span className="text-xs font-semibold text-yellow-300">OpenSearch Query</span>
+              <span className="text-[1.25rem] font-semibold text-yellow-300">OpenSearch Query</span>
             </div>
             {opensearchQueryEvent.body && (
               <button
                 onClick={() => setHybridDslOpen(true)}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-yellow-300/80 hover:text-yellow-200 hover:bg-yellow-500/10 transition-colors"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[1.25rem] text-yellow-300/80 hover:text-yellow-200 hover:bg-yellow-500/10 transition-colors"
                 title="View hybrid query DSL"
                 aria-label="View hybrid OpenSearch query DSL"
               >
@@ -98,24 +98,24 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
             )}
           </div>
 
-          <div className="space-y-2 text-xs text-gray-300">
+          <div className="space-y-2 text-[1.25rem] text-[var(--color-stage-ink-muted)]">
             <div>
-              <span className="text-gray-500">Intent:</span>{' '}
+              <span className="text-[var(--color-stage-ink-soft)]">Intent:</span>{' '}
               <span className="text-yellow-300">{opensearchQueryEvent.intent}</span>
             </div>
             <div>
-              <span className="text-gray-500">Alpha:</span>{' '}
+              <span className="text-[var(--color-stage-ink-soft)]">Alpha:</span>{' '}
               <span className="text-yellow-300">{(opensearchQueryEvent.alpha * 100).toFixed(0)}%</span>
             </div>
             {opensearchQueryEvent.filter_summary && (
               <div>
-                <span className="text-gray-500">Filters Applied:</span>{' '}
+                <span className="text-[var(--color-stage-ink-soft)]">Filters Applied:</span>{' '}
                 <span className="text-yellow-300 font-mono">{opensearchQueryEvent.filter_summary}</span>
               </div>
             )}
             <div className="pt-1">
-              <span className="text-gray-500">Query:</span>
-              <div className="mt-1 p-2 rounded bg-gray-800/50 text-gray-300 break-words text-xs">
+              <span className="text-[var(--color-stage-ink-soft)]">Query:</span>
+              <div className="mt-1 p-2 rounded bg-[var(--color-stage-raised)] text-[var(--color-stage-ink-muted)] break-words text-[1.25rem]">
                 {opensearchQueryEvent.query}
               </div>
             </div>
@@ -129,12 +129,12 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <Filter className="w-4 h-4 text-orange-400 flex-shrink-0" />
-              <span className="text-xs font-semibold text-orange-300">Quality-Gate Retry</span>
+              <span className="text-[1.25rem] font-semibold text-orange-300">Quality-Gate Retry</span>
             </div>
             {retryQueryEvent.body && (
               <button
                 onClick={() => setRetryDslOpen(true)}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-orange-300/80 hover:text-orange-200 hover:bg-orange-500/10 transition-colors"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[1.25rem] text-orange-300/80 hover:text-orange-200 hover:bg-orange-500/10 transition-colors"
                 title="View retry query DSL"
                 aria-label="View quality-gate retry OpenSearch query DSL"
               >
@@ -143,8 +143,8 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
               </button>
             )}
           </div>
-          <div className="text-xs text-gray-300">
-            <span className="text-gray-500">Alpha (after retry):</span>{' '}
+          <div className="text-[1.25rem] text-[var(--color-stage-ink-muted)]">
+            <span className="text-[var(--color-stage-ink-soft)]">Alpha (after retry):</span>{' '}
             <span className="text-orange-300">{(retryQueryEvent.alpha * 100).toFixed(0)}%</span>
           </div>
         </div>
@@ -176,7 +176,7 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
         const searchLabel = hybridOn ? 'Hybrid search' : 'Lexical (BM25) search'
         if (searchStatus === 'running') {
           return (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/30 text-sm">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/30 text-[1.375rem]">
               <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
               <span className="text-violet-300">{searchLabel} in progress</span>
             </div>
@@ -184,7 +184,7 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
         }
         if (searchStatus === 'done') {
           return (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/30 text-sm">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/30 text-[1.375rem]">
               <span className="text-violet-400">✓</span>
               <span className="text-violet-300">{searchLabel} complete</span>
             </div>
@@ -195,14 +195,14 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
 
       {/* Reranker status banner — reranker card only. */}
       {mode === 'reranker' && rerankerStatus === 'running' && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-sm">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-[1.375rem]">
           <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
           <span className="text-indigo-300">Reranking results</span>
         </div>
       )}
 
       {mode === 'reranker' && rerankerStatus === 'done' && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-sm">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-[1.375rem]">
           <span className="text-indigo-400">✓</span>
           <span className="text-indigo-300">Reranking complete</span>
         </div>
@@ -211,8 +211,8 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
       {documents && documents.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500">Reranked Results</span>
-            <span className="text-xs text-purple-400">
+            <span className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">Reranked Results</span>
+            <span className="text-[1.25rem] text-purple-400">
               {documents.length} documents
             </span>
           </div>
@@ -224,27 +224,27 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
               return (
                 <div
                   key={index}
-                  className="bg-gray-800/50 rounded-lg p-3 space-y-2 min-w-0"
+                  className="bg-[var(--color-stage-raised)] rounded-lg p-3 space-y-2 min-w-0"
                 >
                   {/* Header with rank and score */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="w-6 h-6 flex-shrink-0 rounded bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-medium">
+                      <span className="w-6 h-6 flex-shrink-0 rounded bg-purple-500/20 text-purple-400 flex items-center justify-center text-[1.25rem] font-medium">
                         {doc.rank}
                       </span>
-                      <FileText className="w-4 h-4 flex-shrink-0 text-gray-500" />
+                      <FileText className="w-4 h-4 flex-shrink-0 text-[var(--color-stage-ink-soft)]" />
                       {doc.url ? (
                         <a
                           href={doc.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-sm text-blue-300 break-all min-w-0 inline-flex items-center gap-1"
+                          className="text-[1.375rem] text-blue-300 break-all min-w-0 inline-flex items-center gap-1"
                         >
                           {doc.url}
                           <ExternalLink className="w-3 h-3" />
                         </a>
                       ) : (
-                        <span className="text-sm text-gray-300 break-all min-w-0">
+                        <span className="text-[1.375rem] text-[var(--color-stage-ink-muted)] break-all min-w-0">
                           {doc.source}
                         </span>
                       )}
@@ -255,7 +255,7 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
                       {doc.rank_change !== 0 && (
                         <span
                           className={clsx(
-                            'flex items-center text-xs',
+                            'flex items-center text-[1.25rem]',
                             doc.rank_change > 0 ? 'text-green-400' : 'text-red-400'
                           )}
                         >
@@ -273,7 +273,7 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
                         </span>
                       )}
                       {doc.rank_change === 0 && (
-                        <span className="flex items-center text-xs text-gray-500">
+                        <span className="flex items-center text-[1.25rem] text-[var(--color-stage-ink-soft)]">
                           <Minus className="w-3 h-3" />
                         </span>
                       )}
@@ -285,8 +285,8 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
                       label shows the unmodified score so it lines up with the
                       OpenSearch retrieval scores shown elsewhere. */}
                   <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-500">Reranker Score</span>
+                    <div className="flex justify-between text-[1.25rem]">
+                      <span className="text-[var(--color-stage-ink-soft)]">Reranker Score</span>
                       <span className="text-purple-400 font-mono">{doc.score.toFixed(3)}</span>
                     </div>
                     <div className="score-bar">
@@ -299,15 +299,15 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
 
                   {/* Snippet - collapsed view */}
                   {!isExpanded && (
-                    <p className="text-xs text-gray-400 line-clamp-2">
+                    <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] line-clamp-2">
                       {doc.snippet}
                     </p>
                   )}
 
                   {/* Full content - expanded view */}
                   {isExpanded && (
-                    <div className="max-h-48 overflow-y-auto rounded bg-gray-900/50 p-3 border border-gray-700/50">
-                      <div className="text-xs text-gray-300 space-y-2">
+                    <div className="max-h-48 overflow-y-auto rounded bg-[var(--color-stage-raised)] p-3 border border-[var(--color-stage-border)]">
+                      <div className="text-[1.25rem] text-[var(--color-stage-ink-muted)] space-y-2">
                         {doc.snippet && <p className="whitespace-pre-wrap">{doc.snippet}</p>}
                       </div>
                     </div>
@@ -316,7 +316,7 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
                   {/* Toggle button */}
                   <button
                     onClick={() => toggleDocExpansion(index)}
-                    className="w-full flex items-center justify-center gap-1 text-xs text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded py-1 transition-colors"
+                    className="w-full flex items-center justify-center gap-1 text-[1.25rem] text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded py-1 transition-colors"
                   >
                     {isExpanded ? (
                       <>
@@ -341,8 +341,8 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
       {!documents && candidates.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500">Search Candidates</span>
-            <span className="text-xs text-violet-400">
+            <span className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">Search Candidates</span>
+            <span className="text-[1.25rem] text-violet-400">
               {candidates.length} found
             </span>
           </div>
@@ -351,15 +351,15 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
             {candidates.slice(0, 6).map((candidate, index) => (
               <div
                 key={index}
-                className="bg-gray-800/50 rounded-lg p-2 text-xs min-w-0"
+                className="bg-[var(--color-stage-raised)] rounded-lg p-2 text-[1.25rem] min-w-0"
               >
                 <div className="flex items-center gap-2 mb-1 min-w-0">
-                  <FileText className="w-3 h-3 flex-shrink-0 text-gray-500" />
-                  <span className="text-gray-300 break-all min-w-0">
+                  <FileText className="w-3 h-3 flex-shrink-0 text-[var(--color-stage-ink-soft)]" />
+                  <span className="text-[var(--color-stage-ink-muted)] break-all min-w-0">
                     {candidate.source}
                   </span>
                 </div>
-                <p className="text-gray-500 line-clamp-2">
+                <p className="text-[var(--color-stage-ink-soft)] line-clamp-2">
                   {candidate.snippet}
                 </p>
               </div>
@@ -369,7 +369,7 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
       )}
 
       {/* Explanation */}
-      <div className="text-xs text-gray-500 border-t border-gray-700 pt-3">
+      <div className="text-[1.25rem] text-[var(--color-stage-ink-soft)] border-t border-[var(--color-stage-border)] pt-3">
         <p>
           <strong>Hybrid search</strong> combines BM25 (keyword) and vector similarity.
           {rerankerType === 'cross-encoder' ? (

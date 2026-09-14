@@ -38,12 +38,12 @@ export function StepsList() {
       return null
     }
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-400 px-4">
+      <div className="flex flex-col items-center justify-center h-full text-[var(--color-stage-ink-soft)] px-4">
         <div className="text-center max-w-sm">
-          <p className="text-base font-medium text-gray-300">
+          <p className="text-[var(--text-stage-body)] font-medium text-[var(--color-stage-ink-muted)]">
             Send a message to see the agent's execution steps in real-time.
           </p>
-          <p className="text-sm mt-2 text-gray-300">
+          <p className="text-[1.375rem] mt-2 text-[var(--color-stage-ink-muted)]">
             Each step shows what the agent is doing and why.
           </p>
         </div>
@@ -60,7 +60,7 @@ export function StepsList() {
       >
         {/* Conversation context banner — PROJECTOR OPTIMIZED */}
         {conversationContext && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600/50 text-base">
+          <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600/50 text-[var(--text-stage-body)]">
             <MessageSquare className="w-5 h-5 text-slate-300 flex-shrink-0" />
             <span className="text-slate-200">
               {conversationContext.is_new_conversation

@@ -1,6 +1,51 @@
 @import "tailwindcss";
 
 @theme {
+  /* ---------------------------------------------------------------------
+   * Projector palette (#103).
+   *
+   * This UI is read from the back of a 300-person room off a conference
+   * projector, not from a laptop. That drives every value here:
+   *   - Light ground, near-black ink. Dark themes with mid-grey text wash
+   *     out badly once a projector's black level is lifted by room light.
+   *   - Node hues keep the SAME assignments the observability panel has
+   *     always used (StepCard.tsx) so the two views stay recognisably the
+   *     same app, but each is pushed to an 800-weight shade to clear 7:1
+   *     contrast on white.
+   *   - Nothing is distinguished by colour alone anywhere in the UI; hue is
+   *     always paired with an icon and a word, because projectors shift
+   *     colour and some of the room is colourblind.
+   * ------------------------------------------------------------------- */
+  --color-stage-bg: #f7f6f3;
+  --color-stage-surface: #ffffff;
+  --color-stage-raised: #f2f0eb;
+  --color-stage-ink: #14130f;
+  --color-stage-ink-muted: #3d3a33;
+  --color-stage-ink-soft: #4a463f;
+  --color-stage-border: #ddd9d0;
+  --color-stage-border-soft: #e8e4dc;
+
+  --color-node-intent: #065f46;
+  --color-node-intent-tint: #ecfdf5;
+  --color-node-evaluator: #1e40af;
+  --color-node-evaluator-tint: #eff6ff;
+  --color-node-retriever: #5b21b6;
+  --color-node-retriever-tint: #f5f3ff;
+  --color-node-reranker: #3730a3;
+  --color-node-reranker-tint: #eef2ff;
+  --color-node-gate: #9a3412;
+  --color-node-gate-tint: #fff7ed;
+  --color-node-agent: #155e75;
+  --color-node-agent-tint: #ecfeff;
+
+  /* Type scale. The floor is 20px — anything smaller is unreadable at
+   * projection distance, which is why the old text-[10px] metrics had to go. */
+  --text-stage-label: 1.3125rem;  /* 21px — eyebrows */
+  --text-stage-body: 1.5rem;      /* 24px */
+  --text-stage-step: 1.5rem;      /* 24px — older narrator lines */
+  --text-stage-lead: 2.125rem;    /* 34px — newest narrator line */
+  --text-stage-title: 2.75rem;    /* 44px — demo title */
+
   --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   --animate-slide-in: slideIn 0.3s ease-out;
 
@@ -18,8 +63,17 @@
 
 /* Custom base styles */
 @layer base {
+  /* Light projector ground (#103). Was bg-gray-900/text-gray-100 — dark-only,
+   * with no toggle, which is the wrong default for a projected demo. */
   body {
-    @apply bg-gray-900 text-gray-100 antialiased;
+    @apply antialiased;
+    background-color: var(--color-stage-bg);
+    color: var(--color-stage-ink);
+    /* Readability floor. Anything that never got an explicit size inherits
+     * this instead of the browser's 16px, which is unreadable projected.
+     * Tailwind's text-* utilities are rem-based (relative to <html>), so this
+     * only affects text that would otherwise have been left at the default. */
+    font-size: 1.25rem;
   }
 
   /* Screen reader only text */
@@ -41,15 +95,16 @@
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-gray-800;
+    background-color: var(--color-stage-raised);
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-600 rounded-full;
+    @apply rounded-full;
+    background-color: var(--color-stage-border);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-500;
+    background-color: var(--color-stage-ink-soft);
   }
 }
 
@@ -57,24 +112,35 @@
 @layer components {
   /* Node status badges — PROJECTOR OPTIMIZED */
   .node-badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-sm font-medium;
+    @apply inline-flex items-center px-3 py-1 rounded-full font-semibold;
+    font-size: var(--text-stage-label);
   }
 
   .node-badge-running {
-    @apply bg-blue-500/30 text-blue-200 border border-blue-500/50;
+    @apply border-2;
+    background-color: var(--color-node-evaluator-tint);
+    color: var(--color-node-evaluator);
+    border-color: var(--color-node-evaluator);
   }
 
   .node-badge-complete {
-    @apply bg-emerald-500/30 text-emerald-200 border border-emerald-500/50;
+    @apply border-2;
+    background-color: var(--color-node-intent-tint);
+    color: var(--color-node-intent);
+    border-color: var(--color-node-intent);
   }
 
   .node-badge-error {
-    @apply bg-red-500/30 text-red-200 border border-red-500/50;
+    @apply border-2;
+    background-color: #FEF2F2;
+    color: #991B1B;
+    border-color: #991B1B;
   }
 
   /* Score bar visualization — PROJECTOR OPTIMIZED */
   .score-bar {
-    @apply h-3 rounded-full bg-gray-700 overflow-hidden;
+    @apply h-3 rounded-full overflow-hidden;
+    background-color: var(--color-stage-border);
   }
 
   .score-bar-fill {
@@ -83,7 +149,9 @@
 
   /* Card styles for observability panel — PROJECTOR OPTIMIZED */
   .obs-card {
-    @apply bg-gray-800/50 border border-gray-700/50 rounded-lg p-4 backdrop-blur-sm;
+    @apply border rounded-lg p-4;
+    background-color: var(--color-stage-surface);
+    border-color: var(--color-stage-border);
   }
 
   .obs-card-header {
@@ -91,12 +159,16 @@
   }
 
   .obs-card-title {
-    @apply text-base font-medium text-gray-100;
+    @apply font-semibold;
+    font-size: var(--text-stage-body);
+    color: var(--color-stage-ink);
   }
 
   /* Chat message styles */
   .chat-message {
-    @apply rounded-lg px-4 py-3 max-w-[85%];
+    @apply rounded-2xl px-6 py-4 max-w-[88%];
+    font-size: var(--text-stage-body);
+    line-height: 1.5;
   }
 
   .chat-message-user {
@@ -104,12 +176,17 @@
   }
 
   .chat-message-assistant {
-    @apply bg-gray-800 text-gray-100 mr-auto;
+    @apply mr-auto;
+    background-color: var(--color-stage-raised);
+    color: var(--color-stage-ink);
+    border: 2px solid var(--color-stage-border-soft);
   }
 
   /* Markdown rendering */
   .markdown-content {
-    @apply text-gray-100 leading-relaxed;
+    @apply leading-relaxed;
+    color: var(--color-stage-ink);
+    font-size: var(--text-stage-body);
   }
 
   .markdown-content p {
@@ -118,35 +195,42 @@
 
   .markdown-content h1, .markdown-content h2, .markdown-content h3,
   .markdown-content h4, .markdown-content h5, .markdown-content h6 {
-    @apply font-semibold text-white mb-2 mt-4;
+    @apply font-semibold mb-2 mt-4;
+    color: var(--color-stage-ink);
   }
 
   .markdown-content h1 {
-    @apply text-lg;
+    font-size: 1.75rem;
   }
 
   .markdown-content h2 {
-    @apply text-base;
+    font-size: 1.625rem;
   }
 
   .markdown-content h3, .markdown-content h4 {
-    @apply text-sm;
+    font-size: 1.5rem;
   }
 
   .markdown-content h5, .markdown-content h6 {
-    @apply text-xs;
+    font-size: 1.375rem;
   }
 
   .markdown-content pre {
-    @apply bg-gray-900 rounded-lg p-4 overflow-x-auto my-3 border border-gray-800;
+    @apply rounded-lg p-4 overflow-x-auto my-3 border;
+    background-color: var(--color-stage-raised);
+    border-color: var(--color-stage-border);
   }
 
   .markdown-content code {
-    @apply bg-gray-700 px-1.5 py-0.5 rounded text-sm text-gray-100;
+    @apply px-2 py-0.5 rounded;
+    background-color: var(--color-stage-raised);
+    color: var(--color-stage-ink);
+    font-size: 1.375rem;
   }
 
   .markdown-content pre code {
-    @apply bg-transparent p-0 text-gray-100;
+    @apply bg-transparent p-0;
+    color: var(--color-stage-ink);
   }
 
   .markdown-content ul, .markdown-content ol {
@@ -154,36 +238,48 @@
   }
 
   .markdown-content li {
-    @apply mb-1 text-gray-100;
+    @apply mb-1;
+    color: var(--color-stage-ink);
   }
 
   .markdown-content a {
-    @apply text-blue-400 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded;
+    @apply underline hover:no-underline focus:outline-none focus:ring-2 focus:ring-blue-700 rounded;
+    color: #1e40af;
   }
 
   .markdown-content blockquote {
-    @apply border-l-4 border-gray-600 pl-4 italic text-gray-300 my-3;
+    @apply border-l-4 pl-4 italic my-3;
+    border-color: var(--color-stage-border);
+    color: var(--color-stage-ink-muted);
   }
 
   /* Table styling */
   .markdown-content table {
-    @apply w-full border-collapse my-3 text-xs;
+    @apply w-full border-collapse my-3;
+    font-size: 1.375rem;
   }
 
   .markdown-content thead {
-    @apply bg-gray-800 border border-gray-700;
+    @apply border;
+    background-color: var(--color-stage-raised);
+    border-color: var(--color-stage-border);
   }
 
   .markdown-content tbody {
-    @apply border border-gray-700;
+    @apply border;
+    border-color: var(--color-stage-border);
   }
 
   .markdown-content tr {
-    @apply border-b border-gray-700 hover:bg-gray-800/50 transition-colors;
+    @apply border-b transition-colors;
+    border-color: var(--color-stage-border);
   }
 
   .markdown-content th {
-    @apply px-3 py-2 text-left font-semibold text-gray-200 border-r border-gray-700 bg-gray-800;
+    @apply px-3 py-2 text-left font-semibold border-r;
+    color: var(--color-stage-ink);
+    border-color: var(--color-stage-border);
+    background-color: var(--color-stage-raised);
   }
 
   .markdown-content th:last-child {
@@ -191,7 +287,9 @@
   }
 
   .markdown-content td {
-    @apply px-3 py-2 text-gray-300 border-r border-gray-700;
+    @apply px-3 py-2 border-r;
+    color: var(--color-stage-ink-muted);
+    border-color: var(--color-stage-border);
   }
 
   .markdown-content td:last-child {
@@ -200,7 +298,8 @@
 
   /* Horizontal rule */
   .markdown-content hr {
-    @apply my-4 border-t border-gray-700;
+    @apply my-4 border-t;
+    border-color: var(--color-stage-border);
   }
 
   /* Pulse animation for active nodes */

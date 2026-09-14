@@ -1,223 +1,221 @@
 /**
- * Layout - Main application layout with three-panel design.
+ * Layout — the presentation shell (#103).
  *
- * Desktop:
- * ┌─────────────────────────────────────────────────────────────────┐
- * │  Conversations  │         Chat          │    Observability      │
- * │    Sidebar      │        Panel          │       Panel           │
- * │   (250px)       │       (50%)           │       (50%)           │
- * └─────────────────┴───────────────────────┴───────────────────────┘
+ * ┌───────────────────────────────────────────────────────────────┐
+ * │  Demo selector · turn progress · New Demo · Details · Sign out │
+ * ├──────────────────────────┬────────────────────────────────────┤
+ * │        Chat (45%)        │   Narrator / Details (55%)         │
+ * └──────────────────────────┴────────────────────────────────────┘
  *
- * Mobile: Sidebar in drawer, Chat full width, Observability hidden
+ * This app is demoed live to ~300 people on a projector. Three things follow
+ * from that and are deliberate:
+ *
+ *  - The conversations sidebar is gone, along with the presentation-mode
+ *    toggle that used to hide it. The app is now permanently in the mode the
+ *    toggle produced, so the toggle has nothing left to say. The links and
+ *    the sign-out the sidebar hosted moved into the header rather than being
+ *    quietly dropped.
+ *  - No resizable panes. A drag handle is a thing to fumble on stage, and the
+ *    45/55 split is already sized for 1920×1080.
+ *  - Nothing scrolls except the chat message list. The narrator caps its own
+ *    line count for exactly this reason.
+ *
+ * The dense observability panel is intact and one keypress (D) away.
  */
 
-import { useEffect, useState } from 'react'
-import { Menu, X, Presentation, MessageSquare, Activity } from 'lucide-react'
-import { ConversationsSidebar } from './ConversationsSidebar'
+import { useCallback, useEffect, useState } from 'react'
+import { BookOpen, Code2, LayoutList, LogOut, MessageSquare, Plus, Sparkles } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { ChatPanel } from './ChatPanel'
 import { ObservabilityPanel } from './ObservabilityPanel'
+import { NarratorPanel } from './NarratorPanel'
+import { DemoSelector } from './DemoSelector'
+import { DEFAULT_DEMO_ID, getDemo } from '../demos/registry'
+import { useChatStore } from '../stores/chatStore'
+import { useAuthStore } from '../stores/authStore'
 
+type RightPane = 'narrator' | 'details'
 type MobileTab = 'chat' | 'pipeline'
 
 export function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [sidebarWidth, setSidebarWidth] = useState(250)
-  const [observabilityWidth, setObservabilityWidth] = useState(450)
-  const [isResizingSidebar, setIsResizingSidebar] = useState(false)
-  const [isResizingObservability, setIsResizingObservability] = useState(false)
-  const [presentationMode, setPresentationMode] = useState(false)
+  const [demoId, setDemoId] = useState(DEFAULT_DEMO_ID)
+  const [rightPane, setRightPane] = useState<RightPane>('narrator')
   const [mobileTab, setMobileTab] = useState<MobileTab>('chat')
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
 
+  const messages = useChatStore((s) => s.messages)
+  const pendingAutoSend = useChatStore((s) => s.pendingAutoSend)
+  const startNewConversation = useChatStore((s) => s.startNewConversation)
+  const logout = useAuthStore((s) => s.logout)
+
+  const demo = getDemo(demoId)
+  // One turn = one user message. Good enough to track position in the script,
+  // and it degrades gracefully when the presenter improvises.
+  const turnsTaken = messages.filter((m) => m.role === 'user').length
+  const currentTurn = Math.min(turnsTaken + (turnsTaken < demo.turns.length ? 1 : 0), demo.turns.length)
+
+  // D toggles the detail view. Deliberately a bare key, not a chord: it is
+  // pressed mid-sentence in front of an audience.
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 767px)')
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'd' && e.key !== 'D') return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const el = document.activeElement
+      if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return
+      setRightPane((p) => (p === 'narrator' ? 'details' : 'narrator'))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const closeSidebar = () => setSidebarOpen(false)
+  const handleSelectDemo = useCallback(
+    (id: string) => {
+      setDemoId(id)
+      // Selecting a demo resets the thread — otherwise the previous demo's
+      // history leaks into this one's intent classification.
+      startNewConversation()
+    },
+    [startNewConversation]
+  )
 
-  const handleSidebarMouseDown = (event: React.MouseEvent) => {
-    event.preventDefault()
-    setIsResizingSidebar(true)
-  }
-
-  const handleObservabilityMouseDown = (event: React.MouseEvent) => {
-    event.preventDefault()
-    setIsResizingObservability(true)
-  }
-
-  useEffect(() => {
-    if (!isResizingSidebar && !isResizingObservability) {
-      document.body.style.cursor = ''
-      return
-    }
-
-    document.body.style.cursor = 'col-resize'
-
-    const handleMouseMove = (event: MouseEvent) => {
-      if (isResizingSidebar) {
-        const minWidth = 200
-        const maxWidth = 400
-        const newWidth = Math.min(Math.max(event.clientX, minWidth), maxWidth)
-        setSidebarWidth(newWidth)
-      }
-
-      if (isResizingObservability) {
-        const minWidth = 300
-        const maxWidth = 1200
-        const minChatWidth = 300
-        const viewportWidth = window.innerWidth
-        // Calculate max width based on available space
-        const usedByResizer = 4 // resizer handle width
-        const availableSpace = viewportWidth - sidebarWidth - usedByResizer - minChatWidth
-        const constrainedMaxWidth = Math.min(maxWidth, Math.max(minWidth, availableSpace))
-        const rawWidth = viewportWidth - event.clientX
-        const newWidth = Math.min(Math.max(rawWidth, minWidth), constrainedMaxWidth)
-        setObservabilityWidth(newWidth)
-      }
-    }
-
-    const handleMouseUp = () => {
-      setIsResizingSidebar(false)
-      setIsResizingObservability(false)
-    }
-
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = ''
-    }
-  }, [isResizingSidebar, isResizingObservability, sidebarWidth])
+  // The taxonomy demo's proof turn must run in a FRESH conversation: in-thread,
+  // the query rewriter folds the correction turn into the query and it falls
+  // down a lexical path that isn't comparable to turn 1.
+  const handleRerun = useCallback(() => {
+    const proofTurn = getDemo('taxonomy-correction').turns.find((t) => t.requiresNewConversation)
+    startNewConversation(proofTurn?.query ?? 'show me tan boots')
+  }, [startNewConversation])
 
   return (
-    <div className="flex h-screen bg-gray-900 text-gray-100">
-      {/* Mobile menu button — only show on chat tab so it doesn't overlap pipeline header */}
-      {mobileTab === 'chat' && (
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          aria-label={sidebarOpen ? 'Close conversations menu' : 'Open conversations menu'}
-          aria-expanded={sidebarOpen}
-          className="md:hidden fixed top-4 left-4 z-40 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {sidebarOpen ? (
-            <X className="w-6 h-6" />
-          ) : (
-            <Menu className="w-6 h-6" />
-          )}
-        </button>
-      )}
+    <div className="flex h-screen flex-col bg-[var(--color-stage-bg)] text-[var(--color-stage-ink)]">
+      <header className="flex flex-shrink-0 flex-wrap items-center gap-8 border-b-[3px] border-[var(--color-stage-border)] bg-[var(--color-stage-surface)] px-7 py-4">
+        <DemoSelector demoId={demoId} onSelect={handleSelectDemo} />
 
-      {/* Presentation mode toggle button */}
-      <button
-        onClick={() => setPresentationMode(!presentationMode)}
-        title={presentationMode ? 'Exit presentation mode' : 'Enter presentation mode (hides sidebar for demo)'}
-        className="fixed top-4 right-4 z-40 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-        aria-label={presentationMode ? 'Exit presentation mode' : 'Enter presentation mode'}
-      >
-        <Presentation className={`w-6 h-6 ${presentationMode ? 'text-blue-400' : 'text-gray-400'}`} />
-      </button>
-
-      {/* Mobile overlay backdrop */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 md:hidden"
-          onClick={closeSidebar}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Sidebar - desktop visible, mobile in drawer (hidden in presentation mode) */}
-      {!presentationMode && (
-        <>
-          <div
-            className={`${
-              sidebarOpen
-                ? 'fixed inset-y-0 left-0 z-40 h-full'
-                : 'hidden md:block md:flex-shrink-0 h-full'
-            }`}
-            style={{ width: `${sidebarWidth}px`, maxWidth: 'min(85vw, 400px)' }}
-          >
-            <ConversationsSidebar onConversationSelect={closeSidebar} />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="flex items-center gap-2.5" aria-hidden="true">
+            {demo.turns.map((_, i) => (
+              <span
+                key={i}
+                className="h-2.5 w-14 rounded-full"
+                style={{
+                  backgroundColor: i < currentTurn ? '#065F46' : 'var(--color-stage-border)',
+                }}
+              />
+            ))}
           </div>
+          {/* The expected NEXT query, not the long "what to watch for" blurb —
+              it fits on one line and it is the thing the presenter actually
+              needs in front of them. A presenter who improvises is not
+              corrected; this stays a hint. */}
+          <p className="truncate text-[length:var(--text-stage-body)] font-semibold text-[var(--color-stage-ink-muted)]">
+            {turnsTaken < demo.turns.length ? (
+              <>
+                <span className="text-[var(--color-stage-ink-soft)]">
+                  Turn {currentTurn} of {demo.turns.length} —{' '}
+                </span>
+                <span className="text-[var(--color-stage-ink)]">
+                  “{demo.turns[turnsTaken]?.query}”
+                </span>
+                {demo.turns[turnsTaken]?.requiresNewConversation && (
+                  <span className="ml-3 rounded-lg border-2 border-[#9A3412] px-2.5 py-0.5 text-[1.25rem] font-bold uppercase tracking-wider text-[#9A3412]">
+                    New chat first
+                  </span>
+                )}
+              </>
+            ) : (
+              demo.subtitle
+            )}
+          </p>
+        </div>
 
-          {/* Resizer handle — desktop only */}
-          <div
-            className="hidden md:flex w-4 cursor-col-resize select-none"
-            onMouseDown={handleSidebarMouseDown}
-            aria-hidden="true"
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => startNewConversation()}
+            className="flex items-center gap-2.5 rounded-xl bg-[#1E40AF] px-5 py-3 text-[1.4rem] font-semibold text-white focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
           >
-            <div className="mx-auto h-full w-px bg-gray-800 hover:bg-gray-600 transition-colors" />
-          </div>
-        </>
-      )}
+            <Plus className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+            New Demo
+          </button>
+          <button
+            onClick={() => setRightPane((p) => (p === 'narrator' ? 'details' : 'narrator'))}
+            aria-pressed={rightPane === 'details'}
+            className="flex items-center gap-2.5 rounded-xl border-2 border-[var(--color-stage-border)] bg-white px-4 py-2.5 text-[1.4rem] font-semibold focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+          >
+            {rightPane === 'details' ? (
+              <Sparkles className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+            ) : (
+              <LayoutList className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+            )}
+            {rightPane === 'details' ? 'Narration' : 'Details'}
+            <kbd className="rounded bg-[var(--color-stage-raised)] px-2 py-0.5 font-mono text-[1.25rem] text-[var(--color-stage-ink-soft)]">
+              D
+            </kbd>
+          </button>
+          {/* These three lived only in the sidebar that this layout removes. */}
+          <Link
+            to="/guide"
+            aria-label="Guide"
+            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+          >
+            <BookOpen className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+          </Link>
+          <Link
+            to="/swagger"
+            aria-label="API reference"
+            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+          >
+            <Code2 className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+          </Link>
+          <button
+            onClick={() => void logout()}
+            aria-label="Sign out"
+            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+          >
+            <LogOut className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+          </button>
+        </div>
+      </header>
 
-      {/* Main content area — pb-14 on mobile clears the fixed tab bar */}
-      <div className="flex-1 flex min-w-0 overflow-hidden pb-14 md:pb-0">
-        {/* Chat panel — full width on mobile (pipeline tab hides it), flex-1 on desktop */}
+      <main className="grid min-h-0 flex-1 gap-6 p-6 md:grid-cols-[45fr_55fr]">
         <div
-          className={`${
-            mobileTab === 'chat' ? 'flex' : 'hidden md:flex'
-          } flex-1 flex-col min-w-0 border-r border-gray-800 overflow-hidden`}
+          className={`${mobileTab === 'chat' ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 overflow-hidden rounded-2xl border-2 border-[var(--color-stage-border)] bg-[var(--color-stage-surface)]`}
         >
           <ChatPanel />
         </div>
 
-        {/* Observability panel — tab-controlled on mobile, always visible on desktop */}
         <div
-          className={`${
-            mobileTab === 'pipeline' ? 'flex' : 'hidden md:flex'
-          } items-stretch flex-shrink-0 w-full md:w-auto`}
+          className={`${mobileTab === 'pipeline' ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 overflow-hidden`}
         >
-          {/* Resizer handle — desktop only */}
-          <div
-            className="hidden md:flex items-stretch w-4 cursor-col-resize select-none"
-            onMouseDown={handleObservabilityMouseDown}
-            aria-hidden="true"
-          >
-            <div className="mx-auto h-full w-px bg-gray-800 hover:bg-gray-600 transition-colors" />
-          </div>
-          <div
-            className="flex min-w-0 h-full overflow-hidden w-full md:w-auto"
-            style={isMobile ? undefined : {
-              width: `${observabilityWidth}px`,
-              minWidth: '300px',
-              maxWidth: '1200px',
-            }}
-          >
+          {rightPane === 'narrator' ? (
+            <NarratorPanel
+              onRerun={handleRerun}
+              rerunPending={Boolean(pendingAutoSend)}
+              onShowDetails={() => setRightPane('details')}
+            />
+          ) : (
             <ObservabilityPanel />
-          </div>
+          )}
         </div>
-      </div>
+      </main>
 
-      {/* Mobile bottom tab bar */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex border-t border-gray-700 bg-gray-900"
+        className="fixed inset-x-0 bottom-0 z-30 flex border-t-2 border-[var(--color-stage-border)] bg-[var(--color-stage-surface)] md:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         aria-label="Mobile navigation"
       >
         <button
           onClick={() => setMobileTab('chat')}
           aria-pressed={mobileTab === 'chat'}
-          className={`flex-1 flex flex-col items-center gap-1 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 ${
-            mobileTab === 'chat' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'
-          }`}
+          className="flex flex-1 flex-col items-center gap-1 py-2 text-sm font-semibold"
         >
-          <MessageSquare className="w-5 h-5" />
+          <MessageSquare className="h-5 w-5" aria-hidden="true" />
           Chat
         </button>
         <button
           onClick={() => setMobileTab('pipeline')}
           aria-pressed={mobileTab === 'pipeline'}
-          className={`flex-1 flex flex-col items-center gap-1 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 ${
-            mobileTab === 'pipeline' ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200'
-          }`}
+          className="flex flex-1 flex-col items-center gap-1 py-2 text-sm font-semibold"
         >
-          <Activity className="w-5 h-5" />
+          <LayoutList className="h-5 w-5" aria-hidden="true" />
           Pipeline
         </button>
       </nav>

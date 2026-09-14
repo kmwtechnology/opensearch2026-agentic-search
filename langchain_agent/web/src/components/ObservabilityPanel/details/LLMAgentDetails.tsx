@@ -33,7 +33,7 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
 
   if (!agentStep) {
     return (
-      <div className="text-sm text-gray-500">
+      <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
         No agent execution data available
       </div>
     )
@@ -61,7 +61,7 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
   const fullReasoning = reasoningChunks.map((c) => c.content).join('')
 
   return (
-    <div className="space-y-4 text-sm min-w-0 w-full">
+    <div className="space-y-4 text-[1.375rem] min-w-0 w-full">
       {/* Enrichment flywheel — shown first and distinctly, not buried among
           the generic Tool Calls list. This is the "agent fixes the catalog,
           not just the query" moment the demo centers on. */}
@@ -73,17 +73,17 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
             }`}
           />
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-emerald-200">
+            <div className="text-[1.375rem] font-semibold text-emerald-200">
               Catalog Enrichment Triggered
             </div>
-            <div className="text-xs text-emerald-100 mt-1">
+            <div className="text-[1.25rem] text-emerald-100 mt-1">
               Recognized <span className="font-mono">{enrichmentEvent.attribute_type}</span> gap:
               {' '}&ldquo;{enrichmentEvent.variant}&rdquo;
               {enrichmentEvent.canonical && (
                 <> resolved to canonical bucket &ldquo;{enrichmentEvent.canonical}&rdquo;</>
               )}
             </div>
-            <div className="text-xs text-emerald-300/90 mt-1">
+            <div className="text-[1.25rem] text-emerald-300/90 mt-1">
               {agentStep.status === 'running' ? (
                 'Writing the new mapping and re-indexing the catalog live (~15-20s)...'
               ) : enrichmentEvent.duration_seconds != null ? (
@@ -107,8 +107,8 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
       {/* Reasoning Section */}
       {fullReasoning && (
         <div>
-          <div className="text-xs font-medium text-gray-400 mb-2">LLM Reasoning</div>
-          <div className="bg-gray-900/50 rounded border border-gray-700/30 p-3 text-xs text-gray-300 max-h-48 overflow-y-auto leading-relaxed whitespace-pre-wrap break-words">
+          <div className="text-[1.25rem] font-medium text-[var(--color-stage-ink-soft)] mb-2">LLM Reasoning</div>
+          <div className="bg-[var(--color-stage-raised)] rounded border border-[var(--color-stage-border)]/30 p-3 text-[1.25rem] text-[var(--color-stage-ink-muted)] max-h-48 overflow-y-auto leading-relaxed whitespace-pre-wrap break-words">
             {fullReasoning}
           </div>
         </div>
@@ -117,7 +117,7 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
       {/* Tool Calls Section */}
       {toolCalls.length > 0 && (
         <div>
-          <div className="text-xs font-medium text-gray-400 mb-2">
+          <div className="text-[1.25rem] font-medium text-[var(--color-stage-ink-soft)] mb-2">
             Tool Calls ({toolCalls.length})
           </div>
           <div className="space-y-2">
@@ -126,10 +126,10 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
                 key={idx}
                 className="bg-purple-500/5 border border-purple-500/20 rounded p-3"
               >
-                <div className="text-xs font-medium text-purple-400 mb-2">
+                <div className="text-[1.25rem] font-medium text-purple-400 mb-2">
                   {toolCall.tool_name}
                 </div>
-                <div className="bg-black/30 rounded p-2 font-mono text-xs text-gray-300 max-h-24 overflow-y-auto break-words">
+                <div className="bg-black/30 rounded p-2 font-mono text-[1.25rem] text-[var(--color-stage-ink-muted)] max-h-24 overflow-y-auto break-words">
                   {JSON.stringify(toolCall.tool_args, null, 2)}
                 </div>
               </div>
@@ -141,37 +141,37 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
       {/* Response Section */}
       {fullResponse && (
         <div>
-          <div className="text-xs font-medium text-gray-400 mb-2">
+          <div className="text-[1.25rem] font-medium text-[var(--color-stage-ink-soft)] mb-2">
             Response ({fullResponse.length} chars)
           </div>
-          <div className="bg-gray-900/50 rounded border border-gray-700/30 p-3 text-xs text-gray-300 max-h-64 overflow-y-auto leading-relaxed prose prose-invert prose-xs max-w-none">
+          <div className="bg-[var(--color-stage-raised)] rounded border border-[var(--color-stage-border)]/30 p-3 text-[1.25rem] text-[var(--color-stage-ink-muted)] max-h-64 overflow-y-auto leading-relaxed prose prose-invert prose-xs max-w-none">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
                 // Compact styling for observability panel
-                h1: ({ children }) => <h1 className="text-sm font-bold text-white mt-2 mb-1">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-xs font-bold text-white mt-2 mb-1">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-xs font-semibold text-gray-200 mt-1 mb-1">{children}</h3>,
-                p: ({ children }) => <p className="mb-2 text-xs">{children}</p>,
-                pre: ({ children }) => <pre className="bg-black/40 rounded p-2 overflow-x-auto text-xs my-2">{children}</pre>,
+                h1: ({ children }) => <h1 className="text-[1.375rem] font-bold text-white mt-2 mb-1">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-[1.25rem] font-bold text-white mt-2 mb-1">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-[1.25rem] font-semibold text-[var(--color-stage-ink)] mt-1 mb-1">{children}</h3>,
+                p: ({ children }) => <p className="mb-2 text-[1.25rem]">{children}</p>,
+                pre: ({ children }) => <pre className="bg-black/40 rounded p-2 overflow-x-auto text-[1.25rem] my-2">{children}</pre>,
                 code: ({ className, children, ...props }) => {
                   const isInline = !className
                   return isInline ? (
-                    <code className="bg-gray-700 px-1 py-0.5 rounded text-xs" {...props}>{children}</code>
+                    <code className="bg-[var(--color-stage-raised)] px-1 py-0.5 rounded text-[1.25rem]" {...props}>{children}</code>
                   ) : (
                     <code className={className} {...props}>{children}</code>
                   )
                 },
                 a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{children}</a>,
-                ul: ({ children }) => <ul className="list-disc list-inside my-1 ml-2 text-xs">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal list-inside my-1 ml-2 text-xs">{children}</ol>,
-                li: ({ children }) => <li className="text-xs">{children}</li>,
-                table: ({ children }) => <div className="overflow-x-auto my-2"><table className="w-full border-collapse text-xs">{children}</table></div>,
-                thead: ({ children }) => <thead className="bg-gray-800">{children}</thead>,
-                th: ({ children }) => <th className="px-2 py-1 text-left text-xs font-semibold border border-gray-700">{children}</th>,
-                td: ({ children }) => <td className="px-2 py-1 text-xs border border-gray-700">{children}</td>,
-                blockquote: ({ children }) => <blockquote className="border-l-2 border-gray-600 pl-2 italic text-gray-400 my-2 text-xs">{children}</blockquote>,
-                hr: () => <hr className="my-2 border-gray-700" />,
+                ul: ({ children }) => <ul className="list-disc list-inside my-1 ml-2 text-[1.25rem]">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal list-inside my-1 ml-2 text-[1.25rem]">{children}</ol>,
+                li: ({ children }) => <li className="text-[1.25rem]">{children}</li>,
+                table: ({ children }) => <div className="overflow-x-auto my-2"><table className="w-full border-collapse text-[1.25rem]">{children}</table></div>,
+                thead: ({ children }) => <thead className="bg-[var(--color-stage-raised)]">{children}</thead>,
+                th: ({ children }) => <th className="px-2 py-1 text-left text-[1.25rem] font-semibold border border-[var(--color-stage-border)]">{children}</th>,
+                td: ({ children }) => <td className="px-2 py-1 text-[1.25rem] border border-[var(--color-stage-border)]">{children}</td>,
+                blockquote: ({ children }) => <blockquote className="border-l-2 border-[var(--color-stage-border)] pl-2 italic text-[var(--color-stage-ink-soft)] my-2 text-[1.25rem]">{children}</blockquote>,
+                hr: () => <hr className="my-2 border-[var(--color-stage-border)]" />,
               }}
             >
               {preprocessMarkdown(fullResponse)}
@@ -181,7 +181,7 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
       )}
 
       {/* Status Indicator */}
-      <div className="text-xs text-gray-500 pt-2 border-t border-gray-700/30">
+      <div className="text-[1.25rem] text-[var(--color-stage-ink-soft)] pt-2 border-t border-[var(--color-stage-border)]/30">
         {responseChunks.length > 0 && (
           <>
             <div>

@@ -9,7 +9,7 @@ interface IntentClassifierDetailsProps {
 export function IntentClassifierDetails({ event, queryExpansion }: IntentClassifierDetailsProps) {
   if (!event) {
     return (
-      <div className="text-sm text-gray-400 animate-pulse">
+      <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)] animate-pulse">
         Classifying intent…
       </div>
     )
@@ -21,18 +21,18 @@ export function IntentClassifierDetails({ event, queryExpansion }: IntentClassif
   const isLowConfidence = confidence < 0.7
 
   return (
-    <div className="space-y-3 text-sm text-gray-100">
+    <div className="space-y-3 text-[1.375rem] text-[var(--color-stage-ink)]">
       {/* Intent with badge */}
       <div className="flex items-center gap-2">
-        <span className="font-semibold text-gray-200">Intent:</span>
+        <span className="font-semibold text-[var(--color-stage-ink)]">Intent:</span>
         <span className={clsx(
-          'px-2 py-0.5 rounded text-xs font-medium',
+          'px-2 py-0.5 rounded text-[1.25rem] font-medium',
           event.intent === 'question' && 'bg-blue-500/20 text-blue-400',
           event.intent === 'summary' && 'bg-purple-500/20 text-purple-400',
           event.intent === 'follow_up' && 'bg-cyan-500/20 text-cyan-400',
           event.intent === 'clarify' && 'bg-yellow-500/20 text-yellow-400',
           event.intent === 'greeting' && 'bg-green-500/20 text-green-400',
-          !['question', 'summary', 'follow_up', 'clarify', 'greeting'].includes(event.intent) && 'bg-gray-500/20 text-gray-400'
+          !['question', 'summary', 'follow_up', 'clarify', 'greeting'].includes(event.intent) && 'bg-gray-500/20 text-[var(--color-stage-ink-soft)]'
         )}>
           {event.intent}
         </span>
@@ -41,15 +41,15 @@ export function IntentClassifierDetails({ event, queryExpansion }: IntentClassif
       {/* Confidence score with bar */}
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <span className="font-semibold text-gray-200">Confidence:</span>
+          <span className="font-semibold text-[var(--color-stage-ink)]">Confidence:</span>
           <span className={clsx(
-            'text-xs',
+            'text-[1.25rem]',
             isLowConfidence ? 'text-yellow-400' : 'text-green-400'
           )}>
             {confidencePercent}%
           </span>
         </div>
-        <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-[var(--color-stage-raised)] rounded-full overflow-hidden">
           <div
             className={clsx(
               'h-full rounded-full transition-all',
@@ -59,7 +59,7 @@ export function IntentClassifierDetails({ event, queryExpansion }: IntentClassif
           />
         </div>
         {isLowConfidence && (
-          <p className="text-xs text-yellow-400/80">
+          <p className="text-[1.25rem] text-yellow-400/80">
             Low confidence may trigger clarification
           </p>
         )}
@@ -67,32 +67,32 @@ export function IntentClassifierDetails({ event, queryExpansion }: IntentClassif
 
       {/* Reasoning */}
       <div>
-        <span className="font-semibold text-gray-200">Reason:</span>
-        <p className="mt-1 text-gray-400">{event.reasoning}</p>
+        <span className="font-semibold text-[var(--color-stage-ink)]">Reason:</span>
+        <p className="mt-1 text-[var(--color-stage-ink-soft)]">{event.reasoning}</p>
       </div>
 
       {/* Query */}
       <div>
-        <span className="font-semibold text-gray-200">Query:</span>
-        <p className="mt-1 text-gray-300">{event.user_query || '—'}</p>
+        <span className="font-semibold text-[var(--color-stage-ink)]">Query:</span>
+        <p className="mt-1 text-[var(--color-stage-ink-muted)]">{event.user_query || '—'}</p>
       </div>
 
       {/* Query Expansion (if present) */}
       {queryExpansion && (
         <div className="mt-3 p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-cyan-400 font-semibold text-xs">QUERY EXPANDED</span>
+            <span className="text-cyan-400 font-semibold text-[1.25rem]">QUERY EXPANDED</span>
           </div>
-          <div className="space-y-1 text-xs">
+          <div className="space-y-1 text-[1.25rem]">
             <div>
-              <span className="text-gray-400">Original:</span>
-              <span className="ml-2 text-gray-300">{queryExpansion.original_query}</span>
+              <span className="text-[var(--color-stage-ink-soft)]">Original:</span>
+              <span className="ml-2 text-[var(--color-stage-ink-muted)]">{queryExpansion.original_query}</span>
             </div>
             <div>
-              <span className="text-gray-400">Expanded:</span>
+              <span className="text-[var(--color-stage-ink-soft)]">Expanded:</span>
               <span className="ml-2 text-cyan-300">{queryExpansion.expanded_query}</span>
             </div>
-            <div className="text-gray-500 mt-1">
+            <div className="text-[var(--color-stage-ink-soft)] mt-1">
               {queryExpansion.expansion_reason}
             </div>
           </div>

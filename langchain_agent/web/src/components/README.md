@@ -10,7 +10,8 @@ This directory contains all reusable React components organized by functional do
 |-----------|---------|-------|
 | **[ObservabilityPanel](./ObservabilityPanel/)** | Real-time pipeline monitoring, event stream visualization, metrics display | 9 components |
 | **[ChatPanel](./ChatPanel/)** | Chat UI: message rendering, input field, typeahead suggestions, message list | 4 components + tests |
-| **[ConversationsSidebar](./ConversationsSidebar/)** | Sidebar navigation: conversation list, thread switching, logout button | 2 components + tests |
+| **[NarratorPanel](./NarratorPanel/)** | Plain-language "what just happened" narration for projected demos (#103) | 2 components + tests |
+| **DemoSelector** | Names the demo being run; presenter-selected, never auto-detected | 1 component |
 
 ## Shared Components
 

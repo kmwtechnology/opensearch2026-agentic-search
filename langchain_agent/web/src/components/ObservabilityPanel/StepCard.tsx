@@ -30,35 +30,35 @@ interface StepCardProps {
 const nodeConfig: Record<string, { label: string; color: string; bgColor: string }> = {
   query_evaluator: {
     label: 'Query Evaluator',
-    color: 'text-blue-300',
-    bgColor: 'bg-blue-500/20 border-blue-500/50',
+    color: 'text-[#1E40AF]',
+    bgColor: 'bg-[#EFF6FF] border-[#1E40AF]',
   },
   agent: {
     label: 'LLM Agent',
-    color: 'text-cyan-300',
-    bgColor: 'bg-cyan-500/20 border-cyan-500/50',
+    color: 'text-[#155E75]',
+    bgColor: 'bg-[#ECFEFF] border-[#155E75]',
   },
   retriever: {
     label: 'Knowledge Search',
-    color: 'text-violet-300',
-    bgColor: 'bg-violet-500/20 border-violet-500/50',
+    color: 'text-[#5B21B6]',
+    bgColor: 'bg-[#F5F3FF] border-[#5B21B6]',
   },
   reranker: {
     // Overridden below once we know the actual reranker_type for this step
     // (#87) — this is only the fallback before that event arrives.
     label: 'Reranker',
-    color: 'text-indigo-300',
-    bgColor: 'bg-indigo-500/20 border-indigo-500/50',
+    color: 'text-[#3730A3]',
+    bgColor: 'bg-[#EEF2FF] border-[#3730A3]',
   },
   quality_gate: {
     label: 'Quality Gate',
-    color: 'text-orange-300',
-    bgColor: 'bg-orange-500/20 border-orange-500/50',
+    color: 'text-[#9A3412]',
+    bgColor: 'bg-[#FFF7ED] border-[#9A3412]',
   },
   intent_classifier: {
     label: 'Intent Classifier',
-    color: 'text-emerald-300',
-    bgColor: 'bg-emerald-500/20 border-emerald-500/50',
+    color: 'text-[#065F46]',
+    bgColor: 'bg-[#ECFDF5] border-[#065F46]',
   },
 }
 
@@ -71,13 +71,13 @@ export function StepCard({ step, index }: StepCardProps) {
   const baseConfig = enrichmentEvent
     ? {
         label: 'LLM Agent',
-        color: 'text-emerald-300',
-        bgColor: 'bg-emerald-500/25 border-emerald-400',
+        color: 'text-[#065F46]',
+        bgColor: 'bg-[#ECFDF5] border-[#065F46]',
       }
     : nodeConfig[step.node] || {
         label: step.node,
-        color: 'text-gray-400',
-        bgColor: 'bg-gray-500/10 border-gray-500/30',
+        color: 'text-[var(--color-stage-ink-soft)]',
+        bgColor: 'bg-[var(--color-stage-raised)] border-[var(--color-stage-border)]',
       }
 
   // The reranker's label depends on which reranker actually ran this turn —
@@ -118,7 +118,7 @@ export function StepCard({ step, index }: StepCardProps) {
         className="w-full flex items-center gap-3 px-4 py-4 text-left"
       >
         {/* Expand icon */}
-        <div className="flex-shrink-0 text-gray-500">
+        <div className="flex-shrink-0 text-[var(--color-stage-ink-soft)]">
           {isExpanded ? (
             <ChevronDown className="w-5 h-5" />
           ) : (
@@ -127,7 +127,7 @@ export function StepCard({ step, index }: StepCardProps) {
         </div>
 
         {/* Step number */}
-        <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-sm font-medium text-gray-200">
+        <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--color-stage-raised)] flex items-center justify-center text-[1.375rem] font-medium text-[var(--color-stage-ink)]">
           {index + 1}
         </div>
 
@@ -136,18 +136,18 @@ export function StepCard({ step, index }: StepCardProps) {
 
         {/* Node name + summary */}
         <div className="flex-1 min-w-0 truncate flex items-center gap-2">
-          <span className={clsx('font-medium text-base', config.color)}>
+          <span className={clsx('font-medium text-[var(--text-stage-body)]', config.color)}>
             {config.label}
           </span>
           {enrichmentEvent ? (
-            <span className="ml-1 inline-flex items-center gap-1.5 text-sm font-medium text-emerald-300">
+            <span className="ml-1 inline-flex items-center gap-1.5 text-[1.375rem] font-medium text-emerald-300">
               <RefreshCw className={clsx('w-4 h-4', step.status === 'running' && 'animate-spin')} />
               Enrichment: {enrichmentEvent.attribute_type} &ldquo;{enrichmentEvent.variant}&rdquo;
               {enrichmentEvent.canonical && <> → &ldquo;{enrichmentEvent.canonical}&rdquo;</>}
             </span>
           ) : (
             step.node !== 'intent_classifier' && step.summary && (
-              <span className="text-sm text-gray-300">
+              <span className="text-[1.375rem] text-[var(--color-stage-ink-muted)]">
                 {step.summary}
               </span>
             )
@@ -156,7 +156,7 @@ export function StepCard({ step, index }: StepCardProps) {
 
         {/* Duration */}
         {step.durationMs !== undefined && (
-          <div className="flex-shrink-0 flex items-center gap-1 text-sm text-gray-300">
+          <div className="flex-shrink-0 flex items-center gap-1 text-[1.375rem] text-[var(--color-stage-ink-muted)]">
             <Clock className="w-4 h-4" />
             {step.durationMs < 1000
               ? `${Math.round(step.durationMs)}ms`
@@ -167,7 +167,7 @@ export function StepCard({ step, index }: StepCardProps) {
 
       {/* Expanded content */}
       {isExpanded && (
-        <div className="px-4 pb-4 pt-1 border-t border-gray-700/50 min-w-0 overflow-hidden">
+        <div className="px-4 pb-4 pt-1 border-t border-[var(--color-stage-border)] min-w-0 overflow-hidden">
           <StepDetails step={step} />
         </div>
       )}
@@ -211,7 +211,7 @@ function StepDetails({ step }: { step: ObservabilityStep }) {
 
     default:
       return (
-        <div className="text-sm text-gray-500">
+        <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
           No details available for this step.
         </div>
       )
@@ -238,22 +238,22 @@ function isQualityGateEvent(event: AgentEvent): event is QualityGateEvent {
 function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
   if (!event) {
     return (
-      <div className="text-sm text-gray-400 animate-pulse">
+      <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)] animate-pulse">
         Evaluating result quality...
       </div>
     )
   }
 
   return (
-    <div className="space-y-3 text-sm text-gray-100">
+    <div className="space-y-3 text-[1.375rem] text-[var(--color-stage-ink)]">
       {/* Triggered status */}
       <div className="flex items-center gap-2">
-        <span className="font-semibold text-gray-200">Status:</span>
+        <span className="font-semibold text-[var(--color-stage-ink)]">Status:</span>
         <span className={clsx(
-          'px-2 py-0.5 rounded text-xs font-medium',
+          'px-2 py-0.5 rounded text-[1.25rem] font-medium',
           event.triggered
             ? 'bg-orange-500/20 text-orange-400'
-            : 'bg-gray-500/20 text-gray-400'
+            : 'bg-gray-500/20 text-[var(--color-stage-ink-soft)]'
         )}>
           {event.triggered ? 'Retry Triggered' : 'Passed'}
         </span>
@@ -262,15 +262,15 @@ function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
       {/* Max score with bar */}
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <span className="font-semibold text-gray-200">Max Reranker Score:</span>
+          <span className="font-semibold text-[var(--color-stage-ink)]">Max Reranker Score:</span>
           <span className={clsx(
-            'text-xs font-mono',
+            'text-[1.25rem] font-mono',
             event.max_score < event.threshold ? 'text-orange-400' : 'text-green-400'
           )}>
             {event.max_score.toFixed(3)}
           </span>
         </div>
-        <div className="relative h-1.5 bg-gray-700 rounded-full overflow-hidden">
+        <div className="relative h-1.5 bg-[var(--color-stage-raised)] rounded-full overflow-hidden">
           <div
             className={clsx(
               'h-full rounded-full transition-all',
@@ -285,7 +285,7 @@ function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
             title={`Threshold: ${event.threshold.toFixed(3)}`}
           />
         </div>
-        <div className="flex justify-between text-xs text-gray-500">
+        <div className="flex justify-between text-[1.25rem] text-[var(--color-stage-ink-soft)]">
           <span className="font-mono">Threshold: {event.threshold.toFixed(3)}</span>
         </div>
       </div>
@@ -293,9 +293,9 @@ function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
       {/* Alpha adjustment */}
       {event.triggered && event.new_alpha != null && (
         <div className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/30">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-gray-400">Alpha adjusted:</span>
-            <span className="text-gray-300">{event.original_alpha.toFixed(2)}</span>
+          <div className="flex items-center gap-2 text-[1.25rem]">
+            <span className="text-[var(--color-stage-ink-soft)]">Alpha adjusted:</span>
+            <span className="text-[var(--color-stage-ink-muted)]">{event.original_alpha.toFixed(2)}</span>
             <span className="text-orange-400">→</span>
             <span className="text-orange-300 font-medium">{event.new_alpha.toFixed(2)}</span>
           </div>
@@ -304,8 +304,8 @@ function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
 
       {/* Reason */}
       <div>
-        <span className="font-semibold text-gray-200">Reason:</span>
-        <p className="mt-1 text-gray-400">{event.reason}</p>
+        <span className="font-semibold text-[var(--color-stage-ink)]">Reason:</span>
+        <p className="mt-1 text-[var(--color-stage-ink-soft)]">{event.reason}</p>
       </div>
     </div>
   )

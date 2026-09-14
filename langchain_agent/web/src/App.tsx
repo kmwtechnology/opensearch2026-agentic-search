@@ -53,8 +53,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (isChecking) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-gray-400 text-sm">Checking session…</div>
+      <div className="min-h-screen bg-[var(--color-stage-bg)] flex items-center justify-center">
+        <div className="text-[var(--color-stage-ink-soft)] text-lg font-medium">Checking session…</div>
       </div>
     )
   }

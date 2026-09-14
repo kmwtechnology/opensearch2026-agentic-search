@@ -76,61 +76,16 @@ export function MessageList() {
   }, [messages, streamingContent])
 
   if (messages.length === 0) {
+    // Deliberately almost empty (#103). This used to be a feature tour —
+    // a product blurb, four intent categories and eight sample queries. On a
+    // projected demo that is a wall of 16px text the audience reads instead
+    // of listening, and every word of it is either said out loud by the
+    // presenter or already shown in the demo header.
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-500 px-4">
-        <div className="text-center max-w-lg">
-          <h3 className="text-lg font-medium text-gray-300 mb-1">
-            Product Search Agent
-          </h3>
-          <p className="text-xs text-gray-600 mb-4">
-            An AI-powered e-commerce product search agent with hybrid search & reranking
-          </p>
-
-          <div className="text-left space-y-3">
-            <div>
-              <div className="text-xs font-medium text-gray-400 mb-1">
-                Search — RAG-powered Q&A with hybrid search & reranking
-              </div>
-              <div className="text-xs text-gray-600 space-y-0.5">
-                <div>"Find me wireless headphones under $50"</div>
-                <div>"What are the best-rated running shoes?"</div>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium text-amber-600/80 mb-1">
-                Compare — find and compare products by attributes
-              </div>
-              <div className="text-xs text-gray-600 space-y-0.5">
-                <div>"Compare Sony and Bose noise-canceling headphones"</div>
-                <div>"Show me blue Nike sneakers"</div>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium text-teal-600/80 mb-1">
-                Discover — explore products by brand, color, or category
-              </div>
-              <div className="text-xs text-gray-600 space-y-0.5">
-                <div>"What brands of laptops are available?"</div>
-                <div>"Show me products from Samsung"</div>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium text-purple-500/80 mb-1">
-                Summarize — recap your conversation so far
-              </div>
-              <div className="text-xs text-gray-600">
-                <div>"Summarize what we've discussed"</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-gray-800 text-xs text-gray-600 space-y-0.5">
-            <div>Multi-turn memory · Smart citations with GitHub links · Real-time observability panel</div>
-          </div>
-        </div>
+      <div className="flex h-full items-center justify-center px-6">
+        <p className="text-center text-[length:var(--text-stage-body)] font-medium text-[var(--color-stage-ink-soft)]">
+          Ask a question to begin.
+        </p>
       </div>
     )
   }
@@ -143,18 +98,18 @@ export function MessageList() {
 
       {/* Show typing indicator when processing but no streaming content yet */}
       {isProcessing && !streamingContent && messages[messages.length - 1]?.role !== 'assistant' && (
-        <div className="flex items-center gap-2 text-gray-500" aria-live="polite" aria-label="Agent processing">
+        <div className="flex items-center gap-2 text-[var(--color-stage-ink-soft)]" aria-live="polite" aria-label="Agent processing">
           <div className="flex gap-1">
             <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" aria-hidden="true" />
           </div>
-          <div className="text-sm">
+          <div className="text-[1.375rem]">
             {currentNode ? (
               <span className="flex items-center gap-2">
                 <span className="font-medium text-blue-400">
                   {getNodeDisplayName(currentNode)}
                 </span>
                 {getCurrentStepSummary() && (
-                  <span className="text-gray-400">• {getCurrentStepSummary()}</span>
+                  <span className="text-[var(--color-stage-ink-soft)]">• {getCurrentStepSummary()}</span>
                 )}
               </span>
             ) : (

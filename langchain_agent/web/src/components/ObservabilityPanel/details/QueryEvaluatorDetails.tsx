@@ -10,7 +10,7 @@ export function QueryEvaluatorDetails() {
 
   if (!queryEvaluation) {
     return (
-      <div className="text-sm text-gray-500">
+      <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
         Waiting for query evaluation...
       </div>
     )
@@ -25,10 +25,10 @@ export function QueryEvaluatorDetails() {
     <div className="space-y-4 min-w-0 w-full">
       {/* Search strategy badge */}
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-500">Strategy:</span>
+        <span className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">Strategy:</span>
         <span
           className={clsx(
-            'px-2 py-0.5 rounded-full text-xs font-medium',
+            'px-2 py-0.5 rounded-full text-[1.25rem] font-medium',
             search_strategy === 'lexical-heavy' && 'bg-amber-500/20 text-amber-400',
             search_strategy === 'balanced' && 'bg-violet-500/20 text-violet-400',
             search_strategy === 'semantic-heavy' && 'bg-blue-500/20 text-blue-400'
@@ -41,12 +41,12 @@ export function QueryEvaluatorDetails() {
       {/* Alpha scale visualization */}
       <div className="space-y-2">
         {/* Scale labels - Standard convention: 0=lexical, 1=semantic */}
-        <div className="flex justify-between text-xs text-gray-500">
+        <div className="flex justify-between text-[1.25rem] text-[var(--color-stage-ink-soft)]">
           <span>Lexical (BM25)</span>
           <span>Semantic (Vector)</span>
         </div>
 
-        <div className="relative h-3 bg-gray-700 rounded-full overflow-hidden">
+        <div className="relative h-3 bg-[var(--color-stage-raised)] rounded-full overflow-hidden">
           {/* Gradient background - amber (lexical) to blue (semantic) */}
           <div
             className="absolute inset-0"
@@ -63,24 +63,24 @@ export function QueryEvaluatorDetails() {
           />
         </div>
 
-        <div className="text-center text-sm">
+        <div className="text-center text-[1.375rem]">
           <span className="text-white font-medium">
             {(alpha * 100).toFixed(0)}%
           </span>
-          <span className="text-gray-500 ml-1">semantic weight</span>
+          <span className="text-[var(--color-stage-ink-soft)] ml-1">semantic weight</span>
         </div>
       </div>
 
       {/* Analysis reasoning */}
       <div className="space-y-1">
-        <span className="text-xs text-gray-500">Analysis:</span>
-        <p className="text-sm text-gray-300 bg-gray-800/50 rounded p-2">
+        <span className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">Analysis:</span>
+        <p className="text-[1.375rem] text-[var(--color-stage-ink-muted)] bg-[var(--color-stage-raised)] rounded p-2">
           {query_analysis}
         </p>
       </div>
 
       {/* Explanation */}
-      <div className="text-xs text-gray-500 border-t border-gray-700 pt-3">
+      <div className="text-[1.25rem] text-[var(--color-stage-ink-soft)] border-t border-[var(--color-stage-border)] pt-3">
         <p>
           <strong>Alpha</strong> controls the hybrid search balance.
           Lower values (α→0) favor exact keyword matching (BM25), while higher values

@@ -90,9 +90,22 @@ export function useWebSocket(): UseWebSocketReturn {
     obsStore.addEvent(data)
 
     switch (data.type) {
-      case 'connection_established':
+      case 'connection_established': {
         console.log('WebSocket connected:', data)
+        // Flush a query queued by startNewConversation(autoSend) — the
+        // "re-run search with corrected taxonomy" button (#103). It has to
+        // wait for THIS event rather than a timeout: sendOverWebSocket reads
+        // the module-level currentThreadId that connect() sets, and bails on
+        // a socket that is not OPEN, so firing early would either go out on
+        // the old thread or vanish. A dropped query on stage is the exact
+        // failure this indirection exists to prevent.
+        const pending = chatStore.pendingAutoSend
+        if (pending) {
+          chatStore.clearPendingAutoSend()
+          sendOverWebSocket(pending)
+        }
         break
+      }
 
       case 'node_start':
         obsStore.startNode(data.node as NodeName, data.input_summary)
@@ -172,7 +185,7 @@ export function useWebSocket(): UseWebSocketReturn {
         // Other events are handled by addEvent above
         break
     }
-  }, [sendNextQueuedMessage])
+  }, [sendNextQueuedMessage, sendOverWebSocket])
 
   const connect = useCallback(
     (threadId: string) => {

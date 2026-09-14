@@ -196,11 +196,11 @@ export function MessageInput() {
             aria-invalid={!isConnected ? 'true' : 'false'}
             aria-describedby={!isConnected ? 'connection-status' : undefined}
             className={clsx(
-              'w-full resize-none rounded-lg border bg-gray-800 px-4 py-3 text-sm',
-              'text-gray-100 placeholder-gray-400',
+              'w-full resize-none rounded-lg border bg-[var(--color-stage-raised)] px-4 py-3 text-[1.375rem]',
+              'text-[var(--color-stage-ink)] placeholder-gray-400',
               'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent',
               'disabled:opacity-50 disabled:cursor-not-allowed',
-              isConnected ? 'border-gray-700' : 'border-yellow-600'
+              isConnected ? 'border-[var(--color-stage-border)]' : 'border-yellow-600'
             )}
             style={{
               minHeight: '44px',
@@ -224,10 +224,10 @@ export function MessageInput() {
           aria-disabled={!canSend}
           className={clsx(
             'flex-shrink-0 self-stretch w-12 flex items-center justify-center rounded-lg transition-colors',
-            'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900',
+            'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-white',
             canSend
               ? 'bg-blue-600 hover:bg-blue-700 text-white'
-              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+              : 'bg-[var(--color-stage-raised)] text-[var(--color-stage-ink-soft)] cursor-not-allowed'
           )}
           style={textareaHeight ? { height: `${textareaHeight}px` } : undefined}
         >
@@ -239,14 +239,14 @@ export function MessageInput() {
         <div
           id="connection-status"
           className={clsx(
-            'mt-2 text-xs font-medium',
+            'mt-2 text-[1.25rem] font-medium',
             connectionError ? 'text-red-400' : 'text-yellow-500'
           )}
         >
           {connectionError ? (
             <div className="flex items-center gap-2">
               <span>⚠️ {connectionError}</span>
-              <span className="text-xs text-gray-500">(Check that the server is running)</span>
+              <span className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">(Check that the server is running)</span>
             </div>
           ) : (
             <div className="flex items-center gap-2">

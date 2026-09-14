@@ -13,13 +13,13 @@ export function SummaryDetails({ event, status }: SummaryDetailsProps) {
     // Node is running or hasn't emitted its event yet
     if (status === 'running') {
       return (
-        <div className="space-y-2 text-sm text-gray-100">
+        <div className="space-y-2 text-[1.375rem] text-[var(--color-stage-ink)]">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
             <span className="text-blue-300">Generating conversation summary...</span>
           </div>
           {intentClassification && (
-            <p className="text-xs text-gray-400">
+            <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">
               Analyzing conversation history with the LLM to produce a concise summary of key facts, decisions, and open items.
             </p>
           )}
@@ -28,21 +28,21 @@ export function SummaryDetails({ event, status }: SummaryDetailsProps) {
     }
 
     return (
-      <div className="text-sm text-gray-400">
+      <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
         Waiting for summary data...
       </div>
     )
   }
 
   return (
-    <div className="space-y-2 text-sm text-gray-100">
+    <div className="space-y-2 text-[1.375rem] text-[var(--color-stage-ink)]">
       <div>
-        <span className="font-semibold text-gray-200">Messages summarized:</span>{' '}
+        <span className="font-semibold text-[var(--color-stage-ink)]">Messages summarized:</span>{' '}
         <span className="text-amber-300">{event.message_count}</span>
       </div>
       <div>
-        <span className="font-semibold text-gray-200">Summary:</span>
-        <p className="mt-1 text-xs text-gray-300 leading-snug whitespace-pre-wrap">
+        <span className="font-semibold text-[var(--color-stage-ink)]">Summary:</span>
+        <p className="mt-1 text-[1.25rem] text-[var(--color-stage-ink-muted)] leading-snug whitespace-pre-wrap">
           {event.summary_text ? event.summary_text : 'No summary was generated.'}
         </p>
       </div>
