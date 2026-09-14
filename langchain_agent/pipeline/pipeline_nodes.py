@@ -1740,9 +1740,24 @@ Return ONLY a JSON object (use null for missing attributes):
                     if "product_brand" in match_obj:
                         query = match_obj["product_brand"].get("query", "")
                         parts.append(f"brand: {query}")
-                    elif "product_color" in match_obj:
-                        query = match_obj["product_color"].get("query", "")
+                    elif "product_color_primary" in match_obj:
+                        # The filter built by _extract_attribute_filters uses
+                        # "product_color_primary" (see that method), not the
+                        # bare "product_color" this branch checked for prior
+                        # to 2026-09-14 -- that key never matched, so no
+                        # color filter's summary text ever rendered despite
+                        # the filter itself working correctly against
+                        # OpenSearch. Confirmed live: "show me blue running
+                        # shoes size 10" applied a real color:blue filter but
+                        # the "Filters Applied" line never showed it.
+                        query = match_obj["product_color_primary"].get("query", "")
                         parts.append(f"color: {query}")
+                    elif "product_material_primary" in match_obj:
+                        # Same class of bug: a resolved material filter (see
+                        # _extract_attribute_filters) had no branch here at
+                        # all, so it silently vanished from the summary too.
+                        query = match_obj["product_material_primary"].get("query", "")
+                        parts.append(f"material: {query}")
                 elif "multi_match" in f:
                     mm = f["multi_match"]
                     query_text = mm.get("query", "")
