@@ -101,18 +101,25 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 All backend commands run from `langchain_agent/`. Bare imports require `PYTHONPATH=.`.
 
 ```bash
-# Local services — FULL STARTUP with Langfuse (recommended for demos)
+# LOCAL DEVELOPMENT STARTUP — Full Stack (Langchain + Langfuse) ⭐ STANDARD
 cd /path/to/opensearch2026-agentic-search
-docker compose up -d                                           # from repo root: PostgreSQL + OpenSearch + Dashboards
-docker compose --profile observability up -d                  # add Langfuse stack (LOCAL DEV ONLY)
+docker compose --profile observability up -d                  # PostgreSQL, OpenSearch, Dashboards + Langfuse stack
+sleep 10                                                      # Wait for services to stabilize
 cd langchain_agent
 LANGFUSE_ENABLED=true make dev                                # Backend + Frontend + Langfuse tracing (http://localhost:3000)
-# OR restart backend after the fact:
-#   pkill -f 'uvicorn api.main'
-#   PYTHONPATH=. LANGFUSE_ENABLED=true .venv/bin/uvicorn api.main:app --reload --port 8000 &
 
-# Local services — minimal (no tracing)
-docker compose up -d && make dev                              # PostgreSQL + OpenSearch + API + Frontend
+# Access Points
+#   Web UI: http://localhost:8000
+#   Langfuse: http://localhost:3000 (login: dev@example.com / localdev123)
+#   OpenSearch Dashboards: http://localhost:5601
+#   Backend API only: http://localhost:8000/api/*
+
+# To restart just the backend (while containers stay up)
+#   pkill -f 'uvicorn api.main'
+#   cd langchain_agent && PYTHONPATH=. LANGFUSE_ENABLED=true .venv/bin/uvicorn api.main:app --reload --port 8000 &
+
+# Minimal startup (no Langfuse tracing — only if Langfuse is not needed)
+docker compose up -d && cd langchain_agent && make dev        # PostgreSQL + OpenSearch only
 
 # Cleanup
 docker compose down
