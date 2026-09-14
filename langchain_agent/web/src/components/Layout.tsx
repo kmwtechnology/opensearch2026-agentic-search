@@ -219,8 +219,14 @@ export function Layout() {
           <p className="truncate text-[length:var(--text-stage-body)] font-semibold text-[var(--color-stage-ink-muted)]">
             {nextTurn ? (
               <>
+                {/* "Next up" is load-bearing, not decoration. This line names
+                    the query the Next button will SEND, which during a running
+                    turn is one ahead of the answer on screen — it read as
+                    "Turn 5 of 5" while turn 4 was still streaming, so the
+                    header looked like it had skipped a turn. The pips show
+                    completed progress; this shows what is queued. */}
                 <span className="text-[var(--color-stage-ink-soft)]">
-                  Turn {currentTurn} of {demo.turns.length} —{' '}
+                  Next up · Turn {currentTurn} of {demo.turns.length} —{' '}
                 </span>
                 <span className="text-[var(--color-stage-ink)]">“{nextTurn.query}”</span>
                 {nextTurn.requiresNewConversation && (

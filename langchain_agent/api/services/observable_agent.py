@@ -61,6 +61,7 @@ from api.schemas.events import (
 ConfidenceProxyModel = ConfidenceProxy
 StageMetricsModel = StageMetrics
 from core.config import (
+    ANSWER_STREAM_TAG,
     ENABLE_RERANKING,
     INTERNAL_LLM_TAG,
     RERANKER_TYPE,
@@ -834,8 +835,14 @@ class ObservableAgentService:
                     # into the chat window as the reply — a user asking for
                     # wireless headphones got "Nothing in the query ... looks
                     # like a color or material term" (#103).
-                    is_internal = INTERNAL_LLM_TAG in (event.get("tags") or [])
-                    if current_node in streaming_nodes and not is_internal:
+                    tags = event.get("tags") or []
+                    is_internal = INTERNAL_LLM_TAG in tags
+                    # agent_node streams the visible answer itself through the
+                    # sync emit bridge. Streaming it here too doubles every
+                    # token into the same browser-side buffer, rendering the
+                    # reply interleaved with itself (#103).
+                    is_answer_stream = ANSWER_STREAM_TAG in tags
+                    if current_node in streaming_nodes and not is_internal and not is_answer_stream:
                         chunk = event_data.get("chunk")
                         if chunk:
                             # Handle different chunk formats

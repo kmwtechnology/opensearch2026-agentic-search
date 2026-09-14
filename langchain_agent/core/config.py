@@ -616,6 +616,19 @@ ENABLE_ENRICHMENT_TOOL = os.getenv("ENABLE_ENRICHMENT_TOOL", "false").lower() ==
 # a color or material term", which is the tool-offer prompt thinking out loud.
 INTERNAL_LLM_TAG = "internal_deliberation"
 
+# Tag applied to the ONE call that produces the user-visible answer, which
+# agent_node streams itself through the sync emit bridge
+# (_stream_llm_response_simple). observable_agent must not also stream that
+# call's on_chat_model_stream chunks: both paths fire for the same tokens, and
+# the browser appends them to one buffer, so the reply renders interleaved with
+# itself ("...offer various stylesThese wireless headphones offer various
+# styles including..."), every sentence doubled mid-clause (#103).
+#
+# The pipeline's own emit is the one that survives: agent_node runs on a worker
+# thread, where the LangChain callback cannot reach the astream_events iterator
+# reliably, which is why it was moved onto the bridge in the first place.
+ANSWER_STREAM_TAG = "answer_stream"
+
 # How enrich_attribute triggers the catalog reindex after writing a mapping:
 #   local  -- run scripts/lucille_ingest.sh as a subprocess (dev: Docker on this
 #             host, ~20s, synchronous).

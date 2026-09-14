@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from core.agent_state import CustomAgentState
 from core.config import (
+    ANSWER_STREAM_TAG,
     DEFAULT_ALPHA,
     ENABLE_RERANKING,
     INTERNAL_LLM_TAG,
@@ -2186,7 +2187,7 @@ Respond with JSON only. No other text."""
 
         try:
             # Stream from the LLM
-            for chunk in self.llm.stream(messages):
+            for chunk in self.llm.stream(messages, config={"tags": [ANSWER_STREAM_TAG]}):
                 chunk_count += 1
 
                 # Extract content from chunk (handle both string and Gemini's list format)
@@ -2221,7 +2222,7 @@ Respond with JSON only. No other text."""
 
         # If streaming produced no content, fall back to invoke
         if not accumulated_content:
-            invoke_result = self.llm.invoke(messages)
+            invoke_result = self.llm.invoke(messages, config={"tags": [ANSWER_STREAM_TAG]})
             if hasattr(invoke_result, "content"):
                 accumulated_content = invoke_result.content if invoke_result.content else ""
             else:
@@ -2592,8 +2593,21 @@ Original query: {query}
                 if doc.metadata.get("product_id")
             ]
             if prior_product_ids:
-                # Add product_id filter to constrain refinement to prior results
-                product_id_filter = {"terms": {"product_id": prior_product_ids}}
+                # Constrain to the prior turn's products by DOCUMENT ID, not by
+                # a product_id field in _source. The products Lucille pipeline
+                # sets idField: "product_id", so that value becomes OpenSearch's
+                # _id and is never written into _source — the mapping declares
+                # product_id as a keyword, but every document's value is null.
+                # `terms: {product_id: [...]}` therefore matched ZERO documents
+                # and every refinement turn came back empty ("I searched for
+                # noise-canceling wireless headphones but found no matching
+                # products"), while the log cheerfully reported it was
+                # constraining to 10 prior products (#103).
+                #
+                # The read path already relies on this: vector_store's
+                # _to_document uses hit["_id"] as the source of truth for
+                # product_id, which is why prior_product_ids holds real ASINs.
+                product_id_filter = {"ids": {"values": prior_product_ids}}
                 if attribute_filters is None:
                     attribute_filters = []
                 attribute_filters.append(product_id_filter)

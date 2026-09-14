@@ -37,7 +37,11 @@ export function MessageList() {
       retriever: 'Searching the catalog',
       reranker: 'Re-reading the best candidates',
       quality_gate: 'Checking the results are good enough',
-      agent: 'Writing the answer',
+      // Split deliberately — see getCurrentStepSummary. The agent node makes
+      // two model calls, and calling the first one "Writing the answer" is
+      // what made the wait look idle: nothing can appear yet, because those
+      // tokens are suppressed on purpose.
+      agent: streamingContent ? 'Writing the answer' : 'Checking whether a tool is needed',
       llm_judge: 'Checking the answer against the sources',
     }
     return names[node] || 'Working'
@@ -60,8 +64,20 @@ export function MessageList() {
     if (currentNode === 'query_evaluator' && intentClassification?.intent) {
       return `Read as "${intentClassification.intent}"`
     }
-    if (currentNode === 'agent' && queryEvaluation) {
-      return `Using the top matches at \u03b1 ${queryEvaluation.alpha.toFixed(2)}`
+    // The agent node runs TWO model calls. The first decides whether a tool is
+    // needed (the enrichment/correction path); its tokens are suppressed on
+    // purpose \u2014 INTERNAL_LLM_TAG \u2014 because they are the model reasoning out
+    // loud, not the reply. Only when that resolves does the visible answer
+    // begin. Labelling the whole span "Writing the answer" made a working
+    // system look hung for its entire first half, since by construction
+    // nothing could appear on screen yet.
+    if (currentNode === 'agent') {
+      if (!streamingContent) {
+        return 'Deciding if the catalog needs changing before answering'
+      }
+      if (queryEvaluation) {
+        return `Using the top matches at \u03b1 ${queryEvaluation.alpha.toFixed(2)}`
+      }
     }
 
     if (!currentNode || !steps.length) return null
