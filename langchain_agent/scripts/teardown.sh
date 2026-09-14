@@ -7,7 +7,7 @@ echo ""
 echo "This will PERMANENTLY remove:"
 echo "  ✗ PostgreSQL database (checkpoints, conversation history)"
 echo "  ✗ OpenSearch index (all product documents, search indexes)"
-echo "  ✗ Docker containers and volumes"
+echo "  ✗ Docker containers and volumes (including the Langfuse observability stack)"
 echo "  ✗ Python virtual environment (.venv)"
 echo "  ✗ Node modules (web/node_modules)"
 echo "  ✗ Log files and PID files"
@@ -57,10 +57,16 @@ pkill -f "vite" 2>/dev/null || true
 
 echo "✓ Services stopped"
 
-# 2. Remove Docker containers and volumes (PostgreSQL + OpenSearch)
-echo "Removing Docker containers and volumes (PostgreSQL + OpenSearch)..."
+# 2. Remove Docker containers and volumes (PostgreSQL + OpenSearch + Langfuse).
+# --profile observability must be passed here even though most sessions never
+# opt into it — `docker compose down` without the flag silently leaves the
+# Langfuse containers/volumes (minio, clickhouse, redis, postgres, web,
+# worker) running when they were started with --profile observability
+# up -d, since compose only tears down services in the profiles the down
+# command itself names.
+echo "Removing Docker containers and volumes (PostgreSQL + OpenSearch + Langfuse)..."
 cd "$PARENT_DIR" || exit 1
-docker compose down -v 2>/dev/null || true
+docker compose --profile observability down -v 2>/dev/null || true
 echo "✓ Docker containers and volumes removed"
 
 # 3. Remove Python virtual environment

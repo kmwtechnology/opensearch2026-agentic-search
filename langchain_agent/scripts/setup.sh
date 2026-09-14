@@ -343,8 +343,30 @@ echo "   Installing dependencies..."
 source "$VENV_PATH/bin/activate"
 pip install -q --upgrade pip setuptools wheel
 pip install -q -r "$PROJECT_DIR/requirements.txt"
-log "✓ Python dependencies installed"
-echo "✓ Python dependencies installed"
+pip install -q -r "$PROJECT_DIR/requirements-dev.txt"
+log "✓ Python dependencies installed (including dev tools: black, isort, flake8, pytest)"
+echo "✓ Python dependencies installed (including dev tools: black, isort, flake8, pytest)"
+
+# Install the pre-commit hook (scripts/pre-commit.sh) so black/isort/flake8
+# actually run locally instead of only being caught by CI. Only ever
+# installed here, on a fresh/updated venv — never overwrite a hook a
+# developer wrote themselves that happens to share the filename.
+GIT_HOOKS_DIR="$PARENT_DIR/.git/hooks"
+PRE_COMMIT_HOOK="$GIT_HOOKS_DIR/pre-commit"
+if [ -d "$GIT_HOOKS_DIR" ]; then
+    if [ ! -e "$PRE_COMMIT_HOOK" ] || grep -q "Mirrors ci-format + ci-lint steps in Makefile" "$PRE_COMMIT_HOOK" 2>/dev/null; then
+        cp "$SCRIPT_DIR/pre-commit.sh" "$PRE_COMMIT_HOOK"
+        chmod +x "$PRE_COMMIT_HOOK"
+        log "✓ Installed pre-commit hook (black + isort + flake8 on staged .py files)"
+        echo "✓ Installed pre-commit hook (black + isort + flake8 on staged .py files)"
+    else
+        log "   Existing .git/hooks/pre-commit is not ours — left untouched"
+        echo "   ⚠ .git/hooks/pre-commit already exists and isn't ours — left untouched"
+        echo "     (see scripts/pre-commit.sh if you want to install it manually)"
+    fi
+else
+    log "   No .git/hooks directory found — skipping pre-commit hook install"
+fi
 
 end_step
 echo ""

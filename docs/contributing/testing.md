@@ -188,7 +188,7 @@ make smoke-local          # Full: 90s (all 20 tests)
 git push    # No pre-push hook — CI is the only remaining gate
 ```
 
-There is no local pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only); run `make ci` / `make smoke-local-quick` manually before pushing. Nothing stops a push with broken formatting or failing smoke tests except CI.
+A `.git/hooks/pre-commit` hook (installed by `scripts/setup.sh`) catches black/isort/flake8 violations at commit time. There is still no local pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only); run `make ci` / `make smoke-local-quick` manually before pushing. Nothing stops a push with failing smoke tests except CI.
 
 ---
 

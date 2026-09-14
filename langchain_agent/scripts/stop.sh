@@ -57,10 +57,17 @@ echo "✓ Frontend stopped"
 
 echo ""
 
-# Stop Docker containers (PostgreSQL + OpenSearch)
-echo "Stopping Docker containers (PostgreSQL + OpenSearch)..."
+# Stop Docker containers (PostgreSQL + OpenSearch + Langfuse, if running).
+# `stop` (not `down`) so containers persist for a fast restart via start.sh —
+# `down` would destroy and recreate containers/network on every stop/start
+# cycle for no benefit, since volumes (the actual data) survive either way.
+# --profile observability must be passed even though most sessions never
+# opt into Langfuse: `docker compose stop` without it only touches base
+# services, silently leaving any running Langfuse containers up while this
+# script reports "Services stopped".
+echo "Stopping Docker containers (PostgreSQL + OpenSearch + Langfuse)..."
 cd "$PARENT_DIR" || exit 1
-docker compose down > /dev/null 2>&1
+docker compose --profile observability stop > /dev/null 2>&1
 echo "✓ Docker containers stopped"
 
 echo ""
