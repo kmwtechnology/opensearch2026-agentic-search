@@ -42,6 +42,7 @@ import { NarratorPanel } from './NarratorPanel'
 import { DemoSelector } from './DemoSelector'
 import { DEFAULT_DEMO_ID, getDemo } from '../demos/registry'
 import { useChatStore } from '../stores/chatStore'
+import { useObservabilityStore } from '../stores/observabilityStore'
 import { useAuthStore } from '../stores/authStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { apiPost } from '../utils/api'
@@ -60,6 +61,7 @@ export function Layout() {
   const startNewConversation = useChatStore((s) => s.startNewConversation)
   const logout = useAuthStore((s) => s.logout)
   const { sendMessage } = useWebSocket()
+  const clearObservability = useObservabilityStore((s) => s.clearState)
 
   const demo = getDemo(demoId)
 
@@ -94,6 +96,24 @@ export function Layout() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // Restores the data defect a demo consumes. Safe to call when nothing needs
+  // restoring — it is idempotent and takes about half a second.
+  const armCatalog = useCallback(async () => {
+    setIsResetting(true)
+    try {
+      const res = await apiPost('/api/admin/demo-reset')
+      if (!res.ok) {
+        // 404 means this deployment has the demo machinery switched off, which
+        // is a legitimate configuration rather than a failure.
+        console.warn('Demo reset unavailable:', res.status)
+      }
+    } catch (err) {
+      console.warn('Demo reset failed:', err)
+    } finally {
+      setIsResetting(false)
+    }
+  }, [])
+
   // Restart rewinds the SCRIPT and the DATA. Clearing only the chat was a
   // trap: the taxonomy demo rewrites the catalog when it succeeds, so a
   // "restarted" demo would replay against already-corrected data and quietly
@@ -102,21 +122,13 @@ export function Layout() {
   const handleRestart = useCallback(async () => {
     setTurnCursor(0)
     startNewConversation()
-    setIsResetting(true)
-    try {
-      const res = await apiPost('/api/admin/demo-reset')
-      if (!res.ok) {
-        // 404 means this deployment has the demo machinery switched off, which
-        // is a legitimate configuration rather than a failure. The chat has
-        // already been cleared either way.
-        console.warn('Demo reset unavailable:', res.status)
-      }
-    } catch (err) {
-      console.warn('Demo reset failed:', err)
-    } finally {
-      setIsResetting(false)
-    }
-  }, [startNewConversation])
+    // Clear the narration too. startNewConversation only empties the chat, so
+    // without this the right-hand panel keeps describing the run that just
+    // ended — a fresh turn 1 sitting beside the previous run's quality-gate
+    // verdict, which is exactly the kind of mismatch an audience notices.
+    clearObservability()
+    await armCatalog()
+  }, [startNewConversation, clearObservability, armCatalog])
 
   const handleSelectDemo = useCallback(
     (id: string) => {
@@ -125,8 +137,12 @@ export function Layout() {
       // Selecting a demo resets the thread — otherwise the previous demo's
       // history leaks into this one's intent classification.
       startNewConversation()
+      clearObservability()
+      if (getDemo(id).needsArming) {
+        void armCatalog()
+      }
     },
-    [startNewConversation]
+    [startNewConversation, clearObservability, armCatalog]
   )
 
   // Next runs the upcoming scripted turn, so the presenter can drive the whole
@@ -141,9 +157,19 @@ export function Layout() {
   // Closing over the `nextTurn` OBJECT instead makes the React Compiler bail
   // out of optimizing this component entirely ("existing memoization could not
   // be preserved"), which CI treats as an error.
-  const handleNext = useCallback(() => {
-    const turn = getDemo(demoId).turns[turnCursor]
+  const handleNext = useCallback(async () => {
+    const selected = getDemo(demoId)
+    const turn = selected.turns[turnCursor]
     if (!turn || isProcessing || pendingAutoSend || !isConnected || isResetting) return
+    // Re-arm immediately before the FIRST turn of a demo that consumes a data
+    // defect. Selecting the demo already arms it, but this is the gate that
+    // actually matters: it covers arriving via page load, via Restart, or
+    // simply running the demo twice in a row. A presenter should never have to
+    // remember a reset step, and should never get a turn 1 that silently has
+    // nothing to demonstrate.
+    if (turnCursor === 0 && selected.needsArming) {
+      await armCatalog()
+    }
     if (turn.requiresNewConversation) {
       // Same path the taxonomy re-run button uses: a fresh thread, with the
       // query fired once the NEW socket reports connection_established.
@@ -159,6 +185,7 @@ export function Layout() {
     pendingAutoSend,
     isConnected,
     isResetting,
+    armCatalog,
     startNewConversation,
     sendMessage,
   ])
@@ -215,7 +242,7 @@ export function Layout() {
           {/* Primary stage control: run the next scripted turn. Sized and
               colored to be the obvious thing to click repeatedly. */}
           <button
-            onClick={handleNext}
+            onClick={() => void handleNext()}
             // Also gated on the socket being open. sendMessage() bails silently
             // on a socket that is not OPEN, so for the second or so after a
             // page load a click on Next did nothing at all and gave no clue why

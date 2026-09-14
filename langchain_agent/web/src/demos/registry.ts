@@ -31,6 +31,18 @@ export interface Demo {
   title: string
   /** The one-line "what you're about to see", spoken before the first turn. */
   subtitle: string
+  /**
+   * This demo CONSUMES a data defect, so it has to be re-armed before it can
+   * run again. The taxonomy demo works because the catalog mis-tags tan as
+   * yellow; succeeding rewrites that mapping and re-tags the products, after
+   * which turn 1 shows nothing wrong — no mismatch to spot, nothing to
+   * dispute, nothing to correct. It does not error, it just stops
+   * demonstrating anything, which is the worst way to discover it on stage.
+   *
+   * The UI therefore re-arms automatically: on selecting the demo, and again
+   * before its first turn. Nobody should have to remember a reset step.
+   */
+  needsArming?: boolean
   turns: DemoTurn[]
 }
 
@@ -105,6 +117,7 @@ export const DEMOS: Demo[] = [
   {
     id: 'taxonomy-correction',
     title: 'Taxonomy Self-Correction',
+    needsArming: true,
     subtitle:
       'A shopper disputes a wrong product tag, and the catalog fixes itself — live, in about twenty seconds.',
     turns: [
