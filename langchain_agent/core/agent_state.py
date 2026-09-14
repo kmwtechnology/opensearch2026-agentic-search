@@ -122,6 +122,11 @@ class CustomAgentState(TypedDict, total=False):
     # Defaults: quality_gate_retried=False
     quality_gate_retried: bool
     quality_gate_reason: Optional[str]
+    # Structured status used by main.py's _quality_gate_route to decide
+    # whether to loop back to the retriever: "pass" | "retry". Every
+    # quality_gate_node return branch must set this explicitly -- an unset
+    # value lets a prior pass's "retry" leak forward through state.
+    quality_gate_status: Optional[str]
 
     # Per-message search optimization toggles (frontend-controlled).
     # Recognized keys: hybrid, fuzzy, synonyms, phonetic, phrase_boost,

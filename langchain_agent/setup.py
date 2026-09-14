@@ -278,6 +278,7 @@ def main():
             print(
                 "      Runs via Docker by default (no local Java/Maven needed). Embeddings are precomputed — no API calls needed."
             )
+            print("      Seeding color/material taxonomy (discovery pass, then a products pass)...")
             try:
                 import subprocess
 
@@ -285,6 +286,13 @@ def main():
                 lucille_args = [str(lucille_script)]
                 if args.reset_index:
                     lucille_args.append("--reset-index")
+                # setup.py only runs on first-time setup, so this is always a
+                # fresh cluster with an empty taxonomy store (see CLAUDE.md: "A
+                # fresh cluster's taxonomy store is empty and nothing seeds it
+                # implicitly"). Mandatory, not optional: without it, every
+                # color/material attribute_filter query returns zero results
+                # until someone happens to run `make seed-taxonomy` by hand.
+                lucille_args.append("--seed-taxonomy")
                 result = subprocess.run(
                     lucille_args,
                     cwd=str(Path(__file__).parent),
@@ -298,11 +306,15 @@ def main():
                 print(
                     "      java -version (21+) and mvn -version (3.8+) if LUCILLE_USE_DOCKER=false"
                 )
-                print("      Retry manually: bash langchain_agent/scripts/lucille_ingest.sh")
+                print(
+                    "      Retry manually: bash langchain_agent/scripts/lucille_ingest.sh --seed-taxonomy"
+                )
             except FileNotFoundError:
                 docs_ingest_failed = True
                 print("      ✗ lucille_ingest.sh not found — Lucille ingest skipped")
-                print("      Run manually: bash langchain_agent/scripts/lucille_ingest.sh")
+                print(
+                    "      Run manually: bash langchain_agent/scripts/lucille_ingest.sh --seed-taxonomy"
+                )
 
         # A failed ingest means zero (or stale) products are indexed — that's not
         # a state to report as "SETUP COMPLETE". Fail loud instead of continuing
@@ -313,7 +325,7 @@ def main():
             print("=" * 70)
             print("\nDatabase, OpenSearch index, and API key setup succeeded above.")
             print("Fix the ingest issue and retry:")
-            print("  bash langchain_agent/scripts/lucille_ingest.sh --reset-index")
+            print("  bash langchain_agent/scripts/lucille_ingest.sh --reset-index --seed-taxonomy")
             print("\n" + "=" * 70)
             return 1
 
