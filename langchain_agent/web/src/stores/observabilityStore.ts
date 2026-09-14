@@ -60,6 +60,9 @@ interface ObservabilityState {
   // turn. Kept at top level (not just buried in the agent step's events)
   // so the panel can surface it as a persistent, always-visible banner.
   enrichmentTriggered: EnrichmentTriggeredEvent | null
+  // Local Date.now() when the 'started' event arrived, so the live elapsed
+  // counter is immune to clock skew between the server and this browser.
+  enrichmentStartedAt: number | null
 
   // Historical snapshot — populated when user clicks a past conversation
   // and we hydrate from a checkpoint instead of a live stream.
@@ -104,6 +107,7 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
   rerankedDocuments: [],
   pipelineSummary: null,
   enrichmentTriggered: null,
+  enrichmentStartedAt: null,
   historicalSnapshot: null,
   searchStatus: 'idle',
   rerankerStatus: 'idle',
@@ -126,6 +130,7 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     searchCandidates: [],
     rerankedDocuments: [],
     enrichmentTriggered: null,
+    enrichmentStartedAt: null,
     historicalSnapshot: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',
@@ -193,9 +198,21 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
         set({ pipelineSummary: event as PipelineSummaryEvent })
         break
 
-      case 'enrichment_triggered':
-        set({ enrichmentTriggered: event as EnrichmentTriggeredEvent })
+      case 'enrichment_triggered': {
+        // Arrives more than once per enrichment now (#103): 'started' before
+        // the re-index, then one terminal event. Keep the latest as the
+        // current phase, and stamp when 'started' was RECEIVED so the elapsed
+        // counter runs off local time — the server clock may not agree with
+        // this browser's, and a counter that starts at -3s on stage is worse
+        // than no counter.
+        const enrichmentEvent = event as EnrichmentTriggeredEvent
+        set({
+          enrichmentTriggered: enrichmentEvent,
+          enrichmentStartedAt:
+            enrichmentEvent.status === 'started' ? Date.now() : get().enrichmentStartedAt,
+        })
         break
+      }
 
       case 'search_progress':
         set({ searchProgressMessage: (event as { message: string }).message })
@@ -319,6 +336,7 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     rerankedDocuments: [],
     pipelineSummary: null,
     enrichmentTriggered: null,
+    enrichmentStartedAt: null,
     historicalSnapshot: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',

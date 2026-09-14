@@ -15,6 +15,7 @@ config.REINDEX_TRIGGER:
 import logging
 import re
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -60,6 +61,10 @@ class ReindexTrigger(Protocol):
     def trigger(self) -> ReindexOutcome: ...
 
 
+# Guards the local Lucille subprocess. Module-level: one index, one ingest.
+_LOCAL_REINDEX_LOCK = threading.Lock()
+
+
 class LocalReindexTrigger:
     """Run the products ingest here via scripts/lucille_ingest.sh and wait for it."""
 
@@ -74,6 +79,26 @@ class LocalReindexTrigger:
         self.cwd = cwd
 
     def trigger(self) -> ReindexOutcome:
+        # Until #103 the agent node ran on the event loop thread, which meant
+        # a second concurrent request physically could not start a second
+        # re-index — the loop was blocked. Now that the node runs in a worker
+        # thread that accidental serialization is gone, so make it explicit: a
+        # stray second tab must not run Lucille over the index while another
+        # ingest is mid-write.
+        if not _LOCAL_REINDEX_LOCK.acquire(blocking=False):
+            logger.warning("Reindex (local): refused — another re-index is already running")
+            return ReindexOutcome(
+                triggered=False,
+                success=False,
+                mode=self.mode,
+                error="a re-index is already running",
+            )
+        try:
+            return self._run()
+        finally:
+            _LOCAL_REINDEX_LOCK.release()
+
+    def _run(self) -> ReindexOutcome:
         start = time.monotonic()
         try:
             result = subprocess.run(

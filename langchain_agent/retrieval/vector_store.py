@@ -305,6 +305,37 @@ class OpenSearchVectorStore:
         search_pipeline: Name of the search pipeline for hybrid search
     """
 
+    # Cache of the index's top-level field names, so callers can avoid building
+    # filters against fields that are not mapped (#103). Populated on first use.
+    _mapped_fields_cache: Optional[set] = None
+
+    def has_field(self, field: str) -> bool:
+        """
+        Is `field` actually mapped on the index?
+
+        A range or term filter against an UNMAPPED field is not an error in
+        OpenSearch — it simply matches nothing. So a filter built on an
+        assumption that turns out to be wrong silently empties the result set,
+        which is indistinguishable from "we have no such products". That is
+        exactly what happened with `price`: the ESCI product index has no price
+        field, so every "under $100" query returned zero results.
+
+        Fails CLOSED (returns False) if the mapping cannot be read, because the
+        safe direction is to skip the filter and return unfiltered results
+        rather than to silently return nothing.
+        """
+        if self._mapped_fields_cache is None:
+            try:
+                mapping = self.client.indices.get_mapping(index=self.index_name)
+                fields: set = set()
+                for index_body in mapping.values():
+                    fields.update(index_body.get("mappings", {}).get("properties", {}).keys())
+                self._mapped_fields_cache = fields
+            except Exception as e:  # pragma: no cover - network/permission dependent
+                logger.warning("Could not read index mapping to check fields: %s", e)
+                self._mapped_fields_cache = set()
+        return field in self._mapped_fields_cache
+
     def __init__(
         self,
         embeddings: GoogleGenerativeAIEmbeddings,

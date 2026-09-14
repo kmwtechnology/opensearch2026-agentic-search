@@ -115,7 +115,9 @@ describe('Message — citations', () => {
     render(
       <Message message={makeMessage({ role: 'assistant', content: 'Answer', citations })} />
     )
-    expect(screen.getByText('Sources (2)')).toBeInTheDocument()
+    // Citations render as a quiet footer now (#103): "2 sources" with a
+    // book icon and a disclosure chevron, not a "Sources (2)" link.
+    expect(screen.getByText('2 sources')).toBeInTheDocument()
   })
 
   it('does not show citation links before toggle is clicked', () => {
@@ -130,7 +132,7 @@ describe('Message — citations', () => {
     render(
       <Message message={makeMessage({ role: 'assistant', content: 'Answer', citations })} />
     )
-    await user.click(screen.getByText('Sources (2)'))
+    await user.click(screen.getByText('2 sources'))
     expect(screen.getByText('Example A')).toBeInTheDocument()
     expect(screen.getByText('Example B')).toBeInTheDocument()
   })
@@ -140,8 +142,8 @@ describe('Message — citations', () => {
     render(
       <Message message={makeMessage({ role: 'assistant', content: 'Answer', citations })} />
     )
-    await user.click(screen.getByText('Sources (2)'))
-    await user.click(screen.getByText('Sources (2)'))
+    await user.click(screen.getByText('2 sources'))
+    await user.click(screen.getByText('2 sources'))
     expect(screen.queryByText('Example A')).not.toBeInTheDocument()
   })
 

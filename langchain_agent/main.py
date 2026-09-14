@@ -32,6 +32,7 @@ import psycopg
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, StateGraph
+from langgraph.utils.runnable import RunnableCallable
 from psycopg_pool import AsyncConnectionPool, ConnectionPool
 
 # Import extracted modules
@@ -463,7 +464,17 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         workflow.add_node("retriever", self.retriever_node)
         workflow.add_node("reranker", self.reranker_node)
         workflow.add_node("quality_gate", self.quality_gate_node)
-        workflow.add_node("agent", self.agent_node)
+        # The agent node is registered with BOTH faces on purpose. cli.py drives
+        # the graph synchronously via app.invoke() and needs the sync func; the
+        # API path drives it via astream_events and must get the async one, or
+        # LangGraph runs the sync body on the event loop thread and a taxonomy
+        # re-index blocks every WebSocket frame for ~20s (#103). name="agent"
+        # is load-bearing: observable_agent branches on the traced node name,
+        # which a hand-built RunnableCallable does not inherit from the key.
+        workflow.add_node(
+            "agent",
+            RunnableCallable(self.agent_node, self.aagent_node, name="agent"),
+        )
         workflow.add_node("llm_judge", self.llm_judge_node)
 
         # Set entry point

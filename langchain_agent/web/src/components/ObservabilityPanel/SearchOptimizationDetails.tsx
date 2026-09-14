@@ -116,18 +116,18 @@ export function SearchOptimizationDetails() {
       : undefined
 
   return (
-    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+    <div className="bg-[var(--color-stage-raised)] border border-[var(--color-stage-border)] rounded-lg p-4">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between hover:bg-gray-700/30 p-2 -m-2 rounded transition-colors"
+        className="w-full flex items-center justify-between hover:bg-[var(--color-stage-raised)]/30 p-2 -m-2 rounded transition-colors"
       >
-        <h3 className="font-semibold text-gray-100 flex items-center gap-2">
+        <h3 className="font-semibold text-[var(--color-stage-ink)] flex items-center gap-2">
           <span>🔍 Search Optimizations</span>
         </h3>
         {isExpanded ? (
-          <ChevronUp className="w-4 h-4 text-gray-400" />
+          <ChevronUp className="w-4 h-4 text-[var(--color-stage-ink-soft)]" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-gray-400" />
+          <ChevronDown className="w-4 h-4 text-[var(--color-stage-ink-soft)]" />
         )}
       </button>
 
@@ -152,20 +152,20 @@ export function SearchOptimizationDetails() {
                     : undefined
                 }
                 className={clsx(
-                  'w-full text-left p-2 rounded text-sm transition-colors',
+                  'w-full text-left p-2 rounded text-[1.375rem] transition-colors',
                   'focus:outline-none focus:ring-2 focus:ring-blue-500/50',
                   blockedByLlm
-                    ? 'bg-gray-800/40 border border-gray-700/50 opacity-50 cursor-not-allowed'
+                    ? 'bg-[var(--color-stage-raised)]/40 border border-[var(--color-stage-border)] opacity-50 cursor-not-allowed'
                     : enabled
-                      ? 'bg-green-900/20 border border-green-800/50 hover:bg-green-900/30 cursor-pointer'
-                      : 'bg-gray-700/20 border border-gray-700/50 hover:bg-gray-700/30 cursor-pointer'
+                      ? 'bg-white border-2 border-[#065F46] border border-[#065F46] hover:bg-white border-2 border-[#065F46] cursor-pointer'
+                      : 'bg-[var(--color-stage-raised)]/20 border border-[var(--color-stage-border)] hover:bg-[var(--color-stage-raised)]/30 cursor-pointer'
                 )}
               >
                 <div className="flex items-start gap-2">
                   <span className="text-lg">{opt.icon}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-100">{opt.name}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{opt.description}</div>
+                    <div className="font-medium text-[var(--color-stage-ink)]">{opt.name}</div>
+                    <div className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-0.5">{opt.description}</div>
                   </div>
                   <Toggle enabled={enabled} />
                 </div>
@@ -174,11 +174,11 @@ export function SearchOptimizationDetails() {
           })}
 
           {lastApplied && (
-            <div className="mt-3 pt-3 border-t border-gray-700 text-xs">
-              <div className="text-gray-500 mb-1">Applied to last search:</div>
+            <div className="mt-3 pt-3 border-t border-[var(--color-stage-border)] text-[1.25rem]">
+              <div className="text-[var(--color-stage-ink-soft)] mb-1">Applied to last search:</div>
               <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono">
                 {Object.entries(lastApplied).map(([k, v]) => (
-                  <span key={k} className={v ? 'text-green-300' : 'text-red-300'}>
+                  <span key={k} className={v ? 'text-[#065F46]' : 'text-[#991B1B]'}>
                     {k}={v ? 'on' : 'off'}
                   </span>
                 ))}
@@ -186,7 +186,7 @@ export function SearchOptimizationDetails() {
             </div>
           )}
 
-          <div className="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-500">
+          <div className="mt-3 pt-3 border-t border-[var(--color-stage-border)] text-[1.25rem] text-[var(--color-stage-ink-soft)]">
             <div className="flex items-center justify-between mb-2 gap-3">
               <p className="flex-1">💡 <strong>Tip:</strong> Click any row to toggle it; the next query reflects your choices.</p>
               <button
@@ -197,16 +197,16 @@ export function SearchOptimizationDetails() {
                 className={clsx(
                   'shrink-0 inline-flex items-center gap-2 px-2 py-1 rounded-md border transition-colors',
                   allOn
-                    ? 'border-emerald-700/60 bg-emerald-900/30 text-emerald-200 hover:bg-emerald-900/50'
-                    : 'border-gray-700 bg-gray-800/50 text-gray-300 hover:bg-gray-800'
+                    ? 'border-[#065F46] bg-white border-2 border-[#065F46] text-[#065F46] hover:bg-white border-2 border-[#065F46]'
+                    : 'border-[var(--color-stage-border)] bg-[var(--color-stage-raised)] text-[var(--color-stage-ink-muted)] hover:bg-[var(--color-stage-raised)]'
                 )}
                 title={allOn ? 'Turn all optimizations OFF' : 'Turn all optimizations ON'}
               >
-                <span className="text-[11px] uppercase tracking-wide">All</span>
+                <span className="text-[1.25rem] uppercase tracking-wide">All</span>
                 <span
                   className={clsx(
                     'w-7 h-3.5 rounded-full transition-colors relative',
-                    allOn ? 'bg-emerald-500' : 'bg-gray-600'
+                    allOn ? 'bg-[#065F46]' : 'bg-gray-600'
                   )}
                 >
                   <span
@@ -216,7 +216,7 @@ export function SearchOptimizationDetails() {
                     )}
                   />
                 </span>
-                <span className="text-[11px] font-medium">{allOn ? 'On' : 'Off'}</span>
+                <span className="text-[1.25rem] font-medium">{allOn ? 'On' : 'Off'}</span>
               </button>
             </div>
             <p>Try searching for:</p>

@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -38,6 +38,7 @@ from core.config import (
     ENABLE_ENRICHMENT_TOOL,
     LOGIN_PASSWORD,
     RATE_LIMIT_ENABLED,
+    REQUIRE_LOGIN,
     SESSION_COOKIE_NAME,
     SESSION_COOKIE_SECURE,
     SESSION_MAX_AGE_SECONDS,
@@ -82,11 +83,11 @@ async def lifespan(app: FastAPI):
     decorators with a modern async context manager pattern.
     """
     # Startup
-    if not LOGIN_PASSWORD:
+    if REQUIRE_LOGIN and not LOGIN_PASSWORD:
         raise AuthConfigurationError(
-            "LOGIN_PASSWORD environment variable is not set. "
-            "The shared-password login gate is required. "
-            "Set LOGIN_PASSWORD in your .env file."
+            "REQUIRE_LOGIN is true but LOGIN_PASSWORD is not set. "
+            "Set LOGIN_PASSWORD in your .env file, or leave REQUIRE_LOGIN unset "
+            "to run without the login gate."
         )
     if not SESSION_SECRET or len(SESSION_SECRET) < 32:
         raise AuthConfigurationError(
@@ -120,7 +121,7 @@ async def lifespan(app: FastAPI):
         websocket=base_url.replace("http", "ws") + "/ws/chat",
         docs=f"{base_url}/swagger",
         auth_required=True,
-        login_gate=True,
+        login_gate=REQUIRE_LOGIN,
     )
 
     yield  # Application runs here
@@ -214,7 +215,7 @@ app = FastAPI(
         "langchain_agent/openapi.yaml) for the full hand-authored spec."
     ),
     version="1.0.0",
-    docs_url="/swagger",
+    docs_url=None,  # served by the custom route below (#103)
     redoc_url="/redoc",
     openapi_tags=tags_metadata,
     contact={
@@ -223,6 +224,75 @@ app = FastAPI(
     },
     lifespan=lifespan,
 )
+
+
+# ----------------------------------------------------------------------------
+# Swagger UI, sized for a projector (#103).
+#
+# FastAPI's built-in docs_url serves Swagger UI at its stock ~12-13px, which is
+# unreadable from the back of a room — and this page is part of the demo, shown
+# through an iframe on /swagger in the SPA. The SPA cannot restyle it (the
+# iframe is cross-origin), so the size has to come from the server.
+#
+# Everything here is presentation only: the same generated spec, larger type
+# and stronger contrast.
+# ----------------------------------------------------------------------------
+
+_SWAGGER_PROJECTOR_CSS = """
+<style>
+  body, .swagger-ui { font-size: 20px; }
+  .swagger-ui .info .title { font-size: 44px; }
+  .swagger-ui .info .base-url,
+  .swagger-ui .info p,
+  .swagger-ui .markdown p { font-size: 21px; line-height: 1.55; }
+  .swagger-ui .opblock-tag { font-size: 30px; padding: 14px 20px; }
+  .swagger-ui .opblock .opblock-summary-method { font-size: 20px; min-width: 100px; }
+  .swagger-ui .opblock .opblock-summary-path,
+  .swagger-ui .opblock .opblock-summary-path__deprecated { font-size: 22px; }
+  .swagger-ui .opblock .opblock-summary-description { font-size: 20px; }
+  .swagger-ui .opblock-description-wrapper p,
+  .swagger-ui .opblock-external-docs-wrapper p { font-size: 20px; }
+  .swagger-ui table thead tr th,
+  .swagger-ui table thead tr td { font-size: 19px; }
+  .swagger-ui .parameter__name { font-size: 21px; }
+  .swagger-ui .parameter__type { font-size: 18px; }
+  .swagger-ui .response-col_status { font-size: 21px; }
+  .swagger-ui .btn { font-size: 19px; }
+  .swagger-ui .model, .swagger-ui .model-title { font-size: 19px; }
+  .swagger-ui .highlight-code, .swagger-ui .microlight { font-size: 18px; line-height: 1.5; }
+  .swagger-ui .scheme-container { padding: 16px 0; }
+  /* Description markdown: the feature bullets and the per-tag blurbs render
+     through .renderedMarkdown and stay at the stock ~12px without this. */
+  .swagger-ui .renderedMarkdown p,
+  .swagger-ui .renderedMarkdown li,
+  .swagger-ui .markdown li { font-size: 20px; line-height: 1.6; }
+  .swagger-ui .opblock-tag small,
+  .swagger-ui .opblock-tag small p { font-size: 19px; line-height: 1.5; }
+  .swagger-ui .renderedMarkdown code,
+  .swagger-ui .markdown code { font-size: 18px; padding: 2px 6px; }
+  .swagger-ui .info .description code { font-size: 18px; }
+  /* Stock Swagger caps the column at ~1460px and centres it; on a 1920 screen
+     that wastes half the width on margins. */
+  .swagger-ui .wrapper { max-width: 1700px; padding: 0 24px; }
+  /* Stock Swagger greys sit around 4:1; darken for projection. */
+  .swagger-ui, .swagger-ui .info li, .swagger-ui .info p { color: #14130f; }
+  .swagger-ui .opblock .opblock-summary-description,
+  .swagger-ui .parameter__type { color: #3d3a33; }
+</style>
+"""
+
+
+@app.get("/swagger", include_in_schema=False)
+async def projector_swagger_ui() -> HTMLResponse:
+    """Swagger UI with projector-sized type. Same spec, bigger text."""
+    from fastapi.openapi.docs import get_swagger_ui_html
+
+    html = get_swagger_ui_html(
+        openapi_url=app.openapi_url or "/openapi.json",
+        title=f"{app.title} — API",
+    ).body.decode()
+    return HTMLResponse(html.replace("</head>", f"{_SWAGGER_PROJECTOR_CSS}</head>"))
+
 
 # Add rate limiter to app state
 app.state.limiter = limiter

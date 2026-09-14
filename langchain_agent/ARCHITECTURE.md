@@ -761,7 +761,7 @@ Both shapes share one tool and one write path; they differ only in
    exists to fix.
 
 **Correction mechanism** (used when a shopper disputes an existing tag,
-the live demo's centerpiece — see `DEMO.md` Part 4.5):
+the live demo's centerpiece — see `DEMO.md`, "Arc 2 — The developer"):
 1. `agent_node` has a separate detection branch, checked before the
    gap-detection branch above and independent of this turn's own
    retrieval results: `_detect_correction_signal` is a cheap keyword
