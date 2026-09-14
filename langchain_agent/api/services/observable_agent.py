@@ -62,6 +62,7 @@ ConfidenceProxyModel = ConfidenceProxy
 StageMetricsModel = StageMetrics
 from core.config import (
     ENABLE_RERANKING,
+    INTERNAL_LLM_TAG,
     RERANKER_TYPE,
     RETRIEVER_FETCH_K,
 )
@@ -817,7 +818,15 @@ class ObservableAgentService:
                     streaming_nodes = {
                         "agent",
                     }
-                    if current_node in streaming_nodes:
+                    # agent_node makes model calls that are deliberation rather
+                    # than the answer (the trigger_enrichment tool offer, the
+                    # enrichment value judge). They run while current_node is
+                    # "agent", so without this check their reasoning is streamed
+                    # into the chat window as the reply — a user asking for
+                    # wireless headphones got "Nothing in the query ... looks
+                    # like a color or material term" (#103).
+                    is_internal = INTERNAL_LLM_TAG in (event.get("tags") or [])
+                    if current_node in streaming_nodes and not is_internal:
                         chunk = event_data.get("chunk")
                         if chunk:
                             # Handle different chunk formats

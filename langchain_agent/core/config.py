@@ -594,6 +594,15 @@ CHECKPOINT_COMPACTION_DAYS = 7
 # conference demo environment.
 ENABLE_ENRICHMENT_TOOL = os.getenv("ENABLE_ENRICHMENT_TOOL", "false").lower() == "true"
 
+# Tag applied to LLM calls made INSIDE agent_node that are deliberation, not
+# the answer — the trigger_enrichment tool-offer call and the enrichment value
+# judge. observable_agent streams every on_chat_model_stream it sees while the
+# agent node is current, so without this the model's internal reasoning is
+# shown to the user as if it were the reply. Observed live: asking for
+# wireless headphones produced the answer "Nothing in the query ... looks like
+# a color or material term", which is the tool-offer prompt thinking out loud.
+INTERNAL_LLM_TAG = "internal_deliberation"
+
 # How enrich_attribute triggers the catalog reindex after writing a mapping:
 #   local  -- run scripts/lucille_ingest.sh as a subprocess (dev: Docker on this
 #             host, ~20s, synchronous).

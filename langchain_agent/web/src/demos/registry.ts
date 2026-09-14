@@ -42,8 +42,9 @@ export const DEMOS: Demo[] = [
       'The same search box handles six different kinds of question — and tells you which one it thinks it got.',
     turns: [
       {
-        query: 'Find me wireless headphones under $100',
-        watchFor: 'Intent "search", alpha assigned by the LLM around 0.65–0.75.',
+        query: 'Find wireless headphones',
+        watchFor: 'Intent "search" — alpha assigned by the LLM, not a fast path.',
+        note: 'Deliberately no price. "under $100" makes the extractor emit a price filter that matches nothing, and the turn ends in a no-results answer.',
       },
       {
         query: 'Compare Sony WH-1000XM5 vs Bose QuietComfort 45',

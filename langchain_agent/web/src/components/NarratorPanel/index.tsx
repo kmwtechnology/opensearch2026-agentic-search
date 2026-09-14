@@ -135,7 +135,7 @@ export function NarratorPanel({ onRerun, rerunPending, onShowDetails }: Props) {
           onClick={onShowDetails}
           className="font-semibold text-[var(--color-stage-ink-soft)] text-[length:var(--text-stage-label)] focus:outline-none focus:ring-2 focus:ring-[#1E40AF] rounded"
         >
-          Press <kbd className="rounded bg-[var(--color-stage-raised)] px-2 py-0.5 font-mono text-[1.25rem] text-[var(--color-stage-ink)]">D</kbd> for full detail
+          Press <kbd className="rounded bg-[var(--color-stage-raised)] px-2 py-0.5 font-mono text-[1.25rem] text-[var(--color-stage-ink)]">F2</kbd> for full detail
         </button>
       </footer>
     </section>

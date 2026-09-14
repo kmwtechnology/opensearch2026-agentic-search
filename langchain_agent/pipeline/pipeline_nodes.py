@@ -20,6 +20,7 @@ from core.agent_state import CustomAgentState
 from core.config import (
     DEFAULT_ALPHA,
     ENABLE_RERANKING,
+    INTERNAL_LLM_TAG,
     RERANKER_FETCH_K,
     RERANKER_MODEL,
     RERANKER_TOP_K,
@@ -1118,7 +1119,12 @@ the query looks like a color/material gap, don't call the tool; just say so brie
 
         llm_with_tools = self.llm.bind_tools([trigger_enrichment])
         tool_messages = [HumanMessage(content=gap_prompt)]
-        response = llm_with_tools.invoke(tool_messages)
+        # Tagged as deliberation so observable_agent does not stream it to the
+        # chat window. This call decides WHETHER to offer a taxonomy fix; when
+        # it declines it explains itself in prose ("nothing here looks like a
+        # color or material term"), and that prose was reaching users as the
+        # answer to whatever they actually asked.
+        response = llm_with_tools.invoke(tool_messages, config={"tags": [INTERNAL_LLM_TAG]})
 
         tool_calls = getattr(response, "tool_calls", None)
         if not tool_calls:

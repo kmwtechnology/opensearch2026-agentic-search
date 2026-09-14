@@ -53,14 +53,19 @@ export function Layout() {
   const turnsTaken = messages.filter((m) => m.role === 'user').length
   const currentTurn = Math.min(turnsTaken + (turnsTaken < demo.turns.length ? 1 : 0), demo.turns.length)
 
-  // D toggles the detail view. Deliberately a bare key, not a chord: it is
-  // pressed mid-sentence in front of an audience.
+  // F2 toggles the detail view.
+  //
+  // This was 'D', which was a mistake: a printable character cannot be
+  // suppressed for a presenter whose cursor is sitting in the chat box. The
+  // handler correctly declined to fire, but the letter still landed in the
+  // input — a rehearsal produced the query "dshow me tan boots". F2 is
+  // non-printable, so it works from anywhere including a focused input, and
+  // needs no focus guard at all.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'd' && e.key !== 'D') return
+      if (e.key !== 'F2') return
       if (e.metaKey || e.ctrlKey || e.altKey) return
-      const el = document.activeElement
-      if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return
+      e.preventDefault()
       setRightPane((p) => (p === 'narrator' ? 'details' : 'narrator'))
     }
     window.addEventListener('keydown', onKey)
@@ -147,7 +152,7 @@ export function Layout() {
             )}
             {rightPane === 'details' ? 'Narration' : 'Details'}
             <kbd className="rounded bg-[var(--color-stage-raised)] px-2 py-0.5 font-mono text-[1.25rem] text-[var(--color-stage-ink-soft)]">
-              D
+              F2
             </kbd>
           </button>
           {/* These three lived only in the sidebar that this layout removes. */}

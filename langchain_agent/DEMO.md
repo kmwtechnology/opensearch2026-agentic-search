@@ -49,9 +49,19 @@ Open browser to **<http://localhost:5173>** and keep DevTools hidden (press `F12
 
 ### Query 1: Search Intent
 
-**Send**: `Find me wireless headphones under $100`
+**Send**: `Find wireless headphones`
 
-**Expected**: Intent = `search`, α = LLM-assigned (likely 0.65–0.75, semantic-heavy)
+**Expected**: Intent = `search`, α = LLM-assigned. Observed 0.35 (balanced) on a
+2026-09-14 rehearsal, reranking to 0.99 — comfortably over the bar. Read the α
+the panel shows rather than promising a number in advance; it is chosen per
+query by an LLM and genuinely moves between runs.
+
+> **Do not add a price.** This query used to read `Find me wireless headphones
+> under $100`, which behaves nothing like the description above: it classifies
+> as `attribute_filter` at α 0.25 and the extractor emits `price: under $100.0`
+> and `feature: wireless` filters that match no product in the ESCI sample, so
+> the turn ends in a no-results answer — as the opening query of the talk.
+> `Find wireless headphones` is the form the e2e smoke test exercises.
 
 **Observe**:
 

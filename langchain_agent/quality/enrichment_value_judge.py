@@ -112,7 +112,13 @@ class EnrichmentValueJudge:
             {"role": "user", "content": prompt},
         ]
         started = time.time()
-        result: EnrichmentValueAssessment = self.structured_llm.invoke(messages)
+        # Also deliberation, also inside agent_node — same streaming leak as
+        # the tool-offer call (see core.config.INTERNAL_LLM_TAG).
+        from core.config import INTERNAL_LLM_TAG
+
+        result: EnrichmentValueAssessment = self.structured_llm.invoke(
+            messages, config={"tags": [INTERNAL_LLM_TAG]}
+        )
         elapsed = time.time() - started
         logger.info(
             "EnrichmentValueJudge: is_meaningful=%s in %.2fs (%s '%s' -> '%s')",
