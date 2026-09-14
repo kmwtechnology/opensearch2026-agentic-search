@@ -194,7 +194,7 @@ PYTHONPATH=. pytest tests/integration/ -v
 | Aspect | Integration | E2E |
 |--------|-------------|-----|
 | **Target** | Local backend `:8000` | Deployed Cloud Run |
-| **Auth** | Session cookie (UI login) or `X-API-Key` | Session cookie or `X-Admin-Token` |
+| **Auth** | Session cookie (UI login) or `X-Admin-Token` | Session cookie or `X-Admin-Token` |
 | **Markers** | `integration` | `e2e` |
 | **When** | Locally before push; live on every PR/push | Post-deploy validation + regression |
 

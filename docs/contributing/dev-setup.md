@@ -9,7 +9,7 @@ Get the project running on your machine for development.
 ## What You're Setting Up
 
 - **Backend**: FastAPI server on `localhost:8000` (Python 3.14+, .venv)
-- **Frontend**: React + Vite dev server on `localhost:5173` (Node.js 24+)
+- **Frontend**: React + Vite dev server on `localhost:5173` (Node.js 22+)
 - **Services**: PostgreSQL (checkpoints) + OpenSearch (search index) in Docker
 - **Data**: 10K ESCI product samples with precomputed embeddings, ingested via Lucille ETL
 
@@ -25,9 +25,9 @@ Verify each tool is installed. The **Why** column explains what it's used for.
 | Tool | Min Version | Why | Verify |
 |------|-------------|-----|--------|
 | **Docker Desktop** | 4.x | Runs PostgreSQL + OpenSearch containers locally | `docker --version` |
-| **Python** | 3.13+ | Backend venv (setup.sh creates it) | `python3 --version` |
-| **Node.js** | 24+ | React frontend and Vite dev server | `node --version` |
-| **Java** | 17+ | Lucille ETL for product ingestion | `java -version` |
+| **Python** | 3.14+ | Backend venv (setup.sh creates it) | `python3 --version` |
+| **Node.js** | 22+ | React frontend and Vite dev server | `node --version` |
+| **Java** | 21+ | Lucille ETL for product ingestion | `java -version` |
 | **Maven** | 3.8+ | Build tool for Lucille ETL | `mvn --version` |
 | **Google AI Key** | — | LLM (Gemini) and embeddings | Get from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 
@@ -48,17 +48,17 @@ brew install maven
 sudo apt-get install docker.io
 sudo usermod -aG docker $USER
 
-python3 --version  # Should be 3.13+ (may need deadsnakes PPA)
-sudo apt-get install npm nodejs  # Node 24+ may require NodeSource repo
+python3 --version  # Should be 3.14+ (may need deadsnakes PPA)
+sudo apt-get install npm nodejs  # Node 22+ may require NodeSource repo
 
-sudo apt-get install openjdk-17-jdk
+sudo apt-get install openjdk-21-jdk
 sudo apt-get install maven
 ```
 
 **Windows:**
 - Docker Desktop: https://www.docker.com/products/docker-desktop
 - Python 3.14+: https://www.python.org/downloads/
-- Node.js 24+: https://nodejs.org/ (use LTS)
+- Node.js 22+: https://nodejs.org/ (use LTS)
 - Java 21+: https://www.oracle.com/java/technologies/downloads/
 - Maven: https://maven.apache.org/download.cgi
 

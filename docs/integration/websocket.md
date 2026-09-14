@@ -12,15 +12,15 @@ Real-time message streaming for responsive chat UIs.
 
 **Development:**
 ```
-ws://localhost:8000/ws/{thread_id}
+ws://localhost:8000/ws/chat?thread_id={thread_id}
 ```
 
 **Production:**
 ```
-wss://agentic-hybrid-search-XXXX.run.app/ws/{thread_id}
+wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id={thread_id}
 ```
 
-Replace `{thread_id}` with a conversation ID (e.g., `conv_abc123def456`).
+The path is the fixed route `/ws/chat`; `thread_id` is an **optional** query parameter. If omitted, the server auto-generates one (`conversation_<8 hex chars>`) and reports it in the `connection_established` event.
 
 ### Authentication
 
@@ -29,7 +29,7 @@ The session cookie **must** be present in the WebSocket handshake. Browsers send
 **JavaScript (browser):**
 ```javascript
 const ws = new WebSocket(
-  `wss://agentic-hybrid-search-XXXX.run.app/ws/${threadId}`,
+  `wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id=${threadId}`,
   [],
   { credentials: 'include' }  // Include cookies
 );
@@ -45,7 +45,7 @@ async def connect():
         'Cookie': 'ahs_session=...'  # From login response
     }
     async with websockets.connect(
-        f'wss://agentic-hybrid-search-XXXX.run.app/ws/{thread_id}',
+        f'wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id={thread_id}',
         additional_headers=headers
     ) as ws:
         # Connected
@@ -194,8 +194,8 @@ export function ChatComponent() {
   const ws = React.useRef(null);
 
   useEffect(() => {
-    const threadId = 'conv_abc123def456'; // From login
-    const url = `wss://agentic-hybrid-search-XXXX.run.app/ws/${threadId}`;
+    const threadId = 'conv_abc123def456'; // Or omit to let the server generate one
+    const url = `wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id=${threadId}`;
 
     ws.current = new WebSocket(url);
     ws.current.onopen = () => setIsConnected(true);
@@ -271,7 +271,7 @@ import json
 import websockets
 
 async def chat_session(thread_id: str, cookie: str):
-    url = f"wss://agentic-hybrid-search-XXXX.run.app/ws/{thread_id}"
+    url = f"wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id={thread_id}"
     headers = {"Cookie": f"ahs_session={cookie}"}
 
     async with websockets.connect(url, additional_headers=headers) as ws:

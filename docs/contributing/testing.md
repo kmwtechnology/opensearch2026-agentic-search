@@ -22,7 +22,7 @@ Test pyramid and local testing commands.
  /   Tests       \   ~2 min, live PostgreSQL + OpenSearch
 /________________\
 /                  \
- Unit Tests         ~3 sec, 716 tests, mocked deps
+ Unit Tests         ~3 sec, 919 tests, mocked deps
 /____________________\
 ```
 
@@ -43,7 +43,7 @@ cd langchain_agent
 PYTHONPATH=. pytest tests/unit/
 ```
 
-Expected: ~716 tests in ~3 seconds, 0 failures.
+Expected: ~919 tests in ~3 seconds, 0 failures.
 
 ### Markers
 
@@ -85,7 +85,7 @@ PYTHONPATH=. pytest tests/integration/ -m 'not slow'
 
 Expected: ~30–120 seconds, 0 failures.
 
-**Critical:** Don't skip integration tests for middleware changes. The pre-push hook runs `make smoke-local` which catches these, but local verification is faster.
+**Critical:** Don't skip integration tests for middleware changes. There is no pre-push hook that runs `make smoke-local` — run it manually; local verification is faster than finding out in CI.
 
 ---
 
@@ -121,7 +121,7 @@ PYTHONPATH=. pytest tests/e2e/ -v -m "e2e and slow" --timeout=120
 
 ## Smoke Tests (Pre-Push)
 
-**When:** Automatically before pushing (pre-push hook). Or manually before a pull request.
+**When:** Manually before pushing — there is no pre-push hook in this repo, so run these by hand before opening a pull request.
 
 **What:** 20 regression tests covering the full pipeline (auth, search, refinement, citations, latency).
 
@@ -185,10 +185,10 @@ make smoke-local-quick    # Fast: 13s (search intent only)
 make smoke-local          # Full: 90s (all 20 tests)
 
 # 4. Git
-git push    # Pre-push hook runs `make ci` again
+git push    # No pre-push hook — CI is the only remaining gate
 ```
 
-If `make smoke-local-quick` fails, the pre-push hook will also fail. Fix it before pushing.
+There is no local pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only); run `make ci` / `make smoke-local-quick` manually before pushing. Nothing stops a push with broken formatting or failing smoke tests except CI.
 
 ---
 
@@ -224,7 +224,7 @@ If you change database credentials in `.env`, update the test conftest too.
 - `CLOUD_RUN_URL` env var set
 - `LOGIN_PASSWORD` available (retrieve from Secret Manager)
 
-**Important:** E2E tests in `tests/e2e/` are only executed in CI against Cloud Run (GHA workflow `test.yml`). Local execution is optional; the pre-push hook doesn't trigger them.
+**Important:** E2E tests in `tests/e2e/` are not run automatically by any GitHub Actions workflow (only `build-deploy.yml`, `reindex.yml`, and `smoke-tests.yml` exist) and there is no pre-push hook to trigger them locally either — run them manually against a local backend or Cloud Run as documented above.
 
 ---
 
@@ -306,19 +306,23 @@ PYTHONPATH=. pytest tests/ -m e2e
 ### Example Unit Test
 ```python
 import pytest
-from intent_classifier import classify_intent
+from pipeline.pipeline_nodes import PipelineNodesMixin
 
 @pytest.mark.unit
-def test_intent_classifier_search():
-    result = classify_intent("Find wireless headphones")
+def test_intent_classifier_search(pipeline_nodes_instance):
+    state = {"messages": [("user", "Find wireless headphones")]}
+    result = pipeline_nodes_instance.intent_classifier_node(state)
     assert result["intent"] == "search"
     assert result["confidence"] > 0.8
 
 @pytest.mark.unit
-def test_intent_classifier_comparison():
-    result = classify_intent("Compare Bose and Sony")
+def test_intent_classifier_comparison(pipeline_nodes_instance):
+    state = {"messages": [("user", "Compare Bose and Sony")]}
+    result = pipeline_nodes_instance.intent_classifier_node(state)
     assert result["intent"] == "comparison"
 ```
+
+`intent_classifier_node` is a method on `PipelineNodesMixin` (`pipeline/pipeline_nodes.py`), not a standalone function — real unit tests mock the LLM call and instantiate the mixin (or the full agent) rather than importing a free function. See `tests/unit/*/test_intent_classifier.py` for the actual test patterns used in this repo.
 
 ---
 

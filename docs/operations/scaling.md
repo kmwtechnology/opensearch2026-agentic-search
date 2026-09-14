@@ -13,22 +13,22 @@ Current production settings:
 | Setting | Value | Why |
 |---------|-------|-----|
 | CPU | 4 cores | LLM inference (Gemini) is CPU-bound; 1 core too slow |
-| Memory | 8 GB | ~500 MB base + ~4 GB for model caches + ~3 GB working memory |
-| Concurrency | 1 | Stateful WebSocket sessions; 1 request at a time per instance |
-| Min instances | 1 | Always-on; ~$40/month |
-| Max instances | 10 | Auto-scale up to 10 if demand spikes |
+| Memory | 2 GB | Sized for the FastAPI backend + cross-encoder reranker; no large in-memory caches |
+| Concurrency | 8 | Up to 8 in-flight requests per instance |
+| Min instances | 0 | Scales to zero when idle; no baseline cost |
+| Max instances | 4 | Caps spend/spikes; raise if sustained load requires it |
 | Timeout | 3600s | 1 hour max request time (search latency is 16-25s, leaves headroom) |
 
 ---
 
 ## Concurrency Model
 
-**Why concurrency=1?** Each request holds a stateful WebSocket session. Concurrent requests on the same instance would share the same session context, leading to message interleaving and race conditions. **Do not increase to >1 without refactoring the session/context model.**
+**Why concurrency=8?** Each instance can serve up to 8 concurrent requests/WebSocket sessions. This isn't unlimited because the local cross-encoder reranker and per-request LLM calls are CPU/memory-bound; 8 balances instance utilization against resource contention on a 4-CPU/2GB instance.
 
 **Cost implication:**
+- With min-instances=0, no instances run (and no cost is incurred) while idle
 - 1 request takes ~20s
-- Concurrency=1 means Cloud Run must spawn a new instance for every concurrent user
-- 1000 concurrent users = ~50 instances (1000 users × 20s latency / 60s per instance-minute / ~20 concurrent users per instance)
+- 1000 concurrent users at concurrency=8 needs roughly 1000/8 ≈ 125 concurrently-active instances at peak (bounded by max-instances=4 unless raised)
 
 ---
 
@@ -36,23 +36,23 @@ Current production settings:
 
 ### Light Load (<10 users)
 
-- Min instances = 1
-- Auto-scale kicks in if requests queue
-- Cost: ~$40/month
+- Min instances = 0 (scales to zero between bursts)
+- Max instances = 4 (default)
+- Cost: near $0 when idle; pay only for active request time
 
 ### Medium Load (10-100 users)
 
-- Min instances = 2–3 (avoid cold starts)
-- Max instances = 10
-- Expected: 5–10 instances running at peak
-- Cost: ~$200–400/month
+- Min instances = 1–2 (avoid cold starts if latency-sensitive)
+- Max instances = 4–10 (raise from the current default if sustained)
+- Expected: several instances running at peak given concurrency=8
+- Cost: ~$50–150/month depending on min-instances
 
 ### Heavy Load (>100 users)
 
-- Min instances = 5–10
-- Max instances = 20+
+- Min instances = 2–5
+- Max instances = 15+ (raise from the current default of 4)
 - Consider provisioning OpenSearch with higher node count (retrieval becomes bottleneck)
-- Cost: >$1000/month
+- Cost: >$300/month
 
 ---
 
@@ -63,16 +63,15 @@ Current production settings:
 - Memory: $0.0000050 per GB-second
 - Requests: $0.40 per 1M requests
 
-**Cost per instance-hour** (4 CPU, 8 GB):
+**Cost per instance-hour** (4 CPU, 2 GB):
 - vCPU: 4 × 3600s × $0.0000417 = ~$0.60
-- Memory: 8 × 3600s × $0.0000050 = ~$0.14
-- Total: ~$0.74/hour = ~$18/day = ~$540/month (running continuously)
+- Memory: 2 × 3600s × $0.0000050 = ~$0.036
+- Total: ~$0.64/hour = ~$15/day = ~$460/month (running continuously)
 
-**With 1 min instance running + 5 instances during peak (8 hours):**
-- Min instance: 1 × 24h = $17/month
-- Peak instances: 5 × 8h × 20 working days = 800 instance-hours = ~$590/month
+**With min-instances=0 (current production setting), there is no baseline cost** — instances only run (and bill) while serving requests. For a workload with, say, 4 instances active 8 hours/day on peak days:
+- Peak instances: 4 × 8h × 20 working days = 640 instance-hours = ~$410/month
 - Requests (assume 1M/month): $0.40
-- **Total: ~$600/month**
+- **Total: ~$410/month at that usage level; ~$0/month at true idle**
 
 ---
 
@@ -148,8 +147,8 @@ If you over-provisioned and need to scale back:
 
 ```bash
 gcloud run services update agentic-hybrid-search \
-  --min-instances=1 \
-  --max-instances=5 \
+  --min-instances=0 \
+  --max-instances=4 \
   --region=us-central1 \
   --project=gen-lang-client-0250737934
 ```

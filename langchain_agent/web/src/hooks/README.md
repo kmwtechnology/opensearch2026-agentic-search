@@ -9,7 +9,7 @@ Custom React hooks for complex UI logic: WebSocket management, recent searches, 
 | Hook | Purpose | Return Type |
 |------|---------|-------------|
 | **useWebSocket()** | WebSocket lifecycle, message sending, event dispatch | `UseWebSocketReturn` |
-| **useRecentSearches()** | Recent query history from localStorage | `{ recent: string[], add: (q: string) => void }` |
+| **useRecentSearches()** | Recent query history from localStorage | `{ recent: string[], add: (q: string) => void, clear: () => void }` |
 
 ## useWebSocket
 
@@ -59,13 +59,14 @@ Reads/writes recent queries to browser localStorage.
 function useRecentSearches(): {
   recent: string[]
   add: (query: string) => void
+  clear: () => void
 }
 ```
 
 **Usage:**
 
 ```typescript
-const { recent, add } = useRecentSearches()
+const { recent, add, clear } = useRecentSearches()
 
 const handleSendMessage = (query: string) => {
   add(query)  // Persist to localStorage
@@ -76,10 +77,10 @@ const handleSendMessage = (query: string) => {
 ```
 
 **Behavior:**
-- Max 10 recent queries
-- Duplicates deduplicated (moved to front)
-- Persisted to key `ahs_recent_searches` in localStorage
-- Survives page reload but cleared on logout
+- Max 8 recent queries
+- Duplicates deduplicated case-insensitively (moved to front)
+- Persisted to key `agentic-search-recent` in localStorage
+- Survives page reload; `clear()` empties it explicitly (no automatic clear on logout)
 
 ## Files
 
