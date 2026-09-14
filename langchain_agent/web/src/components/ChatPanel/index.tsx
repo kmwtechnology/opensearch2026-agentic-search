@@ -9,26 +9,18 @@ import { MessageInput } from './MessageInput'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useChatStore } from '../../stores/chatStore'
 import { useObservabilityStore } from '../../stores/observabilityStore'
-import { StopCircle, RotateCcw } from 'lucide-react'
+import { StopCircle } from 'lucide-react'
 import clsx from 'clsx'
 
 export function ChatPanel() {
-  const { isProcessing, startNewConversation, clearMessages } = useChatStore()
-  const { isExecuting, clearState } = useObservabilityStore()
+  const { isProcessing } = useChatStore()
+  const { isExecuting } = useObservabilityStore()
   const { stopExecution } = useWebSocket()
 
   const handleStop = useCallback(() => {
     stopExecution()
   }, [stopExecution])
 
-  const handleClearConversation = useCallback(() => {
-    if (isProcessing || isExecuting) {
-      stopExecution()
-    }
-    clearMessages()
-    startNewConversation()
-    clearState()
-  }, [clearMessages, startNewConversation, clearState, stopExecution, isExecuting, isProcessing])
 
   return (
     <div className="flex h-full w-full flex-col bg-[var(--color-stage-surface)]">
@@ -61,14 +53,6 @@ export function ChatPanel() {
           >
             <StopCircle className="w-4 h-4" aria-hidden="true" />
             Stop
-          </button>
-
-          <button
-            onClick={handleClearConversation}
-            className="flex items-center gap-1 rounded-lg bg-[var(--color-stage-raised)] px-3 py-2 text-[1.25rem] font-semibold text-[var(--color-stage-ink-muted)] transition-colors hover:bg-[var(--color-stage-raised)] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-white"
-          >
-            <RotateCcw className="w-4 h-4" aria-hidden="true" />
-            Clear & New
           </button>
         </div>
       </div>
