@@ -387,7 +387,7 @@ cd "$PROJECT_DIR"
 end_step
 echo ""
 
-# 6. Start Docker containers (PostgreSQL + OpenSearch)
+# 6. Start Docker containers (PostgreSQL + OpenSearch + Langfuse)
 start_step "Starting Docker containers"
 log "Step 6: Starting Docker containers..."
 echo "🐘 Starting Docker containers..."
@@ -453,6 +453,34 @@ else
     log "✓ OpenSearch Dashboards already running → http://localhost:5601"
     echo "✓ OpenSearch Dashboards already running → http://localhost:5601"
 fi
+
+# Langfuse observability stack is part of the standard local dev stack, not
+# an optional add-on — always brought up here alongside Postgres/OpenSearch
+# (mirrors stop.sh/teardown.sh, which already always tear it down too).
+# --profile observability brings up its 6 containers (already-running base
+# services are left alone by compose).
+if ! docker compose --profile observability ps 2>/dev/null | grep -q "langfuse-web.*Up"; then
+    log "   Starting Langfuse observability stack..."
+    echo "   Starting Langfuse observability stack..."
+    docker compose --profile observability up -d > /dev/null 2>&1
+    echo "   Waiting for Langfuse to be ready..."
+    for i in {1..30}; do
+        if curl -s http://localhost:3000/api/public/health 2>/dev/null | grep -q '"status"'; then
+            log "✓ Langfuse started → http://localhost:3000"
+            echo "✓ Langfuse started → http://localhost:3000 (login: dev@example.com / localdev123)"
+            break
+        fi
+        if [ "$i" -eq 30 ]; then
+            log "⚠ Langfuse is starting (may take a moment)"
+            echo "⚠ Langfuse is starting (may take a moment) — check: docker compose logs langfuse-web"
+            break
+        fi
+        sleep 2
+    done
+else
+    log "✓ Langfuse already running → http://localhost:3000"
+    echo "✓ Langfuse already running → http://localhost:3000"
+fi
 cd "$PROJECT_DIR"
 
 end_step
@@ -505,3 +533,4 @@ echo "  • Backend API: http://localhost:8000"
 echo "  • Frontend: http://localhost:5173"
 echo "  • OpenSearch: http://localhost:9200"
 echo "  • OpenSearch Dashboards: http://localhost:5601"
+echo "  • Langfuse: http://localhost:3000 (dev@example.com / localdev123)"
