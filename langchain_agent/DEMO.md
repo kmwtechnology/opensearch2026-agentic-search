@@ -233,7 +233,20 @@ Then immediately: `Make them waterproof` (refinement)
 - Retrieves again with adjusted α (opposite direction)
 - New results score higher
 
-**Observe** in Observability Panel:
+**Not reliable as written — confirmed live 2026-09-14, no code fix applied
+yet.** This exact query passed the quality gate on the first try (`max_score
+1.000 >= threshold 0.45`, no retry) because the cross-encoder reranker gave a
+**completely unrelated gaming laptop** (not a sleeve) a perfect 1.000 score —
+term overlap ("17-inch", RGB-adjacent gaming language) fooled the reranker
+into a confident-looking top score for the wrong product category. That's a
+real reranker weakness worth mentioning if it comes up, but it also means
+this query can't be trusted to reproduce the retry live. Before presenting:
+re-verify this query still triggers a retry against your current index (the
+reranker's behavior can shift with reindexing), and have a backup
+niche/impossible query ready (e.g. try combining several
+rarely-co-occurring attributes from your own catalog) in case it doesn't.
+
+**Observe** in Observability Panel (when a retry *does* fire):
 
 1. Intent Classifier: `attribute_filter` or `search`
 2. Query Evaluator: α assigned
