@@ -190,7 +190,7 @@ git log main..$BRANCH --pretty=format:"%H %s"
   cd langchain_agent
   .venv/bin/black . && .venv/bin/isort . && .venv/bin/flake8 . && .venv/bin/mypy main.py core/config.py --ignore-missing-imports
   ```
-- **Important:** There is NO local code-quality hook. `.git/hooks/pre-push` is Git LFS's own hook only. **You must run formatters by hand before pushing.** If CI catches formatting issues, fix them (`make format-fix`), commit, and push again.
+- **Important:** `.git/hooks/pre-commit` (installed by `scripts/setup.sh`, issue #99) runs black/isort/flake8 on staged `.py` files automatically at commit time. There is still NO pre-push hook — `.git/hooks/pre-push` is Git LFS's own hook only. **You must run tests/smoke gates by hand before pushing.** If CI catches an issue the local hook didn't (e.g. a failing test), fix it, commit, and push again.
 
 **PR body should:**
 - Reference the issue: `Closes #<N>` (auto-closes on merge)
@@ -362,7 +362,7 @@ gh pr view <PR-number> \
 ## Notes & Common Gotchas
 
 - **Step 7 is CRITICAL** — many sessions skip memory updates and rot guidance. Do not cut this corner.
-- **No local hook stops you** — only CI catches formatting issues. Run `make ci` locally before pushing.
+- **The pre-commit hook only catches formatting/lint** — no local hook runs tests or the smoke gate. Run `make ci` locally before pushing.
 - **GitHub Issues, not Jira** — all references use `#N`, not `TICKET-NNN`.
 - **No Slack** — skip any "post to Slack" steps.
 - **CI doesn't run on root files** — if your change touches only files outside `langchain_agent/`, `.github/workflows/`, `docker-compose.yml`, `.dockerignore`, CI won't trigger. This is intentional but risky — flag it.

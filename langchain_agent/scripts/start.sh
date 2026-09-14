@@ -75,7 +75,7 @@ if [ "$1" == "--update-docs" ]; then
         echo "✓ Product data updated"
     else
         echo "⚠ Lucille ingest had issues — see logs/docs-update.log"
-        echo "  Fallback (requires GOOGLE_API_KEY): PYTHONPATH=$PROJECT_DIR python $PROJECT_DIR/ingest_esci_products.py"
+        echo "  Check the log above, then retry: bash $SCRIPT_DIR/lucille_ingest.sh"
     fi
     echo ""
 fi

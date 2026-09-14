@@ -22,7 +22,7 @@ is running (or can be started automatically).
 | `gcp-teardown.sh` | Remove Cloud Run, Cloud SQL, OpenSearch, secrets | End of project | 2–3 min |
 | `smoke_test.sh` | Health check + basic round-trip against a Cloud Run URL | Post-deploy verification | 10 s |
 | **CI/Manual Gates** |
-| `pre-commit.sh` | Black + isort + flake8 on staged files + smoke-test gate | Run manually before committing (not an installed hook) | 10–15 s |
+| `pre-commit.sh` | Black + isort + flake8 on staged `.py` files | Installed as `.git/hooks/pre-commit` by `setup.sh` — runs automatically on `git commit` | ~2 s |
 | `lucille_ingest.sh` | ESCI re-ingestion (builds Lucille on first run, reads `data/*.parquet`) | Manual re-ingest | 30 s–1 min |
 | **Utilities** |
 | `prepare_judgments_parquet.py` | Pre-aggregate ESCI judgments (one-time or on sample change) | Data ops | 2–3 min |
@@ -75,17 +75,18 @@ is running (or can be started automatically).
    bash ./scripts/lucille_ingest.sh
    ```
 
-## Manual Gates (No Git Hooks Installed)
+## Git Hooks
 
-There is no pre-commit or pre-push hook in this repo — `.git/hooks/pre-push` is Git LFS's own hook only, and `setup.sh` does not install anything into `.git/hooks/`. `pre-commit.sh` exists as a standalone script but is not wired into git; run it (or the commands below) by hand.
+`setup.sh` installs `pre-commit.sh` as `.git/hooks/pre-commit` (added issue #99) — it runs automatically on every `git commit` and blocks the commit if black/isort/flake8 fail on staged `.py` files. It only ever overwrites a hook it recognizes as its own (matched by a comment marker); a hand-written custom hook at that path is left untouched and setup.sh prints a warning instead. If you cloned before this existed, re-run `./scripts/setup.sh` to install it, or copy it manually: `cp scripts/pre-commit.sh ../.git/hooks/pre-commit && chmod +x ../.git/hooks/pre-commit`.
+
+There is still **no pre-push hook** — `.git/hooks/pre-push` is Git LFS's own hook only. Nothing beyond formatting/lint is gated locally; the checks below must be run by hand.
 
 ### Before committing
 
-Run manually (e.g. via `./scripts/pre-commit.sh`, or the equivalent commands directly):
-- Black + isort + flake8 on staged `.py` files (`make format-fix` / `make lint`)
+The pre-commit hook covers black/isort/flake8 automatically. Also run manually if applicable:
 - Smoke gate (`make smoke-local-quick`) if `api/services/`, `api/routes/`, `main.py`, `core/agent_state.py` changed AND Docker is up
 
-**If checks fail:** Run `make format-fix`, re-stage, retry.
+**If the hook blocks a commit:** Run `make format-fix`, re-stage, retry.
 
 ### Before pushing
 
@@ -93,7 +94,7 @@ Run manually before every push:
 - `make ci` — full local gate (lint + unit + frontend + collect-only integration/e2e)
 - `make smoke-local` if any backend-path file changed AND Docker is up (20-test suite, ~90 s)
 
-Nothing stops a push with broken formatting or failing tests except CI.
+Nothing stops a push with failing tests except CI (formatting is caught earlier, at commit time, by the pre-commit hook above).
 
 **If checks fail:** Fix root cause, re-run `make ci` locally, push retry.
 

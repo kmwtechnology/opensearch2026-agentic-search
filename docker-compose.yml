@@ -1,11 +1,15 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:0.8.6-pg18
     container_name: langchain-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-langchain_agent}
+      # postgres 18's image refuses to start with data directly at the
+      # mount root (it expects a pg_ctlcluster-style version-specific
+      # subdirectory) -- point PGDATA at a subdirectory of the volume mount.
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
@@ -106,7 +110,7 @@ services:
   # API keys on first boot so no UI click-through is needed; the same keys are
   # the defaults for LANGFUSE_PUBLIC_KEY/SECRET_KEY in langchain_agent/config.py.
   langfuse-worker:
-    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    image: docker.langfuse.com/langfuse/langfuse-worker:4.36.0
     container_name: langfuse-worker
     profiles: ["observability"]
     restart: unless-stopped
@@ -162,7 +166,7 @@ services:
       QUEUE_CONSUMER_CODE_EVAL_EXECUTION_QUEUE_IS_ENABLED: "true"
 
   langfuse-web:
-    image: docker.langfuse.com/langfuse/langfuse:4
+    image: docker.langfuse.com/langfuse/langfuse:4.36.0
     container_name: langfuse-web
     profiles: ["observability"]
     restart: unless-stopped
@@ -185,7 +189,7 @@ services:
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-localdev123}
 
   langfuse-postgres:
-    image: docker.io/postgres:17
+    image: docker.io/postgres:18.6
     container_name: langfuse-postgres
     profiles: ["observability"]
     restart: unless-stopped
@@ -195,6 +199,10 @@ services:
       POSTGRES_DB: langfuse
       TZ: UTC
       PGTZ: UTC
+      # postgres 18's image refuses to start with data directly at the
+      # mount root (it expects a pg_ctlcluster-style version-specific
+      # subdirectory) -- point PGDATA at a subdirectory of the volume mount.
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - 127.0.0.1:5433:5432
     volumes:
@@ -206,7 +214,7 @@ services:
       retries: 10
 
   langfuse-clickhouse:
-    image: docker.io/clickhouse/clickhouse-server:25.12
+    image: docker.io/clickhouse/clickhouse-server:26.8.3.105
     container_name: langfuse-clickhouse
     profiles: ["observability"]
     restart: unless-stopped
@@ -229,7 +237,10 @@ services:
       start_period: 1s
 
   langfuse-minio:
-    image: cgr.dev/chainguard/minio
+    # Chainguard doesn't publish stable version tags for this image on a
+    # free-tier pull (only a rolling "latest" digest) — pinned to the digest
+    # that was actually running as of this pin, to stop it floating silently.
+    image: cgr.dev/chainguard/minio@sha256:ad4a4c0a39ad7b71408124fe3df07b1b2e9d2959a369fac8754d2ef3311b5c20
     container_name: langfuse-minio
     profiles: ["observability"]
     restart: unless-stopped
@@ -251,7 +262,7 @@ services:
       start_period: 1s
 
   langfuse-redis:
-    image: docker.io/redis:7
+    image: docker.io/redis:8.10.1
     container_name: langfuse-redis
     profiles: ["observability"]
     restart: unless-stopped

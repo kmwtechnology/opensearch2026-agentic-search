@@ -163,7 +163,7 @@ Save the PR number; you'll need it when you run `/workflow-check <PR-number>`.
 | **Branch naming** | `feat/issue-<N>-slug`, `fix/issue-<N>-slug`, `docs/issue-<N>-slug` |
 | **Issue tracking** | GitHub Issues; use `#<N>` (not Jira tickets) |
 | **Test before push** | `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` |
-| **No local hook** | Pre-commit/pre-push hooks don't enforce code quality; you must run tests by hand |
+| **Local hooks** | `pre-commit` (installed by `setup.sh`) runs black/isort/flake8 on staged `.py` files; no pre-push hook exists — tests/smoke gates must still be run by hand |
 | **Next step** | Code, test, push → run `/workflow-check <PR-number>` when ready |
 
 ## Notes
