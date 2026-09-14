@@ -41,48 +41,6 @@ Open browser to **<http://localhost:5173>** and keep DevTools hidden (press `F12
 
 ---
 
-## Part 1.5: Typeahead Autocomplete (1–2 min)
-
-**Narration**:
-
-> "Before we even submit a query, the search bar itself is intelligent.
-> Watch the dropdown as I type."
-
-### Demo: prefix matches
-
-**Type** (but don't submit): `wire`
-
-**Observe**: Dropdown opens with a **Suggestions** section showing
-wireless headphones, wireless mice, etc. — these come from a
-`GET /api/suggest` request that edge-ngram prefix-matches against product
-titles and brands.
-
-### Demo: spell correction
-
-**Type**: `nikey` (intentional typo)
-
-**Observe**: Top of the dropdown shows a **Did you mean? nike** row — the
-backend ran Levenshtein + SequenceMatcher ratio checks and returned a
-correction. Distance-1 typos also benefit from a fuzzy fallback when the
-prefix query returns nothing.
-
-### Demo: recent searches + keyboard nav
-
-**Observe**: After a few submitted queries, the dropdown shows a **Recent
-Searches** section (localStorage, max 8, case-insensitive dedup, clear
-button). Use `ArrowDown`/`ArrowUp` to navigate, `Enter` or `Tab` to accept
-and submit, `Esc` to close. The whole surface uses ARIA combobox semantics.
-
-**Narration**:
-
-> "Three sections — Did you mean?, Suggestions, Recent Searches — all
-> backed by `/api/suggest`. Stale requests are cancelled via
-> `AbortController`, and correction is intentionally skipped when the
-> query is already a corpus token or a prefix of a word, so in-progress
-> typing like 'adi' isn't corrected to 'addi'."
-
----
-
 ## Part 2: Intent Classification (2 min)
 
 **Narration**:
@@ -121,6 +79,17 @@ and submit, `Esc` to close. The whole surface uses ARIA combobox semantics.
 - Knowledge Search retrieves both specific models
 - Results ranked by comparison relevance
 
+**Reality check** (confirmed live 2026-09-14): this 10K-product ESCI sample
+may not contain the literal Sony WH-1000XM5 / Bose QuietComfort 45 listings.
+When that happens the agent correctly says it doesn't have those specific
+models rather than inventing a comparison, and suggests close matches from
+the catalog instead — that's a feature (no hallucinated citations), not a
+demo failure, but don't promise the audience a side-by-side of those exact
+two products. If you want a guaranteed hit, verify the models exist first —
+`curl -s "localhost:9200/agentic_hybrid_search_docs/_search" -H 'Content-Type: application/json' -d '{"query":{"match":{"title":"<model name>"}}}'`
+(or just search the term in the UI beforehand) — rather than assuming any
+real product name is in the sample.
+
 **Narration**:
 
 > "**Comparison intent** — users want to pit products against each other. The LLM classifies the intent, the query evaluator assigns a fixed alpha via its fast-path, and the cross-encoder reranker scores each product's relevance to both products."
@@ -154,8 +123,13 @@ Then immediately: `Make them waterproof` (refinement)
 
 **Expected**:
 
-- First query: `search` intent, fresh retrieval
-- Second query: `refinement` intent, constrains prior results
+- First query: `attribute_filter` intent (the explicit color + category cues route
+  it here, not `search` — confirmed live 2026-09-14; don't be surprised if the
+  first turn isn't `search`, the point of this part is the *second* turn),
+  α=0.25, fresh retrieval
+- Second query: `refinement` intent, α=0.35, constrains prior results — the
+  query evaluator expands it to something like "Make the blue running shoes
+  waterproof" using conversation history
 
 **Observe**:
 
@@ -163,10 +137,15 @@ Then immediately: `Make them waterproof` (refinement)
 - Second retrieval narrows to waterproof variants **from the prior set**
 - Quality Gate validates continuity (category match)
 - Refinement uses α=0.35 (lexical-heavy) to filter existing results
+- **This dataset likely has no blue running shoe that's also tagged
+  waterproof** — confirmed live 2026-09-14, the agent correctly reports no
+  match rather than hallucinating one, and offers alternatives (Gore-Tex,
+  water-resistant, all-weather). That's the demo point, not a failure: show
+  the honest "no match" response, don't expect a clean waterproof result.
 
 **Narration**:
 
-> "**Refinement intent** — users add constraints to a prior search. The system detects this, validates that we're in the same product category, and constrains the retrieval to the prior results. If the user pivots categories, we reset."
+> "**Refinement intent** — users add constraints to a prior search. The system detects this, validates that we're in the same product category, and constrains the retrieval to the prior results. If the user pivots categories, we reset. And notice: when nothing actually matches, it says so instead of forcing a bad answer."
 
 ---
 
