@@ -48,6 +48,31 @@ export type NarratorNode =
  */
 export type NarratorWeight = 'step' | 'moment'
 
+/**
+ * A small horizontal bar rendered beside a line, for the two numbers in this
+ * pipeline that are positions on a range rather than bare values: where the
+ * hybrid weighting sat between keywords and meaning, and where the best match
+ * landed relative to the bar it had to clear.
+ *
+ * Deliberately DESCRIPTIVE, not a quality claim. An alpha gauge says how
+ * literally the question was read; it does NOT say the results were better for
+ * it. (Measured on the arc's own queries: at alpha 0.25 the first page of
+ * "blue running shoes" includes blue jeans, and a pure-semantic run of the same
+ * query returns five actual running shoes. The RERANKER is what removes the
+ * jeans — so the gauge shows a setting, and the score gauge shows the outcome.)
+ */
+export interface NarratorGauge {
+  kind: 'alpha' | 'score'
+  /** 0..1, where the filled portion ends. */
+  value: number
+  /** 0..1 tick mark — the threshold on a score gauge. */
+  marker?: number
+  leftLabel: string
+  rightLabel: string
+  /** Short caption under the bar, e.g. "0.94 against a bar of 0.45". */
+  caption: string
+}
+
 export interface NarratorLine {
   /** Stable within a turn, so React keys and de-duplication behave. */
   id: string
@@ -68,6 +93,8 @@ export interface NarratorLine {
   reindexRunUrl?: string
   reindexMode?: string
   error?: string
+  /** Optional bar rendered under the sentence. */
+  gauge?: NarratorGauge
 }
 
 const INTENT_PHRASING: Record<string, string> = {
@@ -106,8 +133,15 @@ function evaluatorLine(e: QueryEvaluationEvent): NarratorLine {
     id: `alpha-${e.timestamp}`,
     node: 'query_evaluator',
     label: 'Query Evaluator',
-    text: `Leaned ${strategy} — weighting meaning over exact words at α ${e.alpha.toFixed(2)}.`,
+    text: `Leaned ${strategy} — how literally to read this question, chosen per query, not configured once.`,
     weight: 'step',
+    gauge: {
+      kind: 'alpha',
+      value: Math.max(0, Math.min(1, e.alpha)),
+      leftLabel: 'exact words',
+      rightLabel: 'meaning',
+      caption: `α ${e.alpha.toFixed(2)} — ${strategy}`,
+    },
   }
 }
 
@@ -211,7 +245,15 @@ function qualityGateLine(e: QualityGateEvent): NarratorLine {
     id: `gate-${e.timestamp}`,
     node: 'quality_gate',
     label: 'Quality Gate',
-    text: `Passed the quality bar — ${e.max_score.toFixed(2)} against ${e.threshold.toFixed(2)}.`,
+    text: 'Passed the quality bar.',
+    gauge: {
+      kind: 'score',
+      value: Math.max(0, Math.min(1, e.max_score)),
+      marker: Math.max(0, Math.min(1, e.threshold)),
+      leftLabel: '0',
+      rightLabel: '1',
+      caption: `best match ${e.max_score.toFixed(2)} against a bar of ${e.threshold.toFixed(2)}`,
+    },
     weight: 'step',
   }
 }

@@ -43,8 +43,14 @@ describe('narrate', () => {
       search_strategy: 'semantic-heavy',
     } as AgentEvent)
 
-    expect(line?.text).toContain('semantic heavy')
-    expect(line?.text).toContain('0.85')
+    // The strategy word still comes from the backend rather than being
+    // re-derived from alpha here. The alpha VALUE moved out of the sentence
+    // and into the gauge caption, where it is paired with the bar that shows
+    // where it sits between "exact words" and "meaning".
+    expect(line?.gauge?.caption).toContain('semantic heavy')
+    expect(line?.gauge?.caption).toContain('0.85')
+    expect(line?.gauge?.kind).toBe('alpha')
+    expect(line?.gauge?.value).toBe(0.85)
   })
 
   it('says nothing when a query expansion did not actually change the query', () => {

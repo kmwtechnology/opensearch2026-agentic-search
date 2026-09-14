@@ -11,10 +11,53 @@
 
 import { useMemo } from 'react'
 import { NODE_STYLE } from './nodeStyle'
+import type { NarratorGauge } from './narrate'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import { EnrichmentMoment } from './EnrichmentMoment'
 import { narrate, visibleLines, type NarratorLine } from './narrate'
 
+
+/**
+ * A gauge, sized for a projector: a thick bar, a filled portion, and for a
+ * score gauge a hard tick where the threshold sits, so "did it clear the bar"
+ * is legible from the back of the room without reading either number.
+ *
+ * Never color alone — the caption under the bar always states the numbers.
+ */
+function Gauge({ gauge, fg }: { gauge: NarratorGauge; fg: string }) {
+  const pct = Math.round(gauge.value * 100)
+  const clears = gauge.marker === undefined || gauge.value >= gauge.marker
+  return (
+    <span className="flex flex-col gap-1 mt-1 max-w-[30rem]">
+      <span className="flex items-center justify-between text-[length:var(--text-stage-label)] font-semibold text-[var(--color-stage-ink-soft)]">
+        <span>{gauge.leftLabel}</span>
+        <span>{gauge.rightLabel}</span>
+      </span>
+      <span
+        className="relative block h-4 w-full rounded-full border-2"
+        style={{ borderColor: fg, backgroundColor: 'var(--color-stage-raised)' }}
+      >
+        <span
+          className="absolute left-0 top-0 bottom-0 rounded-full"
+          style={{ width: `${pct}%`, backgroundColor: fg }}
+        />
+        {gauge.marker !== undefined && (
+          <span
+            className="absolute top-[-6px] bottom-[-6px] w-1 rounded"
+            style={{
+              left: `${Math.round(gauge.marker * 100)}%`,
+              backgroundColor: 'var(--color-stage-ink)',
+            }}
+          />
+        )}
+      </span>
+      <span className="text-[length:var(--text-stage-label)] font-semibold text-[var(--color-stage-ink-muted)]">
+        {gauge.caption}
+        {gauge.marker !== undefined && (clears ? ' — cleared' : ' — under the bar')}
+      </span>
+    </span>
+  )
+}
 
 function Line({ line, lead }: { line: NarratorLine; lead: boolean }) {
   const style = NODE_STYLE[line.node]
@@ -50,6 +93,7 @@ function Line({ line, lead }: { line: NarratorLine; lead: boolean }) {
         >
           {line.text}
         </span>
+        {line.gauge && <Gauge gauge={line.gauge} fg={style.fg} />}
       </span>
     </div>
   )
