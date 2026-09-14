@@ -1779,18 +1779,46 @@ Return ONLY a JSON object (use null for missing attributes):
                     }
                 )
 
-            # price range → range filter (if price field exists in index)
-            if attributes.get("price_max") is not None:
-                try:
-                    filters.append({"range": {"price": {"lte": float(attributes["price_max"])}}})
-                except (ValueError, TypeError):
-                    logger.debug(f"Could not parse price_max: {attributes.get('price_max')}")
+            # price range → range filter, but ONLY if the index actually has a
+            # price field. This guard is what the comment here always claimed
+            # ("if price field exists in index") and never did (#103).
+            #
+            # It matters because the ESCI product index has no price field at
+            # all, and a range filter on an unmapped field is not an error in
+            # OpenSearch — it matches nothing. So every "under $100" query
+            # silently returned zero results and the user got a no-match
+            # answer, as if the catalog held no affordable products. Better to
+            # ignore a price constraint we cannot honour and return real
+            # products than to return nothing at all.
+            wants_price_filter = (
+                attributes.get("price_max") is not None or attributes.get("price_min") is not None
+            )
+            price_is_filterable = wants_price_filter and self.vector_store.has_field("price")
 
-            if attributes.get("price_min") is not None:
-                try:
-                    filters.append({"range": {"price": {"gte": float(attributes["price_min"])}}})
-                except (ValueError, TypeError):
-                    logger.debug(f"Could not parse price_min: {attributes.get('price_min')}")
+            if wants_price_filter and not price_is_filterable:
+                logger.info(
+                    "Ignoring price constraint (%s-%s): the index has no 'price' field, "
+                    "and filtering on it would match nothing",
+                    attributes.get("price_min"),
+                    attributes.get("price_max"),
+                )
+
+            if price_is_filterable:
+                if attributes.get("price_max") is not None:
+                    try:
+                        filters.append(
+                            {"range": {"price": {"lte": float(attributes["price_max"])}}}
+                        )
+                    except (ValueError, TypeError):
+                        logger.debug(f"Could not parse price_max: {attributes.get('price_max')}")
+
+                if attributes.get("price_min") is not None:
+                    try:
+                        filters.append(
+                            {"range": {"price": {"gte": float(attributes["price_min"])}}}
+                        )
+                    except (ValueError, TypeError):
+                        logger.debug(f"Could not parse price_min: {attributes.get('price_min')}")
 
             return filters
 

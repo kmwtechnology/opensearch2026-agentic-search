@@ -56,12 +56,15 @@ Open browser to **<http://localhost:5173>** and keep DevTools hidden (press `F12
 the panel shows rather than promising a number in advance; it is chosen per
 query by an LLM and genuinely moves between runs.
 
-> **Do not add a price.** This query used to read `Find me wireless headphones
-> under $100`, which behaves nothing like the description above: it classifies
-> as `attribute_filter` at α 0.25 and the extractor emits `price: under $100.0`
-> and `feature: wireless` filters that match no product in the ESCI sample, so
-> the turn ends in a no-results answer — as the opening query of the talk.
-> `Find wireless headphones` is the form the e2e smoke test exercises.
+> **Why not "under $100"?** The opener used to read `Find me wireless
+> headphones under $100`. That returned nothing at all, because the extractor
+> emitted a `price` range filter and the ESCI index has no `price` field — and
+> a filter on an unmapped field matches zero documents rather than erroring.
+> Fixed 2026-09-14: price constraints are now dropped when the field is not
+> mapped, so that query returns real products and the agent says plainly that
+> it has no pricing data. It is kept out of the opener anyway because
+> `Find wireless headphones` scores far better (0.99 vs 0.30 on rehearsal) and
+> is the form the e2e smoke test exercises — a stronger first impression.
 
 **Observe**:
 
@@ -133,10 +136,12 @@ Then immediately: `Make them waterproof` (refinement)
 
 **Expected**:
 
-- First query: `attribute_filter` intent (the explicit color + category cues route
-  it here, not `search` — confirmed live 2026-09-14; don't be surprised if the
-  first turn isn't `search`, the point of this part is the *second* turn),
-  α=0.25, fresh retrieval
+- First query: `attribute_filter` intent, α=0.25, fresh retrieval. This is the
+  **right** call, not a quirk to apologise for: "blue" is a real indexed
+  attribute, so there is something concrete to filter on rather than only
+  something to match semantically. Worth saying out loud — it shows the
+  classifier distinguishing "find me things *like* this" from "find me things
+  *that are* this", which is the whole reason α is chosen per query.
 - Second query: `refinement` intent, α=0.35, constrains prior results — the
   query evaluator expands it to something like "Make the blue running shoes
   waterproof" using conversation history

@@ -44,7 +44,7 @@ export const DEMOS: Demo[] = [
       {
         query: 'Find wireless headphones',
         watchFor: 'Intent "search" — alpha assigned by the LLM, not a fast path.',
-        note: 'Deliberately no price. "under $100" makes the extractor emit a price filter that matches nothing, and the turn ends in a no-results answer.',
+        note: 'No price, deliberately — this scores ~0.99 where "under $100" scores ~0.30. The catalog has no price data at all, so the agent will say so rather than filter on it.',
       },
       {
         query: 'Compare Sony WH-1000XM5 vs Bose QuietComfort 45',
@@ -57,8 +57,8 @@ export const DEMOS: Demo[] = [
       },
       {
         query: 'Show me blue running shoes',
-        watchFor: 'Sets up the refinement turn that follows.',
-        note: 'This one actually classifies as attribute_filter, not search. Expected — do not be thrown by it.',
+        watchFor:
+          'Classifies attribute_filter, and correctly so — "blue" is a real indexed attribute, so there is something concrete to filter on. Sets up the refinement turn.',
       },
       {
         query: 'Make them waterproof',
