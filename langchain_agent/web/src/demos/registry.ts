@@ -106,6 +106,35 @@ export const DEMOS: Demo[] = [
         watchFor:
           'Four words, no subject, no colour, no size — and the rewriter turns it into "Show me blue trail running shoes in size 10", carrying BOTH earlier constraints forward. Alpha jumps to 0.70, semantic-heavy, because this question is about purpose rather than a literal attribute.',
       },
+      /*
+       * NO retry turn here, and the reason is worth recording so nobody spends
+       * an afternoon hunting for one again.
+       *
+       * The gate's retry now genuinely searches deeper rather than only
+       * re-weighting (see RETRY_FETCH_MULTIPLIER), so recovery is possible in
+       * principle — offline, "shoes that will not give me blisters on long
+       * runs" goes 0.24 -> 0.98 once the pool widens. But no query has been
+       * found that fails and then recovers INSIDE this conversation:
+       *
+       *   - A query specific enough to fail usually classifies as
+       *     attribute_filter at alpha 0.25, where the first pass already scores
+       *     0.86-0.99 and the gate never fires.
+       *   - A query vague enough to fire the gate almost always fires it
+       *     because the catalog genuinely has nothing: the reranker rescales a
+       *     uniformly-irrelevant batch to a 0.30 ceiling (reranker.py), and no
+       *     amount of extra candidates invents a product that does not exist.
+       *   - From turn 2 onward the rewriter folds "blue running shoes in size
+       *     10" into every follow-up, which lifts scores to 0.69-0.91 — the
+       *     conversation itself prevents the failure.
+       *   - On a refinement turn the results are pinned to the prior turn's
+       *     product ids, so widening the pool cannot escape that pin.
+       *
+       * Twenty-plus queries were run through the live pipeline looking for the
+       * signature (two searches AND a final score over threshold); three fired
+       * the gate, none recovered. The closest was "shoes that stay comfortable
+       * after twenty miles", which improved 0.30 -> 0.35 and still missed the
+       * 0.45 bar.
+       */
     ],
   },
   {

@@ -27,6 +27,7 @@ from core.config import (
     RERANKER_TOP_K,
     RETRIEVER_FETCH_K,
     RETRIEVER_K,
+    RETRY_FETCH_MULTIPLIER,
     SEARCH_DEFAULTS,
     VECTOR_COLLECTION_NAME,
 )
@@ -2632,13 +2633,46 @@ Original query: {query}
         hybrid_capture: Dict[str, Any] = {}
         bm25_capture: Dict[str, Any] = {}
 
+        # On a quality-gate retry, SEARCH DEEPER — do not just re-weight.
+        #
+        # The gate's only lever used to be alpha +/-0.3, and measurement says
+        # that lever does nothing: scoring ten conceptual shoe queries at alpha
+        # 0.1 / 0.4 / 0.7 / 1.0 returned the SAME reranker max score to two
+        # decimals in every case ("what should I wear for a marathon" = 0.30 at
+        # all four). Re-weighting reorders a candidate pool that already
+        # contains the same best document, so the retry could not change its
+        # own outcome — a loop that always reached the verdict it started with.
+        #
+        # Widening the pool can only help: max(score) over a superset is
+        # monotonic, so the second pass either finds something better deeper in
+        # the ranking or returns exactly what the first pass had. Nothing gets
+        # worse, and "it looked harder the second time" is both true and the
+        # thing worth showing an audience.
+        is_gate_retry = bool(state.get("quality_gate_retried", False))
+        fetch_k = RETRIEVER_FETCH_K * RETRY_FETCH_MULTIPLIER if is_gate_retry else RETRIEVER_FETCH_K
+        k = RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K
+        if is_gate_retry:
+            k *= RETRY_FETCH_MULTIPLIER
+            # Soft multi_match filters (material_or_feature / size) are hints
+            # that often over-constrain; the same relaxation already runs when
+            # a filtered search returns too little. Colour and brand `match`
+            # filters stay — the user asked for those explicitly.
+            if attribute_filters:
+                attribute_filters = [f for f in attribute_filters if "multi_match" not in f]
+            logger.info(
+                "Retriever: quality-gate retry — widening pool to fetch_k=%d, k=%d "
+                "and dropping soft filters",
+                fetch_k,
+                k,
+            )
+
         # Create retriever with dynamic alpha, attribute filters, and per-message
         # optimization toggles (sent by the frontend via the chat WebSocket).
         retriever = self.vector_store.as_retriever(
             search_type="hybrid",
             search_kwargs={
-                "k": RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K,
-                "fetch_k": RETRIEVER_FETCH_K,
+                "k": k,
+                "fetch_k": fetch_k,
                 "alpha": alpha,
                 "filters": attribute_filters,
                 "optimizations": state.get("optimizations") or {},

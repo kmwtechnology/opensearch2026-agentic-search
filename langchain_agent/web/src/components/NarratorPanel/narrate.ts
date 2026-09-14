@@ -198,12 +198,14 @@ function qualityGateLine(e: QualityGateEvent): NarratorLine {
       id: `gate-${e.timestamp}`,
       node: 'quality_gate',
       label: 'Quality Gate',
-      // Deliberately about the loop firing, not about the retry scoring
-      // better — with a deterministic cross-encoder it usually does not.
+      // The retry now searches DEEPER (4x the candidate pool), not just at a
+      // different alpha, so it genuinely can come back with a better match —
+      // re-weighting alone provably could not. It is still not guaranteed:
+      // a query with nothing good behind it fails both passes.
       text:
         `The results weren't good enough — best match ${e.max_score.toFixed(2)} ` +
-        `against a bar of ${e.threshold.toFixed(2)}. Searching again with ` +
-        `different settings.`,
+        `against a bar of ${e.threshold.toFixed(2)}. Searching again, deeper ` +
+        `into the ranking.`,
       weight: 'moment',
     }
   }

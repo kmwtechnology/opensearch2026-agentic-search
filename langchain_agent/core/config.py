@@ -126,6 +126,7 @@ __all__ = [
     "RERANKER_MODEL",
     "CROSS_ENCODER_MODEL",
     "RERANKER_FETCH_K",
+    "RETRY_FETCH_MULTIPLIER",
     "RERANKER_TOP_K",
     "RERANKER_BATCH_SIZE",
     "RERANKER_WARMUP_ENABLED",
@@ -321,6 +322,14 @@ RERANKER_MODEL = os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview")
 # Number of candidates to fetch before reranking
 # 40 enables the "wide net recall" → cross-encoder precision narrative
 RERANKER_FETCH_K = 40
+
+# How much wider the quality gate's retry searches than the first pass.
+# The retry used to only nudge alpha, which measurably changed nothing: the
+# reranker's best score was identical at alpha 0.1/0.4/0.7/1.0 for every
+# conceptual query tested, because re-weighting reorders a pool that already
+# holds the same best document. Multiplying the pool is what lets the second
+# pass see candidates the first one never scored (#103).
+RETRY_FETCH_MULTIPLIER = 4
 
 # Final number of documents to return after reranking
 RERANKER_TOP_K = 10
