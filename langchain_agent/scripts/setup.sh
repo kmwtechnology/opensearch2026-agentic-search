@@ -71,7 +71,7 @@ OPTIONS:
 REQUIREMENTS:
     - Docker (for PostgreSQL + OpenSearch containers)
     - Python 3.13+ (creates .venv at project root if missing)
-    - Node.js 24+ (for frontend)
+    - Node.js 24+ (for frontend; 24.21.0 or later)
     - Google API Key (for Gemini embeddings and LLM)
     - ~1.5 GB disk space (ESCI dataset + sample parquet + Docker volumes)
     - Internet access (to clone ESCI dataset repo from GitHub)
@@ -158,7 +158,7 @@ NODE_VERSION=$(node --version 2>&1 | sed 's/v//')
 NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
 if [ "$NODE_MAJOR" -lt 24 ]; then
     echo "❌ Node version too old: $NODE_VERSION"
-    echo "   Required: Node.js 24+"
+    echo "   Required: Node.js 24+ (24.21.0 or later — earlier 24.x had a broken npm)"
     exit 1
 fi
 echo "✓ Node.js $NODE_VERSION found"

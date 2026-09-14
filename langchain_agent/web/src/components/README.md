@@ -24,7 +24,7 @@ This directory contains all reusable React components organized by functional do
 
 ## Styling
 
-All components use **Tailwind CSS** for styling. Dark mode is configured in `tailwind.config.ts`. Components follow semantic HTML and WCAG 2.1 accessibility guidelines.
+All components use **Tailwind CSS v4** for styling. Theme customization (colors, animations) lives in `src/index.css` via `@theme` (CSS-based config — there is no `tailwind.config.js`). Components follow semantic HTML and WCAG 2.1 accessibility guidelines.
 
 ## Store Dependencies
 

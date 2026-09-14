@@ -1,6 +1,31 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  /* Custom colors for agent observability */
+  --color-agent-query: #3b82f6;      /* blue-500 - query evaluator */
+  --color-agent-search: #8b5cf6;     /* violet-500 - hybrid search */
+  --color-agent-rerank: #a855f7;     /* purple-500 - reranker */
+  --color-agent-grade: #10b981;      /* emerald-500 - document grader */
+  --color-agent-transform: #f59e0b;  /* amber-500 - query transformer */
+  --color-agent-llm: #06b6d4;        /* cyan-500 - LLM response */
+  --color-agent-response: #ec4899;   /* pink-500 - response grader */
+  --color-agent-success: #22c55e;    /* green-500 */
+  --color-agent-error: #ef4444;      /* red-500 */
+
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-slide-in: slideIn 0.3s ease-out;
+
+  @keyframes slideIn {
+    0% {
+      transform: translateX(-10px);
+      opacity: 0;
+    }
+    100% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+}
 
 /* Custom base styles */
 @layer base {
