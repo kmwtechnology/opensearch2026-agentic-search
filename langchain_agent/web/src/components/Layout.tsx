@@ -191,7 +191,7 @@ export function Layout() {
   // the query rewriter folds the correction turn into the query and it falls
   // down a lexical path that isn't comparable to turn 1.
   const handleRerun = useCallback(() => {
-    const proofTurn = getDemo('taxonomy-correction').turns.find((t) => t.requiresNewConversation)
+    const proofTurn = getDemo('taxonomy-ingestion').turns.find((t) => t.requiresNewConversation)
     startNewConversation(proofTurn?.query ?? 'show me tan boots')
   }, [startNewConversation])
 
