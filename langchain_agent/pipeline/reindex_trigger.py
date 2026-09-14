@@ -34,7 +34,7 @@ from core.exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
 
-LANGCHAIN_AGENT_DIR = Path(__file__).parent
+LANGCHAIN_AGENT_DIR = Path(__file__).parent.parent
 GITHUB_API = "https://api.github.com"
 GITHUB_API_VERSION = "2022-11-28"
 

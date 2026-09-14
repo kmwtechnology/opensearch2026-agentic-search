@@ -56,9 +56,9 @@
 # Runtime entrypoint uses LUCILLE_CONF, LUCILLE_OPTS, and JAVA_OPTS env vars
 # (all defined by the base image already).
 
-ARG LUCILLE_VERSION
-ARG LUCILLE_DOCKER_TAG
-ARG LUCILLE_DOCKER_DIGEST
+ARG LUCILLE_VERSION=0.11.1
+ARG LUCILLE_DOCKER_TAG=0.11.1.0
+ARG LUCILLE_DOCKER_DIGEST=sha256:cefa9a3b2b9ed4c3cdf92da9abb93da37dc8ba392cc64ef39b81e02387f81073
 
 # Build stage: our custom stage + lucille-parquet + lucille-core (compile-time),
 # resolved from Maven Central.

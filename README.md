@@ -33,7 +33,7 @@ Path A also needs:
 
 - Docker Desktop
 - Python 3.14+
-- Node.js 22+
+- Node.js 24+
 
 Java 21+ and Maven are only needed if you opt out of the default
 Docker-based Lucille ETL ingest (`LUCILLE_USE_DOCKER=false`).
@@ -272,7 +272,7 @@ adjustment.
 | **Embeddings** | `models/gemini-embedding-001` | 768-dim vectors |
 | **Vector Database** | OpenSearch 3.8.0 | HNSW `knn_vector` + BM25 |
 | **Search Fusion** | Reciprocal Rank Fusion (k=60) | Hybrid score fusion |
-| **Checkpoints** | PostgreSQL 16 | LangGraph state persistence |
+| **Checkpoints** | PostgreSQL 18 (local dev via `pgvector/pgvector:0.8.6-pg18`); Cloud SQL Postgres 16 in GCP | LangGraph state persistence |
 | **Agent Framework** | LangGraph + LangChain | Graph-based pipeline with typed state |
 | **Backend API** | FastAPI + WebSocket | REST/WebSocket with real-time streaming |
 | **Frontend** | React 19 + TypeScript + Tailwind + Zustand | Observability panel + chat UI |
@@ -488,7 +488,7 @@ cp .env.example .env        # Fill in GOOGLE_API_KEY
 ./scripts/teardown.sh       # Full cleanup
 ```
 
-**Prerequisites:** Docker Desktop, Python 3.14+, Node.js 22+, Google API key
+**Prerequisites:** Docker Desktop, Python 3.14+, Node.js 24+, Google API key
 ([get one](https://aistudio.google.com/apikey)), and ~1.5 GB disk for the
 ESCI dataset plus Docker volumes. (Java 21+/Maven only needed for
 `LUCILLE_USE_DOCKER=false`.)

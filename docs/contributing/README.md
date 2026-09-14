@@ -123,7 +123,7 @@ See [Code Patterns](code-patterns.md) for full details.
 4. ✅ No dead code or stale comments
 5. ✅ Event parity verified (if you touched events)
 
-There is no pre-push hook that runs these automatically (`.git/hooks/pre-push` is Git LFS's own hook only) — run `make ci` and the smoke gates manually before pushing.
+`.git/hooks/pre-commit` (installed by `scripts/setup.sh`) runs black/isort/flake8 on staged `.py` files at commit time, so #3 above is partly caught automatically. There is still no pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only) — #1, #2, #4, and #5 above are not automated, so run `make ci` and the smoke gates manually before pushing.
 
 ---
 

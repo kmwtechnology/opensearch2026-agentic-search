@@ -61,7 +61,7 @@ Path A needs:
 ```bash
 docker --version      # Docker Desktop
 python3 --version     # Python 3.14+
-node --version        # Node.js 22+
+node --version        # Node.js 24+
 ```
 
 Lucille ETL ingest runs via Docker by default (`LUCILLE_USE_DOCKER=true`) —
