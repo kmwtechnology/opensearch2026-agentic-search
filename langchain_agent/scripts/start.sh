@@ -66,6 +66,29 @@ if ! docker compose -f "$PARENT_DIR/docker-compose.yml" ps 2>/dev/null | grep -q
     done
 fi
 echo "✓ OpenSearch Dashboards is ready"
+
+# Langfuse observability stack — always part of the standard local dev
+# stack, not optional (mirrors stop.sh/teardown.sh, which always tear it
+# down too). --profile observability brings up its 6 containers; already-
+# running base services are left alone by compose.
+if ! docker compose -f "$PARENT_DIR/docker-compose.yml" --profile observability ps 2>/dev/null | grep -q "langfuse-web.*Up"; then
+    echo "   Starting Langfuse..."
+    cd "$PARENT_DIR"
+    docker compose --profile observability up -d > /dev/null 2>&1
+    cd "$PROJECT_DIR"
+    echo "   Waiting for Langfuse to be ready..."
+    for i in {1..30}; do
+        if curl -s http://localhost:3000/api/public/health 2>/dev/null | grep -q '"status"'; then
+            break
+        fi
+        if [ "$i" -eq 30 ]; then
+            echo "⚠ Langfuse is starting (may take a moment) — check: docker compose logs langfuse-web"
+            break
+        fi
+        sleep 2
+    done
+fi
+echo "✓ Langfuse is ready → http://localhost:3000"
 echo ""
 
 # Optional: Re-ingest product data
@@ -167,6 +190,7 @@ echo "  Frontend:                http://localhost:5173"
 echo "  Backend:                 http://localhost:8000"
 echo "  API Docs (Swagger UI):   http://localhost:8000/swagger"
 echo "  OpenSearch Dashboards:   http://localhost:5601"
+echo "  Langfuse:                http://localhost:3000 (dev@example.com / localdev123)"
 echo ""
 echo "📊 Data Services:"
 echo "  PostgreSQL:  localhost:5432"
