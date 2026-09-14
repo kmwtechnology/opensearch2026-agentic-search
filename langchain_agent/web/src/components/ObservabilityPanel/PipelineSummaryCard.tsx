@@ -37,25 +37,25 @@ const CATEGORY_TONE: Record<
 > = {
   fabrication: {
     label: 'Fabrication',
-    chip: 'bg-rose-900/40 text-rose-200 border-rose-700/50',
+    chip: 'bg-white border-2 border-[#9F1239] text-[#9F1239] border-[#9F1239]',
     tooltip:
       'Outright wrong fact (e.g. "Made in USA" when the product\'s FACTS say nothing of the sort). Triggers auto-correction retry.',
   },
   cross_product_bleed: {
     label: 'Cross-product bleed',
-    chip: 'bg-rose-900/40 text-rose-200 border-rose-700/50',
+    chip: 'bg-white border-2 border-[#9F1239] text-[#9F1239] border-[#9F1239]',
     tooltip:
       'A fact transferred from one retrieved product to a different one. Triggers auto-correction retry.',
   },
   inference: {
     label: 'Inference',
-    chip: 'bg-amber-900/40 text-amber-200 border-amber-700/50',
+    chip: 'bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]',
     tooltip:
       'Paraphrase or over-claim from the source. Surfaced for review but does NOT trigger the ~20s retry.',
   },
   overreach: {
     label: 'Overreach',
-    chip: 'bg-amber-900/40 text-amber-200 border-amber-700/50',
+    chip: 'bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]',
     tooltip:
       'A general claim beyond what is grounded. Surfaced for review but does NOT trigger the ~20s retry.',
   },
@@ -112,7 +112,7 @@ const BM25_TUNING_KEYS = ['fuzzy', 'synonyms', 'phonetic', 'phrase_boost', 'fiel
 
 const VERDICT_TONE: Record<GenerationVerdict, { chip: string; label: string }> = {
   llm_better: {
-    chip: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50',
+    chip: 'bg-white border-2 border-[#065F46] text-[#065F46] border-[#065F46]',
     label: 'LLM judged BETTER',
   },
   tied: {
@@ -120,7 +120,7 @@ const VERDICT_TONE: Record<GenerationVerdict, { chip: string; label: string }> =
     label: 'Tied',
   },
   llm_worse: {
-    chip: 'bg-rose-900/40 text-rose-200 border-rose-700/50',
+    chip: 'bg-white border-2 border-[#9F1239] text-[#9F1239] border-[#9F1239]',
     label: 'LLM judged WORSE',
   },
 }
@@ -128,18 +128,18 @@ const VERDICT_TONE: Record<GenerationVerdict, { chip: string; label: string }> =
 const CONFIDENCE_TONE: Record<ConfidenceLabel, { dot: string; chip: string; text: string }> = {
   high: {
     dot: 'bg-emerald-400',
-    chip: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50',
-    text: 'text-emerald-200',
+    chip: 'bg-white border-2 border-[#065F46] text-[#065F46] border-[#065F46]',
+    text: 'text-[#065F46]',
   },
   medium: {
     dot: 'bg-amber-400',
-    chip: 'bg-amber-900/40 text-amber-200 border-amber-700/50',
-    text: 'text-amber-200',
+    chip: 'bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]',
+    text: 'text-[#9A3412]',
   },
   low: {
-    dot: 'bg-rose-400',
-    chip: 'bg-rose-900/40 text-rose-200 border-rose-700/50',
-    text: 'text-rose-200',
+    dot: 'bg-[#9F1239]',
+    chip: 'bg-white border-2 border-[#9F1239] text-[#9F1239] border-[#9F1239]',
+    text: 'text-[#9F1239]',
   },
 }
 
@@ -248,11 +248,11 @@ function LatencyTable({ rows }: { rows: LatencyStage[] }) {
                         row.ndcg_lift_per_100ms !== null &&
                         row.ndcg_lift_per_100ms !== undefined &&
                         row.ndcg_lift_per_100ms > 0
-                          ? 'text-emerald-300'
+                          ? 'text-[#065F46]'
                           : row.ndcg_lift_per_100ms !== null &&
                               row.ndcg_lift_per_100ms !== undefined &&
                               row.ndcg_lift_per_100ms < 0
-                            ? 'text-rose-300'
+                            ? 'text-[#9F1239]'
                             : 'text-[var(--color-stage-ink-soft)]'
                       }`}
                     >
@@ -319,7 +319,7 @@ export function PipelineSummaryCard() {
                     bm25Event?.body ? (
                       <button
                         onClick={() => setBm25DslOpen(true)}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[1.25rem] text-yellow-300/80 hover:text-yellow-200 hover:bg-yellow-500/10 transition-colors"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[1.25rem] text-[#9A3412]/80 hover:text-[#9A3412] hover:bg-white border-2 border-[#9A3412] transition-colors"
                         title="View BM25 baseline DSL"
                         aria-label="View BM25 baseline OpenSearch query DSL"
                       >
@@ -363,7 +363,7 @@ export function PipelineSummaryCard() {
 function SummaryBadge({ summary }: { summary: PipelineSummaryEvent }) {
   if (summary.has_ground_truth) {
     return (
-      <span className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-blue-900/40 text-blue-200 border-blue-700/50">
+      <span className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#1E40AF] text-[#1E40AF] border-[#1E40AF]">
         ground truth
       </span>
     )
@@ -456,7 +456,7 @@ function GenerationCard({
         <div className="flex items-center gap-1.5 flex-wrap">
           {retried && (
             <span
-              className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border whitespace-nowrap bg-amber-900/40 text-amber-200 border-amber-700/50"
+              className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border whitespace-nowrap bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]"
               title={`Auto-corrected: faithfulness ${original?.faithfulness?.toFixed(2) ?? '?'} → ${judgment.faithfulness.toFixed(2)}`}
             >
               🔁 Auto-corrected
@@ -505,7 +505,7 @@ function GenerationCard({
               : hallucinated.length > 0
                 ? `Hallucinations flagged (${hallucinated.length})`
                 : `Overreaches flagged (${overreached.length})`
-          const headerTone = hallucinated.length > 0 ? 'text-rose-300' : 'text-amber-300'
+          const headerTone = hallucinated.length > 0 ? 'text-[#9F1239]' : 'text-[#9A3412]'
           return (
             <div className="border-t border-[var(--color-stage-border)] pt-2 space-y-1.5">
               <span
@@ -518,8 +518,8 @@ function GenerationCard({
                 {judgment.hallucinations.map((h, i) => {
                   const tone = CATEGORY_TONE[h.category]
                   const itemColor = RETRY_WORTHY_CATEGORIES.has(h.category)
-                    ? 'text-rose-200/90'
-                    : 'text-amber-200/90'
+                    ? 'text-[#9F1239]'
+                    : 'text-[#9A3412]/90'
                   return (
                     <li key={i} className={itemColor}>
                       <span className="flex items-start gap-1.5">
@@ -553,7 +553,7 @@ function DegradedBadge({ optimizations }: { optimizations: Record<string, boolea
   if (off.length === 0) return null
   return (
     <span
-      className="text-[1.25rem] uppercase tracking-wide px-1.5 py-0.5 rounded border bg-amber-900/40 text-amber-200 border-amber-700/50"
+      className="text-[1.25rem] uppercase tracking-wide px-1.5 py-0.5 rounded border bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]"
       title={`These BM25 optimizations are off: ${off.join(', ')}. "Your BM25" reflects the degraded build.`}
     >
       ⚠ {off.length} off

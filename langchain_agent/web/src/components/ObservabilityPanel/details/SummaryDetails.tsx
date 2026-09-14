@@ -15,8 +15,8 @@ export function SummaryDetails({ event, status }: SummaryDetailsProps) {
       return (
         <div className="space-y-2 text-[1.375rem] text-[var(--color-stage-ink)]">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-            <span className="text-blue-300">Generating conversation summary...</span>
+            <div className="w-3 h-3 border-2 border-[#1E40AF] border-t-transparent rounded-full animate-spin" />
+            <span className="text-[#1E40AF]">Generating conversation summary...</span>
           </div>
           {intentClassification && (
             <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">
@@ -38,7 +38,7 @@ export function SummaryDetails({ event, status }: SummaryDetailsProps) {
     <div className="space-y-2 text-[1.375rem] text-[var(--color-stage-ink)]">
       <div>
         <span className="font-semibold text-[var(--color-stage-ink)]">Messages summarized:</span>{' '}
-        <span className="text-amber-300">{event.message_count}</span>
+        <span className="text-[#9A3412]">{event.message_count}</span>
       </div>
       <div>
         <span className="font-semibold text-[var(--color-stage-ink)]">Summary:</span>

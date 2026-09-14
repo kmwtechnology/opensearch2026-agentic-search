@@ -3,6 +3,11 @@
 Pure unit tests — no live HTTP, no SessionMiddleware. We hand the verifiers
 a stub object with a ``session`` attribute that mimics the dict-like Starlette
 exposes once SessionMiddleware is registered.
+
+The login gate is OPTIONAL and off by default (REQUIRE_LOGIN, #103), so the
+verifiers short-circuit to True unless it is switched on. Tests that exercise
+gate BEHAVIOUR therefore turn it on explicitly via the ``login_gate_on``
+autouse fixture; the tests at the bottom pin the off behaviour instead.
 """
 
 from __future__ import annotations
@@ -18,6 +23,12 @@ from api.middleware.session_auth import (
     verify_session,
     verify_websocket_session,
 )
+
+
+@pytest.fixture(autouse=True)
+def login_gate_on(monkeypatch):
+    """Most of this module tests what the gate does when it is enabled."""
+    monkeypatch.setattr("core.config.REQUIRE_LOGIN", True, raising=False)
 
 
 def _http_request(session=None, path: str = "/x", method: str = "GET"):
@@ -116,3 +127,27 @@ class TestVerifyWebsocketSession:
         assert await verify_websocket_session(ws) is False
         ws.close.assert_awaited_once()
         assert ws.close.await_args.kwargs["code"] == 4401
+
+
+@pytest.mark.unit
+class TestLoginGateDisabled:
+    """With REQUIRE_LOGIN off there is no session to check and nothing to reject.
+
+    This is the default: the shared-password screen put a password prompt
+    between a presenter and their own demo. verify_same_origin still applies,
+    so routes are open to same-origin callers rather than to the whole web.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _gate_off(self, monkeypatch):
+        monkeypatch.setattr("core.config.REQUIRE_LOGIN", False, raising=False)
+
+    @pytest.mark.asyncio
+    async def test_http_request_without_a_session_is_allowed(self):
+        assert await verify_session(_http_request(session=None)) is True
+
+    @pytest.mark.asyncio
+    async def test_websocket_without_a_session_is_accepted(self):
+        ws = _ws(session=None)
+        assert await verify_websocket_session(ws) is True
+        ws.close.assert_not_called()

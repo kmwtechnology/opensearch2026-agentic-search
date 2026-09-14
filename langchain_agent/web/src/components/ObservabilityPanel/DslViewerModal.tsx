@@ -81,7 +81,7 @@ export function DslViewerModal({ isOpen, title, subtitle, body, index, params, o
       >
         <div className="flex items-start justify-between gap-3 p-4 border-b border-[var(--color-stage-border)]">
           <div className="min-w-0">
-            <h2 id="dsl-viewer-title" className="text-[var(--text-stage-body)] font-semibold text-white">
+            <h2 id="dsl-viewer-title" className="text-[var(--text-stage-body)] font-semibold text-[var(--color-stage-ink)]">
               {title}
             </h2>
             {subtitle && <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-0.5">{subtitle}</p>}
@@ -89,13 +89,13 @@ export function DslViewerModal({ isOpen, title, subtitle, body, index, params, o
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={handleCopy}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[1.25rem] text-[var(--color-stage-ink-muted)] hover:text-white hover:bg-[var(--color-stage-raised)] border border-[var(--color-stage-border)] transition-colors"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[1.25rem] text-[var(--color-stage-ink-muted)] hover:text-[var(--color-stage-ink)] hover:bg-[var(--color-stage-raised)] border border-[var(--color-stage-border)] transition-colors"
               aria-label="Copy DSL to clipboard"
               disabled={!body}
             >
               {copied ? (
                 <>
-                  <Check className="w-3.5 h-3.5 text-green-400" />
+                  <Check className="w-3.5 h-3.5 text-[#065F46]" />
                   Copied
                 </>
               ) : (
@@ -117,7 +117,7 @@ export function DslViewerModal({ isOpen, title, subtitle, body, index, params, o
 
         <div className="flex-1 overflow-auto p-4">
           {requestLine && (
-            <pre className="text-[1.25rem] text-yellow-300 font-mono whitespace-pre bg-gray-950/80 rounded-t p-3 border border-b-0 border-[var(--color-stage-border-soft)]">
+            <pre className="text-[1.25rem] text-[#9A3412] font-mono whitespace-pre bg-gray-950/80 rounded-t p-3 border border-b-0 border-[var(--color-stage-border-soft)]">
               {requestLine}
             </pre>
           )}

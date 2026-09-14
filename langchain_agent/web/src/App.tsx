@@ -1,10 +1,8 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Layout } from './components/Layout'
-import { LoginScreen } from './components/LoginScreen'
 import { SwaggerPage } from './pages/SwaggerPage'
 import { GuidePage } from './pages/GuidePage'
-import { useAuthStore } from './stores/authStore'
 import { useChatStore } from './stores/chatStore'
 import { useWebSocket } from './hooks/useWebSocket'
 
@@ -35,47 +33,18 @@ function ChatApp() {
   return <Layout />
 }
 
-/**
- * AuthGate — checks /api/auth/status on mount and either renders the
- * LoginScreen or the wrapped app.
- *
- * The status probe is silent on first paint (just shows a placeholder)
- * to avoid a login-flash for users with a valid session cookie.
- */
-function AuthGate({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  const isChecking = useAuthStore((s) => s.isChecking)
-  const checkAuth = useAuthStore((s) => s.checkAuth)
-
-  useEffect(() => {
-    void checkAuth()
-  }, [checkAuth])
-
-  if (isChecking) {
-    return (
-      <div className="min-h-screen bg-[var(--color-stage-bg)] flex items-center justify-center">
-        <div className="text-[var(--color-stage-ink-soft)] text-lg font-medium">Checking session…</div>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
-    return <LoginScreen />
-  }
-
-  return <>{children}</>
-}
-
 function App() {
+  // No AuthGate (#103). The shared-password screen put a password prompt
+  // between a presenter and their own demo, on stage, and the backend now
+  // treats the login gate as optional (REQUIRE_LOGIN, default off). Set
+  // REQUIRE_LOGIN=true and this needs a gate again.
   return (
     <BrowserRouter>
-      <AuthGate>
-        <Routes>
-          <Route path="/" element={<ChatApp />} />
-          <Route path="/swagger" element={<SwaggerPage />} />
-          <Route path="/guide" element={<GuidePage />} />
-        </Routes>
-      </AuthGate>
+      <Routes>
+        <Route path="/" element={<ChatApp />} />
+        <Route path="/swagger" element={<SwaggerPage />} />
+        <Route path="/guide" element={<GuidePage />} />
+      </Routes>
     </BrowserRouter>
   )
 }

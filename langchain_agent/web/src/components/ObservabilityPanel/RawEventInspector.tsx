@@ -18,7 +18,7 @@ export function RawEventInspector({ events }: RawEventInspectorProps) {
   // Handle empty events
   if (!events || events.length === 0) {
     return (
-      <div className="rounded border bg-gray-500/5 border-gray-500/20 px-4 py-3">
+      <div className="rounded border bg-white border-[#4A463F] px-4 py-3">
         <div className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">No events to display</div>
       </div>
     )
@@ -60,20 +60,20 @@ export function RawEventInspector({ events }: RawEventInspectorProps) {
           <button
             onClick={handlePrevious}
             disabled={validIndex === 0}
-            className="p-1 rounded border border-[var(--color-stage-border)]/30 bg-gray-500/5 text-[var(--color-stage-ink-soft)] hover:bg-gray-500/10 hover:text-[var(--color-stage-ink-muted)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="p-1 rounded border border-[var(--color-stage-border)]/30 bg-white text-[var(--color-stage-ink-soft)] hover:bg-white border-2 border-[#4A463F] hover:text-[var(--color-stage-ink-muted)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title="Previous event"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
 
-          <span className="text-[1.25rem] text-[var(--color-stage-ink-soft)] px-2 py-1 bg-gray-500/5 border border-[var(--color-stage-border)]/30 rounded whitespace-nowrap">
+          <span className="text-[1.25rem] text-[var(--color-stage-ink-soft)] px-2 py-1 bg-white border border-[var(--color-stage-border)]/30 rounded whitespace-nowrap">
             Event {validIndex + 1} of {events.length}
           </span>
 
           <button
             onClick={handleNext}
             disabled={validIndex === events.length - 1}
-            className="p-1 rounded border border-[var(--color-stage-border)]/30 bg-gray-500/5 text-[var(--color-stage-ink-soft)] hover:bg-gray-500/10 hover:text-[var(--color-stage-ink-muted)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="p-1 rounded border border-[var(--color-stage-border)]/30 bg-white text-[var(--color-stage-ink-soft)] hover:bg-white border-2 border-[#4A463F] hover:text-[var(--color-stage-ink-muted)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title="Next event"
           >
             <ChevronRight className="w-4 h-4" />
@@ -83,12 +83,12 @@ export function RawEventInspector({ events }: RawEventInspectorProps) {
         {/* Copy button */}
         <button
           onClick={handleCopyToClipboard}
-          className="p-1.5 rounded border border-[var(--color-stage-border)]/30 bg-gray-500/5 text-[var(--color-stage-ink-soft)] hover:bg-gray-500/10 hover:text-[var(--color-stage-ink-muted)] transition-colors flex items-center gap-1 text-[1.25rem]"
+          className="p-1.5 rounded border border-[var(--color-stage-border)]/30 bg-white text-[var(--color-stage-ink-soft)] hover:bg-white border-2 border-[#4A463F] hover:text-[var(--color-stage-ink-muted)] transition-colors flex items-center gap-1 text-[1.25rem]"
           title="Copy JSON to clipboard"
         >
           <Copy className="w-4 h-4" />
           {copyFeedback ? (
-            <span className="text-green-400">Copied!</span>
+            <span className="text-[#065F46]">Copied!</span>
           ) : (
             <span>Copy</span>
           )}

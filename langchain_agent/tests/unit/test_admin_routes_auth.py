@@ -1,20 +1,34 @@
-"""Contract test: admin routes enforce auth.
+"""Contract test: admin routes enforce auth WHEN THE LOGIN GATE IS ON.
 
 Pure unit test (no network). Verifies that all /api/admin/* endpoints
 require either session auth OR admin token (X-Admin-Token header).
 
 Catches any new admin routes that ship without auth guards.
+
+Scope note (#103): the login gate is now optional and OFF by default, and
+with it off verify_session returns True — so these routes are reachable by
+any SAME-ORIGIN caller without credentials. That is a deliberate trade for a
+demo box (the Restart button calls /api/admin/demo-reset from the browser
+with no session), and verify_same_origin still rejects cross-site requests.
+These tests therefore switch the gate ON, which is what any deployment
+holding something worth protecting should also do.
 """
 
 from __future__ import annotations
 
 import pytest
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from starlette.middleware.sessions import SessionMiddleware
 
 from api.middleware.origin_auth import verify_same_origin
 from api.middleware.session_auth import verify_admin_token, verify_session
+
+
+@pytest.fixture(autouse=True)
+def login_gate_on(monkeypatch):
+    """These assertions are about the gate doing its job, so turn it on."""
+    monkeypatch.setattr("core.config.REQUIRE_LOGIN", True, raising=False)
 
 
 @pytest.fixture(scope="module")
@@ -118,8 +132,6 @@ def test_admin_routes_accept_admin_token_when_session_missing(
     client: TestClient, endpoint: str, monkeypatch
 ) -> None:
     """Admin token: X-Admin-Token header bypasses session requirement."""
-    import os
-
     monkeypatch.setenv("ADMIN_TOKEN", "test-admin-token-12345")
 
     response = client.get(

@@ -173,6 +173,7 @@ __all__ = [
     "RATE_LIMIT_ENABLED",
     # Login gate (shared-password session auth)
     "LOGIN_PASSWORD",
+    "REQUIRE_LOGIN",
     "SESSION_SECRET",
     "SESSION_COOKIE_SECURE",
     "SESSION_MAX_AGE_SECONDS",
@@ -510,6 +511,18 @@ RATE_LIMIT_ENABLED = True
 # rides every REST + WebSocket request thereafter.
 
 LOGIN_PASSWORD = os.getenv("LOGIN_PASSWORD")
+
+# Whether to put the shared-password login screen in front of the UI.
+#
+# Default OFF. The gate existed to reduce token burn during demos, but it also
+# put a password prompt between a presenter and their own demo, on stage. With
+# it off the app opens straight into the demo.
+#
+# Turning it off does NOT remove the other layer: verify_same_origin still
+# rejects cross-site requests. It does mean anyone who opens the deployed URL
+# directly can use the app and spend API tokens, so set REQUIRE_LOGIN=true for
+# any deployment reachable by people you would rather not pay for.
+REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "false").lower() == "true"
 SESSION_SECRET = os.getenv("SESSION_SECRET")
 
 # In dev (HTTP) the cookie must not be Secure-flagged or browsers drop it.

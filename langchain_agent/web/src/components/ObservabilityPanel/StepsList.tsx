@@ -60,9 +60,9 @@ export function StepsList() {
       >
         {/* Conversation context banner — PROJECTOR OPTIMIZED */}
         {conversationContext && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600/50 text-[var(--text-stage-body)]">
-            <MessageSquare className="w-5 h-5 text-slate-300 flex-shrink-0" />
-            <span className="text-slate-200">
+          <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-white border-2 border-[#4A463F] border border-[#4A463F] text-[var(--text-stage-body)]">
+            <MessageSquare className="w-5 h-5 text-[#4A463F] flex-shrink-0" />
+            <span className="text-[#4A463F]">
               {conversationContext.is_new_conversation
                 ? 'Starting new conversation'
                 : `Continuing conversation (${conversationContext.previous_message_count} previous messages)`}
@@ -83,7 +83,7 @@ export function StepsList() {
               behavior: 'smooth'
             })
           }}
-          className="absolute bottom-4 right-4 bg-blue-500 text-white rounded-full p-2 shadow-lg hover:bg-blue-600 transition-colors"
+          className="absolute bottom-4 right-4 bg-[#1E40AF] text-[var(--color-stage-ink)] rounded-full p-2 shadow-lg hover:bg-blue-600 transition-colors"
           aria-label="Scroll to latest"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

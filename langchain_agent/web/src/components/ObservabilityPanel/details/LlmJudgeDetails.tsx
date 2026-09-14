@@ -43,7 +43,7 @@ const VERDICT_TONE: Record<
 > = {
   llm_better: {
     label: 'LLM judged BETTER',
-    chip: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50',
+    chip: 'bg-white border-2 border-[#065F46] text-[#065F46] border-[#065F46]',
   },
   tied: {
     label: 'Tied',
@@ -51,7 +51,7 @@ const VERDICT_TONE: Record<
   },
   llm_worse: {
     label: 'LLM judged WORSE',
-    chip: 'bg-rose-900/40 text-rose-200 border-rose-700/50',
+    chip: 'bg-white border-2 border-[#9F1239] text-[#9F1239] border-[#9F1239]',
   },
 }
 
@@ -119,7 +119,7 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
         </span>
         {retried && (
           <span
-            className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-200 border-amber-700/50"
+            className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]"
             title={
               original
                 ? `Auto-corrected after the original response was flagged. Faithfulness ${fmt(original.faithfulness)} → ${fmt(judgment.faithfulness)}.`
@@ -140,13 +140,13 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
             return (
               <>
                 <span
-                  className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-rose-900/40 text-rose-200 border-rose-700/50"
+                  className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#9F1239] text-[#9F1239] border-[#9F1239]"
                   title="Fabrication / cross-product bleed — retry-worthy."
                 >
                   {hallucinated} hallucinated
                 </span>
                 <span
-                  className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-200 border-amber-700/50"
+                  className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]"
                   title="Inference / overreach — surfaced only, no retry."
                 >
                   {overreached} overreached
@@ -157,7 +157,7 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
           if (hallucinated > 0) {
             return (
               <span
-                className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-rose-900/40 text-rose-200 border-rose-700/50"
+                className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#9F1239] text-[#9F1239] border-[#9F1239]"
                 title="Fabrication / cross-product bleed — retry-worthy."
               >
                 {hallucinated} flagged
@@ -166,7 +166,7 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
           }
           return (
             <span
-              className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-200 border-amber-700/50"
+              className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]"
               title="Inference / overreach — surfaced only, no retry."
             >
               {overreached} overreached

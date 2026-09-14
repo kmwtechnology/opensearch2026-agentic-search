@@ -27,12 +27,12 @@ export function IntentClassifierDetails({ event, queryExpansion }: IntentClassif
         <span className="font-semibold text-[var(--color-stage-ink)]">Intent:</span>
         <span className={clsx(
           'px-2 py-0.5 rounded text-[1.25rem] font-medium',
-          event.intent === 'question' && 'bg-blue-500/20 text-blue-400',
-          event.intent === 'summary' && 'bg-purple-500/20 text-purple-400',
-          event.intent === 'follow_up' && 'bg-cyan-500/20 text-cyan-400',
-          event.intent === 'clarify' && 'bg-yellow-500/20 text-yellow-400',
-          event.intent === 'greeting' && 'bg-green-500/20 text-green-400',
-          !['question', 'summary', 'follow_up', 'clarify', 'greeting'].includes(event.intent) && 'bg-gray-500/20 text-[var(--color-stage-ink-soft)]'
+          event.intent === 'question' && 'bg-white border-2 border-[#1E40AF] text-[#1E40AF]',
+          event.intent === 'summary' && 'bg-white border-2 border-[#5B21B6] text-[#5B21B6]',
+          event.intent === 'follow_up' && 'bg-white border-2 border-[#155E75] text-[#155E75]',
+          event.intent === 'clarify' && 'bg-white border-2 border-[#9A3412] text-[#9A3412]',
+          event.intent === 'greeting' && 'bg-white border-2 border-[#065F46] text-[#065F46]',
+          !['question', 'summary', 'follow_up', 'clarify', 'greeting'].includes(event.intent) && 'bg-white border-2 border-[#4A463F] text-[var(--color-stage-ink-soft)]'
         )}>
           {event.intent}
         </span>
@@ -44,7 +44,7 @@ export function IntentClassifierDetails({ event, queryExpansion }: IntentClassif
           <span className="font-semibold text-[var(--color-stage-ink)]">Confidence:</span>
           <span className={clsx(
             'text-[1.25rem]',
-            isLowConfidence ? 'text-yellow-400' : 'text-green-400'
+            isLowConfidence ? 'text-[#9A3412]' : 'text-[#065F46]'
           )}>
             {confidencePercent}%
           </span>
@@ -53,13 +53,13 @@ export function IntentClassifierDetails({ event, queryExpansion }: IntentClassif
           <div
             className={clsx(
               'h-full rounded-full transition-all',
-              isLowConfidence ? 'bg-yellow-500' : 'bg-green-500'
+              isLowConfidence ? 'bg-[#9A3412]' : 'bg-[#065F46]'
             )}
             style={{ width: `${confidence * 100}%` }}
           />
         </div>
         {isLowConfidence && (
-          <p className="text-[1.25rem] text-yellow-400/80">
+          <p className="text-[1.25rem] text-[#9A3412]/80">
             Low confidence may trigger clarification
           </p>
         )}
@@ -79,9 +79,9 @@ export function IntentClassifierDetails({ event, queryExpansion }: IntentClassif
 
       {/* Query Expansion (if present) */}
       {queryExpansion && (
-        <div className="mt-3 p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
+        <div className="mt-3 p-2 rounded-lg bg-white border-2 border-[#155E75] border border-[#155E75]">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-cyan-400 font-semibold text-[1.25rem]">QUERY EXPANDED</span>
+            <span className="text-[#155E75] font-semibold text-[1.25rem]">QUERY EXPANDED</span>
           </div>
           <div className="space-y-1 text-[1.25rem]">
             <div>
@@ -90,7 +90,7 @@ export function IntentClassifierDetails({ event, queryExpansion }: IntentClassif
             </div>
             <div>
               <span className="text-[var(--color-stage-ink-soft)]">Expanded:</span>
-              <span className="ml-2 text-cyan-300">{queryExpansion.expanded_query}</span>
+              <span className="ml-2 text-[#155E75]">{queryExpansion.expanded_query}</span>
             </div>
             <div className="text-[var(--color-stage-ink-soft)] mt-1">
               {queryExpansion.expansion_reason}

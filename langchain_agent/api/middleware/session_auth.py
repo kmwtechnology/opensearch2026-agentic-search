@@ -50,6 +50,14 @@ async def verify_session(request: Request) -> bool:
     Raises 401 when the session cookie is missing/invalid/unauthenticated.
     Returns True on success so callers can early-return cleanly.
     """
+    from core.config import REQUIRE_LOGIN
+
+    # The login gate is optional (#103). With it off there is no session to
+    # check and every route is open to same-origin callers; verify_same_origin
+    # is still applied by the routes themselves.
+    if not REQUIRE_LOGIN:
+        return True
+
     session = getattr(request, "session", None)
     if _is_session_authenticated(session):
         return True
@@ -78,6 +86,11 @@ async def verify_websocket_session(websocket: WebSocket) -> bool:
     The browser sends the session cookie automatically on same-origin WS
     upgrades — no frontend code change needed.
     """
+    from core.config import REQUIRE_LOGIN
+
+    if not REQUIRE_LOGIN:
+        return True
+
     session = getattr(websocket, "session", None)
     if _is_session_authenticated(session):
         return True

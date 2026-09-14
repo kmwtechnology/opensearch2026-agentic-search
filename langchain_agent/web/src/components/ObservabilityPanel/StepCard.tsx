@@ -27,38 +27,41 @@ interface StepCardProps {
 }
 
 // Node display configuration — PROJECTOR OPTIMIZED
-const nodeConfig: Record<string, { label: string; color: string; bgColor: string }> = {
+const nodeConfig: Record<
+  string,
+  { label: string; color: string; bgColor: string; accent: string }
+> = {
   query_evaluator: {
     label: 'Query Evaluator',
     color: 'text-[#1E40AF]',
-    bgColor: 'bg-[#EFF6FF] border-[#1E40AF]',
+    bgColor: 'bg-white border-[#1E40AF]', accent: '#1E40AF',
   },
   agent: {
     label: 'LLM Agent',
     color: 'text-[#155E75]',
-    bgColor: 'bg-[#ECFEFF] border-[#155E75]',
+    bgColor: 'bg-white border-[#155E75]', accent: '#155E75',
   },
   retriever: {
     label: 'Knowledge Search',
     color: 'text-[#5B21B6]',
-    bgColor: 'bg-[#F5F3FF] border-[#5B21B6]',
+    bgColor: 'bg-white border-[#5B21B6]', accent: '#5B21B6',
   },
   reranker: {
     // Overridden below once we know the actual reranker_type for this step
     // (#87) — this is only the fallback before that event arrives.
     label: 'Reranker',
     color: 'text-[#3730A3]',
-    bgColor: 'bg-[#EEF2FF] border-[#3730A3]',
+    bgColor: 'bg-white border-[#3730A3]', accent: '#3730A3',
   },
   quality_gate: {
     label: 'Quality Gate',
     color: 'text-[#9A3412]',
-    bgColor: 'bg-[#FFF7ED] border-[#9A3412]',
+    bgColor: 'bg-white border-[#9A3412]', accent: '#9A3412',
   },
   intent_classifier: {
     label: 'Intent Classifier',
     color: 'text-[#065F46]',
-    bgColor: 'bg-[#ECFDF5] border-[#065F46]',
+    bgColor: 'bg-white border-[#065F46]', accent: '#065F46',
   },
 }
 
@@ -72,12 +75,12 @@ export function StepCard({ step, index }: StepCardProps) {
     ? {
         label: 'LLM Agent',
         color: 'text-[#065F46]',
-        bgColor: 'bg-[#ECFDF5] border-[#065F46]',
+        bgColor: 'bg-white border-[#065F46]', accent: '#065F46',
       }
     : nodeConfig[step.node] || {
         label: step.node,
         color: 'text-[var(--color-stage-ink-soft)]',
-        bgColor: 'bg-[var(--color-stage-raised)] border-[var(--color-stage-border)]',
+        bgColor: 'bg-white border-[var(--color-stage-border)]', accent: 'var(--color-stage-border)',
       }
 
   // The reranker's label depends on which reranker actually ran this turn —
@@ -98,19 +101,23 @@ export function StepCard({ step, index }: StepCardProps) {
   }
 
   const statusColors = {
-    idle: 'bg-gray-500',
-    running: 'bg-blue-500 animate-pulse',
-    complete: 'bg-emerald-500',
-    error: 'bg-red-500',
+    idle: 'bg-[#4A463F]',
+    running: 'bg-[#1E40AF] animate-pulse',
+    complete: 'bg-[#065F46]',
+    error: 'bg-[#991B1B]',
   }
 
   return (
     <div
       className={clsx(
-        'rounded-lg border transition-all',
+        'rounded-lg border-2 transition-all overflow-hidden',
         config.bgColor,
-        step.status === 'running' && 'ring-2 ring-blue-500/50'
+        step.status === 'running' && 'ring-4 ring-[#1E40AF]/30'
       )}
+      // A thick left edge in the stage's hue. Identifies the stage at a glance
+      // without putting a saturated wash behind the text, which is what made
+      // these cards hard to read projected.
+      style={{ borderLeftWidth: 10, borderLeftColor: config.accent }}
     >
       {/* Header - always visible — PROJECTOR OPTIMIZED */}
       <button
@@ -140,7 +147,7 @@ export function StepCard({ step, index }: StepCardProps) {
             {config.label}
           </span>
           {enrichmentEvent ? (
-            <span className="ml-1 inline-flex items-center gap-1.5 text-[1.375rem] font-medium text-emerald-300">
+            <span className="ml-1 inline-flex items-center gap-1.5 text-[1.375rem] font-medium text-[#065F46]">
               <RefreshCw className={clsx('w-4 h-4', step.status === 'running' && 'animate-spin')} />
               Enrichment: {enrichmentEvent.attribute_type} &ldquo;{enrichmentEvent.variant}&rdquo;
               {enrichmentEvent.canonical && <> → &ldquo;{enrichmentEvent.canonical}&rdquo;</>}
@@ -252,8 +259,8 @@ function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
         <span className={clsx(
           'px-2 py-0.5 rounded text-[1.25rem] font-medium',
           event.triggered
-            ? 'bg-orange-500/20 text-orange-400'
-            : 'bg-gray-500/20 text-[var(--color-stage-ink-soft)]'
+            ? 'bg-white border-2 border-[#9A3412] text-[#9A3412]'
+            : 'bg-white border-2 border-[#4A463F] text-[var(--color-stage-ink-soft)]'
         )}>
           {event.triggered ? 'Retry Triggered' : 'Passed'}
         </span>
@@ -265,7 +272,7 @@ function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
           <span className="font-semibold text-[var(--color-stage-ink)]">Max Reranker Score:</span>
           <span className={clsx(
             'text-[1.25rem] font-mono',
-            event.max_score < event.threshold ? 'text-orange-400' : 'text-green-400'
+            event.max_score < event.threshold ? 'text-[#9A3412]' : 'text-[#065F46]'
           )}>
             {event.max_score.toFixed(3)}
           </span>
@@ -274,7 +281,7 @@ function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
           <div
             className={clsx(
               'h-full rounded-full transition-all',
-              event.max_score < event.threshold ? 'bg-orange-500' : 'bg-green-500'
+              event.max_score < event.threshold ? 'bg-[#9A3412]' : 'bg-[#065F46]'
             )}
             style={{ width: `${event.max_score * 100}%` }}
           />
@@ -292,12 +299,12 @@ function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
 
       {/* Alpha adjustment */}
       {event.triggered && event.new_alpha != null && (
-        <div className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/30">
+        <div className="p-2 rounded-lg bg-white border-2 border-[#9A3412] border border-[#9A3412]">
           <div className="flex items-center gap-2 text-[1.25rem]">
             <span className="text-[var(--color-stage-ink-soft)]">Alpha adjusted:</span>
             <span className="text-[var(--color-stage-ink-muted)]">{event.original_alpha.toFixed(2)}</span>
-            <span className="text-orange-400">→</span>
-            <span className="text-orange-300 font-medium">{event.new_alpha.toFixed(2)}</span>
+            <span className="text-[#9A3412]">→</span>
+            <span className="text-[#9A3412] font-medium">{event.new_alpha.toFixed(2)}</span>
           </div>
         </div>
       )}

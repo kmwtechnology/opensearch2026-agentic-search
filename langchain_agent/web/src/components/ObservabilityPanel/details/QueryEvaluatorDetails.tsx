@@ -29,9 +29,9 @@ export function QueryEvaluatorDetails() {
         <span
           className={clsx(
             'px-2 py-0.5 rounded-full text-[1.25rem] font-medium',
-            search_strategy === 'lexical-heavy' && 'bg-amber-500/20 text-amber-400',
-            search_strategy === 'balanced' && 'bg-violet-500/20 text-violet-400',
-            search_strategy === 'semantic-heavy' && 'bg-blue-500/20 text-blue-400'
+            search_strategy === 'lexical-heavy' && 'bg-white border-2 border-[#9A3412] text-[#9A3412]',
+            search_strategy === 'balanced' && 'bg-white border-2 border-[#5B21B6] text-[#5B21B6]',
+            search_strategy === 'semantic-heavy' && 'bg-white border-2 border-[#1E40AF] text-[#1E40AF]'
           )}
         >
           {search_strategy}
@@ -64,7 +64,7 @@ export function QueryEvaluatorDetails() {
         </div>
 
         <div className="text-center text-[1.375rem]">
-          <span className="text-white font-medium">
+          <span className="font-bold text-[var(--color-stage-ink)]">
             {(alpha * 100).toFixed(0)}%
           </span>
           <span className="text-[var(--color-stage-ink-soft)] ml-1">semantic weight</span>

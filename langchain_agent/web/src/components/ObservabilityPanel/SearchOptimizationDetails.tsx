@@ -157,7 +157,7 @@ export function SearchOptimizationDetails() {
                   blockedByLlm
                     ? 'bg-[var(--color-stage-raised)]/40 border border-[var(--color-stage-border)] opacity-50 cursor-not-allowed'
                     : enabled
-                      ? 'bg-green-900/20 border border-green-800/50 hover:bg-green-900/30 cursor-pointer'
+                      ? 'bg-white border-2 border-[#065F46] border border-[#065F46] hover:bg-white border-2 border-[#065F46] cursor-pointer'
                       : 'bg-[var(--color-stage-raised)]/20 border border-[var(--color-stage-border)] hover:bg-[var(--color-stage-raised)]/30 cursor-pointer'
                 )}
               >
@@ -178,7 +178,7 @@ export function SearchOptimizationDetails() {
               <div className="text-[var(--color-stage-ink-soft)] mb-1">Applied to last search:</div>
               <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono">
                 {Object.entries(lastApplied).map(([k, v]) => (
-                  <span key={k} className={v ? 'text-green-300' : 'text-red-300'}>
+                  <span key={k} className={v ? 'text-[#065F46]' : 'text-[#991B1B]'}>
                     {k}={v ? 'on' : 'off'}
                   </span>
                 ))}
@@ -197,7 +197,7 @@ export function SearchOptimizationDetails() {
                 className={clsx(
                   'shrink-0 inline-flex items-center gap-2 px-2 py-1 rounded-md border transition-colors',
                   allOn
-                    ? 'border-emerald-700/60 bg-emerald-900/30 text-emerald-200 hover:bg-emerald-900/50'
+                    ? 'border-[#065F46] bg-white border-2 border-[#065F46] text-[#065F46] hover:bg-white border-2 border-[#065F46]'
                     : 'border-[var(--color-stage-border)] bg-[var(--color-stage-raised)] text-[var(--color-stage-ink-muted)] hover:bg-[var(--color-stage-raised)]'
                 )}
                 title={allOn ? 'Turn all optimizations OFF' : 'Turn all optimizations ON'}
@@ -206,7 +206,7 @@ export function SearchOptimizationDetails() {
                 <span
                   className={clsx(
                     'w-7 h-3.5 rounded-full transition-colors relative',
-                    allOn ? 'bg-emerald-500' : 'bg-gray-600'
+                    allOn ? 'bg-[#065F46]' : 'bg-gray-600'
                   )}
                 >
                   <span

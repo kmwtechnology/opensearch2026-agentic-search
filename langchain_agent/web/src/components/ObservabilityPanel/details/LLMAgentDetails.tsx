@@ -66,14 +66,14 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
           the generic Tool Calls list. This is the "agent fixes the catalog,
           not just the query" moment the demo centers on. */}
       {enrichmentEvent && (
-        <div className="flex items-start gap-3 rounded-lg border-2 border-emerald-400 bg-emerald-500/15 p-3">
+        <div className="flex items-start gap-3 rounded-lg border-2 border-[#065F46] bg-emerald-500/15 p-3">
           <RefreshCw
-            className={`w-5 h-5 text-emerald-300 flex-shrink-0 mt-0.5 ${
+            className={`w-5 h-5 text-[#065F46] flex-shrink-0 mt-0.5 ${
               agentStep.status === 'running' ? 'animate-spin' : ''
             }`}
           />
           <div className="min-w-0">
-            <div className="text-[1.375rem] font-semibold text-emerald-200">
+            <div className="text-[1.375rem] font-semibold text-[#065F46]">
               Catalog Enrichment Triggered
             </div>
             <div className="text-[1.25rem] text-emerald-100 mt-1">
@@ -83,7 +83,7 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
                 <> resolved to canonical bucket &ldquo;{enrichmentEvent.canonical}&rdquo;</>
               )}
             </div>
-            <div className="text-[1.25rem] text-emerald-300/90 mt-1">
+            <div className="text-[1.25rem] text-[#065F46]/90 mt-1">
               {agentStep.status === 'running' ? (
                 'Writing the new mapping and re-indexing the catalog live (~15-20s)...'
               ) : enrichmentEvent.duration_seconds != null ? (
@@ -124,9 +124,9 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
             {toolCalls.map((toolCall, idx) => (
               <div
                 key={idx}
-                className="bg-purple-500/5 border border-purple-500/20 rounded p-3"
+                className="bg-white border border-[#5B21B6] rounded p-3"
               >
-                <div className="text-[1.25rem] font-medium text-purple-400 mb-2">
+                <div className="text-[1.25rem] font-medium text-[#5B21B6] mb-2">
                   {toolCall.tool_name}
                 </div>
                 <div className="bg-black/30 rounded p-2 font-mono text-[1.25rem] text-[var(--color-stage-ink-muted)] max-h-24 overflow-y-auto break-words">
@@ -149,8 +149,8 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
               remarkPlugins={[remarkGfm]}
               components={{
                 // Compact styling for observability panel
-                h1: ({ children }) => <h1 className="text-[1.375rem] font-bold text-white mt-2 mb-1">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-[1.25rem] font-bold text-white mt-2 mb-1">{children}</h2>,
+                h1: ({ children }) => <h1 className="text-[1.375rem] font-bold text-[var(--color-stage-ink)] mt-2 mb-1">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-[1.25rem] font-bold text-[var(--color-stage-ink)] mt-2 mb-1">{children}</h2>,
                 h3: ({ children }) => <h3 className="text-[1.25rem] font-semibold text-[var(--color-stage-ink)] mt-1 mb-1">{children}</h3>,
                 p: ({ children }) => <p className="mb-2 text-[1.25rem]">{children}</p>,
                 pre: ({ children }) => <pre className="bg-black/40 rounded p-2 overflow-x-auto text-[1.25rem] my-2">{children}</pre>,
@@ -162,7 +162,7 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
                     <code className={className} {...props}>{children}</code>
                   )
                 },
-                a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{children}</a>,
+                a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-[#1E40AF] hover:underline">{children}</a>,
                 ul: ({ children }) => <ul className="list-disc list-inside my-1 ml-2 text-[1.25rem]">{children}</ul>,
                 ol: ({ children }) => <ol className="list-decimal list-inside my-1 ml-2 text-[1.25rem]">{children}</ol>,
                 li: ({ children }) => <li className="text-[1.25rem]">{children}</li>,

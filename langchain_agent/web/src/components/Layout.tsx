@@ -30,7 +30,6 @@ import {
   ChevronRight,
   Code2,
   LayoutList,
-  LogOut,
   MessageSquare,
   Plus,
   Sparkles,
@@ -43,7 +42,6 @@ import { DemoSelector } from './DemoSelector'
 import { DEFAULT_DEMO_ID, getDemo } from '../demos/registry'
 import { useChatStore } from '../stores/chatStore'
 import { useObservabilityStore } from '../stores/observabilityStore'
-import { useAuthStore } from '../stores/authStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { apiPost } from '../utils/api'
 
@@ -59,7 +57,6 @@ export function Layout() {
   const isConnected = useChatStore((s) => s.isConnected)
   const pendingAutoSend = useChatStore((s) => s.pendingAutoSend)
   const startNewConversation = useChatStore((s) => s.startNewConversation)
-  const logout = useAuthStore((s) => s.logout)
   const { sendMessage } = useWebSocket()
   const clearObservability = useObservabilityStore((s) => s.clearState)
 
@@ -318,13 +315,6 @@ export function Layout() {
           >
             <Code2 className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
           </Link>
-          <button
-            onClick={() => void logout()}
-            aria-label="Sign out"
-            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
-          >
-            <LogOut className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
-          </button>
         </div>
       </header>
 
