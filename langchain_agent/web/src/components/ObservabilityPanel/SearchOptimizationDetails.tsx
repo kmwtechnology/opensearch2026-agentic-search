@@ -67,8 +67,9 @@ const OPTIMIZATIONS: OptimizationDef[] = [
   },
   {
     key: 'reranking',
-    name: 'LLM Reranking',
-    description: 'Rescores and reorders retrieved documents with Gemini for relevance',
+    name: 'Cross-Encoder Reranking',
+    description:
+      'Rescores and reorders retrieved documents with a local cross-encoder model — no added API latency',
     icon: '🧮',
   },
   {

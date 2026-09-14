@@ -1740,9 +1740,24 @@ Return ONLY a JSON object (use null for missing attributes):
                     if "product_brand" in match_obj:
                         query = match_obj["product_brand"].get("query", "")
                         parts.append(f"brand: {query}")
-                    elif "product_color" in match_obj:
-                        query = match_obj["product_color"].get("query", "")
+                    elif "product_color_primary" in match_obj:
+                        # The filter built by _extract_attribute_filters uses
+                        # "product_color_primary" (see that method), not the
+                        # bare "product_color" this branch checked for prior
+                        # to 2026-09-14 -- that key never matched, so no
+                        # color filter's summary text ever rendered despite
+                        # the filter itself working correctly against
+                        # OpenSearch. Confirmed live: "show me blue running
+                        # shoes size 10" applied a real color:blue filter but
+                        # the "Filters Applied" line never showed it.
+                        query = match_obj["product_color_primary"].get("query", "")
                         parts.append(f"color: {query}")
+                    elif "product_material_primary" in match_obj:
+                        # Same class of bug: a resolved material filter (see
+                        # _extract_attribute_filters) had no branch here at
+                        # all, so it silently vanished from the summary too.
+                        query = match_obj["product_material_primary"].get("query", "")
+                        parts.append(f"material: {query}")
                 elif "multi_match" in f:
                     mm = f["multi_match"]
                     query_text = mm.get("query", "")
@@ -2996,17 +3011,24 @@ Original query: {query}
             return {
                 "quality_gate_retried": False,
                 "quality_gate_reason": "Quality gate disabled in config",
+                "quality_gate_status": "pass",
                 "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
             }
 
-        # Already retried once - accept results
+        # Already retried once - accept results. This branch only runs on the
+        # SECOND pass through this node (after a real retry), so it must
+        # explicitly overwrite quality_gate_status to "pass" here -- leaving
+        # it unset would let the first pass's "retry" value leak forward
+        # through state and make _quality_gate_route loop back to the
+        # retriever forever.
         if state.get("quality_gate_retried", False):
             logger.info(
                 f"QualityGate: already retried, accepting results (max_score={max_score:.3f})"
             )
             return {
                 "quality_gate_reason": f"Accepted after retry (max_score={max_score:.3f})",
+                "quality_gate_status": "pass",
                 "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
             }
@@ -3016,6 +3038,7 @@ Original query: {query}
             return {
                 "quality_gate_retried": False,
                 "quality_gate_reason": "No documents to evaluate",
+                "quality_gate_status": "pass",
                 "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
             }

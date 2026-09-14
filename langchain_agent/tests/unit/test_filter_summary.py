@@ -31,12 +31,34 @@ def test_format_filter_summary_with_brand_filter(agent):
 
 
 def test_format_filter_summary_with_color_filter(agent):
-    """Test filter summary formatting for color match filter."""
-    filters = [{"match": {"product_color": {"query": "black"}}}]
+    """Test filter summary formatting for color match filter.
+
+    Regression test: _extract_attribute_filters builds color filters keyed
+    on "product_color_primary" (see pipeline_nodes.py), not the bare
+    "product_color" this test asserted against prior to 2026-09-14. That
+    mismatch meant this test was silently locking in a bug where no color
+    filter's summary text ever rendered in the UI, even though the filter
+    itself worked correctly against OpenSearch.
+    """
+    filters = [{"match": {"product_color_primary": {"query": "black"}}}]
 
     result = agent._format_filter_summary(filters)
 
     assert result == "color: black"
+
+
+def test_format_filter_summary_with_material_filter(agent):
+    """Test filter summary formatting for a resolved material match filter.
+
+    Regression test: this branch didn't exist at all prior to 2026-09-14 --
+    a resolved material filter (product_material_primary) silently vanished
+    from the summary with no branch to catch it.
+    """
+    filters = [{"match": {"product_material_primary": {"query": "leather"}}}]
+
+    result = agent._format_filter_summary(filters)
+
+    assert result == "material: leather"
 
 
 def test_format_filter_summary_with_price_range(agent):
