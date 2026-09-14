@@ -271,12 +271,12 @@ curl "$SERVICE_URL/api/health"
 **Expected response:**
 ```json
 {
-  "status": "healthy",
-  "checks": {
-    "postgres": "ok",
-    "opensearch": "ok",
-    "google_ai": "ok"
-  }
+  "status": "ok",
+  "version": "1.1.0",
+  "postgres": true,
+  "google_ai": true,
+  "vector_store": true,
+  "document_count": 9618
 }
 ```
 

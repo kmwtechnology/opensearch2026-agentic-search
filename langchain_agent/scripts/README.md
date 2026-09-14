@@ -21,8 +21,8 @@ is running (or can be started automatically).
 | `gcp-init.sh` | One-time: Cloud SQL setup, ESCI ingest via Lucille (on runner) | After first deploy | 5–10 min |
 | `gcp-teardown.sh` | Remove Cloud Run, Cloud SQL, OpenSearch, secrets | End of project | 2–3 min |
 | `smoke_test.sh` | Health check + basic round-trip against a Cloud Run URL | Post-deploy verification | 10 s |
-| **CI/Git Hooks** |
-| `pre-commit.sh` | Black + isort + flake8 on staged files + smoke-test gate | Git pre-commit hook | 10–15 s |
+| **CI/Manual Gates** |
+| `pre-commit.sh` | Black + isort + flake8 on staged files + smoke-test gate | Run manually before committing (not an installed hook) | 10–15 s |
 | `lucille_ingest.sh` | ESCI re-ingestion (builds Lucille on first run, reads `data/*.parquet`) | Manual re-ingest | 30 s–1 min |
 | **Utilities** |
 | `prepare_judgments_parquet.py` | Pre-aggregate ESCI judgments (one-time or on sample change) | Data ops | 2–3 min |
@@ -75,30 +75,27 @@ is running (or can be started automatically).
    bash ./scripts/lucille_ingest.sh
    ```
 
-## Git Hooks (Two-Tier)
+## Manual Gates (No Git Hooks Installed)
 
-Installed by `setup.sh` as local `.git/hooks/` (not tracked by git).
+There is no pre-commit or pre-push hook in this repo — `.git/hooks/pre-push` is Git LFS's own hook only, and `setup.sh` does not install anything into `.git/hooks/`. `pre-commit.sh` exists as a standalone script but is not wired into git; run it (or the commands below) by hand.
 
-### Pre-commit (`pre-commit.sh`)
+### Before committing
 
-Runs on every `git commit`:
-- Black + isort + flake8 on staged `.py` files
-- Smoke gate (`make smoke-local-quick`) if `api/services/`, `api/routes/`, `main.py`, `core/agent_state.py` staged AND Docker up
-  - Smoke gate fails open if Docker is down (prevents blocking hotfixes)
-  - Smoke gate fails hard if tests fail (catches WebSocket/observability regressions before push)
+Run manually (e.g. via `./scripts/pre-commit.sh`, or the equivalent commands directly):
+- Black + isort + flake8 on staged `.py` files (`make format-fix` / `make lint`)
+- Smoke gate (`make smoke-local-quick`) if `api/services/`, `api/routes/`, `main.py`, `core/agent_state.py` changed AND Docker is up
 
-**If blocked:** Run `make format-fix`, re-stage, retry commit.
+**If checks fail:** Run `make format-fix`, re-stage, retry.
 
-### Pre-push
+### Before pushing
 
-Runs once per push:
-- Git LFS pre-push (from default)
+Run manually before every push:
 - `make ci` — full local gate (lint + unit + frontend + collect-only integration/e2e)
-- Smoke gate (`make smoke-local`) if any backend-path file changed AND Docker up
-  - 20-test suite, ~90 s
-  - Fails open if Docker is down; fails hard on test failure
+- `make smoke-local` if any backend-path file changed AND Docker is up (20-test suite, ~90 s)
 
-**If blocked:** Fix root cause, re-run `make ci` locally, push retry.
+Nothing stops a push with broken formatting or failing tests except CI.
+
+**If checks fail:** Fix root cause, re-run `make ci` locally, push retry.
 
 ## Smoke Test Budget
 

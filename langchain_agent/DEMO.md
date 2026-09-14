@@ -533,7 +533,7 @@ value live** — not a reshuffled leaderboard. Lead with that.
   cd langchain_agent
   python3 -c "
   import sys; sys.path.insert(0,'.')
-  from attribute_mapping_store import AttributeMappingStore
+  from retrieval.attribute_mapping_store import AttributeMappingStore
   AttributeMappingStore().add_mapping('color', 'tan', 'yellow', source='seed')
   "
   bash scripts/lucille_ingest.sh --skip-judgments
@@ -697,7 +697,7 @@ A: Absolutely. Replace ESCI products with your own documents (news articles, int
 
 **Q: Can I fine-tune the reranker?**
 
-A: The current reranker uses LLM-based scoring (no fine-tuning needed). But you could swap for a trained cross-encoder. Setup guide in `CONTRIBUTING.md`.
+A: The shipped default is a local cross-encoder (`ms-marco-MiniLM-L-12-v2`, `RERANKER_TYPE=cross-encoder`) — no LLM call, no fine-tuning needed. An LLM-based reranker (`RERANKER_TYPE=gemini`) also exists but isn't the default. Setup guide in `CONTRIBUTING.md`.
 
 ---
 

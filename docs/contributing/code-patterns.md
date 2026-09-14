@@ -131,7 +131,7 @@ except SearchTimeoutError as e:
 Gemini returns list-of-content-blocks for certain fields. Use `_flatten_llm_content()` to convert to string:
 
 ```python
-from main import _flatten_llm_content
+from observability.llm_content import _flatten_llm_content
 
 # Gemini returns: [{"text": "Hello"}, {"text": " world"}]
 response = llm.generate(prompt)

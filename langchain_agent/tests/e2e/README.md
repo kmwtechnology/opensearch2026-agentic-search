@@ -13,9 +13,16 @@ These are pytest + httpx + websockets tests (not browser automation).
 
 ```bash
 export CLOUD_RUN_URL="https://agentic-hybrid-search-xyz.us-central1.run.app"
-export API_KEY="..."                # must match Secret Manager
+export ADMIN_TOKEN="..."            # must match the deployed ADMIN_TOKEN secret
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
+
+Real backend auth is a session cookie (`POST /api/auth/login`, cookie `ahs_session`)
+or the `X-Admin-Token` header (`ADMIN_TOKEN` env var, 32+ chars) for automation —
+see `test_deployment_smoke.py`'s `TestAuthentication` for the current
+session/origin-based auth tests. Some older e2e/load-test files still
+reference a legacy `API_KEY`/`X-API-Key` scheme that the backend no longer
+checks; treat those as stale until updated.
 
 All suites auto-skip individual tests when the target origin rejects the
 request (via `_skip_if_origin_blocked`) — useful when CORS or VPC rules
@@ -171,8 +178,10 @@ API_KEY=my-key TIMEOUT=20 ./scripts/smoke_test.sh https://my-deployment
 ```
 
 Validates connectivity, `/api/health`, PostgreSQL + OpenSearch status,
-auth (valid/invalid/missing key), and response time. Color-coded output;
-non-zero exit on any failure.
+and response time. Color-coded output; non-zero exit on any failure. Note:
+the script's `API_KEY`/`Authorization: Bearer` auth check is legacy — the
+backend only recognizes a session cookie or `X-Admin-Token`, so that
+particular check is currently a no-op against a real deployment.
 
 ## GitHub Actions Smoke Test
 
@@ -196,7 +205,8 @@ gh run list --workflow=build-deploy.yml --limit 5
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CLOUD_RUN_URL` | `http://localhost:8000` | Deployment under test |
-| `API_KEY` | `test-api-key` | API auth for protected routes |
+| `API_KEY` | `test-api-key` | Legacy `smoke_test.sh` var; sent as `Authorization: Bearer`, which the backend no longer checks (real auth is session cookie / `X-Admin-Token`) |
+| `ADMIN_TOKEN` | (unset) | Value for the `X-Admin-Token` header on `/api/admin/*` routes |
 | `TIMEOUT` | 30 (pytest), 10 (curl) | Request timeout in seconds |
 | `PYTHONPATH` | (unset) | Must be `.` for pytest module resolution |
 
@@ -223,7 +233,8 @@ test origin.
 
 **Data tests fail** — check document count
 (`curl $CLOUD_RUN_URL/api/health | grep document_count`); re-ingest via
-`GET /api/admin/reindex` if empty.
+`scripts/lucille_ingest.sh` or the `reindex.yml` GitHub Actions workflow if
+empty, then verify via `GET /api/admin/health`.
 
 ## See Also
 

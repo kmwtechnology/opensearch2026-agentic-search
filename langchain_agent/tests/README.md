@@ -65,7 +65,7 @@ PYTHONPATH=. pytest tests/ -v
 ```bash
 PYTHONPATH=. pytest tests/unit/ -v             # ~0.5 s, no deps
 PYTHONPATH=. pytest tests/integration/ -v      # needs Postgres + OpenSearch + GOOGLE_API_KEY
-PYTHONPATH=. pytest tests/e2e/ -v              # needs CLOUD_RUN_URL (and API_KEY)
+PYTHONPATH=. pytest tests/e2e/ -v              # needs CLOUD_RUN_URL (and ADMIN_TOKEN)
 ```
 
 ### By file or pattern
@@ -136,7 +136,7 @@ services — everything is mocked through `conftest.py`.
 | `test_frontend_backend_event_parity.py` | Pre-flight guard: every backend `type: Literal[...]` in `events.py` must appear in `web/src/types/events.ts`; per-event `node:` literals must match between backend and frontend; `AgentEvent` union cannot reference Python builtins |
 | `test_smoke_test_budget.py` | Pre-flight guard: AST-walks each smoke / cloud-run / data e2e test, counts `chat_message` sends, computes a worst-case Cloud Run budget (`SETUP_OVERHEAD_S=5` + `PER_CHAT_MESSAGE_BUDGET_S=25` × sends), and asserts the workflow's `pytest --timeout=N` covers it. Also asserts inner `asyncio.wait_for(timeout=...)` ≤ workflow `--timeout` and `WEBSOCKET_TIMEOUT` ≥ per-message budget. Tighten constants only if you have new wall-clock data — they reflect production observation, not aspirational SLOs. |
 
-**Run time:** ~0.9 s. ~612 unit tests total. **Best for:** TDD,
+**Run time:** ~0.9 s. ~919 unit tests total. **Best for:** TDD,
 pre-commit, CI fast lane.
 
 ### Integration (`tests/integration/`)
@@ -189,13 +189,14 @@ required environment.
 > `--collect-only` on `tests/e2e/`.
 
 **Run time:** ~10 s – several minutes (load/stress). **Requires:** a
-backend URL and an `API_KEY`. Two common configurations:
+backend URL and an `ADMIN_TOKEN` (or a session cookie from `/api/auth/login`).
+Two common configurations:
 
 ```bash
 # Against the deployed Cloud Run service:
 export CLOUD_RUN_URL="https://agentic-hybrid-search-375500751528.us-central1.run.app"
-export API_KEY="$(gcloud secrets versions access latest \
-  --secret=agentic-hybrid-search-api-key \
+export ADMIN_TOKEN="$(gcloud secrets versions access latest \
+  --secret=agentic-hybrid-search-admin-token \
   --project=gen-lang-client-0250737934)"
 PYTHONPATH=. pytest tests/e2e/ -v
 
@@ -203,7 +204,7 @@ PYTHONPATH=. pytest tests/e2e/ -v
 docker compose up -d                           # PostgreSQL + OpenSearch
 make dev-api                                   # backend on :8000
 export CLOUD_RUN_URL="http://localhost:8000"   # in dev allow-list
-export API_KEY="$(grep '^API_KEY=' .env | cut -d= -f2)"
+export ADMIN_TOKEN="$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2)"
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
 
@@ -241,8 +242,9 @@ integration tests (ephemeral Postgres + OpenSearch), strict lint
 deploy + smoke test. Runners use Node.js 24.
 
 `.github/workflows/reindex.yml` is a separate manual-dispatch workflow
-that calls `GET /api/admin/reindex` against the deployed Cloud Run
-service — not invoked by the regular test/deploy flow.
+that runs `scripts/lucille_ingest.sh` on the runner to re-ingest ESCI data
+into the deployed OpenSearch index — not invoked by the regular test/deploy
+flow. Verify the result via `GET /api/admin/health`.
 
 ## Common Issues
 
@@ -273,7 +275,7 @@ the backend if the test exercises the HTTP/WebSocket layer.
 
 ### E2E tests failing with 401
 
-Check `API_KEY` matches what's stored in Secret Manager for the deployed
+Check `ADMIN_TOKEN` matches what's stored in Secret Manager for the deployed
 service, and that `CLOUD_RUN_URL` has the correct scheme + host.
 
 ## Performance Testing
@@ -312,7 +314,7 @@ Frontend tests live alongside the React source in
 
 ```bash
 cd langchain_agent/web
-npm run test            # 101 tests
+npm run test            # 278 tests
 npm run test -- --watch
 npm run test -- --coverage
 ```

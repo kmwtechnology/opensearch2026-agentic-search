@@ -56,7 +56,7 @@ bash scripts/lucille_ingest.sh --skip-products
 
 ## Storage Notes
 
-- **Size** — products: ~200 MB (9k docs × 768-dim vectors); judgments: ~50 MB (97k queries)
+- **Size** — products: ~64 MB (9k docs × 768-dim vectors); judgments: ~23 MB (97k queries)
 - **Compression** — parquet format with Snappy codec (default)
 - **Versioning** — Git LFS tracks these files; `git lfs install` required locally
 - **Idempotency** — Lucille ingest is idempotent; re-running `lucille_ingest.sh` is safe

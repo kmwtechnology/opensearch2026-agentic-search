@@ -123,7 +123,7 @@ See [Code Patterns](code-patterns.md) for full details.
 4. ✅ No dead code or stale comments
 5. ✅ Event parity verified (if you touched events)
 
-The pre-push hook runs `make ci` and smoke gates automatically. Don't bypass with `--no-verify`.
+There is no pre-push hook that runs these automatically (`.git/hooks/pre-push` is Git LFS's own hook only) — run `make ci` and the smoke gates manually before pushing.
 
 ---
 

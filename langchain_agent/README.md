@@ -61,7 +61,7 @@ Path A needs:
 ```bash
 docker --version      # Docker Desktop
 python3 --version     # Python 3.14+
-node --version        # Node.js 24+
+node --version        # Node.js 22+
 ```
 
 Lucille ETL ingest runs via Docker by default (`LUCILLE_USE_DOCKER=true`) —
@@ -89,7 +89,7 @@ cp .env.example .env
 
 Takes ~3–5 min on first run (embeddings are precomputed in the shipped sample — no API calls needed for the default 10 k ingest):
 
-1. Generates a secure `API_KEY`
+1. Creates `.env` from `.env.example` (set `ADMIN_TOKEN` yourself if you want automation access to `/api/admin/*`)
 2. Creates `.venv`, installs Python + frontend dependencies
 3. Starts PostgreSQL and OpenSearch via Docker
 4. Initializes the checkpoint DB and OpenSearch index
@@ -101,7 +101,7 @@ Backend FastAPI runs on `:8000`, React frontend on `:5173` (Vite proxies
 
 The login password is stored as `LOGIN_PASSWORD` in `.env`. The UI uses a
 signed session cookie after login; admin automation can use
-`X-Admin-Token: $API_KEY` on protected admin routes.
+`X-Admin-Token: $ADMIN_TOKEN` on protected admin routes.
 
 Stop or clean up local services:
 
@@ -202,8 +202,7 @@ operations (`/api/admin/*` — see `api/routes/admin.py`).
 #### Typeahead autocomplete — `GET /api/suggest`
 
 ```bash
-curl -H "X-API-Key: $API_KEY" \
-  "http://localhost:8000/api/suggest?q=nik&limit=8"
+curl "http://localhost:8000/api/suggest?q=nik&limit=8"
 ```
 
 Response:
@@ -257,21 +256,23 @@ Frontend UI (`web/src/components/ChatPanel/TypeaheadSuggestions.tsx`):
 #### Admin API — `/api/admin/*`
 
 ```bash
-# Kick off a background reindex (optionally resetting the index)
-curl "http://localhost:8000/api/admin/reindex?reset_index=true&limit=10000"
-
-# Poll job status: running | success | error
-curl http://localhost:8000/api/admin/reindex/status
+# Grow/correct the live color/material taxonomy and trigger a real reindex
+curl -X POST http://localhost:8000/api/admin/enrich \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Token: your_admin_token_here" \
+  -d '{"attribute_type": "material", "variant": "chrome", "canonical": "metal"}'
 
 # Inspect current index health + document count
-curl http://localhost:8000/api/admin/health
+curl http://localhost:8000/api/admin/health \
+  -H "X-Admin-Token: your_admin_token_here"
 ```
 
-The reindex runs in a background task so the HTTP request returns
-immediately. The status endpoint is the source of truth for progress
-(`running` → `success` / `error`). A separate GitHub Actions workflow
-(`.github/workflows/reindex.yml`) exposes this as a manual-dispatch job for
-rebuilding production indexes without redeploying.
+There is no in-container ingest/reindex endpoint. Reindexing happens via
+`scripts/lucille_ingest.sh` (local dev) or the GitHub Actions
+`.github/workflows/reindex.yml` manual-dispatch workflow (Lucille ETL on the
+runner); `POST /api/admin/enrich` triggers a real reindex as a side effect
+of adding/correcting one taxonomy mapping. Verify the result via
+`GET /api/admin/health`.
 
 #### Conversations observability — `GET /api/conversations/{thread_id}/observability`
 
@@ -868,7 +869,7 @@ PYTHONPATH=. python setup.py
 ### Backend won't start
 
 ```bash
-grep ^API_KEY .env       # must exist
+grep ^GOOGLE_API_KEY .env  # must be set
 ./scripts/logs.sh backend
 
 # If the port is stuck:

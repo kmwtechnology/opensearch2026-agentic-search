@@ -20,9 +20,9 @@ lucille-esci/
 │   │                             # registered in OpenSearch (see ARCHITECTURE.md's
 │   │                             # "Attribute Detection" / "Enrichment Flywheel" sections).
 │   └── judgments.conf           # Judgment ingest: relevance label mapping (E/S/C/I → 4.0/1.0/0.1/0.0)
-├── mapping/           # OpenSearch field mappings and analyzers
-│   ├── products.json  # Index template: knn_vector, text, keyword fields
-│   └── judgments.json # Judgment index template
+├── mapping/                    # OpenSearch field mappings and analyzers
+│   ├── opensearch_mapping.json # Index template: knn_vector, text, keyword fields
+│   └── judgments_mapping.json  # Judgment index template
 ├── pom.xml            # Maven coordinates; references external Lucille version
 └── target/            # Compiled artifacts (auto-generated)
 ```
@@ -86,7 +86,7 @@ Maps ESCI relevance labels to numeric scores:
 
 Lookups via `OpenSearchVectorStore.lookup_judgments(query)` — exact keyword match on `query.keyword`.
 
-### `mapping/products.json` (OpenSearch mappings)
+### `mapping/opensearch_mapping.json` (OpenSearch mappings)
 
 Field definitions for the product index:
 
@@ -263,7 +263,7 @@ including "Navy", "Cyan", "Teal", etc.
   only apply on the second pass. Destructive: wipes agent-learned mappings. Step 4b of
   `lucille_ingest.sh` warns loudly (a `::warning::` annotation in CI) whenever the store is
   empty. Grow incrementally via
-  the live enrichment flywheel (`../enrichment_service.py`, `POST /api/admin/enrich`, or the
+  the live enrichment flywheel (`../quality/enrichment_service.py`, `POST /api/admin/enrich`, or the
   agent's own `trigger_enrichment` tool — see `../ARCHITECTURE.md`'s "Enrichment Flywheel")
 - Detector stage: `src/main/java/com/kmwllc/esci/AttributeDetectorStage.java`
 - Brand stage: `src/main/java/com/kmwllc/esci/BrandNormalizerStage.java`
