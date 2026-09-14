@@ -2,43 +2,115 @@
  * MessageList - Displays chat messages with auto-scroll.
  */
 
-import { useEffect, useRef, useMemo } from 'react'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import { useChatStore } from '../../stores/chatStore'
 import { useObservabilityStore } from '../../stores/observabilityStore'
+import { nodeStyle } from '../NarratorPanel/nodeStyle'
 import { Message } from './Message'
 
 export function MessageList() {
   const { messages, streamingContent, isProcessing } = useChatStore()
   const { currentNode, steps } = useObservabilityStore()
+  // Live sub-step detail the backend already emits — embedding the query,
+  // running the two searches, fusing them, scoring each candidate. Without
+  // these the panel sits on one label for ten seconds and looks stuck.
+  const searchProgressMessage = useObservabilityStore((s) => s.searchProgressMessage)
+  const rerankerProgressMessage = useObservabilityStore((s) => s.rerankerProgressMessage)
+  const rerankerProgress = useObservabilityStore((s) => s.rerankerProgress)
+  const intentClassification = useObservabilityStore((s) => s.intentClassification)
+  const queryEvaluation = useObservabilityStore((s) => s.queryEvaluation)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // Elapsed seconds for the in-progress status. The model can spend ten-plus
+  // seconds composing before its first token arrives, and a status line that
+  // holds one label for that long reads as a hung app — a ticking number is
+  // the difference between "working" and "stuck" (#103).
+  const [elapsed, setElapsed] = useState(0)
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // Map node IDs to user-friendly display names
   const getNodeDisplayName = (node: string): string => {
+    // Same vocabulary as the narrator panel, so the chat and the right-hand
+    // column describe the same step in the same words.
     const names: Record<string, string> = {
-      query_evaluator: 'Evaluating query',
-      retriever: 'Searching documents',
-      agent: 'Generating response',
+      intent_classifier: 'Working out what you asked',
+      query_evaluator: 'Deciding how literally to read it',
+      retriever: 'Searching the catalog',
+      reranker: 'Re-reading the best candidates',
+      quality_gate: 'Checking the results are good enough',
+      // Split deliberately — see getCurrentStepSummary. The agent node makes
+      // two model calls, and calling the first one "Writing the answer" is
+      // what made the wait look idle: nothing can appear yet, because those
+      // tokens are suppressed on purpose.
+      agent: streamingContent ? 'Writing the answer' : 'Checking whether a tool is needed',
+      llm_judge: 'Checking the answer against the sources',
     }
-    return names[node] || 'Processing'
+    return names[node] || 'Working'
   }
 
-  // Get a brief summary of the current step
+  // A second line of detail under the stage name, so something visibly moves
+  // for the whole wait rather than one static label.
   const getCurrentStepSummary = (): string | null => {
+    // Live progress beats anything derived after the fact.
+    if (currentNode === 'reranker') {
+      if (rerankerProgress > 0) {
+        return `${rerankerProgressMessage || 'Scoring candidates'} — ${Math.round(rerankerProgress * 100)}%`
+      }
+      return rerankerProgressMessage || 'Scoring each candidate against your question'
+    }
+    if (currentNode === 'retriever' && searchProgressMessage) {
+      return searchProgressMessage
+    }
+
+    if (currentNode === 'query_evaluator' && intentClassification?.intent) {
+      return `Read as "${intentClassification.intent}"`
+    }
+    // The agent node runs TWO model calls. The first decides whether a tool is
+    // needed (the enrichment/correction path); its tokens are suppressed on
+    // purpose \u2014 INTERNAL_LLM_TAG \u2014 because they are the model reasoning out
+    // loud, not the reply. Only when that resolves does the visible answer
+    // begin. Labelling the whole span "Writing the answer" made a working
+    // system look hung for its entire first half, since by construction
+    // nothing could appear on screen yet.
+    if (currentNode === 'agent') {
+      if (!streamingContent) {
+        return 'Deciding if the catalog needs changing before answering'
+      }
+      if (queryEvaluation) {
+        return `Using the top matches at \u03b1 ${queryEvaluation.alpha.toFixed(2)}`
+      }
+    }
+
     if (!currentNode || !steps.length) return null
-    const currentStep = steps.find(s => s.node === currentNode)
+    const currentStep = steps.find((s) => s.node === currentNode)
     if (!currentStep || !currentStep.events.length) return null
 
-    // Get the most recent event for this step
     const latestEvent = currentStep.events[currentStep.events.length - 1]
-
-    // Extract summary based on event type
     if (latestEvent.type === 'hybrid_search_result') {
       return `Found ${latestEvent.candidate_count} candidates`
     }
-
+    if (latestEvent.type === 'opensearch_query' && latestEvent.filter_summary) {
+      return `Filtering on ${latestEvent.filter_summary}`
+    }
     return null
   }
+
+  // State is only ever set from the interval callback — setState directly in
+  // an effect body trips react-hooks/set-state-in-effect, which CI fails on.
+  // The first tick lands 100ms in, so the counter effectively starts at zero
+  // without needing an explicit reset.
+  const elapsedStartRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!isProcessing) {
+      elapsedStartRef.current = null
+      return
+    }
+    elapsedStartRef.current = Date.now()
+    const id = window.setInterval(() => {
+      const startedAt = elapsedStartRef.current
+      if (startedAt !== null) setElapsed((Date.now() - startedAt) / 1000)
+    }, 100)
+    return () => window.clearInterval(id)
+  }, [isProcessing])
 
   // Auto-scroll to bottom on new messages (throttled to ~60fps with requestAnimationFrame)
   useEffect(() => {
@@ -62,7 +134,7 @@ export function MessageList() {
 
   // Show streaming content in the last message if it's an assistant message (memoized)
   const displayMessages = useMemo(() => {
-    return messages.map((msg, index) => {
+    const withStreaming = messages.map((msg, index) => {
       if (
         index === messages.length - 1 &&
         msg.role === 'assistant' &&
@@ -73,64 +145,31 @@ export function MessageList() {
       }
       return msg
     })
+    // Drop a trailing assistant bubble that has nothing in it yet.
+    //
+    // One is created the moment generation starts, but the first token can be
+    // seconds away — and an empty bubble also SUPPRESSED the status line
+    // below, so the whole retrieval-and-rerank phase showed as a blank box
+    // with a blinking cursor and no explanation (#103). Now the status stays
+    // up until there is actually something to show.
+    const last = withStreaming[withStreaming.length - 1]
+    if (last && last.role === 'assistant' && last.isStreaming && !last.content) {
+      return withStreaming.slice(0, -1)
+    }
+    return withStreaming
   }, [messages, streamingContent])
 
   if (messages.length === 0) {
+    // Deliberately almost empty (#103). This used to be a feature tour —
+    // a product blurb, four intent categories and eight sample queries. On a
+    // projected demo that is a wall of 16px text the audience reads instead
+    // of listening, and every word of it is either said out loud by the
+    // presenter or already shown in the demo header.
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-500 px-4">
-        <div className="text-center max-w-lg">
-          <h3 className="text-lg font-medium text-gray-300 mb-1">
-            Product Search Agent
-          </h3>
-          <p className="text-xs text-gray-600 mb-4">
-            An AI-powered e-commerce product search agent with hybrid search & reranking
-          </p>
-
-          <div className="text-left space-y-3">
-            <div>
-              <div className="text-xs font-medium text-gray-400 mb-1">
-                Search — RAG-powered Q&A with hybrid search & reranking
-              </div>
-              <div className="text-xs text-gray-600 space-y-0.5">
-                <div>"Find me wireless headphones under $50"</div>
-                <div>"What are the best-rated running shoes?"</div>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium text-amber-600/80 mb-1">
-                Compare — find and compare products by attributes
-              </div>
-              <div className="text-xs text-gray-600 space-y-0.5">
-                <div>"Compare Sony and Bose noise-canceling headphones"</div>
-                <div>"Show me blue Nike sneakers"</div>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium text-teal-600/80 mb-1">
-                Discover — explore products by brand, color, or category
-              </div>
-              <div className="text-xs text-gray-600 space-y-0.5">
-                <div>"What brands of laptops are available?"</div>
-                <div>"Show me products from Samsung"</div>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium text-purple-500/80 mb-1">
-                Summarize — recap your conversation so far
-              </div>
-              <div className="text-xs text-gray-600">
-                <div>"Summarize what we've discussed"</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-gray-800 text-xs text-gray-600 space-y-0.5">
-            <div>Multi-turn memory · Smart citations with GitHub links · Real-time observability panel</div>
-          </div>
-        </div>
+      <div className="flex h-full items-center justify-center px-6">
+        <p className="text-center text-[length:var(--text-stage-body)] font-medium text-[var(--color-stage-ink-soft)]">
+          Ask a question to begin.
+        </p>
       </div>
     )
   }
@@ -142,27 +181,58 @@ export function MessageList() {
       ))}
 
       {/* Show typing indicator when processing but no streaming content yet */}
-      {isProcessing && !streamingContent && messages[messages.length - 1]?.role !== 'assistant' && (
-        <div className="flex items-center gap-2 text-gray-500" aria-live="polite" aria-label="Agent processing">
-          <div className="flex gap-1">
-            <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" aria-hidden="true" />
-          </div>
-          <div className="text-sm">
-            {currentNode ? (
-              <span className="flex items-center gap-2">
-                <span className="font-medium text-blue-400">
-                  {getNodeDisplayName(currentNode)}
-                </span>
-                {getCurrentStepSummary() && (
-                  <span className="text-gray-400">• {getCurrentStepSummary()}</span>
-                )}
+      {isProcessing && !streamingContent && (() => {
+        /* The pipeline runs intent -> evaluate -> search -> rerank -> gate
+           BEFORE a single token is generated, which is most of the wait. Show
+           the stage, a live detail line, and the SAME icon and color the
+           narrator uses for that stage — so the two columns read as one
+           system describing one moment. */
+        const style = nodeStyle(currentNode)
+        const { Icon } = style
+        const detail = getCurrentStepSummary()
+        return (
+          <div
+            className="flex items-center gap-4 rounded-2xl border-2 px-6 py-4"
+            style={{ borderColor: style.fg, backgroundColor: style.tint }}
+            aria-live="polite"
+            aria-label="Agent processing"
+          >
+            <span
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border-2 bg-white"
+              style={{ borderColor: style.fg }}
+              aria-hidden="true"
+            >
+              <Icon style={{ color: style.fg }} strokeWidth={2.5} size={24} />
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span
+                className="text-[1.5rem] font-bold leading-tight"
+                style={{ color: style.fg }}
+              >
+                {currentNode ? getNodeDisplayName(currentNode) : 'Thinking'}
               </span>
-            ) : (
-              <span>Agent is thinking...</span>
-            )}
+              {detail && (
+                <span className="text-[1.375rem] font-medium leading-snug text-[var(--color-stage-ink-muted)]">
+                  {detail}
+                </span>
+              )}
+            </span>
+            <span className="ml-auto flex flex-shrink-0 items-center gap-3">
+              <span
+                className="font-mono text-[1.375rem] font-semibold tabular-nums"
+                style={{ color: style.fg }}
+              >
+                {elapsed.toFixed(1)}s
+              </span>
+              <span
+                className="h-3.5 w-3.5 animate-pulse rounded-full"
+                style={{ backgroundColor: style.fg }}
+                aria-hidden="true"
+              />
+            </span>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       <div ref={messagesEndRef} />
     </div>

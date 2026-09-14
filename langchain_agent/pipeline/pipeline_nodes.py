@@ -18,19 +18,23 @@ from pydantic import BaseModel
 
 from core.agent_state import CustomAgentState
 from core.config import (
+    ANSWER_STREAM_TAG,
     DEFAULT_ALPHA,
     ENABLE_RERANKING,
+    INTERNAL_LLM_TAG,
     RERANKER_FETCH_K,
     RERANKER_MODEL,
     RERANKER_TOP_K,
     RETRIEVER_FETCH_K,
     RETRIEVER_K,
+    RETRY_FETCH_MULTIPLIER,
     SEARCH_DEFAULTS,
     VECTOR_COLLECTION_NAME,
 )
 from core.exceptions import LLMError, SearchTimeoutError
 from integrations import record_citation_eval, record_metrics, sync_dataset_item
 from observability.llm_content import _flatten_llm_content
+from pipeline import enrichment_events
 from quality.enrichment_value_judge import EnrichmentValueJudge
 from quality.judge import RETRY_ELIGIBLE_CATEGORIES, JudgmentResult, LLMJudge
 from retrieval.attribute_discovery import (
@@ -694,6 +698,29 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         return header + "\n\n---\n\n".join(rows)
 
+    async def aagent_node(self, state: CustomAgentState) -> Dict[str, Any]:
+        """
+        Async face of agent_node, used by every graph path that runs under
+        astream_events (i.e. the API/WebSocket path).
+
+        This exists purely to keep the event loop free. LangGraph's
+        RunnableCallable.ainvoke short-circuits with
+        ``if not self.afunc: return self.invoke(...)``, so a sync-only node
+        runs ON the loop thread — and agent_node can block for ~20s when the
+        taxonomy-correction path triggers a real Lucille reindex
+        (LocalReindexTrigger.trigger runs subprocess.run inline). While the
+        loop is blocked no WebSocket frame can leave the server, which is why
+        the re-index window used to be completely silent in the UI (#103).
+        Handing the body to a worker thread lets the enrichment lifecycle
+        events emitted from inside it actually reach the browser as they
+        happen.
+
+        asyncio.to_thread copies the current context, so LangChain's config
+        and callback plumbing (and our ContextVar emit bridge) propagate into
+        the worker unchanged.
+        """
+        return await asyncio.to_thread(self.agent_node, state)
+
     def agent_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
         Agent response generation node - generates response from retrieved documents.
@@ -738,7 +765,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                     "little more about what you're looking for? For example:\n\n"
                     '- A category or use case ("headphones for the gym", "a gift for a coffee lover")\n'
                     "- A brand, color, or feature you care about\n"
-                    "- A budget range\n\n"
+                    "- Who it is for, or the occasion\n\n"
                     "Even a rough idea helps me narrow things down."
                 )
             logger.info(
@@ -840,7 +867,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 "match in the catalog. A few things that usually help:\n\n"
                 '- Try a more specific phrase — a brand ("Sony"), a use case '
                 '("wireless earbuds for running"), or a feature ("noise cancelling")\n'
-                '- Add a price range ("under $50") or a color\n'
+                "- Add a color, a material, or a size\n"
                 "- Or describe who it's for and what they'd use it for, and I'll suggest "
                 "categories worth exploring\n\n"
                 "Want to try one of those?"
@@ -950,16 +977,16 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         # Intent-specific instructions
         if intent == "comparison":
             intent_instruction = """Your task is to COMPARE the retrieved products, highlighting key differences and trade-offs:
-- Discuss quality, features, performance, price, and other relevant dimensions
+- Discuss quality, features, performance, and other relevant dimensions
 - Help the user understand which product is best for their specific needs
 - Clearly indicate product names and key differentiators
 - Use a structured format (e.g., "Product A is better for X because..., while Product B excels at Y...")"""
         elif intent == "attribute_filter":
             intent_instruction = """Your task is to filter and present products matching specific criteria:
-- Focus on products that match the requested attributes (color, size, price, features, etc.)
+- Focus on products that match the requested attributes (color, size, features, etc.)
 - For each product, clearly state which attributes it matches and which it doesn't
 - Recommend the best matches first
-- Be specific: e.g., "This product comes in blue and costs $45"
+- Be specific: e.g., "This product comes in blue and is listed in size 10"
 - If some requested attributes aren't available, note that clearly"""
         elif intent == "refinement":
             # Extract prior search category for explicit feedback
@@ -986,7 +1013,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         elif intent == "follow_up":
             intent_instruction = """Your task is to refine your previous search results based on the user's follow-up:
 - Connect this response to your previous recommendation(s)
-- Address what the user is asking for (cheaper, different color, better features, etc.)
+- Address what the user is asking for (a different color, other features, etc.)
 - Clearly show how new suggestions compare to earlier recommendations"""
         else:  # search (default)
             intent_instruction = """Your task is to help the user find products matching their needs:
@@ -1003,19 +1030,31 @@ INTENT: {intent.upper()}
 {intent_instruction}
 
 GROUNDING RULES (override creativity preferences — non-negotiable):
-1. Every factual claim about a specific product (origin / "Made in X", material, certifications like "FDA-approved" or "BPA-free", size, manufacturer claims, pricing) MUST be supported by THAT product's FACTS block above.
+1. Every factual claim about a specific product (origin / "Made in X", material, certifications like "FDA-approved" or "BPA-free", size, manufacturer claims) MUST be supported by THAT product's FACTS block above.
+1a. NEVER mention price, cost, budget, "cheaper", "affordable", "value for money", or any currency amount — not for a product, not as a comparison, not as a follow-up question, and not as a suggestion for how to narrow the search. This catalog carries NO price data in any field, so anything you say about price is invented, and a made-up dollar figure is the single most damaging thing you can put on screen. If the user asks about price or asks for something cheaper, say plainly that you do not have pricing information, then help them on an attribute you DO have (color, size, material, brand, feature).
 2. Facts are PER-PRODUCT. If "Made in USA" appears in Product 3's FACTS but not in Product 1's FACTS, you MUST NOT attribute "Made in USA" to Product 1, even if it's the same brand or category.
 3. If a fact is not in any FACTS block, OMIT it. Do not infer from brand reputation, product category, prior knowledge, or implication.
 4. Comparison tables/summaries: every cell or claim must trace to a specific product's FACTS block. Leave cells blank rather than fabricating.
 5. When writing about a product, prefer paraphrasing its FACTS over inventing supporting language.
 6. When a product's FACTS include both "Color (as listed)" and "Color category (indexed)", compare them. If the indexed category is a color family the listed color could plausibly belong to (e.g. "Navy" under "blue", "Charcoal" under "black"), say nothing about it. If the indexed category is NOT a plausible family for the listed color (e.g. "Tan" indexed under "yellow" — tan is a shade of brown, not yellow), explicitly flag this as a possible data-tagging issue for that product, using the literal values from its FACTS block.
 
+LENGTH — this is read aloud off a projector, so be brief:
+- Open with ONE sentence that answers the question. No preamble, no restating the question, no "Great choice!" or "I'd love to help".
+- Then a MARKDOWN BULLET LIST of at most 3 products — this must be a real list, one bullet per product, never a paragraph with the names run together. Exactly this shape:
+
+  - **Product Name** — short clause naming only what makes it a match.
+
+  One sentence per bullet. No sub-bullets, no headings, no "Details:" / "Matches:" / "Size:" labels, and no blank lines between bullets.
+- Aim for under 100 words total. Stop when the question is answered — do not add a closing offer, a follow-up question, or a summary of what you just said.
+- Exception: if nothing relevant was found, say so in one sentence and suggest two alternative searches. That case may end with a question.
+- BREVITY NEVER OVERRIDES GROUNDING RULE 6. If a product's listed color and its indexed color category disagree implausibly, you MUST say so — omitting it hides a real data defect from the person who could report it. State it ONCE, as a single clause, using the literal values (e.g. "all of these are listed Tan but indexed as yellow, which looks like a tagging error"). Do not repeat it on every product line; if it applies to several, say so once and name them collectively.
+
 CITATION & STYLE:
 - Cite products descriptively by name (e.g., "the Nylabone 3 Pack Puppy Chew listing"), never as "Document N".
 - DO NOT include URLs, hyperlinks, or markdown links (e.g., `[name](url)`) in your response. The system appends a verified "Sources" list separately — any link you write yourself will be wrong because you do not have access to canonical product URLs.
 - Refer to products by name only. Do not write `https://...`, `amazon.com/...`, `[text](http...)`, or any link-shaped text.
 - If you cannot find relevant products, explain what you searched for, suggest two or three alternative searches the user could try (different brand, broader category, related use case), and end with an open question that invites them to share more about what they need.
-- Tone: warm, conversational, and encouraging — like a knowledgeable friend helping them shop. Avoid dismissive phrasing ("you need to narrow down", "I can't help with that"). Prefer guiding language ("a few details would help me find the right fit", "here are some directions worth trying").
+- Tone: plain and direct, like a knowledgeable friend who respects your time — helpful without being chatty. Avoid dismissive phrasing ("you need to narrow down", "I can't help with that"), but do not pad with enthusiasm, apologies, or filler either. Warmth comes from being useful, not from extra words.
 """
 
         # Build messages for LLM
@@ -1024,9 +1063,20 @@ CITATION & STYLE:
             HumanMessage(content=user_query or "Please summarize the context."),
         ]
 
-        # Generate response with streaming if available
+        # Generate response with streaming if available.
+        #
+        # response_streamed tells observable_agent that the tokens have ALREADY
+        # gone out over the socket, so it must not re-send the finished text at
+        # node end. It used to infer this by watching LangChain's
+        # on_chat_model_stream callback, which stopped reaching it once
+        # agent_node moved to a worker thread (#103) — leaving it convinced
+        # nothing had streamed, so it emitted a second response start plus the
+        # whole answer. The UI then showed an empty streaming bubble and the
+        # text rendered twice.
+        response_streamed = False
         if hasattr(self.llm, "stream") and callable(getattr(self.llm, "stream")):
             response = self._stream_llm_response_simple(llm_messages)
+            response_streamed = True
         else:
             logger.debug("LLM does not support streaming, using invoke()")
             response = self.llm.invoke(llm_messages)
@@ -1053,7 +1103,11 @@ CITATION & STYLE:
             state.get("langfuse_trace_id"), citations, retrieved_documents, judgments
         )
 
-        return {"messages": [response], "citations": citations}
+        return {
+            "messages": [response],
+            "citations": citations,
+            "response_streamed": response_streamed,
+        }
 
     def _try_enrichment_tool(
         self, user_query: Optional[str], prompt: Optional[str] = None
@@ -1094,7 +1148,12 @@ the query looks like a color/material gap, don't call the tool; just say so brie
 
         llm_with_tools = self.llm.bind_tools([trigger_enrichment])
         tool_messages = [HumanMessage(content=gap_prompt)]
-        response = llm_with_tools.invoke(tool_messages)
+        # Tagged as deliberation so observable_agent does not stream it to the
+        # chat window. This call decides WHETHER to offer a taxonomy fix; when
+        # it declines it explains itself in prose ("nothing here looks like a
+        # color or material term"), and that prose was reaching users as the
+        # answer to whatever they actually asked.
+        response = llm_with_tools.invoke(tool_messages, config={"tags": [INTERNAL_LLM_TAG]})
 
         tool_calls = getattr(response, "tool_calls", None)
         if not tool_calls:
@@ -1128,6 +1187,20 @@ the query looks like a color/material gap, don't call the tool; just say so brie
         )
         if not assessment.is_meaningful:
             logger.info(f"Agent: declined trigger_enrichment — {assessment.reasoning}")
+            # The value judge turning a change down is a real, explainable
+            # outcome — and it is the guardrail worth showing an audience.
+            # Before #103 this path emitted nothing at all, which on stage is
+            # indistinguishable from the app having hung. Note this fires only
+            # for a JUDGE rejection, never for the LLM simply choosing not to
+            # call the tool (_detect_correction_signal is deliberately broad,
+            # so that would narrate noise on ordinary follow-ups).
+            enrichment_events.publish(
+                status="declined",
+                attribute_type=attribute_type,
+                variant=variant,
+                canonical=canonical,
+                error=assessment.reasoning,
+            )
             decline_response = AIMessage(
                 content=(
                     f"I looked into this, but I don't think changing "
@@ -1149,7 +1222,40 @@ the query looks like a color/material gap, don't call the tool; just say so brie
         # docs_processed) for observability, without triggering a second,
         # real re-index — format_enrichment_message() builds the exact same
         # ToolMessage text the tool itself would return (#80).
+        # Announce BEFORE the re-index starts. enrich_attribute() blocks for
+        # ~20s in local mode, and this is the only chance to tell the UI that
+        # something is underway — everything after this line is reporting on a
+        # thing the audience has already spent 20 silent seconds waiting for
+        # (#103). Safe on a worker thread; a no-op when nobody is observing.
+        enrichment_events.publish(
+            status="started",
+            attribute_type=attribute_type,
+            variant=variant,
+            canonical=canonical,
+        )
+
         enrichment_result = enrich_attribute(attribute_type, variant, explicit_canonical=canonical)
+
+        enrichment_events.publish(
+            status="complete" if enrichment_result.reindex_success else "failed",
+            attribute_type=attribute_type,
+            variant=variant,
+            canonical=enrichment_result.canonical or canonical,
+            # The tell that separates "learned a new term" from "corrected a
+            # wrong one" — the whole point of the correction demo, and until
+            # now it never left the backend.
+            corrected_from=enrichment_result.corrected_from,
+            error=enrichment_result.reindex_error,
+            reindex_mode=enrichment_result.reindex_mode,
+            reindex_run_url=enrichment_result.reindex_run_url,
+            duration_seconds=(
+                enrichment_result.duration_seconds if enrichment_result.reindex_success else None
+            ),
+            docs_processed=(
+                enrichment_result.docs_processed if enrichment_result.reindex_success else None
+            ),
+        )
+
         tool_result = format_enrichment_message(enrichment_result)
         tool_messages.append(response)
         tool_messages.append(ToolMessage(content=tool_result, tool_call_id=call["id"]))
@@ -1702,18 +1808,46 @@ Return ONLY a JSON object (use null for missing attributes):
                     }
                 )
 
-            # price range → range filter (if price field exists in index)
-            if attributes.get("price_max") is not None:
-                try:
-                    filters.append({"range": {"price": {"lte": float(attributes["price_max"])}}})
-                except (ValueError, TypeError):
-                    logger.debug(f"Could not parse price_max: {attributes.get('price_max')}")
+            # price range → range filter, but ONLY if the index actually has a
+            # price field. This guard is what the comment here always claimed
+            # ("if price field exists in index") and never did (#103).
+            #
+            # It matters because the ESCI product index has no price field at
+            # all, and a range filter on an unmapped field is not an error in
+            # OpenSearch — it matches nothing. So every "under $100" query
+            # silently returned zero results and the user got a no-match
+            # answer, as if the catalog held no affordable products. Better to
+            # ignore a price constraint we cannot honour and return real
+            # products than to return nothing at all.
+            wants_price_filter = (
+                attributes.get("price_max") is not None or attributes.get("price_min") is not None
+            )
+            price_is_filterable = wants_price_filter and self.vector_store.has_field("price")
 
-            if attributes.get("price_min") is not None:
-                try:
-                    filters.append({"range": {"price": {"gte": float(attributes["price_min"])}}})
-                except (ValueError, TypeError):
-                    logger.debug(f"Could not parse price_min: {attributes.get('price_min')}")
+            if wants_price_filter and not price_is_filterable:
+                logger.info(
+                    "Ignoring price constraint (%s-%s): the index has no 'price' field, "
+                    "and filtering on it would match nothing",
+                    attributes.get("price_min"),
+                    attributes.get("price_max"),
+                )
+
+            if price_is_filterable:
+                if attributes.get("price_max") is not None:
+                    try:
+                        filters.append(
+                            {"range": {"price": {"lte": float(attributes["price_max"])}}}
+                        )
+                    except (ValueError, TypeError):
+                        logger.debug(f"Could not parse price_max: {attributes.get('price_max')}")
+
+                if attributes.get("price_min") is not None:
+                    try:
+                        filters.append(
+                            {"range": {"price": {"gte": float(attributes["price_min"])}}}
+                        )
+                    except (ValueError, TypeError):
+                        logger.debug(f"Could not parse price_min: {attributes.get('price_min')}")
 
             return filters
 
@@ -2034,10 +2168,20 @@ Respond with JSON only. No other text."""
         """
         stream_start = time.time()
 
-        # Emit start event (if event classes are available)
+        # Emit start event (if event classes are available).
+        #
+        # Goes through _emit_event_from_sync, NOT _emit_streaming_event — the
+        # latter only logs. Token streaming used to reach the browser purely as
+        # a side effect of observable_agent capturing LangChain's
+        # on_chat_model_stream callback, and that stopped working the moment
+        # agent_node moved to a worker thread (#103): the callback fires on a
+        # non-loop thread and never reaches the astream_events iterator, so the
+        # UI sat on "Generating response" and then dumped the whole answer at
+        # once. _emit_event_from_sync hops back onto the loop with
+        # run_coroutine_threadsafe, which is exactly the same bridge the
+        # retriever already uses for its progress events.
         if LLMResponseStartEvent is not None:
-            start_event = LLMResponseStartEvent()
-            self._emit_streaming_event(start_event)
+            self._emit_event_from_sync(LLMResponseStartEvent())
 
         # Accumulate response content
         accumulated_content = ""
@@ -2045,7 +2189,7 @@ Respond with JSON only. No other text."""
 
         try:
             # Stream from the LLM
-            for chunk in self.llm.stream(messages):
+            for chunk in self.llm.stream(messages, config={"tags": [ANSWER_STREAM_TAG]}):
                 chunk_count += 1
 
                 # Extract content from chunk (handle both string and Gemini's list format)
@@ -2066,8 +2210,9 @@ Respond with JSON only. No other text."""
 
                         # Emit chunk event (if event classes are available)
                         if LLMResponseChunkEvent is not None:
-                            chunk_event = LLMResponseChunkEvent(content=content, is_complete=False)
-                            self._emit_streaming_event(chunk_event)
+                            self._emit_event_from_sync(
+                                LLMResponseChunkEvent(content=content, is_complete=False)
+                            )
 
         except StopIteration:
             pass
@@ -2079,7 +2224,7 @@ Respond with JSON only. No other text."""
 
         # If streaming produced no content, fall back to invoke
         if not accumulated_content:
-            invoke_result = self.llm.invoke(messages)
+            invoke_result = self.llm.invoke(messages, config={"tags": [ANSWER_STREAM_TAG]})
             if hasattr(invoke_result, "content"):
                 accumulated_content = invoke_result.content if invoke_result.content else ""
             else:
@@ -2450,8 +2595,21 @@ Original query: {query}
                 if doc.metadata.get("product_id")
             ]
             if prior_product_ids:
-                # Add product_id filter to constrain refinement to prior results
-                product_id_filter = {"terms": {"product_id": prior_product_ids}}
+                # Constrain to the prior turn's products by DOCUMENT ID, not by
+                # a product_id field in _source. The products Lucille pipeline
+                # sets idField: "product_id", so that value becomes OpenSearch's
+                # _id and is never written into _source — the mapping declares
+                # product_id as a keyword, but every document's value is null.
+                # `terms: {product_id: [...]}` therefore matched ZERO documents
+                # and every refinement turn came back empty ("I searched for
+                # noise-canceling wireless headphones but found no matching
+                # products"), while the log cheerfully reported it was
+                # constraining to 10 prior products (#103).
+                #
+                # The read path already relies on this: vector_store's
+                # _to_document uses hit["_id"] as the source of truth for
+                # product_id, which is why prior_product_ids holds real ASINs.
+                product_id_filter = {"ids": {"values": prior_product_ids}}
                 if attribute_filters is None:
                     attribute_filters = []
                 attribute_filters.append(product_id_filter)
@@ -2475,13 +2633,46 @@ Original query: {query}
         hybrid_capture: Dict[str, Any] = {}
         bm25_capture: Dict[str, Any] = {}
 
+        # On a quality-gate retry, SEARCH DEEPER — do not just re-weight.
+        #
+        # The gate's only lever used to be alpha +/-0.3, and measurement says
+        # that lever does nothing: scoring ten conceptual shoe queries at alpha
+        # 0.1 / 0.4 / 0.7 / 1.0 returned the SAME reranker max score to two
+        # decimals in every case ("what should I wear for a marathon" = 0.30 at
+        # all four). Re-weighting reorders a candidate pool that already
+        # contains the same best document, so the retry could not change its
+        # own outcome — a loop that always reached the verdict it started with.
+        #
+        # Widening the pool can only help: max(score) over a superset is
+        # monotonic, so the second pass either finds something better deeper in
+        # the ranking or returns exactly what the first pass had. Nothing gets
+        # worse, and "it looked harder the second time" is both true and the
+        # thing worth showing an audience.
+        is_gate_retry = bool(state.get("quality_gate_retried", False))
+        fetch_k = RETRIEVER_FETCH_K * RETRY_FETCH_MULTIPLIER if is_gate_retry else RETRIEVER_FETCH_K
+        k = RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K
+        if is_gate_retry:
+            k *= RETRY_FETCH_MULTIPLIER
+            # Soft multi_match filters (material_or_feature / size) are hints
+            # that often over-constrain; the same relaxation already runs when
+            # a filtered search returns too little. Colour and brand `match`
+            # filters stay — the user asked for those explicitly.
+            if attribute_filters:
+                attribute_filters = [f for f in attribute_filters if "multi_match" not in f]
+            logger.info(
+                "Retriever: quality-gate retry — widening pool to fetch_k=%d, k=%d "
+                "and dropping soft filters",
+                fetch_k,
+                k,
+            )
+
         # Create retriever with dynamic alpha, attribute filters, and per-message
         # optimization toggles (sent by the frontend via the chat WebSocket).
         retriever = self.vector_store.as_retriever(
             search_type="hybrid",
             search_kwargs={
-                "k": RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K,
-                "fetch_k": RETRIEVER_FETCH_K,
+                "k": k,
+                "fetch_k": fetch_k,
                 "alpha": alpha,
                 "filters": attribute_filters,
                 "optimizations": state.get("optimizations") or {},

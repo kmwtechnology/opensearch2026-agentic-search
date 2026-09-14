@@ -74,7 +74,7 @@ function HighlightedText({ fragment, fallback }: { fragment?: string; fallback: 
     }
     const inner = fragment.slice(start + HL_PRE.length, end)
     nodes.push(
-      <mark key={key++} className="bg-yellow-500/30 text-yellow-100 rounded px-0.5">
+      <mark key={key++} className="bg-[#FEF3C7] text-[#92400E] rounded px-0.5">
         {inner}
       </mark>
     )
@@ -94,7 +94,7 @@ function SectionHeader({
   action?: React.ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between px-4 py-1.5 text-[10px] uppercase tracking-wider text-gray-500 bg-gray-900/40">
+    <div className="flex items-center justify-between px-4 py-1.5 text-[10px] uppercase tracking-wider text-[var(--color-stage-ink-soft)] bg-[var(--color-stage-surface)]/40">
       <span className="flex items-center gap-1.5">
         {icon}
         {label}
@@ -118,7 +118,7 @@ function Row({
   const isSpelling = row.type === 'spelling'
   const isRecent = row.type === 'recent'
   const Icon = isSpelling ? SpellCheck2 : isRecent ? History : Search
-  const iconClass = isSpelling ? 'text-amber-400' : 'text-gray-500'
+  const iconClass = isSpelling ? 'text-[#92400E]' : 'text-[var(--color-stage-ink-soft)]'
 
   return (
     <button
@@ -132,8 +132,8 @@ function Row({
       }}
       onClick={() => onSelect(row)}
       className={clsx(
-        'w-full text-left px-4 py-2 text-sm transition-colors',
-        selected ? 'bg-blue-600/20 text-blue-300' : 'hover:bg-gray-700/50 text-gray-200'
+        'w-full text-left px-4 py-2 text-[1.375rem] transition-colors',
+        selected ? 'bg-blue-600/20 text-blue-300' : 'hover:bg-[var(--color-stage-raised)]/50 text-[var(--color-stage-ink-muted)]'
       )}
     >
       <div className="flex items-start gap-3">
@@ -141,7 +141,7 @@ function Row({
         <div className="flex-1 min-w-0">
           {isSpelling ? (
             <div className="truncate">
-              <span className="text-xs text-amber-400 font-medium">Did you mean: </span>
+              <span className="text-[1.25rem] text-[#92400E] font-medium">Did you mean: </span>
               <span className="font-medium">{row.title}</span>
             </div>
           ) : (
@@ -150,10 +150,10 @@ function Row({
             </div>
           )}
           {row.brand && !isSpelling && (
-            <div className="text-xs text-gray-400 truncate">{row.brand}</div>
+            <div className="text-[1.25rem] text-[var(--color-stage-ink-soft)] truncate">{row.brand}</div>
           )}
           {row.score !== undefined && row.score < 1 && !isRecent && (
-            <div className="text-xs text-gray-500 mt-0.5">
+            <div className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-0.5">
               Match: {(row.score * 100).toFixed(0)}%
             </div>
           )}
@@ -270,12 +270,12 @@ export function TypeaheadSuggestions({
       role="listbox"
       id={listboxId}
       aria-label="Search suggestions"
-      className="absolute bottom-full mb-2 left-0 right-0 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden max-h-[28rem] overflow-y-auto z-50 divide-y divide-gray-700"
+      className="absolute bottom-full mb-2 left-0 right-0 bg-[var(--color-stage-raised)] border border-[var(--color-stage-border)] rounded-lg shadow-xl overflow-hidden max-h-[28rem] overflow-y-auto z-50 divide-y divide-gray-700"
     >
       {/* Section 1: Did you mean */}
       {showSpellSection && spelling && (
         <div>
-          <SectionHeader icon={<SpellCheck2 className="w-3 h-3 text-amber-400" />} label="Did you mean" />
+          <SectionHeader icon={<SpellCheck2 className="w-3 h-3 text-[#92400E]" />} label="Did you mean" />
           <Row
             row={spelling}
             optionId={`typeahead-option-${spellOffset}`}
@@ -295,21 +295,21 @@ export function TypeaheadSuggestions({
               <span className="sr-only">Loading suggestions</span>
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="px-4 py-2 flex items-center gap-3">
-                  <div className="w-4 h-4 rounded bg-gray-700/60 animate-pulse" />
-                  <div className="h-3 rounded bg-gray-700/60 animate-pulse flex-1" />
+                  <div className="w-4 h-4 rounded bg-[var(--color-stage-raised)]/60 animate-pulse" />
+                  <div className="h-3 rounded bg-[var(--color-stage-raised)]/60 animate-pulse flex-1" />
                 </div>
               ))}
             </div>
           )}
 
           {error && !isLoading && (
-            <div role="status" aria-live="polite" className="px-4 py-3 text-sm text-red-400">
+            <div role="status" aria-live="polite" className="px-4 py-3 text-[1.375rem] text-[#991B1B]">
               Could not load suggestions
             </div>
           )}
 
           {!isLoading && !error && productRows.length === 0 && (
-            <div role="status" aria-live="polite" className="px-4 py-3 text-sm text-gray-500">
+            <div role="status" aria-live="polite" className="px-4 py-3 text-[1.375rem] text-[var(--color-stage-ink-soft)]">
               No products found for &ldquo;{trimmed}&rdquo;
             </div>
           )}
@@ -344,7 +344,7 @@ export function TypeaheadSuggestions({
                   e.stopPropagation()
                   clearRecent()
                 }}
-                className="flex items-center gap-1 text-gray-500 hover:text-gray-300 transition-colors"
+                className="flex items-center gap-1 text-[var(--color-stage-ink-soft)] hover:text-[var(--color-stage-ink-muted)] transition-colors"
                 aria-label="Clear recent searches"
               >
                 <X className="w-3 h-3" />
@@ -368,7 +368,7 @@ export function TypeaheadSuggestions({
       )}
 
       {/* Hint */}
-      <div className="px-4 py-2 text-xs text-gray-500 bg-gray-900/50">
+      <div className="px-4 py-2 text-[1.25rem] text-[var(--color-stage-ink-soft)] bg-[var(--color-stage-surface)]/50">
         <span role="status" aria-live="polite" className="sr-only">
           {rows.length > 0 ? `${rows.length} suggestions available` : ''}
         </span>

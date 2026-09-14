@@ -14,11 +14,11 @@ export function ObservabilityPanel() {
   const { isExecuting, steps, enrichmentTriggered } = useObservabilityStore()
 
   return (
-    <div className="flex flex-col w-full min-w-0 h-full bg-gray-900/50">
+    <div className="flex flex-col w-full min-w-0 h-full bg-[var(--color-stage-raised)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-stage-border)] flex-shrink-0">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-gray-100">Observability</h2>
+          <h2 className="text-lg font-semibold text-[var(--color-stage-ink)]" style={{fontSize:"var(--text-stage-label)"}}>Observability</h2>
           {isExecuting && (
             <span className="node-badge node-badge-running">
               <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse mr-1.5" />
@@ -32,15 +32,15 @@ export function ObservabilityPanel() {
           (not gated behind expanding a step) the moment trigger_enrichment
           fires this turn, so a live re-index isn't just a silent wait. */}
       {enrichmentTriggered && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-emerald-500/15 border-b-2 border-emerald-400 flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 py-3 bg-emerald-500/15 border-b-2 border-[#065F46] flex-shrink-0">
           <RefreshCw
-            className={`w-5 h-5 text-emerald-300 flex-shrink-0 ${isExecuting ? 'animate-spin' : ''}`}
+            className={`w-5 h-5 text-[#065F46] flex-shrink-0 ${isExecuting ? 'animate-spin' : ''}`}
           />
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-emerald-200">
+            <div className="text-[1.375rem] font-semibold text-[#065F46]">
               Catalog Enrichment Triggered — live re-index {isExecuting ? 'in progress' : 'complete'}
             </div>
-            <div className="text-xs text-emerald-300/90 truncate">
+            <div className="text-[1.25rem] text-[#065F46]/90 truncate">
               {enrichmentTriggered.attribute_type} &ldquo;{enrichmentTriggered.variant}&rdquo;
               {enrichmentTriggered.canonical && <> → resolved to &ldquo;{enrichmentTriggered.canonical}&rdquo;</>}
             </div>
@@ -74,7 +74,7 @@ export function ObservabilityPanel() {
       </div>
 
       {/* Footer with step count */}
-      <div className="px-4 py-2 border-t border-gray-700 text-xs text-gray-400 flex-shrink-0">
+      <div className="px-4 py-2 border-t border-[var(--color-stage-border)] text-[1.25rem] text-[var(--color-stage-ink-soft)] flex-shrink-0">
         {steps.length} step{steps.length !== 1 ? 's' : ''} recorded
       </div>
     </div>

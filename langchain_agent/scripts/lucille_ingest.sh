@@ -88,7 +88,7 @@ LUCILLE_DIR="${LUCILLE_DIR:-$HOME/github/kmwtechnology/lucille}"
 ESCI_MODULE_DIR="$AGENT_DIR/lucille-esci"
 LUCILLE_USE_DOCKER="${LUCILLE_USE_DOCKER:-true}"
 
-# ── Colour helpers ──────────────────────────────────────────────────────────
+# ── Color helpers ──────────────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[lucille_ingest]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[lucille_ingest]${NC} $*"; }

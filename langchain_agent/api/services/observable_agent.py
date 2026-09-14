@@ -61,7 +61,9 @@ from api.schemas.events import (
 ConfidenceProxyModel = ConfidenceProxy
 StageMetricsModel = StageMetrics
 from core.config import (
+    ANSWER_STREAM_TAG,
     ENABLE_RERANKING,
+    INTERNAL_LLM_TAG,
     RERANKER_TYPE,
     RETRIEVER_FETCH_K,
 )
@@ -73,6 +75,7 @@ from observability.relevancy_metrics import (
     count_rank_changes,
     latency_cost_benefit,
 )
+from pipeline import enrichment_events
 
 logger = logging.getLogger(__name__)
 
@@ -639,6 +642,30 @@ class ObservableAgentService:
         response_streaming_started = False  # Track if we've started streaming LLM response
         skipped_nodes: Set[str] = set()
 
+        # Bridge enrichment lifecycle events out of the agent node's worker
+        # thread and onto this event loop (#103). The node publishes 'started'
+        # before a ~20s re-index and a terminal event after it; without this
+        # hop those would have nowhere to go, since the node is not on the
+        # loop thread. Installed for the duration of this turn only, so
+        # concurrent WebSocket turns never emit into each other's sockets.
+        loop = asyncio.get_running_loop()
+
+        def _publish_enrichment(**fields: Any) -> None:
+            future = asyncio.run_coroutine_threadsafe(
+                emit(EnrichmentTriggeredEvent(**fields)), loop
+            )
+            # Surface a failed hand-off instead of letting it vanish into an
+            # un-awaited future.
+            future.add_done_callback(
+                lambda f: (
+                    logger.warning("Enrichment event emit failed: %s", f.exception())
+                    if f.exception()
+                    else None
+                )
+            )
+
+        publisher_token = enrichment_events.set_publisher(_publish_enrichment)
+
         try:
             async for event in self._agent.app.astream_events(
                 initial_state,
@@ -756,7 +783,16 @@ class ObservableAgentService:
                                 output,
                                 emit,
                                 already_streamed=(
-                                    response_streaming_started if event_name == "agent" else False
+                                    # The node reports this itself now: its
+                                    # tokens go out through the sync emit
+                                    # bridge, not through a callback this loop
+                                    # can observe (#103).
+                                    (
+                                        response_streaming_started
+                                        or bool(accumulated_output.get("response_streamed"))
+                                    )
+                                    if event_name == "agent"
+                                    else False
                                 ),
                             )
 
@@ -792,7 +828,21 @@ class ObservableAgentService:
                     streaming_nodes = {
                         "agent",
                     }
-                    if current_node in streaming_nodes:
+                    # agent_node makes model calls that are deliberation rather
+                    # than the answer (the trigger_enrichment tool offer, the
+                    # enrichment value judge). They run while current_node is
+                    # "agent", so without this check their reasoning is streamed
+                    # into the chat window as the reply — a user asking for
+                    # wireless headphones got "Nothing in the query ... looks
+                    # like a color or material term" (#103).
+                    tags = event.get("tags") or []
+                    is_internal = INTERNAL_LLM_TAG in tags
+                    # agent_node streams the visible answer itself through the
+                    # sync emit bridge. Streaming it here too doubles every
+                    # token into the same browser-side buffer, rendering the
+                    # reply interleaved with itself (#103).
+                    is_answer_stream = ANSWER_STREAM_TAG in tags
+                    if current_node in streaming_nodes and not is_internal and not is_answer_stream:
                         chunk = event_data.get("chunk")
                         if chunk:
                             # Handle different chunk formats
@@ -845,6 +895,8 @@ class ObservableAgentService:
             print(f"Error in astream_events: {e}")
             traceback.print_exc()
             raise
+        finally:
+            enrichment_events.reset_publisher(publisher_token)
 
     async def _emit_node_events(
         self,
@@ -930,21 +982,14 @@ class ObservableAgentService:
             )
 
         elif node_name == "agent":
-            # trigger_enrichment fires via a manual two-call tool-binding
-            # loop inside agent_node (_try_enrichment_tool), not a
-            # ToolNode-executed call — the standard on_tool_start/tool_calls
-            # machinery above doesn't see it, so check the node's own output
-            # state directly.
-            if output.get("enrichment_triggered"):
-                await emit(
-                    EnrichmentTriggeredEvent(
-                        attribute_type=output.get("enrichment_attribute_type") or "",
-                        variant=output.get("enrichment_variant") or "",
-                        canonical=output.get("enrichment_canonical"),
-                        duration_seconds=output.get("enrichment_duration_seconds"),
-                        docs_processed=output.get("enrichment_docs_processed"),
-                    )
-                )
+            # NOTE: enrichment events are NOT emitted here any more (#103).
+            # This branch could only ever fire after the node had finished —
+            # i.e. after the ~20s re-index AND the follow-up LLM compose — so
+            # it could describe the lifecycle but never narrate it. The node
+            # now publishes 'started' and its terminal event as they happen,
+            # through pipeline.enrichment_events, bridged onto this loop in
+            # stream_agent_events(). Re-adding an emit here would double-fire
+            # the terminal event, ~2s late.
 
             # Emit LLM events
             messages = output.get("messages", [])

@@ -43,15 +43,15 @@ const VERDICT_TONE: Record<
 > = {
   llm_better: {
     label: 'LLM judged BETTER',
-    chip: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50',
+    chip: 'bg-white border-2 border-[#065F46] text-[#065F46] border-[#065F46]',
   },
   tied: {
     label: 'Tied',
-    chip: 'bg-gray-800/60 text-gray-200 border-gray-600',
+    chip: 'bg-[var(--color-stage-raised)]/60 text-[var(--color-stage-ink)] border-[var(--color-stage-border)]',
   },
   llm_worse: {
     label: 'LLM judged WORSE',
-    chip: 'bg-rose-900/40 text-rose-200 border-rose-700/50',
+    chip: 'bg-white border-2 border-[#9F1239] text-[#9F1239] border-[#9F1239]',
   },
 }
 
@@ -72,7 +72,7 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
   if (!judgment) {
     if (step?.status === 'running' || isExecuting) {
       return (
-        <div className="text-sm text-gray-400 italic">
+        <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)] italic">
           Judging… on a clean response this is ~1–2s. If hallucinations get
           flagged, an auto-correction retry kicks in and the total can run
           20–30s.
@@ -83,20 +83,20 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
     const judgeOn = optimizations.llm_judge
     if (!llmOn) {
       return (
-        <div className="text-sm text-gray-500">
+        <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
           Judge needs <code>llm</code> on (no synthesized response to compare).
         </div>
       )
     }
     if (!judgeOn) {
       return (
-        <div className="text-sm text-gray-500">
+        <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
           Judge toggle off — turn on <code>llm_judge</code> for the next query.
         </div>
       )
     }
     return (
-      <div className="text-sm text-gray-500">
+      <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
         No judge result captured for this turn. Send a fresh query.
       </div>
     )
@@ -110,16 +110,16 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
     original && retried ? judgment.faithfulness - original.faithfulness : null
 
   return (
-    <div className="space-y-1 text-sm">
+    <div className="space-y-1 text-[1.375rem]">
       <div className="flex items-center gap-2 flex-wrap">
         <span
-          className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border whitespace-nowrap ${tone.chip}`}
+          className={`text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border whitespace-nowrap ${tone.chip}`}
         >
           {tone.label}
         </span>
         {retried && (
           <span
-            className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-200 border-amber-700/50"
+            className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]"
             title={
               original
                 ? `Auto-corrected after the original response was flagged. Faithfulness ${fmt(original.faithfulness)} → ${fmt(judgment.faithfulness)}.`
@@ -140,13 +140,13 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
             return (
               <>
                 <span
-                  className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-rose-900/40 text-rose-200 border-rose-700/50"
+                  className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#9F1239] text-[#9F1239] border-[#9F1239]"
                   title="Fabrication / cross-product bleed — retry-worthy."
                 >
                   {hallucinated} hallucinated
                 </span>
                 <span
-                  className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-200 border-amber-700/50"
+                  className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]"
                   title="Inference / overreach — surfaced only, no retry."
                 >
                   {overreached} overreached
@@ -157,7 +157,7 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
           if (hallucinated > 0) {
             return (
               <span
-                className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-rose-900/40 text-rose-200 border-rose-700/50"
+                className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#9F1239] text-[#9F1239] border-[#9F1239]"
                 title="Fabrication / cross-product bleed — retry-worthy."
               >
                 {hallucinated} flagged
@@ -166,7 +166,7 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
           }
           return (
             <span
-              className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-200 border-amber-700/50"
+              className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]"
               title="Inference / overreach — surfaced only, no retry."
             >
               {overreached} overreached
@@ -174,7 +174,7 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
           )
         })()}
       </div>
-      <p className="text-xs text-gray-500">
+      <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">
         Full breakdown in the Pipeline Quality Summary card below.
       </p>
     </div>

@@ -183,6 +183,13 @@ class CustomAgentState(TypedDict, total=False):
     # none) but was never formally declared here until now.
     citations: List[Dict[str, str]]
 
+    # True when agent_node already streamed its tokens to the client through
+    # the sync emit bridge. observable_agent reads this to avoid re-sending the
+    # finished text at node end, which would render the answer twice (#103).
+    # MUST be declared here: LangGraph filters node output down to the declared
+    # state channels, so an undeclared key never reaches astream_events.
+    response_streamed: bool
+
     # Agentic enrichment flywheel (set by agent_node when the
     # trigger_enrichment tool fires on a detected search-quality gap).
     # Defaults: enrichment_triggered=False

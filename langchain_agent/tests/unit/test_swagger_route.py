@@ -17,11 +17,24 @@ from api.main import app
 
 @pytest.mark.unit
 class TestSwaggerRoute:
-    def test_docs_url_is_swagger(self):
-        """FastAPI's auto-doc URL must be ``/swagger``."""
-        assert app.docs_url == "/swagger", (
-            f"Expected docs_url=/swagger, got {app.docs_url}. "
-            "Frontend SwaggerPage iframe and sidebar link target /swagger."
+    def test_swagger_is_served_at_swagger(self):
+        """``/swagger`` must serve the API docs.
+
+        FastAPI's built-in docs_url is deliberately None (#103): the stock
+        Swagger UI renders at ~12px, which is unreadable projected, and the SPA
+        embeds this page cross-origin so it cannot restyle it. A custom route
+        serves the same generated spec with projector-sized CSS. What matters
+        is that the PATH still works — the frontend iframe and the header link
+        both target it.
+        """
+        paths = {getattr(r, "path", None) for r in app.routes}
+        assert "/swagger" in paths, (
+            "Expected a route at /swagger. Frontend SwaggerPage iframe and the "
+            f"header link target it. Got: {sorted(p for p in paths if p)}"
+        )
+        assert app.docs_url is None, (
+            "docs_url should stay None so FastAPI's default (small-type) docs "
+            "route does not shadow the projector-sized one."
         )
 
     def test_redoc_still_at_default(self):

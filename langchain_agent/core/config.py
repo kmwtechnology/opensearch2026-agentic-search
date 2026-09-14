@@ -126,6 +126,7 @@ __all__ = [
     "RERANKER_MODEL",
     "CROSS_ENCODER_MODEL",
     "RERANKER_FETCH_K",
+    "RETRY_FETCH_MULTIPLIER",
     "RERANKER_TOP_K",
     "RERANKER_BATCH_SIZE",
     "RERANKER_WARMUP_ENABLED",
@@ -173,6 +174,7 @@ __all__ = [
     "RATE_LIMIT_ENABLED",
     # Login gate (shared-password session auth)
     "LOGIN_PASSWORD",
+    "REQUIRE_LOGIN",
     "SESSION_SECRET",
     "SESSION_COOKIE_SECURE",
     "SESSION_MAX_AGE_SECONDS",
@@ -320,6 +322,14 @@ RERANKER_MODEL = os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview")
 # Number of candidates to fetch before reranking
 # 40 enables the "wide net recall" → cross-encoder precision narrative
 RERANKER_FETCH_K = 40
+
+# How much wider the quality gate's retry searches than the first pass.
+# The retry used to only nudge alpha, which measurably changed nothing: the
+# reranker's best score was identical at alpha 0.1/0.4/0.7/1.0 for every
+# conceptual query tested, because re-weighting reorders a pool that already
+# holds the same best document. Multiplying the pool is what lets the second
+# pass see candidates the first one never scored (#103).
+RETRY_FETCH_MULTIPLIER = 4
 
 # Final number of documents to return after reranking
 RERANKER_TOP_K = 10
@@ -510,6 +520,18 @@ RATE_LIMIT_ENABLED = True
 # rides every REST + WebSocket request thereafter.
 
 LOGIN_PASSWORD = os.getenv("LOGIN_PASSWORD")
+
+# Whether to put the shared-password login screen in front of the UI.
+#
+# Default OFF. The gate existed to reduce token burn during demos, but it also
+# put a password prompt between a presenter and their own demo, on stage. With
+# it off the app opens straight into the demo.
+#
+# Turning it off does NOT remove the other layer: verify_same_origin still
+# rejects cross-site requests. It does mean anyone who opens the deployed URL
+# directly can use the app and spend API tokens, so set REQUIRE_LOGIN=true for
+# any deployment reachable by people you would rather not pay for.
+REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "false").lower() == "true"
 SESSION_SECRET = os.getenv("SESSION_SECRET")
 
 # In dev (HTTP) the cookie must not be Secure-flagged or browsers drop it.
@@ -593,6 +615,28 @@ CHECKPOINT_COMPACTION_DAYS = 7
 # OpenSearch-backed attribute mapping store, so it's kept opt-in outside the
 # conference demo environment.
 ENABLE_ENRICHMENT_TOOL = os.getenv("ENABLE_ENRICHMENT_TOOL", "false").lower() == "true"
+
+# Tag applied to LLM calls made INSIDE agent_node that are deliberation, not
+# the answer — the trigger_enrichment tool-offer call and the enrichment value
+# judge. observable_agent streams every on_chat_model_stream it sees while the
+# agent node is current, so without this the model's internal reasoning is
+# shown to the user as if it were the reply. Observed live: asking for
+# wireless headphones produced the answer "Nothing in the query ... looks like
+# a color or material term", which is the tool-offer prompt thinking out loud.
+INTERNAL_LLM_TAG = "internal_deliberation"
+
+# Tag applied to the ONE call that produces the user-visible answer, which
+# agent_node streams itself through the sync emit bridge
+# (_stream_llm_response_simple). observable_agent must not also stream that
+# call's on_chat_model_stream chunks: both paths fire for the same tokens, and
+# the browser appends them to one buffer, so the reply renders interleaved with
+# itself ("...offer various stylesThese wireless headphones offer various
+# styles including..."), every sentence doubled mid-clause (#103).
+#
+# The pipeline's own emit is the one that survives: agent_node runs on a worker
+# thread, where the LangChain callback cannot reach the astream_events iterator
+# reliably, which is why it was moved onto the bridge in the first place.
+ANSWER_STREAM_TAG = "answer_stream"
 
 # How enrich_attribute triggers the catalog reindex after writing a mapping:
 #   local  -- run scripts/lucille_ingest.sh as a subprocess (dev: Docker on this

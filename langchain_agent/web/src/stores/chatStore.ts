@@ -49,6 +49,9 @@ interface ChatState {
   isProcessing: boolean
   streamingContent: string
   queuedMessages: QueuedMessage[]
+  // A query to fire as soon as the NEXT thread's socket is established.
+  // See startNewConversation() for why it cannot simply be sent inline.
+  pendingAutoSend: string | null
 
   // WebSocket state
   isConnected: boolean
@@ -79,7 +82,8 @@ interface ChatState {
   upsertConversation: (conversation: ConversationSummary) => void
   setMessages: (messages: ChatMessage[]) => void
   loadConversation: (threadId: string) => Promise<void>
-  startNewConversation: () => void
+  startNewConversation: (autoSend?: string) => void
+  clearPendingAutoSend: () => void
   setConnectionState: (connected: boolean, connecting: boolean, error: string | null) => void
   triggerInputFocus: () => void
   enqueueMessage: (message: QueuedMessage) => void
@@ -93,6 +97,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isProcessing: false,
   streamingContent: '',
   queuedMessages: [],
+  pendingAutoSend: null,
   isConnected: false,
   isConnecting: false,
   connectionError: null,
@@ -303,7 +308,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  startNewConversation: () => {
+  startNewConversation: (autoSend?: string) => {
     const newThreadId = `conversation_${Math.random().toString(36).slice(2, 10)}`
     set({
       threadId: newThreadId,
@@ -311,10 +316,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       isProcessing: false,
       queuedMessages: [],
+      // Sent by useWebSocket the moment the NEW thread's socket reports
+      // connection_established (#103). It cannot be sent here: the socket for
+      // the new thread does not exist yet, and sendOverWebSocket reads a
+      // module-level currentThreadId set in connect() — so sending now would
+      // either go out on the OLD thread or be dropped for a non-OPEN socket.
+      pendingAutoSend: autoSend ?? null,
     })
     // Wipe any hydrated snapshot from a prior historical conversation.
     useObservabilityStore.getState().hydrateSnapshot(null)
   },
+
+  clearPendingAutoSend: () => set({ pendingAutoSend: null }),
 
   setConnectionState: (connected, connecting, error) => set({
     isConnected: connected,

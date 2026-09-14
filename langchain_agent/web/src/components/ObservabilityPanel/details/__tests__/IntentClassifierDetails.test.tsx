@@ -97,7 +97,9 @@ describe('IntentClassifierDetails Component', () => {
         }
       render(<IntentClassifierDetails event={event} />)
       const confidenceText = screen.getByText('95%')
-      expect(confidenceText.className).toContain('green')
+      // Projector palette (#103): the dark-theme green-400 became #065F46,
+      // which clears 7:1 on the light ground.
+      expect(confidenceText.className).toContain('#065F46')
     })
 
     it('uses yellow color for low confidence (< 0.7)', () => {
@@ -112,7 +114,8 @@ describe('IntentClassifierDetails Component', () => {
         }
       render(<IntentClassifierDetails event={event} />)
       const confidenceText = screen.getByText('65%')
-      expect(confidenceText.className).toContain('yellow')
+      // Low-confidence warning is now the same rust the quality gate uses.
+      expect(confidenceText.className).toContain('#9A3412')
     })
   })
 
