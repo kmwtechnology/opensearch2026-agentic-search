@@ -32,92 +32,22 @@ curl http://localhost:8000/api/health
 Response (200 OK):
 ```json
 {
-  "status": "healthy",
-  "postgres": "ok",
-  "opensearch": "ok",
-  "google_api": "ok",
-  "document_count": 9618,
-  "timestamp": "2026-06-04T16:30:45Z"
+  "status": "ok",
+  "version": "1.1.0",
+  "postgres": true,
+  "google_ai": true,
+  "vector_store": true,
+  "document_count": 9618
 }
 ```
 
-If any probe is not "ok", the service is degraded. Check [Troubleshooting](../operations/troubleshooting.md).
+`status` is `"ok"` when postgres and google_ai are both healthy, otherwise `"degraded"` (always returns 200, even when degraded — fail-open for monitoring). Check [Troubleshooting](../operations/troubleshooting.md).
 
 ---
 
-## Conversations
+## Chat (WebSocket Only)
 
-### Create a Conversation
-
-```bash
-curl -X POST http://localhost:8000/api/conversations \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "title": "My Shopping Session"
-  }'
-```
-
-Response (201 Created):
-```json
-{
-  "id": "conv_abc123def456",
-  "title": "My Shopping Session",
-  "created_at": "2026-06-04T16:30:45Z",
-  "updated_at": "2026-06-04T16:30:45Z",
-  "message_count": 0
-}
-```
-
-### List All Conversations
-
-```bash
-curl http://localhost:8000/api/conversations \
-  -b cookies.txt
-```
-
-Response (200 OK):
-```json
-{
-  "conversations": [
-    {
-      "id": "conv_abc123def456",
-      "title": "My Shopping Session",
-      "created_at": "2026-06-04T16:30:45Z",
-      "updated_at": "2026-06-04T16:30:45Z",
-      "message_count": 3
-    }
-  ],
-  "total": 1
-}
-```
-
----
-
-## Messages (REST Polling)
-
-### Send a Message (Non-Streaming)
-
-For simple polling (not real-time), use REST:
-
-```bash
-curl -X POST http://localhost:8000/api/conversations/conv_abc123def456/messages \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "message": "Find me wireless headphones under $100"
-  }'
-```
-
-Response (202 Accepted — async processing):
-```json
-{
-  "thread_id": "conv_abc123def456",
-  "status": "processing"
-}
-```
-
-**Note:** For real-time streaming, use [WebSocket](websocket.md) instead. REST polling is slower (~20-30s latency).
+There is no REST polling endpoint for conversations or messages — all chat happens over WebSocket. See [WebSocket](websocket.md) for connecting, sending messages, and receiving streamed pipeline events. Conversation state (thread history) is keyed by `thread_id` and persisted via PostgreSQL checkpoints, not a separate conversations resource.
 
 ---
 
@@ -131,8 +61,8 @@ curl 'http://localhost:8000/api/suggest?q=wireless' \
 ```
 
 Query parameters:
-- `q` (required): search prefix (e.g., "wireless", "blue")
-- `limit` (optional, default=10): max suggestions to return
+- `q` (required): search prefix, 1–100 chars (e.g., "wireless", "blue")
+- `limit` (optional, default=8, range 1–20): max suggestions to return
 
 Response (200 OK):
 ```json
@@ -171,34 +101,24 @@ Response (200 OK):
 ```json
 {
   "status": "healthy",
-  "postgres": "ok",
-  "opensearch": "ok",
-  "google_api": "ok",
-  "document_count": 9618,
-  "index_age_seconds": 3600
+  "opensearch": {
+    "connected": true,
+    "index": "esci-products",
+    "documents": 9618
+  }
 }
 ```
 
-Same format as public `/api/health`, but available only to admins.
+This is an index-level probe (does the product index exist and how many documents does it have), distinct from the public `/api/health` (Postgres + Google AI + vector store reachability). `status` is `"healthy"` (index exists and is queryable), `"degraded"` (OpenSearch reachable but index missing), or `"unhealthy"` (OpenSearch unreachable, with an `error` field).
 
 ### Diagnose (Field-Level Metrics)
 
 ```bash
-curl http://localhost:8000/api/admin/diagnose \
+curl http://localhost:8000/api/admin/diagnose?q=sony \
   -H "X-Admin-Token: your_admin_token_here"
 ```
 
-Response includes hit counts per field (product_title, product_brand, product_color, etc.):
-```json
-{
-  "status": "healthy",
-  "field_stats": {
-    "product_title": {"indexed": true, "hit_count": 9618},
-    "product_brand": {"indexed": true, "hit_count": 9500},
-    "product_color": {"indexed": true, "hit_count": 8200}
-  }
-}
-```
+Diagnostic-only: probes the live index for a query (`q`, default `"sony"`) across the suggest fields (`title_suggest`/`brand_suggest`) versus the primary lexical fields (`title`/`product_brand`), and reports whether the mapping includes the suggest fields at all — used to detect a stale mapping that predates the suggest feature.
 
 ### Enrich Attribute Taxonomy
 

@@ -23,7 +23,7 @@ api/
 | File | Endpoints | Purpose |
 |------|-----------|---------|
 | `chat.py` | `POST /api/chat` (WebSocket) | LangGraph agent stream; emits typed Pydantic events |
-| `conversations.py` | `GET/POST /api/conversations/{thread_id}` | Checkpoint-backed conversation CRUD |
+| `conversations.py` | `GET /api/conversations`, `GET/DELETE /api/conversations/{thread_id}`, `GET /api/conversations/{thread_id}/observability` | Checkpoint-backed conversation listing/detail/delete + observability snapshot (no REST create/send — that's WebSocket-only) |
 | `suggest.py` | `GET /api/suggest?q=...` | Typeahead autocomplete (edge-ngram + spell correction) |
 | `health.py` | `GET /api/health` | Index health + document count |
 | `admin.py` | `GET /api/admin/health` · `GET /api/admin/diagnose` · `POST /api/admin/enrich` | Index health, field diagnostics, and the live attribute-taxonomy enrichment flywheel (session or `X-Admin-Token`) |
@@ -33,8 +33,8 @@ api/
 
 | File | Purpose |
 |------|---------|
-| `auth.py` | API key validation (legacy; unused on protected routes) |
-| `origin_auth.py` | Origin header allow-list enforcement; Host fallback rule (disallowed Origin always 403) |
+| `auth.py` | Holds only `AuthConfigurationError`; no API key validation logic (removed) — do not wire new routes through it |
+| `origin_auth.py` | Origin header allow-list enforcement (falls back to `Referer` for same-origin GETs); disallowed Origin always 403s, no further fallback |
 | `session_auth.py` | Session cookie verification + admin token fallback for automation |
 
 **Auth strategy:** Two-layer enforcement on protected routes:

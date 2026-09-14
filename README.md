@@ -33,7 +33,7 @@ Path A also needs:
 
 - Docker Desktop
 - Python 3.14+
-- Node.js 24+
+- Node.js 22+
 
 Java 21+ and Maven are only needed if you opt out of the default
 Docker-based Lucille ETL ingest (`LUCILLE_USE_DOCKER=false`).
@@ -99,7 +99,7 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   non-default alternative (~500ms/batch)
 - **Dynamic alpha** — query-aware lexical/semantic balance; fast-path alpha
   for comparison/attribute_filter/refinement, LLM path for search/follow_up
-- **Quality gate** — if max reranker score < 0.5, adjusts alpha ±0.3 (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only) and retries once
+- **Quality gate** — if max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45), adjusts alpha ±0.3 (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only) and retries once
 - **Conversational query rewriting** — resolves pronouns, comparatives, and
   short attribute questions using conversation history
 - **Refinement with context validation** — "make them waterproof" narrows
@@ -227,9 +227,10 @@ Key decision points:
 - **Query Evaluator** — classifies query type and sets optimal α (0.0–1.0)
   with an e-commerce-tuned guide. Also expands vague queries (pronouns,
   comparatives, short attribute questions) using conversation context.
-- **Quality Gate** — if `reranker_max_score < 0.5` and not yet retried,
-  adjusts α ±0.3 and loops back to the retriever; otherwise continues to
-  the agent.
+- **Quality Gate** — if `reranker_max_score` is below the intent-specific
+  threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45)
+  and not yet retried, adjusts α ±0.3 and loops back to the retriever;
+  otherwise continues to the agent.
 - **Reranker** — cross-encoder scoring of top-K documents on a 0.0–1.0
   scale; Gemini Flash Lite fallback with Pydantic-validated output.
 - **Citations** — Amazon search URLs derived from product title
@@ -256,8 +257,10 @@ Fast-path defaults:
 | `refinement` | 0.35 | Fast (keyword) |
 | `search`, `follow_up` | LLM-assigned | LLM path |
 
-If the top reranker score is still below 0.5 after retrieval, the Quality Gate
-retries with an opposite-direction α adjustment.
+If the top reranker score is still below the intent-specific threshold
+(comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45)
+after retrieval, the Quality Gate retries with an opposite-direction α
+adjustment.
 
 ## Tech Stack
 
@@ -379,7 +382,7 @@ Pure-Python metric implementations live in
 | **Dynamic α** | Fast-path α for comparison/attribute_filter/refinement; LLM path for search/follow_up |
 | **RRF fusion** | `score = Σ 1/(rank + 60)` combining vector and BM25 rankings |
 | **LLM-based reranking** | Gemini Flash Lite scores query-product relevance, Pydantic-validated 0.0–1.0 |
-| **Quality gate with α adjustment** | Retries once with α ±0.3 if max reranker score < 0.5 |
+| **Quality gate with α adjustment** | Retries once with α ±0.3 if max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45) |
 | **Embedding cache** | Query embedding cache (60-min TTL) reduces API calls |
 | **Deterministic sampling** | ESCI products sampled with `random_state=42` for reproducibility |
 | **Idempotent ingestion** | Cached sample parquets (`esci_products_sample_{N}.parquet`) reused on re-runs |
@@ -415,8 +418,7 @@ opensearch2026-agentic-search/
 │   ├── tests/                    # unit, integration, e2e suites
 │   ├── Dockerfile                # Multi-stage build (Node + Python)
 │   └── cloudbuild.yaml
-├── esci/                         # Amazon ESCI dataset (created by setup; gitignored)
-└── web/                          # Skeleton web app (separate, less developed)
+└── esci/                         # Amazon ESCI dataset (created by setup; gitignored)
 ```
 
 ## Documentation Map
@@ -451,7 +453,7 @@ opensearch2026-agentic-search/
 - **Lexical search** — BM25 via OpenSearch's Lucene analyzer (~100–300 ms)
 - **RRF fusion** — `score = Σ 1/(rank + 60)` normalizes across methods
 - **Dynamic α** — set per-query by the Query Evaluator
-- **Quality Gate** — automatic α ±0.3 retry when max reranker score < 0.5
+- **Quality Gate** — automatic α ±0.3 retry when max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45)
 
 ### Key Tunables
 
@@ -486,7 +488,7 @@ cp .env.example .env        # Fill in GOOGLE_API_KEY
 ./scripts/teardown.sh       # Full cleanup
 ```
 
-**Prerequisites:** Docker Desktop, Python 3.14+, Node.js 24+, Google API key
+**Prerequisites:** Docker Desktop, Python 3.14+, Node.js 22+, Google API key
 ([get one](https://aistudio.google.com/apikey)), and ~1.5 GB disk for the
 ESCI dataset plus Docker volumes. (Java 21+/Maven only needed for
 `LUCILLE_USE_DOCKER=false`.)

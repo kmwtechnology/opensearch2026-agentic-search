@@ -50,14 +50,14 @@ The cookie is **HttpOnly** (not accessible to JavaScript, safe from XSS) and **S
 
 **Browser (automatic):**
 ```javascript
-fetch('http://localhost:8000/api/conversations', {
+fetch('http://localhost:8000/api/suggest?q=wireless', {
   credentials: 'include'  // Auto-includes cookies
 })
 ```
 
 **cURL (explicit):**
 ```bash
-curl http://localhost:8000/api/conversations \
+curl http://localhost:8000/api/suggest?q=wireless \
   -b cookies.txt  # Include saved cookies
 ```
 
@@ -68,7 +68,7 @@ import requests
 session = requests.Session()
 session.post('http://localhost:8000/api/auth/login', json={'password': '...'})
 # Subsequent requests auto-include the cookie
-response = session.get('http://localhost:8000/api/conversations')
+response = session.get('http://localhost:8000/api/suggest', params={'q': 'wireless'})
 ```
 
 ### Step 3: Session Expiry
@@ -149,11 +149,11 @@ curl http://localhost:8000/api/admin/health \
 
 **Which endpoints accept admin token?**
 
-- `GET /api/admin/health` — health check
+- `GET /api/admin/health` — index-level health check
 - `GET /api/admin/diagnose` — field-level metrics
-- `POST /api/admin/login-admin` — internal only
+- `POST /api/admin/enrich` — taxonomy enrichment (gated by `ENABLE_ENRICHMENT_TOOL`)
 
-**Note:** `/api/auth/login` and `/api/conversations` do NOT accept admin token. Use session cookie for those.
+**Note:** `/api/auth/login` does NOT accept admin token — it's the login route itself. Session-authenticated (non-automation) users can also call the admin routes above after logging in.
 
 ### Token Security
 
@@ -189,14 +189,16 @@ Browsers automatically set the `Origin` header. Custom clients must include it e
 
 **cURL example:**
 ```bash
-curl http://localhost:8000/api/conversations \
+curl http://localhost:8000/api/suggest?q=wireless \
   -H "Origin: http://localhost:8000" \
   -b cookies.txt
 ```
 
+Same-origin GET requests without an `Origin` header (e.g. plain browser navigation) are checked against the `Referer` header instead. If neither `Origin` nor an allow-listed `Referer` is present, the request is rejected — there is no further fallback.
+
 ### Disallowed Origin
 
-If `Origin` is not in the allow-list, the server responds with `403 Forbidden`:
+If `Origin` (and `Referer`) is not in the allow-list, the server responds with `403 Forbidden`:
 
 ```json
 {
@@ -204,18 +206,7 @@ If `Origin` is not in the allow-list, the server responds with `403 Forbidden`:
 }
 ```
 
-**Fix:** Update `get_allowed_origins()` in `api/main.py` or provide the correct Origin header.
-
-### Host Fallback Rule
-
-If **both** `Origin` and `Referer` headers are absent (uncommon), the server falls back to the `Host` header. This handles edge cases where a proxy strips headers.
-
-**Example (request with no Origin/Referer):**
-```bash
-curl http://localhost:8000/api/health
-```
-
-Falls back to Host: `localhost:8000` → allowed.
+**Fix:** Update `get_allowed_origins()` in `api/middleware/origin_auth.py` or provide the correct Origin header.
 
 ---
 
@@ -241,7 +232,7 @@ Falls back to Host: `localhost:8000` → allowed.
 
 **Check:**
 ```bash
-curl -i http://localhost:8000/api/conversations \
+curl -i http://localhost:8000/api/suggest?q=wireless \
   -H "Origin: http://localhost:8000" \
   -b cookies.txt
 ```
@@ -262,7 +253,7 @@ curl -X POST http://localhost:8000/api/auth/login \
 
 **Fix:** Provide the correct Origin:
 ```bash
-curl http://localhost:8000/api/conversations \
+curl http://localhost:8000/api/suggest?q=wireless \
   -H "Origin: http://localhost:8000" \
   -b cookies.txt
 ```

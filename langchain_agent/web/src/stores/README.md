@@ -8,10 +8,10 @@ Zustand state management stores for global UI and application state.
 
 | Store | Purpose | Main State | Key Actions |
 |-------|---------|-----------|-------------|
-| **authStore** | Login/logout, session state | `isLoggedIn`, `error` | `login(password)`, `logout()`, `markUnauthenticated()` |
+| **authStore** | Login/logout, session state | `isAuthenticated`, `isChecking`, `isLoggingIn`, `loginError` | `checkAuth()`, `login(password)`, `logout()`, `markUnauthenticated()` |
 | **chatStore** | Messages, conversation, streaming | `threadId`, `messages[]`, `isProcessing`, `streamingContent` | `addMessage()`, `setThreadId()`, `updateMessageStatus()` |
 | **observabilityStore** | Event stream, pipeline timeline | `events[]`, `activeStep`, `snapshots[]` | `addEvent()`, `setActiveStep()`, `saveSnapshot()` |
-| **optimizationsStore** | UI feature toggles | `showBM25`, `showReranker`, `showMetrics`, `showRaw` | `toggleBM25()`, `toggleMetrics()` |
+| **optimizationsStore** | UI search-optimization toggles | `optimizations` (a `Record<OptimizationKey, boolean>` — `hybrid`, `fuzzy`, `synonyms`, `phonetic`, `phrase_boost`, `field_boost`, `typeahead`, `reranking`, `llm`, `llm_judge`) | `toggle(key)`, `setAll(value)`, `reset()` |
 
 ## Store Files
 
@@ -45,9 +45,12 @@ function MyComponent() {
 
 ```typescript
 interface AuthState {
-  isLoggedIn: boolean
-  error: string | null
-  login: (password: string) => Promise<void>
+  isAuthenticated: boolean
+  isChecking: boolean
+  isLoggingIn: boolean
+  loginError: string | null
+  checkAuth: () => Promise<void>
+  login: (password: string) => Promise<boolean>
   logout: () => Promise<void>
   markUnauthenticated: () => void
 }
@@ -91,14 +94,15 @@ interface ObservabilityState {
 ## optimizationsStore
 
 ```typescript
+type OptimizationKey =
+  | 'hybrid' | 'fuzzy' | 'synonyms' | 'phonetic' | 'phrase_boost'
+  | 'field_boost' | 'typeahead' | 'reranking' | 'llm' | 'llm_judge'
+
 interface OptimizationsState {
-  showBM25: boolean
-  showReranker: boolean
-  showMetrics: boolean
-  showRaw: boolean
-  toggleBM25: () => void
-  toggleReranker: () => void
-  // ... toggle actions for each flag
+  optimizations: Record<OptimizationKey, boolean>
+  toggle: (key: OptimizationKey) => void
+  setAll: (value: boolean) => void
+  reset: () => void
 }
 ```
 

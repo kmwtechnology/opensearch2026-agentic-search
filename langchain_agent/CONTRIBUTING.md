@@ -491,7 +491,7 @@ Test against deployed Cloud Run instance.
 - [ ] Check observable events appear in frontend panel
 - [ ] Verify new node outputs are persisted in PostgreSQL checkpoint
 - [ ] Test error cases (missing documents, LLM timeout, etc.)
-- [ ] Run `make lint`, `make type-check` to catch regressions
+- [ ] Run `make lint` (includes flake8 + mypy) to catch regressions
 
 ---
 
@@ -557,7 +557,7 @@ ModuleNotFoundError: No module named 'config'
 Always set `PYTHONPATH=.` when running scripts:
 
 ```bash
-PYTHONPATH=. python ingest_esci_products.py
+bash scripts/lucille_ingest.sh
 PYTHONPATH=. pytest tests/
 ```
 
@@ -594,7 +594,7 @@ Symptom: Quality gate keeps retrying, never reaches agent
 
 1. Fork the repo (or create a feature branch)
 2. Make changes, test locally
-3. Run `make lint` and `make type-check`
+3. Run `make lint` (includes flake8 + mypy)
 4. Write unit/integration tests
 5. Create pull request with description
 6. Request review (especially for new nodes/events)

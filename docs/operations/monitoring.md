@@ -17,21 +17,21 @@ curl https://agentic-hybrid-search-xxxx.run.app/api/health
 Response (200 OK):
 ```json
 {
-  "status": "healthy",
-  "postgres": "ok",
-  "opensearch": "ok",
-  "google_api": "ok",
-  "document_count": 9618,
-  "timestamp": "2026-06-04T16:30:45Z"
+  "status": "ok",
+  "version": "1.1.0",
+  "postgres": true,
+  "google_ai": true,
+  "vector_store": true,
+  "document_count": 9618
 }
 ```
 
 Probes check:
-- **PostgreSQL:** reachable and responding (used for conversation state)
-- **OpenSearch:** cluster health + document count
-- **Google API:** Gemini and embedding models accessible
+- **PostgreSQL:** reachable and responding (used for conversation checkpoints)
+- **vector_store (OpenSearch):** has indexed documents
+- **google_ai:** Google AI API key configured
 
-All three must be "ok" for the service to be considered healthy. Any probe failure returns 503.
+`status` is `"ok"` when postgres and google_ai are both healthy, otherwise `"degraded"`. This endpoint always returns 200, even when degraded (fail-open for monitoring) — it's `GET /api/health/ready` that returns 503 when a critical dependency or reranker warmup isn't ready.
 
 ---
 
