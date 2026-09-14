@@ -90,6 +90,7 @@ services:
     volumes:
       - ./langchain_agent/lucille-esci/conf:/lucille/conf:ro
       - ./data:/lucille/data:ro
+      - ./langchain_agent/logs:/lucille/log
     depends_on:
       opensearch:
         condition: service_healthy
