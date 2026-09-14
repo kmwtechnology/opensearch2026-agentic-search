@@ -1037,7 +1037,11 @@ GROUNDING RULES (override creativity preferences — non-negotiable):
 
 LENGTH — this is read aloud off a projector, so be brief:
 - Open with ONE sentence that answers the question. No preamble, no restating the question, no "Great choice!" or "I'd love to help".
-- Then list AT MOST 3 products, one line each: the product name in bold, then a short clause naming only the detail that makes it a match. No per-product sub-bullets, no headings, no "Details:" / "Matches:" labels.
+- Then a MARKDOWN BULLET LIST of at most 3 products — this must be a real list, one bullet per product, never a paragraph with the names run together. Exactly this shape:
+
+  - **Product Name** — short clause naming only what makes it a match.
+
+  One sentence per bullet. No sub-bullets, no headings, no "Details:" / "Matches:" / "Size:" labels, and no blank lines between bullets.
 - Aim for under 100 words total. Stop when the question is answered — do not add a closing offer, a follow-up question, or a summary of what you just said.
 - Exception: if nothing relevant was found, say so in one sentence and suggest two alternative searches. That case may end with a question.
 - BREVITY NEVER OVERRIDES GROUNDING RULE 6. If a product's listed color and its indexed color category disagree implausibly, you MUST say so — omitting it hides a real data defect from the person who could report it. State it ONCE, as a single clause, using the literal values (e.g. "all of these are listed Tan but indexed as yellow, which looks like a tagging error"). Do not repeat it on every product line; if it applies to several, say so once and name them collectively.
@@ -1056,9 +1060,20 @@ CITATION & STYLE:
             HumanMessage(content=user_query or "Please summarize the context."),
         ]
 
-        # Generate response with streaming if available
+        # Generate response with streaming if available.
+        #
+        # response_streamed tells observable_agent that the tokens have ALREADY
+        # gone out over the socket, so it must not re-send the finished text at
+        # node end. It used to infer this by watching LangChain's
+        # on_chat_model_stream callback, which stopped reaching it once
+        # agent_node moved to a worker thread (#103) — leaving it convinced
+        # nothing had streamed, so it emitted a second response start plus the
+        # whole answer. The UI then showed an empty streaming bubble and the
+        # text rendered twice.
+        response_streamed = False
         if hasattr(self.llm, "stream") and callable(getattr(self.llm, "stream")):
             response = self._stream_llm_response_simple(llm_messages)
+            response_streamed = True
         else:
             logger.debug("LLM does not support streaming, using invoke()")
             response = self.llm.invoke(llm_messages)
@@ -1085,7 +1100,11 @@ CITATION & STYLE:
             state.get("langfuse_trace_id"), citations, retrieved_documents, judgments
         )
 
-        return {"messages": [response], "citations": citations}
+        return {
+            "messages": [response],
+            "citations": citations,
+            "response_streamed": response_streamed,
+        }
 
     def _try_enrichment_tool(
         self, user_query: Optional[str], prompt: Optional[str] = None
@@ -2146,10 +2165,20 @@ Respond with JSON only. No other text."""
         """
         stream_start = time.time()
 
-        # Emit start event (if event classes are available)
+        # Emit start event (if event classes are available).
+        #
+        # Goes through _emit_event_from_sync, NOT _emit_streaming_event — the
+        # latter only logs. Token streaming used to reach the browser purely as
+        # a side effect of observable_agent capturing LangChain's
+        # on_chat_model_stream callback, and that stopped working the moment
+        # agent_node moved to a worker thread (#103): the callback fires on a
+        # non-loop thread and never reaches the astream_events iterator, so the
+        # UI sat on "Generating response" and then dumped the whole answer at
+        # once. _emit_event_from_sync hops back onto the loop with
+        # run_coroutine_threadsafe, which is exactly the same bridge the
+        # retriever already uses for its progress events.
         if LLMResponseStartEvent is not None:
-            start_event = LLMResponseStartEvent()
-            self._emit_streaming_event(start_event)
+            self._emit_event_from_sync(LLMResponseStartEvent())
 
         # Accumulate response content
         accumulated_content = ""
@@ -2178,8 +2207,9 @@ Respond with JSON only. No other text."""
 
                         # Emit chunk event (if event classes are available)
                         if LLMResponseChunkEvent is not None:
-                            chunk_event = LLMResponseChunkEvent(content=content, is_complete=False)
-                            self._emit_streaming_event(chunk_event)
+                            self._emit_event_from_sync(
+                                LLMResponseChunkEvent(content=content, is_complete=False)
+                            )
 
         except StopIteration:
             pass

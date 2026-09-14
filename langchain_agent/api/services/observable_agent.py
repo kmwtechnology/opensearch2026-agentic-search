@@ -782,7 +782,16 @@ class ObservableAgentService:
                                 output,
                                 emit,
                                 already_streamed=(
-                                    response_streaming_started if event_name == "agent" else False
+                                    # The node reports this itself now: its
+                                    # tokens go out through the sync emit
+                                    # bridge, not through a callback this loop
+                                    # can observe (#103).
+                                    (
+                                        response_streaming_started
+                                        or bool(accumulated_output.get("response_streamed"))
+                                    )
+                                    if event_name == "agent"
+                                    else False
                                 ),
                             )
 

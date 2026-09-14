@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import { useState, useMemo } from 'react'
-import { User, Bot, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
+import { User, Bot, BookOpen, ChevronDown, Copy, Check } from 'lucide-react'
 import type { ChatMessage } from '../../stores/chatStore'
 import clsx from 'clsx'
 
@@ -300,35 +300,52 @@ export function Message({ message }: MessageProps) {
         )}
 
         {citationsCount > 0 && (
-          <div className="mt-2">
+          /* Citations are supporting material, not part of the answer, so this
+             reads as a quiet footer rule and a count rather than a call to
+             action. Previously bare blue link text at 1.25rem on a light
+             bubble — low contrast and easy to miss projected. */
+          <div className="mt-4 border-t-2 border-[var(--color-stage-border)] pt-3">
             <button
               type="button"
               onClick={() => setCitationsOpen((prev) => !prev)}
-              className="flex items-center gap-1 text-[1.25rem] text-blue-300 hover:text-blue-200"
+              aria-expanded={citationsOpen}
+              className="flex items-center gap-2.5 rounded-lg px-1 py-1 text-[1.25rem] font-semibold text-[var(--color-stage-ink-muted)] hover:text-[var(--color-stage-ink)] focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/30"
             >
-              <span>Sources ({citationsCount})</span>
-              {citationsOpen ? (
-                <ChevronUp className="w-3 h-3" />
-              ) : (
-                <ChevronDown className="w-3 h-3" />
-              )}
+              <BookOpen
+                className="h-5 w-5 text-[var(--color-stage-ink-soft)]"
+                strokeWidth={2.5}
+                aria-hidden="true"
+              />
+              <span>
+                {citationsCount} {citationsCount === 1 ? 'source' : 'sources'}
+              </span>
+              <ChevronDown
+                className={`h-5 w-5 text-[var(--color-stage-ink-soft)] transition-transform ${
+                  citationsOpen ? 'rotate-180' : ''
+                }`}
+                strokeWidth={2.5}
+                aria-hidden="true"
+              />
             </button>
             {citationsOpen && (
-              <ul className="mt-1 space-y-1 text-[1.25rem] text-blue-200 list-disc list-inside">
-                {message.citations?.map((cite) => (
-                  <li key={cite.url}>
+              <ol className="mt-3 flex flex-col gap-2">
+                {message.citations?.map((cite, i) => (
+                  <li key={cite.url} className="flex gap-3 text-[1.25rem] leading-snug">
+                    <span className="min-w-[1.7rem] font-mono font-semibold text-[var(--color-stage-ink-soft)]">
+                      {i + 1}.
+                    </span>
                     <a
                       href={cite.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="underline hover:text-blue-100"
+                      className="rounded text-[#1E40AF] underline decoration-2 underline-offset-2 hover:no-underline focus:outline-none focus:ring-2 focus:ring-[#1E40AF]"
                       title={cite.url}
                     >
                       {cite.label}
                     </a>
                   </li>
                 ))}
-              </ul>
+              </ol>
             )}
           </div>
         )}

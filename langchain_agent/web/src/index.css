@@ -193,6 +193,12 @@
     @apply mb-3 leading-relaxed;
   }
 
+  /* The lead sentence of an answer carries the point; let it stand out a
+     little from the list that follows. */
+  .markdown-content > p:first-child {
+    font-weight: 600;
+  }
+
   .markdown-content h1, .markdown-content h2, .markdown-content h3,
   .markdown-content h4, .markdown-content h5, .markdown-content h6 {
     @apply font-semibold mb-2 mt-4;
@@ -233,13 +239,23 @@
     color: var(--color-stage-ink);
   }
 
+  /* Product lists are the main payload of an answer and are read at a
+     distance, so give them room rather than the tight default rhythm. */
   .markdown-content ul, .markdown-content ol {
-    @apply pl-5 mb-3 space-y-1;
+    @apply pl-6 mb-3;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .markdown-content ul li::marker {
+    color: var(--color-stage-ink-soft);
   }
 
   .markdown-content li {
-    @apply mb-1;
     color: var(--color-stage-ink);
+    line-height: 1.5;
+    padding-left: 0.25rem;
   }
 
   .markdown-content a {

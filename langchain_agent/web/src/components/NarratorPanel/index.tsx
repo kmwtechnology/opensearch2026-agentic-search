@@ -10,24 +10,11 @@
  */
 
 import { useMemo } from 'react'
-import { Brain, Compass, ListOrdered, Pencil, Search, ShieldCheck, Sparkles } from 'lucide-react'
+import { NODE_STYLE } from './nodeStyle'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import { EnrichmentMoment } from './EnrichmentMoment'
-import { narrate, visibleLines, type NarratorLine, type NarratorNode } from './narrate'
+import { narrate, visibleLines, type NarratorLine } from './narrate'
 
-// Same hue assignments the observability panel has always used, so the two
-// views read as the same app. Every entry pairs a color WITH an icon and a
-// label — nothing here is distinguished by color alone.
-const NODE_STYLE: Record<NarratorNode, { fg: string; tint: string; Icon: typeof Brain }> = {
-  intent_classifier: { fg: '#065F46', tint: '#ECFDF5', Icon: Brain },
-  query_evaluator: { fg: '#1E40AF', tint: '#EFF6FF', Icon: Compass },
-  query_rewriter: { fg: '#0F766E', tint: '#F0FDFA', Icon: Pencil },
-  retriever: { fg: '#5B21B6', tint: '#F5F3FF', Icon: Search },
-  reranker: { fg: '#3730A3', tint: '#EEF2FF', Icon: ListOrdered },
-  quality_gate: { fg: '#9A3412', tint: '#FFF7ED', Icon: ShieldCheck },
-  agent: { fg: '#155E75', tint: '#ECFEFF', Icon: Sparkles },
-  enrichment: { fg: '#065F46', tint: '#ECFDF5', Icon: Sparkles },
-}
 
 function Line({ line, lead }: { line: NarratorLine; lead: boolean }) {
   const style = NODE_STYLE[line.node]
