@@ -210,13 +210,35 @@ export interface ToolCallEvent extends BaseEvent {
 }
 
 // Agentic enrichment flywheel: fired when trigger_enrichment adds a new
-// color/material variant and triggers a live catalog reindex.
+// color/material variant, or corrects an existing wrong one, and triggers a
+// live catalog reindex.
+//
+// This arrives MORE THAN ONCE per enrichment (#103): a 'started' event fires
+// immediately before the reindex kicks off, then exactly one terminal event
+// ('complete' | 'failed' | 'declined'). Narrate the lifecycle off `status` —
+// do not infer progress from the global isExecuting flag, and do not treat a
+// missing docs_processed as "still running".
+export type EnrichmentStatus = 'started' | 'complete' | 'failed' | 'declined'
+
 export interface EnrichmentTriggeredEvent extends BaseEvent {
   type: 'enrichment_triggered'
   node: 'agent'
   attribute_type: string
   variant: string
   canonical?: string
+  // Required so narration can switch exhaustively over the lifecycle.
+  status: EnrichmentStatus
+  // Set only when this REPLACED an existing wrong mapping: the value it used
+  // to resolve to. The difference between "learned tan -> brown" and
+  // "corrected tan from yellow to brown".
+  corrected_from?: string
+  // Why a 'failed' or 'declined' event happened, in presentable prose.
+  error?: string
+  // 'local' (blocking subprocess, real completion signal) or 'github'
+  // (fire-and-forget dispatch — no completion signal, run URL only).
+  reindex_mode?: string
+  reindex_run_url?: string
+  // Real measured numbers; present only on a 'complete' from local mode.
   duration_seconds?: number
   docs_processed?: number
 }

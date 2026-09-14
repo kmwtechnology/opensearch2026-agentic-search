@@ -31,6 +31,7 @@ from core.config import (
 from core.exceptions import LLMError, SearchTimeoutError
 from integrations import record_citation_eval, record_metrics, sync_dataset_item
 from observability.llm_content import _flatten_llm_content
+from pipeline import enrichment_events
 from quality.enrichment_value_judge import EnrichmentValueJudge
 from quality.judge import RETRY_ELIGIBLE_CATEGORIES, JudgmentResult, LLMJudge
 from retrieval.attribute_discovery import (
@@ -694,6 +695,29 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         return header + "\n\n---\n\n".join(rows)
 
+    async def aagent_node(self, state: CustomAgentState) -> Dict[str, Any]:
+        """
+        Async face of agent_node, used by every graph path that runs under
+        astream_events (i.e. the API/WebSocket path).
+
+        This exists purely to keep the event loop free. LangGraph's
+        RunnableCallable.ainvoke short-circuits with
+        ``if not self.afunc: return self.invoke(...)``, so a sync-only node
+        runs ON the loop thread — and agent_node can block for ~20s when the
+        taxonomy-correction path triggers a real Lucille reindex
+        (LocalReindexTrigger.trigger runs subprocess.run inline). While the
+        loop is blocked no WebSocket frame can leave the server, which is why
+        the re-index window used to be completely silent in the UI (#103).
+        Handing the body to a worker thread lets the enrichment lifecycle
+        events emitted from inside it actually reach the browser as they
+        happen.
+
+        asyncio.to_thread copies the current context, so LangChain's config
+        and callback plumbing (and our ContextVar emit bridge) propagate into
+        the worker unchanged.
+        """
+        return await asyncio.to_thread(self.agent_node, state)
+
     def agent_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
         Agent response generation node - generates response from retrieved documents.
@@ -1128,6 +1152,20 @@ the query looks like a color/material gap, don't call the tool; just say so brie
         )
         if not assessment.is_meaningful:
             logger.info(f"Agent: declined trigger_enrichment — {assessment.reasoning}")
+            # The value judge turning a change down is a real, explainable
+            # outcome — and it is the guardrail worth showing an audience.
+            # Before #103 this path emitted nothing at all, which on stage is
+            # indistinguishable from the app having hung. Note this fires only
+            # for a JUDGE rejection, never for the LLM simply choosing not to
+            # call the tool (_detect_correction_signal is deliberately broad,
+            # so that would narrate noise on ordinary follow-ups).
+            enrichment_events.publish(
+                status="declined",
+                attribute_type=attribute_type,
+                variant=variant,
+                canonical=canonical,
+                error=assessment.reasoning,
+            )
             decline_response = AIMessage(
                 content=(
                     f"I looked into this, but I don't think changing "
@@ -1149,7 +1187,40 @@ the query looks like a color/material gap, don't call the tool; just say so brie
         # docs_processed) for observability, without triggering a second,
         # real re-index — format_enrichment_message() builds the exact same
         # ToolMessage text the tool itself would return (#80).
+        # Announce BEFORE the re-index starts. enrich_attribute() blocks for
+        # ~20s in local mode, and this is the only chance to tell the UI that
+        # something is underway — everything after this line is reporting on a
+        # thing the audience has already spent 20 silent seconds waiting for
+        # (#103). Safe on a worker thread; a no-op when nobody is observing.
+        enrichment_events.publish(
+            status="started",
+            attribute_type=attribute_type,
+            variant=variant,
+            canonical=canonical,
+        )
+
         enrichment_result = enrich_attribute(attribute_type, variant, explicit_canonical=canonical)
+
+        enrichment_events.publish(
+            status="complete" if enrichment_result.reindex_success else "failed",
+            attribute_type=attribute_type,
+            variant=variant,
+            canonical=enrichment_result.canonical or canonical,
+            # The tell that separates "learned a new term" from "corrected a
+            # wrong one" — the whole point of the correction demo, and until
+            # now it never left the backend.
+            corrected_from=enrichment_result.corrected_from,
+            error=enrichment_result.reindex_error,
+            reindex_mode=enrichment_result.reindex_mode,
+            reindex_run_url=enrichment_result.reindex_run_url,
+            duration_seconds=(
+                enrichment_result.duration_seconds if enrichment_result.reindex_success else None
+            ),
+            docs_processed=(
+                enrichment_result.docs_processed if enrichment_result.reindex_success else None
+            ),
+        )
+
         tool_result = format_enrichment_message(enrichment_result)
         tool_messages.append(response)
         tool_messages.append(ToolMessage(content=tool_result, tool_call_id=call["id"]))

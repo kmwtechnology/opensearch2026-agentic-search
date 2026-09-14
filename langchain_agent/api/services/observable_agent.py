@@ -73,6 +73,7 @@ from observability.relevancy_metrics import (
     count_rank_changes,
     latency_cost_benefit,
 )
+from pipeline import enrichment_events
 
 logger = logging.getLogger(__name__)
 
@@ -639,6 +640,30 @@ class ObservableAgentService:
         response_streaming_started = False  # Track if we've started streaming LLM response
         skipped_nodes: Set[str] = set()
 
+        # Bridge enrichment lifecycle events out of the agent node's worker
+        # thread and onto this event loop (#103). The node publishes 'started'
+        # before a ~20s re-index and a terminal event after it; without this
+        # hop those would have nowhere to go, since the node is not on the
+        # loop thread. Installed for the duration of this turn only, so
+        # concurrent WebSocket turns never emit into each other's sockets.
+        loop = asyncio.get_running_loop()
+
+        def _publish_enrichment(**fields: Any) -> None:
+            future = asyncio.run_coroutine_threadsafe(
+                emit(EnrichmentTriggeredEvent(**fields)), loop
+            )
+            # Surface a failed hand-off instead of letting it vanish into an
+            # un-awaited future.
+            future.add_done_callback(
+                lambda f: (
+                    logger.warning("Enrichment event emit failed: %s", f.exception())
+                    if f.exception()
+                    else None
+                )
+            )
+
+        publisher_token = enrichment_events.set_publisher(_publish_enrichment)
+
         try:
             async for event in self._agent.app.astream_events(
                 initial_state,
@@ -845,6 +870,8 @@ class ObservableAgentService:
             print(f"Error in astream_events: {e}")
             traceback.print_exc()
             raise
+        finally:
+            enrichment_events.reset_publisher(publisher_token)
 
     async def _emit_node_events(
         self,
@@ -930,21 +957,14 @@ class ObservableAgentService:
             )
 
         elif node_name == "agent":
-            # trigger_enrichment fires via a manual two-call tool-binding
-            # loop inside agent_node (_try_enrichment_tool), not a
-            # ToolNode-executed call — the standard on_tool_start/tool_calls
-            # machinery above doesn't see it, so check the node's own output
-            # state directly.
-            if output.get("enrichment_triggered"):
-                await emit(
-                    EnrichmentTriggeredEvent(
-                        attribute_type=output.get("enrichment_attribute_type") or "",
-                        variant=output.get("enrichment_variant") or "",
-                        canonical=output.get("enrichment_canonical"),
-                        duration_seconds=output.get("enrichment_duration_seconds"),
-                        docs_processed=output.get("enrichment_docs_processed"),
-                    )
-                )
+            # NOTE: enrichment events are NOT emitted here any more (#103).
+            # This branch could only ever fire after the node had finished —
+            # i.e. after the ~20s re-index AND the follow-up LLM compose — so
+            # it could describe the lifecycle but never narrate it. The node
+            # now publishes 'started' and its terminal event as they happen,
+            # through pipeline.enrichment_events, bridged onto this loop in
+            # stream_agent_events(). Re-adding an emit here would double-fire
+            # the terminal event, ~2s late.
 
             # Emit LLM events
             messages = output.get("messages", [])

@@ -583,9 +583,27 @@ class EnrichmentTriggeredEvent(BaseEvent):
     attribute_type: str  # "color" or "material"
     variant: str  # the raw term the agent recognized, e.g. "chrome"
     canonical: Optional[str] = None  # the canonical bucket it resolved to, e.g. "metal"
-    # Measured, real numbers from the completed reindex — None until it
-    # finishes (or if it failed) — so the UI can show actual elapsed time
-    # instead of only a static estimate (#80).
+    # Lifecycle phase (#103). This event is emitted MORE THAN ONCE per
+    # enrichment: "started" immediately before the reindex is kicked off, then
+    # exactly one terminal event ("complete" / "failed" / "declined"). Before
+    # #103 only the terminal event existed, which meant the ~20s reindex window
+    # was invisible to the UI and the value judge's rejection was silent.
+    status: Literal["started", "complete", "failed", "declined"] = "complete"
+    # Set when this replaced an EXISTING wrong mapping rather than adding a new
+    # one — the difference between "learned tan → brown" and "corrected tan
+    # from yellow to brown", which is the whole point of the correction demo.
+    corrected_from: Optional[str] = None
+    # Why a "failed" or "declined" event happened, in presentable prose.
+    error: Optional[str] = None
+    # "local" (blocking subprocess, real completion signal) or "github"
+    # (fire-and-forget workflow dispatch — no completion signal ever arrives,
+    # so a "started" event is followed by a terminal event carrying only the
+    # run URL).
+    reindex_mode: Optional[str] = None
+    reindex_run_url: Optional[str] = None
+    # Measured, real numbers from the completed reindex — None on every
+    # non-"complete" status, and on a "complete" from a github-mode dispatch
+    # which never learns them (#80).
     duration_seconds: Optional[float] = None
     docs_processed: Optional[int] = None
 
