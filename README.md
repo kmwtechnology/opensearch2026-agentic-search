@@ -177,14 +177,14 @@ flowchart TB
     end
 
     subgraph GoogleAI["Google Gemini"]
-        LLM["gemini-3-flash-preview<br/>(generation)"]
-        CLASSIFIER["gemini-3.1-flash-lite-preview<br/>(intent, eval, rerank fallback)"]
+        LLM["Gemini 3 Flash preview<br/>(generation)"]
+        CLASSIFIER["Gemini 3.1 Flash Lite preview<br/>(intent, eval, rerank fallback)"]
         EMB["models/gemini-embedding-001<br/>(768-dim)"]
     end
 
     subgraph Reranking["Reranking"]
-        CE["ms-marco-MiniLM-L-12-v2<br/>(cross-encoder, ~2s/40-doc batch)"]
-        LLMR["Gemini Flash Lite<br/>(fallback, ~500ms)"]
+        CE["ms-marco-MiniLM-L-12-v2<br/>(cross-encoder, default, ~2s/40-doc batch)"]
+        LLMR["Gemini Flash Lite<br/>(non-default fallback, ~500ms)"]
     end
 
     UI --> IC
@@ -195,8 +195,8 @@ flowchart TB
     VS --> RRF
     BM25 --> RRF
     RRF --> RERANK
-    RERANK --> CE
-    RERANK --> LLMR
+    RERANK -.->|default| CE
+    RERANK -.->|non-default| LLMR
     RERANK --> QG
     QG -->|retry| RET
     QG -->|pass| AGENT
