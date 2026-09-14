@@ -103,25 +103,47 @@ class TestQualityGateRoute:
     def _setup(self, bare_agent):
         self.agent = bare_agent
 
-    def test_retry_triggered_and_retried_returns_retry(self):
+    def test_status_retry_returns_retry(self):
         state = {
-            "quality_gate_reason": "Retry triggered: low quality",
+            "quality_gate_status": "retry",
+            "quality_gate_reason": "RETRY (search): score 0.35 < 0.50, alpha -> 0.35",
             "quality_gate_retried": True,
             "messages": [],
         }
         assert self.agent._quality_gate_route(state) == "retry"
 
-    def test_retry_triggered_but_not_retried_returns_continue(self):
+    def test_status_pass_returns_continue(self):
         state = {
-            "quality_gate_reason": "Retry triggered: low quality",
+            "quality_gate_status": "pass",
+            "quality_gate_reason": "PASS: max_score 0.72 >= threshold 0.50",
             "quality_gate_retried": False,
             "messages": [],
         }
         assert self.agent._quality_gate_route(state) == "continue"
 
-    def test_no_retry_in_reason_returns_continue(self):
+    def test_production_retry_reason_text_does_not_break_routing(self):
+        """Regression test: quality_gate_node has only ever produced reason
+        strings shaped like "RETRY (search): score 0.35 < 0.50, alpha ->
+        0.35" -- a prior version of this route matched on the substring
+        "Retry triggered", which never appears in that text, so the
+        single-retry loop never actually executed in production. Routing
+        must key off quality_gate_status, not reason text."""
         state = {
-            "quality_gate_reason": "Quality acceptable",
+            "quality_gate_status": "retry",
+            "quality_gate_reason": "RETRY (attribute_filter): score 0.300 < 0.45, alpha -> 0.55",
+            "quality_gate_retried": True,
+            "messages": [],
+        }
+        assert self.agent._quality_gate_route(state) == "retry"
+
+    def test_accepted_after_retry_does_not_loop_again(self):
+        """The second pass through quality_gate_node (its "already retried,
+        accept" branch) must set quality_gate_status back to "pass" --
+        otherwise the first pass's "retry" value leaks forward through state
+        and this route loops back to the retriever forever."""
+        state = {
+            "quality_gate_status": "pass",
+            "quality_gate_reason": "Accepted after retry (max_score=0.420)",
             "quality_gate_retried": True,
             "messages": [],
         }
@@ -131,7 +153,7 @@ class TestQualityGateRoute:
         state = {"quality_gate_reason": "", "messages": []}
         assert self.agent._quality_gate_route(state) == "continue"
 
-    def test_missing_reason_returns_continue(self):
+    def test_missing_status_returns_continue(self):
         state = {"messages": []}
         assert self.agent._quality_gate_route(state) == "continue"
 

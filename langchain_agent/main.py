@@ -431,15 +431,18 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
 
     def _quality_gate_route(self, state: CustomAgentState) -> str:
         """Route after quality gate: retry retrieval or continue to agent."""
-        # If quality_gate_retried just became True AND the current alpha was just changed,
-        # we need to retry. Check if retried flag was set AND we haven't been through
-        # the quality gate a second time yet.
-        reason = state.get("quality_gate_reason", "")
-        if "Retry triggered" in reason and state.get("quality_gate_retried", False):
-            # Only retry if this is the first time (reason contains "Retry triggered")
-            # After retry, quality_gate will set a different reason
-            return "retry"
-        return "continue"
+        # quality_gate_node sets quality_gate_status explicitly for this
+        # purpose ("retry" / "pass" — see its docstring). Route on that
+        # directly rather than substring-matching quality_gate_reason: a
+        # prior version of this check looked for "Retry triggered" in the
+        # reason text, but quality_gate_node has only ever produced reasons
+        # shaped like "RETRY (search): score 0.35 < 0.50, alpha -> 0.35" —
+        # that substring never matched, so this route always fell through to
+        # "continue" and the single-retry loop never actually executed, even
+        # when quality_gate_node genuinely decided to retry. Confirmed live
+        # 2026-09-14 investigating why Part 4 of DEMO.md never showed a
+        # second Knowledge Search/Reranker pass after "Retry Triggered".
+        return "retry" if state.get("quality_gate_status") == "retry" else "continue"
 
     def create_agent_graph(self):
         """Create custom StateGraph with automatic retrieval pipeline.

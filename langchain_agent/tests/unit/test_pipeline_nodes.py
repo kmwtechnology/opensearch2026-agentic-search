@@ -116,6 +116,12 @@ class TestQualityGateNode:
         result = agent.quality_gate_node(state)
         assert "Accepted after retry" in result["quality_gate_reason"]
         assert result["reranker_max_score"] == pytest.approx(0.42)
+        # Regression: this branch runs on the SECOND pass through the node
+        # (after a real retry already happened, so quality_gate_status was
+        # "retry" on the first pass). It must explicitly overwrite that to
+        # "pass" here -- otherwise _quality_gate_route sees a stale "retry"
+        # value and loops back to the retriever forever.
+        assert result["quality_gate_status"] == "pass"
 
     def test_no_documents_returns_early(self, bare_agent):
         agent = bare_agent
@@ -130,6 +136,7 @@ class TestQualityGateNode:
         result = agent.quality_gate_node(state)
         assert result["quality_gate_reason"] == "No documents to evaluate"
         assert result["quality_gate_retried"] is False
+        assert result["quality_gate_status"] == "pass"
 
     def test_comparison_intent_has_higher_threshold(self, bare_agent):
         """Score 0.50 is below comparison threshold (0.55) → retry."""

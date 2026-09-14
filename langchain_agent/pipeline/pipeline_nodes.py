@@ -2996,17 +2996,24 @@ Original query: {query}
             return {
                 "quality_gate_retried": False,
                 "quality_gate_reason": "Quality gate disabled in config",
+                "quality_gate_status": "pass",
                 "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
             }
 
-        # Already retried once - accept results
+        # Already retried once - accept results. This branch only runs on the
+        # SECOND pass through this node (after a real retry), so it must
+        # explicitly overwrite quality_gate_status to "pass" here -- leaving
+        # it unset would let the first pass's "retry" value leak forward
+        # through state and make _quality_gate_route loop back to the
+        # retriever forever.
         if state.get("quality_gate_retried", False):
             logger.info(
                 f"QualityGate: already retried, accepting results (max_score={max_score:.3f})"
             )
             return {
                 "quality_gate_reason": f"Accepted after retry (max_score={max_score:.3f})",
+                "quality_gate_status": "pass",
                 "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
             }
@@ -3016,6 +3023,7 @@ Original query: {query}
             return {
                 "quality_gate_retried": False,
                 "quality_gate_reason": "No documents to evaluate",
+                "quality_gate_status": "pass",
                 "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
             }

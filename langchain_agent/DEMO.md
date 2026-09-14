@@ -233,40 +233,61 @@ Then immediately: `Make them waterproof` (refinement)
 - Retrieves again with adjusted α (opposite direction)
 - New results score higher
 
-**Root-caused and fixed 2026-09-14.** This query originally passed the
-quality gate on the first try (`max_score 1.000 >= threshold 0.45`, no
-retry) — not a fluke, a real bug in `retrieval/reranker.py`'s
-`CrossEncoderReranker.score_documents`. When every candidate's raw
-cross-encoder score is genuinely low (sigmoid max < 0.15 — exactly what
-"nothing in the catalog matches" looks like), the code linearly rescales
-scores up into `[0.1, 1.0]` so citations don't get suppressed. That rescale
-had no ceiling below the quality-gate thresholds, so a batch of uniformly
-*irrelevant* documents (a gaming laptop, for this query) could get
-rescaled all the way to a false-confident 1.000 — silently defeating the
-retry this whole demo part is about. Fixed by capping the rescale ceiling
-at 0.3 (still above the 0.10 citation-suppression floor, comfortably below
-every quality-gate threshold of 0.45+) — see the fix's inline comment in
-`reranker.py` and its regression tests in `test_reranker.py`
-(`test_rescale_ceiling_stays_below_quality_gate_thresholds`,
-`test_rescale_flat_fallback_stays_below_quality_gate_thresholds`).
-Confirmed live post-fix: this exact query now correctly shows `RETRY
-(attribute_filter): score 0.300 < 0.45, alpha → 0.55` in the Quality Gate
-step.
+**Root-caused and fixed 2026-09-14 — this was two independent bugs, not
+one.** Both confirmed live and fixed:
 
-**Observe** in Observability Panel (when a retry *does* fire):
+1. **The reranker could fake confidence.** `retrieval/reranker.py`'s
+   `CrossEncoderReranker.score_documents` linearly rescales scores into
+   `[0.1, 1.0]` whenever every candidate's raw cross-encoder score is
+   genuinely low (sigmoid max < 0.15 — exactly what "nothing in the catalog
+   matches" looks like), so citations don't get suppressed. That rescale
+   had no ceiling below the quality-gate thresholds, so a batch of
+   uniformly *irrelevant* documents (a gaming laptop, for this query) could
+   get rescaled all the way to a false-confident 1.000. Fixed by capping
+   the ceiling at 0.3 (still above the 0.10 citation-suppression floor,
+   below every quality-gate threshold of 0.45+). Regression tests:
+   `test_rescale_ceiling_stays_below_quality_gate_thresholds`,
+   `test_rescale_flat_fallback_stays_below_quality_gate_thresholds` in
+   `test_reranker.py`.
+2. **Even a correctly-detected low score never actually retried.**
+   Independent of bug 1 — `main.py`'s `_quality_gate_route` decided whether
+   to loop back to the retriever by checking `"Retry triggered" in
+   quality_gate_reason`, but `quality_gate_node` has only ever produced
+   reason strings shaped like `"RETRY (search): score 0.35 < 0.50, alpha ->
+   0.35"` — that substring never matched. **The single-retry loop had never
+   executed in this codebase**, regardless of what the reranker scored.
+   Fixed by routing on the `quality_gate_status` field the node already
+   sets for exactly this purpose ("pass" / "retry"), and by making sure
+   every `quality_gate_node` return branch sets it explicitly — the
+   "already retried, accept" branch in particular, since leaving it unset
+   there would let a real retry's "retry" status leak forward through
+   state and loop back to the retriever forever. Regression tests:
+   `TestQualityGateRoute` in `test_routing_functions.py`,
+   `test_accept_after_retry` / `test_no_documents_returns_early` in
+   `test_pipeline_nodes.py`.
+
+Confirmed live post-fix: this exact query now runs the full two-round
+cycle — `Reranker: max_score 0.300` → `Quality Gate: RETRY
+(attribute_filter): score 0.300 < 0.45, alpha → 0.55` → a genuine second
+`Knowledge Search` at alpha=0.55 → second `Reranker` → `Quality Gate:
+Accepted after retry` → `Agent`. 10 observability steps recorded instead
+of the previous 7.
+
+**Observe** in Observability Panel:
 
 1. Intent Classifier: `attribute_filter` or `search`
 2. Query Evaluator: α assigned
 3. Knowledge Search: First retrieval
 4. Reranker: Scores shown, max_score < 0.5 highlighted
-5. Quality Gate: **"Retrying with adjusted alpha"** message
+5. Quality Gate: **"RETRY (...): score ... alpha → ..."** message
 6. Knowledge Search (again): Second retrieval with new α
-7. Reranker (again): New scores, max_score > 0.5
-8. Agent: Final response generated
+7. Reranker (again): New scores
+8. Quality Gate (again): **"Accepted after retry"**
+9. Agent: Final response generated
 
 **Narration**:
 
-> "The query is complex with niche attributes. The first retrieval scored poorly (0.42 max). The Quality Gate detected this, adjusted alpha from 0.35 → 0.65 (favor semantics), and re-retrieved. Second round scored better (0.68). This avoids returning low-confidence results."
+> "The query is complex with niche attributes that don't exist together in this catalog. The first retrieval scored poorly (0.30 max — that's the floor a genuinely-irrelevant batch gets rescaled to). The Quality Gate detected this, adjusted alpha from 0.25 → 0.55 (favor semantics), and re-retrieved. The second round *also* scored 0.30 — this catalog just doesn't have a matching product at any alpha — but the gate accepts after one retry rather than looping forever, and the agent honestly tells the user nothing matches instead of presenting the low-confidence results as if they were good. That's the actual safety property: not 'always finds something better,' but 'never presents a bad guess as a confident answer.'"
 
 ---
 
