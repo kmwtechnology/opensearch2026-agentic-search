@@ -345,4 +345,53 @@ describe('visibleLines', () => {
   it('respects the safety cap', () => {
     expect(MAX_VISIBLE_LINES).toBeGreaterThanOrEqual(6)
   })
+
+  // The enrichment card is roughly four ordinary lines tall. A full pipeline
+  // plus that card overflowed a 1920x1080 viewport, and the panel does not
+  // scroll by design, so the card and its re-run button rendered below the
+  // fold and could not be reached — the arc's entire payoff, invisible at
+  // exactly the resolution the demo is presented at (#108). It fit on the
+  // larger development display, which is why it survived review.
+  describe('when the enrichment card is present', () => {
+    const fullPipeline = [
+      line('intent_classifier', 'intent'),
+      line('query_evaluator', 'alpha'),
+      line('query_rewriter', 'rewrite'),
+      line('retriever', 'search'),
+      line('reranker', 'rerank'),
+      line('quality_gate', 'gate'),
+    ]
+
+    const shown = () =>
+      visibleLines([
+        ...fullPipeline,
+        narrate(enrichment({ status: 'complete', canonical: 'brown', corrected_from: 'yellow' }))!,
+      ])
+
+    it('sheds pipeline lines to make room for it', () => {
+      expect(shown().length).toBeLessThan(fullPipeline.length)
+    })
+
+    it('always keeps the card itself, and keeps it last', () => {
+      const lines = shown()
+      expect(lines[lines.length - 1].node).toBe('enrichment')
+      expect(lines.filter((l) => l.node === 'enrichment')).toHaveLength(1)
+    })
+
+    it('keeps the stages nearest the card rather than the earliest ones', () => {
+      // The opposite of the no-card rule: here the card is the point of the
+      // turn and the early stages are context the presenter has already
+      // narrated by the time it appears.
+      expect(shown().map((l) => l.node)).toEqual([
+        'retriever',
+        'reranker',
+        'quality_gate',
+        'enrichment',
+      ])
+    })
+
+    it('does not disturb the cap on turns without a card', () => {
+      expect(visibleLines(fullPipeline)).toHaveLength(6)
+    })
+  })
 })
