@@ -52,7 +52,7 @@ def _scrub_body_for_display(body: Any) -> Any:
     The 768-dim float vector is faithful but useless to a human reader and would
     bloat the WebSocket frame for the observability panel. Replace any list of
     floats found at a ``"vector"`` key with a sentinel string so the rest of
-    the DSL stays copy-pasteable into Dashboards Dev Tools.
+    the DSL stays copy-pasteable into OpenSearch's Dev Tools or any REST client.
     """
     if isinstance(body, dict):
         out: Dict[str, Any] = {}

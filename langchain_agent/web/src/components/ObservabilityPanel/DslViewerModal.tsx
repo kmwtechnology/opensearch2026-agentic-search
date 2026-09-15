@@ -147,7 +147,7 @@ export function DslViewerModal({ isOpen, title, subtitle, body, index, params, o
           </pre>
           <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-3">
             Embedding vectors are replaced with a placeholder for readability. Paste the request
-            line + body into OpenSearch Dashboards Dev Tools to inspect or replay.
+            line + body into OpenSearch's Dev Tools or any REST client to inspect or replay.
           </p>
         </div>
       </div>

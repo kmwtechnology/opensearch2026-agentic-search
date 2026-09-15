@@ -44,7 +44,15 @@ echo "[pre-commit] isort --check-only ..."
 echo "[pre-commit] ✓ Formatting OK"
 
 echo "[pre-commit] flake8 ..."
-"$VENV/flake8" --config="$REPO_ROOT/langchain_agent/.flake8" "${ABS_STAGED[@]}" 2>&1 || {
+# Run from langchain_agent/ with paths relative to it (not ABS_STAGED) so
+# .flake8's `per-file-ignores = tests/*: F401` actually matches -- flake8
+# matches per-file-ignores against the paths as given, and an absolute path
+# never matches a `tests/*` glob.
+REL_STAGED=()
+for f in "${STAGED[@]}"; do
+    REL_STAGED+=("${f#langchain_agent/}")
+done
+(cd "$REPO_ROOT/langchain_agent" && "$VENV/flake8" --config=.flake8 "${REL_STAGED[@]}") 2>&1 || {
   echo ""
   echo "  Fix the flake8 errors above, then re-stage and commit."
   exit 1

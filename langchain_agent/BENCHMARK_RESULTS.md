@@ -41,7 +41,7 @@ Expected: ~1GB of parquet files will be downloaded.
 ### 2. Start services
 
 ```bash
-docker compose up -d     # PostgreSQL + OpenSearch + Dashboards (from repo root)
+docker compose up -d     # PostgreSQL + OpenSearch (from repo root)
 ```
 
 Verify OpenSearch is ready:
