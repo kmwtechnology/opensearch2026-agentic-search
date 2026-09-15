@@ -187,14 +187,6 @@ export function Layout() {
     sendMessage,
   ])
 
-  // The taxonomy demo's proof turn must run in a FRESH conversation: in-thread,
-  // the query rewriter folds the correction turn into the query and it falls
-  // down a lexical path that isn't comparable to turn 1.
-  const handleRerun = useCallback(() => {
-    const proofTurn = getDemo('taxonomy-ingestion').turns.find((t) => t.requiresNewConversation)
-    startNewConversation(proofTurn?.query ?? 'show me tan boots')
-  }, [startNewConversation])
-
   return (
     <div className="flex h-screen flex-col bg-[var(--color-stage-bg)] text-[var(--color-stage-ink)]">
       <header className="flex flex-shrink-0 flex-wrap items-center gap-8 border-b-[3px] border-[var(--color-stage-border)] bg-[var(--color-stage-surface)] px-7 py-4">
@@ -335,11 +327,7 @@ export function Layout() {
           className={`${mobileTab === 'pipeline' ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 overflow-hidden`}
         >
           {rightPane === 'narrator' ? (
-            <NarratorPanel
-              onRerun={handleRerun}
-              rerunPending={Boolean(pendingAutoSend)}
-              onShowDetails={() => setRightPane('details')}
-            />
+            <NarratorPanel onShowDetails={() => setRightPane('details')} />
           ) : (
             <ObservabilityPanel />
           )}

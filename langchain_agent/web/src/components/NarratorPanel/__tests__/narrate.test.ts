@@ -53,6 +53,52 @@ describe('narrate', () => {
     expect(line?.gauge?.value).toBe(0.85)
   })
 
+  it('does not repeat the "chosen per query" philosophy every single turn (#130)', () => {
+    // The gauge right below already conveys "how literally" via its own
+    // exact-words/meaning axis labels — this used to be restated in the
+    // sentence on every single turn regardless of what the turn actually did.
+    const line = narrate({
+      type: 'query_evaluation',
+      node: 'query_evaluator',
+      timestamp: TS,
+      query: 'gifts for photographers',
+      alpha: 0.5,
+      query_analysis: 'balanced',
+      search_strategy: 'balanced',
+    } as AgentEvent)
+
+    expect(line?.text).not.toMatch(/configured once/i)
+    expect(line?.text).not.toMatch(/chosen per query/i)
+    expect(line?.text).toContain('balanced')
+  })
+
+  it('makes the search sentence reactive to where alpha actually landed (#130)', () => {
+    const lexical = narrate({
+      type: 'opensearch_query',
+      node: 'retriever',
+      timestamp: TS,
+      query: 'tan boots',
+      alpha: 0.1,
+      intent: 'attribute_filter',
+      query_type: 'hybrid',
+    } as AgentEvent)
+    const semantic = narrate({
+      type: 'opensearch_query',
+      node: 'retriever',
+      timestamp: TS,
+      query: 'gifts for photographers',
+      alpha: 0.9,
+      intent: 'search',
+      query_type: 'hybrid',
+    } as AgentEvent)
+
+    // The two sentences must actually differ — previously both said the
+    // identical "blending keyword matching with meaning" regardless of alpha.
+    expect(lexical?.text).not.toBe(semantic?.text)
+    expect(lexical?.text).toContain('exact words')
+    expect(semantic?.text).toContain('meaning')
+  })
+
   it('says nothing when a query expansion did not actually change the query', () => {
     expect(
       narrate({
@@ -103,6 +149,55 @@ describe('narrate', () => {
 
     expect(first?.text).toContain('Filtered on color: yellow')
     expect(retry?.text).toContain('again')
+  })
+
+  it('says the top pick was promoted when reranking changed rank 1 specifically (#130)', () => {
+    const line = narrate({
+      type: 'reranker_result',
+      node: 'reranker',
+      timestamp: TS,
+      reranker_type: 'cross-encoder',
+      reranking_changed_order: true,
+      results: [
+        { source: 'b', score: 0.97, rank: 1, original_rank: 3, snippet: '', rank_change: 2 },
+        { source: 'a', score: 0.9, rank: 2, original_rank: 1, snippet: '', rank_change: -1 },
+      ],
+    } as AgentEvent)
+
+    expect(line?.text).toContain('promoted a new top pick')
+    expect(line?.text).toContain('0.97')
+  })
+
+  it('says the top pick held when reranking changed order lower down only (#130)', () => {
+    const line = narrate({
+      type: 'reranker_result',
+      node: 'reranker',
+      timestamp: TS,
+      reranker_type: 'cross-encoder',
+      reranking_changed_order: true,
+      results: [
+        { source: 'a', score: 0.97, rank: 1, original_rank: 1, snippet: '', rank_change: 0 },
+        { source: 'b', score: 0.9, rank: 2, original_rank: 3, snippet: '', rank_change: 1 },
+      ],
+    } as AgentEvent)
+
+    expect(line?.text).toContain('the top pick held')
+    expect(line?.text).not.toContain('promoted')
+  })
+
+  it('says the order already held up when reranking changed nothing', () => {
+    const line = narrate({
+      type: 'reranker_result',
+      node: 'reranker',
+      timestamp: TS,
+      reranker_type: 'cross-encoder',
+      reranking_changed_order: false,
+      results: [
+        { source: 'a', score: 0.97, rank: 1, original_rank: 1, snippet: '', rank_change: 0 },
+      ],
+    } as AgentEvent)
+
+    expect(line?.text).toContain('the order already held up')
   })
 
   it('narrates a quality-gate retry as the loop firing, never as a better score', () => {
@@ -260,6 +355,62 @@ describe('narrate — enrichment lifecycle', () => {
   })
 })
 
+describe('narrate — ground truth reveal (#130)', () => {
+  function summary(overrides: Partial<AgentEvent>): AgentEvent {
+    return {
+      type: 'pipeline_summary',
+      timestamp: TS,
+      has_ground_truth: false,
+      query: 'cowboy boots women',
+      optimizations: {},
+      latency: [],
+      ...overrides,
+    } as AgentEvent
+  }
+
+  it('says nothing for the ordinary confidence-proxy case', () => {
+    expect(narrate(summary({ has_ground_truth: false }))).toBeNull()
+  })
+
+  it('carries one stage per judged retrieval pass when real judgments exist', () => {
+    const line = narrate(
+      summary({
+        has_ground_truth: true,
+        stock_bm25: { ndcg10: 0.4693, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
+        bm25: { ndcg10: 0.4441, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
+        hybrid: { ndcg10: 0.852, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
+        reranked: { ndcg10: 0.901, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
+      })
+    )
+
+    expect(line?.node).toBe('ground_truth')
+    expect(line?.weight).toBe('moment')
+    expect(line?.groundTruthStages?.map((s) => s.stage)).toEqual([
+      'stock_bm25',
+      'bm25',
+      'hybrid',
+      'reranked',
+    ])
+    expect(line?.groundTruthStages?.[3].ndcg10).toBe(0.901)
+    expect(line?.groundTruthStages?.[3].judgedCount).toBe(3)
+    expect(line?.text).toContain('0.90')
+  })
+
+  it('omits a stage that was skipped rather than showing a fake zero', () => {
+    // hybrid/reranked are omitted server-side when their optimization toggle
+    // is off — must not be rendered as a judged 0.0 score.
+    const line = narrate(
+      summary({
+        has_ground_truth: true,
+        stock_bm25: { ndcg10: 0.47, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
+        bm25: { ndcg10: 0.44, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
+      })
+    )
+
+    expect(line?.groundTruthStages?.map((s) => s.stage)).toEqual(['stock_bm25', 'bm25'])
+  })
+})
+
 describe('visibleLines', () => {
   const line = (node: string, id: string) =>
     ({
@@ -344,6 +495,26 @@ describe('visibleLines', () => {
 
   it('respects the safety cap', () => {
     expect(MAX_VISIBLE_LINES).toBeGreaterThanOrEqual(6)
+  })
+
+  it('shows ONLY the ground-truth card, no pipeline lines above it (#130)', () => {
+    // Unlike the enrichment card (which keeps 3 lines of pipeline context —
+    // the presenter is still narrating up to that moment), the bonus scene is
+    // a single turn whose entire point IS the card. Keeping any pipeline
+    // lines just pushed it below a scroll on shorter viewports for no benefit.
+    const fullPipeline = [
+      line('intent_classifier', 'intent'),
+      line('query_evaluator', 'alpha'),
+      line('retriever', 'search'),
+      line('reranker', 'rerank'),
+      line('quality_gate', 'gate'),
+    ]
+    const groundTruth = { ...line('ground_truth', 'gt'), weight: 'moment' } as never
+
+    const shown = visibleLines([...fullPipeline, groundTruth])
+
+    expect(shown).toHaveLength(1)
+    expect(shown[0].node).toBe('ground_truth')
   })
 
   // The enrichment card is roughly four ordinary lines tall. A full pipeline
