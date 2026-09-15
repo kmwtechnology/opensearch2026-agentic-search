@@ -189,7 +189,34 @@ export function Layout() {
 
   return (
     <div className="flex h-screen flex-col bg-[var(--color-stage-bg)] text-[var(--color-stage-ink)]">
-      <header className="flex flex-shrink-0 flex-wrap items-center gap-8 border-b-[3px] border-[var(--color-stage-border)] bg-[var(--color-stage-surface)] px-7 py-4">
+      <header className="flex flex-shrink-0 flex-col border-b-[3px] border-[var(--color-stage-border)] bg-[var(--color-stage-surface)]">
+        {/* Masthead — separate row so the logo can read at a legible size
+            without competing with the dense turn-control toolbar below it. */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-stage-border-soft)] px-7 py-3">
+          <img src="/kmw-logo.svg" alt="KMW Technology" className="h-16 w-auto flex-shrink-0" />
+          <div className="flex items-center gap-3">
+            <Link
+              to="/guide"
+              aria-label="Guide"
+              className="flex items-center gap-2 rounded-xl border-2 border-[var(--color-stage-border)] bg-white px-3 py-2 text-[1.25rem] font-semibold focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+            >
+              <BookOpen className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
+              Guide
+            </Link>
+            <Link
+              to="/swagger"
+              aria-label="API reference"
+              className="flex items-center gap-2 rounded-xl border-2 border-[var(--color-stage-border)] bg-white px-3 py-2 text-[1.25rem] font-semibold focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+            >
+              <Code2 className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
+              API reference
+            </Link>
+          </div>
+        </div>
+
+        {/* Toolbar — the presenter's controls: demo selector, turn progress,
+            Next/Restart/Details. */}
+        <div className="flex flex-wrap items-center gap-8 px-7 py-4">
         <DemoSelector demoId={demoId} onSelect={handleSelectDemo} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -298,21 +325,7 @@ export function Layout() {
               F2
             </kbd>
           </button>
-          {/* These three lived only in the sidebar that this layout removes. */}
-          <Link
-            to="/guide"
-            aria-label="Guide"
-            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
-          >
-            <BookOpen className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
-          </Link>
-          <Link
-            to="/swagger"
-            aria-label="API reference"
-            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
-          >
-            <Code2 className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
-          </Link>
+        </div>
         </div>
       </header>
 
