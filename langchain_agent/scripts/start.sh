@@ -46,26 +46,6 @@ if ! docker compose -f "$PARENT_DIR/docker-compose.yml" ps 2>/dev/null | grep -q
     done
 fi
 echo "✓ OpenSearch is ready"
-
-# Check if OpenSearch Dashboards is running
-if ! docker compose -f "$PARENT_DIR/docker-compose.yml" ps 2>/dev/null | grep -q "opensearch-dashboards.*Up"; then
-    echo "   Starting OpenSearch Dashboards..."
-    cd "$PARENT_DIR"
-    docker compose up -d opensearch-dashboards > /dev/null 2>&1
-    cd "$PROJECT_DIR"
-    echo "   Waiting for OpenSearch Dashboards to be ready..."
-    for i in {1..30}; do
-        if curl -s http://localhost:5601/api/status 2>/dev/null | grep -q 'state'; then
-            break
-        fi
-        if [ "$i" -eq 30 ]; then
-            echo "⚠ OpenSearch Dashboards is starting (may take 10-15 seconds)"
-            break
-        fi
-        sleep 2
-    done
-fi
-echo "✓ OpenSearch Dashboards is ready"
 echo ""
 
 # Optional: Re-ingest product data
@@ -166,7 +146,6 @@ echo "📍 Access Services:"
 echo "  Frontend:                http://localhost:5173"
 echo "  Backend:                 http://localhost:8000"
 echo "  API Docs (Swagger UI):   http://localhost:8000/swagger"
-echo "  OpenSearch Dashboards:   http://localhost:5601"
 echo ""
 echo "📊 Data Services:"
 echo "  PostgreSQL:  localhost:5432"

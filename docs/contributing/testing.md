@@ -204,7 +204,7 @@ cd repo_root
 docker compose up -d
 
 # Verify
-docker compose ps    # Should show postgres, opensearch, opensearch-dashboards
+docker compose ps    # Should show postgres, opensearch
 ```
 
 Tests use environment variables from `.env`:

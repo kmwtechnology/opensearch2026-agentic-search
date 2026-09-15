@@ -96,7 +96,7 @@ All backend commands run from `langchain_agent/`. Bare imports require `PYTHONPA
 ```bash
 # LOCAL DEVELOPMENT STARTUP — Full Stack ⭐ STANDARD
 # Every entry point below (scripts/setup.sh, scripts/start.sh, make setup,
-# make dev) brings up PostgreSQL + OpenSearch + Dashboards + backend + frontend
+# make dev) brings up PostgreSQL + OpenSearch + backend + frontend
 # automatically — no manual `docker compose ... up -d` step needed first.
 cd /path/to/opensearch2026-agentic-search/langchain_agent
 ./scripts/setup.sh                                            # First time: Docker, venv, DB/index init, ESCI ingest
@@ -105,7 +105,6 @@ cd /path/to/opensearch2026-agentic-search/langchain_agent
 
 # Access Points
 #   Web UI: http://localhost:5173 (backend API at http://localhost:8000)
-#   OpenSearch Dashboards: http://localhost:5601
 #   Backend API only: http://localhost:8000/api/*
 
 # Stop (processes + Docker containers persist for a fast restart)
