@@ -1,11 +1,11 @@
 ---
 name: workflow-check
-description: "Audit a PR in opensearch2026-agentic-search against the 14-step workflow before marking it ready for review. Steps 1-11."
+description: "Pre-push checklist for opensearch2026-agentic-search: tests, formatting, self-review, docs/memory update, before pushing straight to main. Cowboy mode — no PR to audit."
 ---
 
-# workflow-check — Opensearch2026 Project
+# workflow-check — Opensearch2026 Project (Cowboy Mode)
 
-Audit your work against the 14-step workflow. Run this when you have a PR number and believe the code is ready for review.
+Run this pre-push checklist before pushing your commits straight to `main`. There's no PR here to audit — `main` has no branch protection (private repo, no GitHub Pro; `gh api .../branches/main` returns `"protected": false`) — so this skill is your review gate instead of a reviewer's.
 
 ## Setup & Auth (Run Once)
 
@@ -35,122 +35,43 @@ gh auth status
 ! gh auth login -h github.com -p https -w
 ```
 
-### 2. Get Your PR Number
+### 2. Confirm You Have Unpushed Commits
 
-You need a PR number to run this skill. Pass it with `--pr <N>`.
-
-**If you already have the PR number:** Skip to Step 3.
-
-**If you're on the feature branch and don't remember the PR number:**
 ```bash
-gh pr view --repo kmwtechnology/opensearch2026-agentic-search --json number -q '.number'
+git fetch origin main
+git log origin/main..HEAD --oneline
 ```
 
-**If you don't have a PR yet:** Run `/workflow-start <issue-number>` first. workflow-start always creates a draft PR.
+If this is empty, there's nothing to check — you've already pushed.
 
-After setup, the rest of this skill assumes auth is ready and you have a PR number.
+## Pre-Push Checklist
 
-## Quick PR Info Retrieval
+### Step 1: Verify Context (No Scope Changes)
 
-If you have a PR number but lost context, retrieve it here:
-
-```bash
-# Get full PR details
-gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json number,title,body,state,draft,baseRefName,headRefName,commits,reviews,checks
-
-# Get linked issue (extract "Closes #N" from body)
-gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json body -q '.body' | sed -n 's/.*Closes #\([0-9]*\).*/\1/p'
-
-# Get the branch name
-gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json headRefName -q '.headRefName'
-```
-
-**Save these for reference:**
-- PR number (`#<PR-number>`)
-- Issue number (from "Closes #<N>" in body)
-- Branch name (should be `feat/issue-<N>-*` or `fix/issue-<N>-*`)
-
-## Audit Checklist — Steps 1–11
-
-This skill walks through steps 1–11 of the 14-step workflow, adapted for this project.
-
-### Step 1: Verify Context ✓ (No Scope Changes)
-
-**Confirm:** Nothing changed that would invalidate the approved plan.
+**Confirm:** Nothing changed that would invalidate the approved plan. If work references an issue, is it still OPEN?
 
 ```bash
-# Get issue number from PR body (extract "Closes #N")
-ISSUE_NUM=$(gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json body -q '.body' | sed -n 's/.*Closes #\([0-9]*\).*/\1/p')
-
-if [ -z "$ISSUE_NUM" ]; then
-  echo "Error: Could not find 'Closes #N' in PR body"
-  exit 1
-fi
-
-# Quick check: is issue still OPEN?
-gh issue view $ISSUE_NUM \
+gh issue view <N> \
   --repo kmwtechnology/opensearch2026-agentic-search \
   --json state -q '.state'
 ```
 
-**Ask:** Any scope changes since the plan was approved? Is the issue still OPEN?
+### Step 2: Tasks (Multi-Step Work)
 
-### Step 2: Plan ✓ (Approach & Approval)
-
-**Confirm:** You proposed an approach and got user approval before coding.
-
-**Check:** Does your PR body explain the *why*, not just the *what*?
+**Confirm:** For multi-step work, commits align with the tasks planned in `/workflow-start`.
 
 ```bash
-gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json body -q '.body'
-```
-
-**Good PR body examples:**
-- ✓ "Fixes timeout issue by increasing reranker batch size. Quality gate now retries on low scores (fixes #38)."
-- ✓ "Fix flaky WebSocket reconnect by adding exponential backoff. Client was retrying in a tight loop and exhausting the connection pool (fixes #52)."
-- ✗ "Update reranker" ← too vague, no why
-- ✗ "Change line 88" ← implementation detail, not rationale
-
-### Step 3: Tasks ✓ (Multi-Step Work)
-
-**Confirm:** For multi-step work, you tracked tasks and committed aligned with them.
-
-```bash
-# Get all commits in this PR
-gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json commits -q '.commits[] | "\(.oid | .[0:7]) \(.messageHeadline)"'
-
-# OR: view commits in branch
-BRANCH=$(gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json headRefName -q '.headRefName')
-git log main..$BRANCH --oneline
+git log origin/main..HEAD --oneline
 ```
 
 **For quick fixes:** Skip this if straightforward (one commit).
 
-**For multi-step work:** Confirm that commits align with tasks planned in `/workflow-start`.
-
-### Step 4: Code ✓ (File Changes)
+### Step 3: Code (File Changes)
 
 **Confirm:** You edited existing files first; only created new files when the task explicitly required it.
 
 ```bash
-BRANCH=$(gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json headRefName -q '.headRefName')
-git diff main..$BRANCH --name-status
+git diff origin/main..HEAD --name-status
 ```
 
 **Look for:**
@@ -158,9 +79,9 @@ git diff main..$BRANCH --name-status
 - Any new test files? (Good, if testing the new code.)
 - Lots of deletions? (Code removal is good; refactoring should be minimal and intentional.)
 
-### Step 5: Test ✓ (Local Suite)
+### Step 4: Test (Local Suite)
 
-**Confirm:** You ran the local test suite before pushing. All tests pass.
+**Confirm:** All tests pass locally.
 
 **Checklist:**
 - [ ] `cd langchain_agent && PYTHONPATH=. pytest tests/unit/ -v --tb=short` — all pass?
@@ -168,19 +89,16 @@ git diff main..$BRANCH --name-status
 - [ ] `make smoke-local-quick` — ~13s search-intent smoke test pass?
 - [ ] Frontend touched? `cd langchain_agent/web && npm run lint && npm run test` — all pass?
 
-**If tests fail locally:**
-- Commit fixes, push, then re-run this audit.
-- Do NOT proceed to "ready for review" until tests pass locally.
+**If tests fail:**
+- Commit fixes, re-run this checklist.
+- Do NOT push until tests pass locally — there's no CI or reviewer to catch it after.
 
-### Step 6: Commit ✓ (Message Quality & Formatting)
+### Step 5: Commit (Message Quality & Formatting)
 
 **Confirm:** Commits are logical and messages are clear.
 
 ```bash
-BRANCH=$(gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json headRefName -q '.headRefName')
-git log main..$BRANCH --pretty=format:"%H %s"
+git log origin/main..HEAD --pretty=format:"%H %s"
 ```
 
 **Each commit should:**
@@ -188,25 +106,22 @@ git log main..$BRANCH --pretty=format:"%H %s"
 - Have been run through formatters:
   ```bash
   cd langchain_agent
-  .venv/bin/black . && .venv/bin/isort . && .venv/bin/flake8 . && .venv/bin/mypy main.py core/config.py --ignore-missing-imports
+  .venv/bin/black . && .venv/bin/isort . && .venv/bin/flake8 . && .venv/bin/mypy main.py
   ```
-- **Important:** `.git/hooks/pre-commit` (installed by `scripts/setup.sh`, issue #99) runs black/isort/flake8 on staged `.py` files automatically at commit time. There is still NO pre-push hook — `.git/hooks/pre-push` is Git LFS's own hook only. **You must run tests/smoke gates by hand before pushing.** If CI catches an issue the local hook didn't (e.g. a failing test), fix it, commit, and push again.
+- **Important:** `.git/hooks/pre-commit` (installed by `scripts/setup.sh`, issue #99) runs black/isort/flake8 on staged `.py` files automatically at commit time. There is still NO pre-push hook — `.git/hooks/pre-push` is Git LFS's own hook only. **You must run tests/smoke gates by hand before pushing.**
 
-**PR body should:**
-- Reference the issue: `Closes #<N>` (auto-closes on merge)
-- Explain *why* in 1–3 bullets
-- Include test checklist (done ☑ before pushing)
+**If referencing an issue:** `Closes #<N>` in a commit message auto-closes it on push to `main` (GitHub closes issues on merge to the default branch, not just via PR merge).
 
-### Step 7: Update Docs & Memory ⭐ (MOST CRITICAL)
+### Step 6: Update Docs & Memory ⭐ (MOST CRITICAL)
 
-**Confirm:** You updated CLAUDE.md and memory BEFORE pushing the PR. (This is the #1 skipped step and causes stale guidance.)
+**Confirm:** You updated CLAUDE.md and memory BEFORE pushing. (This is the #1 skipped step and causes stale guidance.)
 
 **Checklist:**
 
 1. **Did architecture/design change?** → Update `CLAUDE.md`:
-   - New env var? → Update `Key Patterns` section
-   - New test pattern? → Update `Common Commands`
-   - New auth flow? → Update `Auth` section
+   - New env var? → Update the relevant `CLAUDE.md` section
+   - New test pattern? → Update `Commands`
+   - New auth flow? → Update `Auth model`
    - If in doubt, rewrite the affected section (don't append)
 
 2. **Create or update memory if you discovered something non-obvious:**
@@ -218,11 +133,11 @@ git log main..$BRANCH --pretty=format:"%H %s"
    metadata:
      type: feedback | project | reference
    ---
-   
+
    [Your finding]
-   
+
    **Why:** [Why this matters]
-   
+
    **How to apply:** [When to use this]
    EOF
    ```
@@ -235,62 +150,16 @@ git log main..$BRANCH --pretty=format:"%H %s"
 
 **Ask the user:** What changed that future-you should know? If nothing, say so explicitly — that's valid.
 
-### Step 8: Verify PR is Updated ✓
+### Step 7: CI Reality Check (No GitHub Actions)
 
-**Confirm:** The draft PR created in workflow-start has your latest commits pushed.
+There is no GitHub Actions CI to wait for (issue #113 removed `.github/workflows/build-deploy.yml` entirely — it had never provided working CI anyway, since runners were unavailable on this repo). `make ci` run locally is the only gate that exists, and you've already run it in Step 4.
 
-```bash
-# Verify PR exists and has latest commits
-gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json number,draft,commits
+### Step 8: Self-Review
 
-# Verify commits are pushed (check against main)
-git log main..<branch-name> --oneline | head -5
-```
-
-**Check:**
-- PR is still in DRAFT state? (Should be, until workflow-check Step 11)
-- Latest commits are included?
-- PR title and body are accurate?
-
-**If PR title/body need updates:**
-```bash
-gh pr edit <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --title "New title" \
-  --body "New body"
-```
-
-### Step 9: CI Watch ✓ (Local Gate — No GitHub Actions)
-
-**Confirm:** `make ci` passed locally. There is no GitHub Actions CI to check
-(issue #113 removed `.github/workflows/build-deploy.yml` entirely — it had
-never provided working CI anyway, since runners were unavailable on this
-repo, see memory). `gh pr checks` will show no checks at all; that's
-expected, not a failure to diagnose.
+**Confirm:** You read the full diff end-to-end before pushing.
 
 ```bash
-cd langchain_agent && make ci
-```
-
-**If `make ci` fails:**
-- Diagnose the failure
-- Commit fixes, push
-- Re-run `make ci` locally until green
-
-### Step 10: Self-Review ✓
-
-**Confirm:** You read the full diff end-to-end before requesting review.
-
-```bash
-BRANCH=$(gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json headRefName -q '.headRefName')
-git diff main..$BRANCH | less
-# OR
-gh pr diff <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search | less
+git diff origin/main..HEAD | less
 ```
 
 **Look for:**
@@ -302,35 +171,23 @@ gh pr diff <PR-number> \
 
 **Ask the user:** Any regrets? Any last simplifications?
 
-### Step 11: Flip Draft → Ready ✓
-
-**Confirm:** local `make ci` is green, self-review is done. Mark the PR ready for review.
+### Step 9: Push
 
 ```bash
-# Mark ready (flip from draft to ready)
-gh pr ready <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search
+git push origin main
 ```
 
-**Verify:**
-```bash
-gh pr view <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --json draft
-# Should return: {"draft": false}
-```
-
-✅ **You are now done with this skill.** Next: wait for review feedback, then run `/workflow-deploy <PR-number>`.
+✅ **You are now done with this skill.** Next: `/workflow-deploy` to verify locally and close the issue.
 
 ## Common Blockers & Recovery
 
 | Blocker | Recovery |
 |---------|----------|
 | `make ci` fails intermittently | Run it twice; check for flakiness (test ordering, stray state from a prior run). |
-| `make ci` fails on formatting (black/isort) | Run `make format-fix`, commit, push. |
-| Self-review finds a bug | Commit the fix (new commit, don't amend), push. Re-run `make ci`. |
+| `make ci` fails on formatting (black/isort) | Run `make format-fix`, commit. |
+| Self-review finds a bug | Commit the fix (new commit) before pushing. Re-run `make ci`. |
 | Stale memory from prior session | Update `CLAUDE.md` and memory files NOW before continuing. Future-you will thank you. |
-| PR title/body unclear | Use `gh pr edit <PR-number>` to clarify before requesting review. |
+| Push rejected (`main` moved) | `git pull --rebase origin main`, resolve conflicts, re-run this checklist, push again. |
 
 ## Breadcrumbs & Quick Reference
 
@@ -338,28 +195,27 @@ gh pr view <PR-number> \
 |------|-------|
 | **GH auth account** | `agileresearchservices` (switch with `gh auth switch -u agileresearchservices`) |
 | **Repo** | `kmwtechnology/opensearch2026-agentic-search` |
-| **Get issue from PR** | `gh pr view <PR> --json body \| sed -n 's/.*Closes #\([0-9]*\).*/\1/p'` |
+| **Unpushed commits** | `git log origin/main..HEAD --oneline` |
 | **CI gate** | `make ci` locally — no GitHub Actions CI exists (issue #113) |
-| **Mark PR ready** | `gh pr ready <PR>` |
-| **View PR diff** | `gh pr diff <PR>` |
+| **Push** | `git push origin main` |
+| **View diff** | `git diff origin/main..HEAD` |
 | **Test commands** | `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` |
-| **Format fix** | `make format-fix` (or manually: `black .`, `isort .`, `flake8 .`, `mypy main.py ...`) |
+| **Format fix** | `make format-fix` (or manually: `black .`, `isort .`, `flake8 .`, `mypy main.py`) |
 | **Memory location** | `~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md` |
 | **Project config** | `CLAUDE.md` (source of truth) |
 
 ## Notes & Common Gotchas
 
-- **Step 7 is CRITICAL** — many sessions skip memory updates and rot guidance. Do not cut this corner.
+- **Step 6 is CRITICAL** — many sessions skip memory updates and rot guidance. Do not cut this corner.
 - **The pre-commit hook only catches formatting/lint** — no local hook runs tests or the smoke gate. Run `make ci` locally before pushing.
 - **GitHub Issues, not Jira** — all references use `#N`, not `TICKET-NNN`.
 - **No Slack** — skip any "post to Slack" steps.
-- **No GitHub Actions CI** (issue #113) — `make ci` run locally is the only gate; there is nothing to wait for or re-check remotely.
+- **No PR, no reviewer, no CI** — this checklist is the only gate. Take it seriously.
 
 ## See Also
 
-- **Previous step:** `/workflow-start <issue-number>` to create the branch
-- **Next step:** `/workflow-deploy <PR-number>` once review is done (step 12–14)
+- **Previous step:** `/workflow-start` to plan and start coding
+- **Next step:** `/workflow-deploy` once pushed, to verify locally and close the issue
 - **Project `CLAUDE.md`** — source of truth for tech stack, patterns, commands
 - **Home memory:** `~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md`
-- **View all PRs:** `gh pr list --repo kmwtechnology/opensearch2026-agentic-search`
 - **View all issues:** `gh issue list --repo kmwtechnology/opensearch2026-agentic-search --state open`
