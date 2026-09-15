@@ -1351,13 +1351,20 @@ Recent conversation:
 
 Latest message: "{user_query}"
 
-If the shopper is pointing out that a color or material tag looks wrong (for example, "that's \
-not tan, that's yellow" or "that boot isn't really brown" or "the color tag is wrong"), and you \
-can tell from the conversation which term is mistagged and what the correct canonical bucket \
-should be, call trigger_enrichment with:
+If the shopper is disputing a color or material tag as WRONG (they may name the wrong tag \
+explicitly, e.g. "that's not tan, that's tagged yellow which is wrong" -- here the shopper is \
+telling you "yellow" is the INCORRECT tag, not proposing it as the fix), and you can tell from \
+the conversation which term is mistagged and what the correct canonical bucket should be, call \
+trigger_enrichment with:
 - attribute_type: "color" or "material"
 - variant: the term that's currently mistagged (e.g. "tan")
 - canonical: the CORRECT canonical bucket it should map to instead
+
+Determine the correct canonical from the actual product descriptions shown earlier in this \
+conversation (e.g. a product listed "Tan/Brown" or "Dark Tan Leather" indicates the correct \
+canonical is "brown") -- never from the shopper's message alone. The canonical you propose MUST \
+be different from whatever tag the shopper is disputing as wrong; proposing the same value back \
+is not a correction and will be rejected.
 
 Only call the tool if you're genuinely confident this is a real tagging correction — not a \
 typo, a brand-new search, or an unrelated complaint. If you're not sure, don't call the tool; \
