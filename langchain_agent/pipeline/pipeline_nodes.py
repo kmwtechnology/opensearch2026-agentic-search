@@ -2302,7 +2302,9 @@ Respond with JSON only. No other text."""
           * ``optimizations.llm`` is False (nothing to judge — the raw list
             IS the response), OR
           * ``intent == "summary"`` (no retrieval, nothing to compare), OR
-          * No retrieved documents.
+          * No retrieved documents, OR
+          * ``enrichment_triggered`` (the answer describes a tool action, which
+            no retrieved document can attest — see below).
         """
         opts = state.get("optimizations") or {}
         llm_on = opts.get("llm", True)
@@ -2311,6 +2313,30 @@ Respond with JSON only. No other text."""
         documents = state.get("retrieved_documents") or []
 
         if not (llm_on and judge_on) or intent == "summary" or not documents:
+            return {"judgment": None, "judge_latency_ms": 0.0}
+
+        # A taxonomy correction turn is outside this judge's competence, and
+        # judging it anyway actively destroys the answer (issue #107).
+        #
+        # The judge grades the response against `retrieved_documents`. On a
+        # correction turn the load-bearing claim — "I corrected the taxonomy so
+        # tan now maps to brown" — is grounded in the `trigger_enrichment` TOOL
+        # RESULT, which the judge never sees. It is therefore unfalsifiable from
+        # the evidence the judge has, gets categorised as fabrication, and
+        # `_regenerate_without_hallucinations` then rewrites the answer using
+        # the documents alone. The only thing that regeneration can produce is
+        # an answer that omits the correction, and in practice it produced one
+        # asserting the OPPOSITE — "these are indeed indexed as yellow" —
+        # eight seconds after the correction had demonstrably succeeded.
+        #
+        # Suppressing only the retry is not enough: the flags would remain and
+        # surface a spurious hallucination warning on the same answer. There is
+        # no valid judgment to make here, so we make none.
+        if state.get("enrichment_triggered"):
+            logger.info(
+                "llm_judge_node: skipping — enrichment ran this turn, so the "
+                "answer is grounded in a tool result rather than in documents."
+            )
             return {"judgment": None, "judge_latency_ms": 0.0}
 
         # Pull the agent's just-produced response from the message history.

@@ -20,6 +20,23 @@ make demo-reset     # ARM ARC 2 — see below
 
 Open <http://localhost:5173>. There is no login screen.
 
+**Start Docker first, and never let it cycle afterwards.** The backend opens its
+PostgreSQL checkpointer pool once, at startup, and does not reopen it. If Docker
+Desktop is not running when the backend starts — or is restarted underneath it —
+the containers come back healthy but the backend does not: turn 1 dies with
+`consuming input failed: server closed the connection unexpectedly`, which reads
+like a frontend fault and is not one. There is no automatic recovery; restart the
+backend. Confirm before you walk on stage that all three are answering:
+
+```bash
+curl -sf localhost:9200 >/dev/null && echo "opensearch ok"
+curl -sf localhost:8000/api/config >/dev/null && echo "backend ok"
+curl -sf localhost:5173 >/dev/null && echo "frontend ok"
+```
+
+**Present at 1920x1080 or larger, fullscreen.** Browser chrome eats ~180px of
+height; the narrator panel is laid out for what is left.
+
 **Arming matters.** Arc 2 works because the catalog mis-files tan boots under
 yellow. Running it *fixes* that, so a second run has nothing to demonstrate —
 it does not error, it just quietly stops being a demo. `make demo-reset` puts
@@ -158,10 +175,15 @@ Each of these was tested; the measurements are in the commit history.
   *jeans*, while a pure-semantic run of the same query returns five actual
   running shoes. Alpha is *how literally it read the question*, not a quality
   win. **The reranker** is what removes the jeans.
-- **Do not promise a quality-gate retry, or a recovery.** Neither arc triggers
-  one: every turn passes on the first attempt. When the gate does fire elsewhere
-  it is usually because the catalog genuinely has nothing, and extra candidates
-  cannot invent a product.
+- **Do not promise a quality-gate recovery.** Arc 2 turn 2 *does* fire the gate
+  and retry, and the retry *fails* — the narrator reads "Still under the bar
+  after retrying — 0.30 against 0.45", directly above the correction card. Have
+  a sentence ready, because it is on screen during your best moment. The honest
+  one: *the shopper's complaint is not a product query, so there is nothing in
+  the catalog that scores well against it — and the agent answers by fixing the
+  data instead of by searching harder.* That 0.30 is the reranker's rescale
+  ceiling for a uniformly-irrelevant batch, not a coincidence. No turn in either
+  arc recovers after a failed gate; extra candidates cannot invent a product.
 - **Do not promise a reshuffled product list in arc 2 turn 3.** The honest proof
   is the filter value.
 
