@@ -1,11 +1,11 @@
 ---
 name: workflow-start
-description: "Start a work session on a GitHub issue in opensearch2026-agentic-search: retrieve the issue, plan the approach, create a feature branch, and open a draft PR. Steps 1-8 of the project workflow."
+description: "Start a work session on a GitHub issue in opensearch2026-agentic-search: retrieve the issue, plan the approach, and start coding directly on main. Cowboy mode — no feature branch or draft PR by default."
 ---
 
-# workflow-start — Opensearch2026 Project
+# workflow-start — Opensearch2026 Project (Cowboy Mode)
 
-Start a new work session: retrieve issue, plan the approach, create feature branch, and open a draft PR.
+Start a new work session: retrieve issue, plan the approach, start coding on `main`. No branch, no PR — this repo has no branch protection on `main` (confirmed via `gh api .../branches/main` → `"protected": false`; classic protection and rulesets both return 403, GitHub Pro required, this repo doesn't have it).
 
 ## Setup & Auth (Run Once)
 
@@ -75,7 +75,7 @@ Restate scope (2–3 sentences) to the user:
 - **Why** (user impact, blocker, or motivation)
 - **Non-goals** (what we're explicitly NOT doing)
 
-Then enter planning mode to propose an implementation strategy:
+For anything non-trivial, enter planning mode to propose an implementation strategy:
 
 ```
 /plan
@@ -91,66 +91,21 @@ The plan should propose:
 - **Risk mitigations:** edge cases, testing strategy
 - **Tasks:** step-by-step breakdown
 
-Wait for user approval of the plan before proceeding to branch creation.
+Wait for user approval of the plan before proceeding to coding. Skip the formal `/plan` step for small, obvious fixes.
 
-### 3. Create Feature Branch
+### 3. Start Coding — Directly on `main`
 
-Suggest a branch name following this project's pattern:
-- **Feature:** `feat/issue-<N>-<slug>` (e.g., `feat/issue-42-reranker-latency`)
-- **Fix:** `fix/issue-<N>-<slug>` (e.g., `fix/issue-38-websocket-auth`)
-- **Docs:** `docs/issue-<N>-<slug>` (e.g., `docs/issue-12-add-contributing`)
-
-Confirm the branch name with the user, then create and push:
-
-```bash
-# Create and push branch
-git checkout -b <branch-name>
-git push --set-upstream origin <branch-name>
-
-# Verify tracking
-git branch -vv
-# Should show: "* <branch-name> <hash> [origin/<branch-name>]"
-```
-
-### 4. Proceed to Coding
-
-You're ready to start implementing the plan. You have:
+No branch, no draft PR. You're already on `main` (verified clean + up to date in Setup step 2) — start editing there.
 
 ```
 Issue #<N>: <title>
-Branch: <branch-name>
 Plan: approved
 Tasks: from plan breakdown
 ```
 
-Start coding and committing to the branch. Once you've made some progress and have code to push, proceed to step 5.
+Commit as you go (small, logical commits are still good practice even without a PR to review them). When you believe the work is ready to push, proceed to `/workflow-check` for the pre-push checklist.
 
-### 5. Create Draft PR
-
-After you've started coding and made your first commit, create a draft PR:
-
-```bash
-# Make sure your changes are committed and pushed
-git push
-
-# Create draft PR to establish the issue↔branch↔PR link
-gh pr create \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --draft \
-  --title "Issue #<N>: <title>" \
-  --body "Closes #<N>
-
-## Summary
-(To be filled in as work progresses)
-
-## Test Plan
-- [ ] Running tests locally before pushing
-"
-```
-
-**Note:** The PR is created in draft state. `/workflow-check` will audit and mark it ready for review once work is complete.
-
-Save the PR number; you'll need it when you run `/workflow-check <PR-number>`.
+**Want a PR anyway?** Nothing stops you from branching manually for something you explicitly want reviewed before it lands (`git checkout -b <name>`, `gh pr create`) — this skill just won't do it automatically. That's the opt-in exception, not the default path.
 
 ---
 
@@ -160,22 +115,22 @@ Save the PR number; you'll need it when you run `/workflow-check <PR-number>`.
 |------|-------|
 | **GH auth account** | `agileresearchservices` (switch with `gh auth switch -u agileresearchservices`) |
 | **Repo** | `kmwtechnology/opensearch2026-agentic-search` |
-| **Branch naming** | `feat/issue-<N>-slug`, `fix/issue-<N>-slug`, `docs/issue-<N>-slug` |
+| **Default flow** | Commit directly to `main` — no branch, no PR |
 | **Issue tracking** | GitHub Issues; use `#<N>` (not Jira tickets) |
 | **Test before push** | `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` |
 | **Local hooks** | `pre-commit` (installed by `setup.sh`) runs black/isort/flake8 on staged `.py` files; no pre-push hook exists — tests/smoke gates must still be run by hand |
-| **Next step** | Code, test, push → run `/workflow-check <PR-number>` when ready |
+| **Next step** | Code, test → run `/workflow-check` when ready to push |
 
 ## Notes
 
-- **This creates the issue↔branch↔PR link immediately.** The PR is drafted; `/workflow-check` will mark it ready once audited.
+- **No branch protection on `main`** — this repo is private without GitHub Pro, so classic branch protection and rulesets are both unavailable (403 on the API); `main` reports `"protected": false`. Nothing on GitHub's side gates a direct push.
 - **No Slack** — this project has no Slack integration.
 - **CLAUDE.md is source of truth** — refer to it for tech stack, patterns, commands.
 - **Auth is enforced** — always `agileresearchservices` for this project.
 
 ## See Also
 
-- **Next step:** Proceed to coding. Once tests pass locally, run `/workflow-check <PR-number>` to audit and mark ready.
-- **After merge:** Run `/workflow-deploy <PR-number>` to verify deployment.
+- **Next step:** Proceed to coding. Once tests pass locally, run `/workflow-check` to run the pre-push checklist.
+- **After push:** Run `/workflow-deploy` to verify and close the issue.
 - **Project config:** `CLAUDE.md` (source of truth for this project)
 - **Memory:** `~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md`
