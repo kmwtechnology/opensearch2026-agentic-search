@@ -3,17 +3,20 @@
 > Related docs: [repo root README](../../../README.md) ·
 > [langchain_agent/README.md](../../README.md) · [tests/README.md](../README.md)
 
-E2E tests exercise a **deployed Cloud Run instance** end to end — health,
-auth, WebSocket streaming, pipeline correctness across all 6 intents,
-ESCI data presence, latency profile, and behavior under load.
+E2E tests exercise a running backend end to end — health, auth, WebSocket
+streaming, pipeline correctness across all 6 intents, ESCI data presence,
+latency profile, and behavior under load. They target `http://localhost:8000`
+by default (`CLOUD_RUN_URL` env var, despite the name, just points at
+whatever backend URL you want to test — set it to a remote URL if you ever
+need to point these at something other than local).
 
 These are pytest + httpx + websockets tests (not browser automation).
 
 ## Prerequisites
 
 ```bash
-export CLOUD_RUN_URL="https://agentic-hybrid-search-xyz.us-central1.run.app"
-export ADMIN_TOKEN="..."            # must match the deployed ADMIN_TOKEN secret
+# Local (default) — start the backend first via ./scripts/start.sh or make dev-api
+export ADMIN_TOKEN="$(grep '^ADMIN_TOKEN=' ../../.env | cut -d= -f2)"
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
 
@@ -25,13 +28,16 @@ reference a legacy `API_KEY`/`X-API-Key` scheme that the backend no longer
 checks; treat those as stale until updated.
 
 All suites auto-skip individual tests when the target origin rejects the
-request (via `_skip_if_origin_blocked`) — useful when CORS or VPC rules
-block certain paths from your workstation but you still want the rest of
-the suite to run.
+request (via `_skip_if_origin_blocked`) — useful when CORS rules block
+certain paths from your workstation but you still want the rest of the
+suite to run.
 
 ## Test Files
 
 ### `test_deployment_smoke.py` — basic contract
+
+This is the file `scripts/smoke_local.sh` runs (`make smoke-local` /
+`smoke-local-quick`) — the project's real local pre-push smoke gate.
 
 - `TestDeploymentHealth` — `/api/health` returns 200 + expected fields
 - `TestAuthentication` — missing/invalid key → 401, valid key → 200,
@@ -44,26 +50,6 @@ the suite to run.
 - `TestCitations` — citation URLs present when reranker score ≥ 0.10,
   Amazon search-by-title URL shape (`/s?k=...`)
 - `TestResponseTiming` — end-to-end latency budget assertions
-
-### `test_cloud_run_deployment.py` — infrastructure behavior
-
-- `TestCloudRunConnectivity` — DNS, TLS, HTTP/2
-- `TestRequestTimeout` — long-running requests don't exceed Cloud Run's
-  request timeout
-- `TestGracefulShutdown` — in-flight requests finish on revision cutover
-- `TestHorizontalScaling` — traffic burst spawns replicas without error spikes
-- `TestLoggingFormat` — structured logs parse as JSON
-- `TestEnvironmentConfiguration` — expected env/config surfaced via `/api/health`
-- `TestDatabaseConnectivity` — Cloud SQL reachable through the proxy
-- `TestOpenSearchIndex` — hosted OpenSearch reachable, index non-empty
-
-### `test_deployment_data.py` — data layer
-
-- `TestESCIProductIndexing` — product docs present with the expected
-  dual-mapped fields
-- `TestProductMetadata` — `product_brand.keyword`, `product_color.keyword`, `product_locale`
-- `TestDataConsistency` — facet counts, sample product round-trip
-- `TestCheckpointPersistence` — conversation state survives across requests
 
 ### `test_real_world_scenarios.py` — user journeys
 
@@ -169,42 +155,23 @@ Commit baselines you care about next to the suite so
 
 ## Bash Smoke Test (`scripts/smoke_test.sh`)
 
-curl-based smoke test for CI/CD pipelines without pytest:
+curl-based smoke test, no pytest required, works against any URL:
 
 ```bash
 ./scripts/smoke_test.sh http://localhost:8000
-./scripts/smoke_test.sh https://agentic-hybrid-search-xyz.us-central1.run.app
-API_KEY=my-key TIMEOUT=20 ./scripts/smoke_test.sh https://my-deployment
 ```
 
 Validates connectivity, `/api/health`, PostgreSQL + OpenSearch status,
 and response time. Color-coded output; non-zero exit on any failure. Note:
 the script's `API_KEY`/`Authorization: Bearer` auth check is legacy — the
 backend only recognizes a session cookie or `X-Admin-Token`, so that
-particular check is currently a no-op against a real deployment.
-
-## GitHub Actions Smoke Test
-
-`.github/workflows/build-deploy.yml` runs the e2e smoke suite
-automatically after a successful Cloud Run deploy on `main`. The
-deployed service URL is discovered via `gcloud run services describe`,
-the workflow waits up to 30s for the revision to become ready, then runs
-`pytest tests/e2e/ -m "e2e and slow"` with a 30s per-test timeout.
-Results upload as workflow artifacts; the GitHub step summary surfaces
-pass/fail counts.
-
-Trigger manually:
-
-```bash
-gh workflow run build-deploy.yml --ref main
-gh run list --workflow=build-deploy.yml --limit 5
-```
+particular check is currently a no-op.
 
 ## Environment Variables
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CLOUD_RUN_URL` | `http://localhost:8000` | Deployment under test |
+| `CLOUD_RUN_URL` | `http://localhost:8000` | Backend URL under test (the name predates local-only mode; it's just the target URL) |
 | `API_KEY` | `test-api-key` | Legacy `smoke_test.sh` var; sent as `Authorization: Bearer`, which the backend no longer checks (real auth is session cookie / `X-Admin-Token`) |
 | `ADMIN_TOKEN` | (unset) | Value for the `X-Admin-Token` header on `/api/admin/*` routes |
 | `TIMEOUT` | 30 (pytest), 10 (curl) | Request timeout in seconds |
@@ -220,21 +187,17 @@ gh run list --workflow=build-deploy.yml --limit 5
 
 ## Troubleshooting
 
-**Connection refused** — verify the service is up
-(`curl $CLOUD_RUN_URL/api/health`); confirm the Cloud Run URL format via
-`gcloud run services describe agentic-hybrid-search --region=us-central1`.
+**Connection refused** — verify the backend is up (`curl $CLOUD_RUN_URL/api/health`,
+default `http://localhost:8000`); start it via `./scripts/start.sh` or `make dev-api`.
 
-**Tests timeout** — bump `TIMEOUT=60`; check Cloud Run logs via
-`gcloud run services logs read agentic-hybrid-search --region=us-central1`.
+**Tests timeout** — bump `TIMEOUT=60`; check `logs/backend.log` for errors.
 
-**WebSocket fails** — check ingress (`gcloud run services describe ...
---format="value(status.ingress)"`); confirm `CORS_ORIGINS` matches the
-test origin.
+**WebSocket fails** — confirm `CORS_ORIGINS`/same-origin config matches the
+test origin (`api/middleware/origin_auth.py`).
 
 **Data tests fail** — check document count
 (`curl $CLOUD_RUN_URL/api/health | grep document_count`); re-ingest via
-`scripts/lucille_ingest.sh` or the `reindex.yml` GitHub Actions workflow if
-empty, then verify via `GET /api/admin/health`.
+`scripts/lucille_ingest.sh` if empty, then verify via `GET /api/admin/health`.
 
 ## See Also
 

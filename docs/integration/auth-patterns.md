@@ -99,9 +99,9 @@ Server invalidates the session cookie server-side. Client also receives a `Set-C
 
 ---
 
-## Pattern B: Admin Token (Automation / CI)
+## Pattern B: Admin Token (Automation)
 
-Use this for **unattended automation** (GitHub Actions, scheduled jobs, service-to-service).
+Use this for **unattended automation** (scheduled jobs, scripts, service-to-service) — this project has no CI to run it from, but the mechanism still applies to any local or scripted caller.
 
 ### Flow
 
@@ -117,25 +117,10 @@ Use this for **unattended automation** (GitHub Actions, scheduled jobs, service-
 
 ### Setup
 
-**Store the token in your secret manager:**
-
-GitHub Actions (example):
 ```bash
 # Generate a secure random token (32+ chars)
 openssl rand -hex 32
-
-# Store in GitHub Secrets
-gh secret set ADMIN_TOKEN -b <TOKEN_VALUE>
-```
-
-Cloud Run (example):
-```bash
-# Store in Secret Manager
-gcloud secrets create admin-token --data-file=- << EOF
-<TOKEN_VALUE>
-EOF
-
-# Reference in build-deploy.yml as an environment variable
+# Set ADMIN_TOKEN=<value> in .env
 ```
 
 ### Usage
@@ -178,9 +163,9 @@ http://127.0.0.1:8000
 http://127.0.0.1:5173  (Vite frontend)
 ```
 
-**Cloud Run (production):**
+**Cloud Run allow-list (dormant — no deployment target today, issue #110/#113):**
 ```
-https://*.run.app  (all Cloud Run services in the project)
+https://*.run.app  (kept in the allow-list pattern for if a hosted deployment is ever revisited)
 ```
 
 ### Origin Header

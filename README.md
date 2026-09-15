@@ -6,31 +6,18 @@
 
 A production-grade **LangGraph RAG agent** for Amazon ESCI e-commerce product search.
 Combines hybrid retrieval (vector + BM25 via RRF), LLM-based reranking, intent
-routing, and real-time WebSocket streaming. Deployed on
-**GCP Cloud Run** with Google Gemini.
+routing, and real-time WebSocket streaming. Runs **local-only** (Docker
+Compose) with Google Gemini — see issue #110/#113 for why the earlier GCP
+Cloud Run deploy path was removed.
 
-## Deployment Paths
+## Local Development With Docker
 
-This repository supports two ways to run the application:
-
-- **Path A: Local development with Docker** — runs PostgreSQL and
-  OpenSearch in Docker, the FastAPI backend on `localhost:8000`, and the
-  Vite frontend on `localhost:5173`.
-- **Path B: Deployment to GCP** — deploys the app to Cloud Run, stores
-  checkpoints in Cloud SQL, reads secrets from Secret Manager, and uses an
-  externally hosted OpenSearch cluster.
-
-Pick one path below. Path A is for local iteration; Path B is for a
-deployed Cloud Run environment.
+Runs PostgreSQL and OpenSearch in Docker, the FastAPI backend on
+`localhost:8000`, and the Vite frontend on `localhost:5173`.
 
 ### Prerequisites
 
-Both paths need:
-
 - Google AI API key from <https://aistudio.google.com/apikey>
-
-Path A also needs:
-
 - Docker Desktop
 - Python 3.14+
 - Node.js 24+
@@ -38,15 +25,7 @@ Path A also needs:
 Java 21+ and Maven are only needed if you opt out of the default
 Docker-based Lucille ETL ingest (`LUCILLE_USE_DOCKER=false`).
 
-Path B also needs:
-
-- Google Cloud SDK authenticated to the target project
-- Permission to manage Cloud Run, Cloud SQL, Artifact Registry, Secret
-  Manager, and IAM
-- A reachable OpenSearch cluster; these scripts do not provision
-  OpenSearch
-
-### Path A: Local Development With Docker
+### Setup
 
 ```bash
 cd langchain_agent
@@ -65,24 +44,6 @@ Useful follow-up commands:
 ```bash
 ./scripts/stop.sh         # Stop backend/frontend and Docker services
 ./scripts/teardown.sh     # Remove services, volumes, .venv, node_modules, logs
-```
-
-### Path B: Deployment to GCP
-
-```bash
-cd langchain_agent
-./scripts/deploy.sh --project <GCP_PROJECT_ID>
-```
-
-Deploys to Cloud Run with Cloud SQL (PostgreSQL checkpoints), an externally
-hosted OpenSearch cluster, Secret Manager, and Artifact Registry. Scales to
-zero when idle.
-
-After the first deploy, initialize Cloud SQL and ingest product data:
-
-```bash
-./scripts/gcp-init.sh --project <GCP_PROJECT_ID>
-./scripts/smoke_test.sh <CLOUD_RUN_URL>
 ```
 
 ## What It Does
@@ -111,11 +72,10 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   three-section UI (Did you mean? / Suggestions / Recent Searches)
 - **Admin diagnostics** — `GET /api/admin/health` reports index health and
   doc count; `GET /api/admin/diagnose` probes field-level hit counts.
-  Requires session auth (UI login) or `X-Admin-Token` header (GitHub Actions
-  automation). Routine full re-indexing is triggered via the `reindex.yml`
-  workflow (Lucille ETL on the runner); `POST /api/admin/enrich` also
-  triggers a real reindex directly, as part of the taxonomy growth &
-  correction mechanism below
+  Requires session auth (UI login) or `X-Admin-Token` header (automation).
+  Routine full re-indexing is triggered via `scripts/lucille_ingest.sh`;
+  `POST /api/admin/enrich` also triggers a real reindex directly, as part
+  of the taxonomy growth & correction mechanism below
 - **Agentic taxonomy growth & correction** — the agent can grow *or fix*
   its own catalog taxonomy via `trigger_enrichment`, gated by
   `ENABLE_ENRICHMENT_TOOL`: a genuine new color/material term gets added
@@ -126,7 +86,7 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   shopper disputes it (e.g. the shipped taxonomy maps "tan" to "yellow"
   instead of "brown" — a real bug affecting 29 products, invisible to
   automated quality gates since the wrong result still scores above
-  threshold). Either way, a genuine full Lucille reindex runs (~19–20s locally; on Cloud Run the app dispatches the `reindex.yml` workflow instead, ~8 min, fire-and-forget — see `REINDEX_TRIGGER`) —
+  threshold). Either way, a genuine full Lucille reindex runs (~19–20s) —
   see `langchain_agent/ARCHITECTURE.md` and `langchain_agent/DEMO.md`
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
   boosting, and field boosting, displayed in the observability panel's
@@ -272,12 +232,12 @@ adjustment.
 | **Embeddings** | `models/gemini-embedding-001` | 768-dim vectors |
 | **Vector Database** | OpenSearch 3.8.0 | HNSW `knn_vector` + BM25 |
 | **Search Fusion** | Reciprocal Rank Fusion (k=60) | Hybrid score fusion |
-| **Checkpoints** | PostgreSQL 18 (local dev via `pgvector/pgvector:0.8.6-pg18`); Cloud SQL Postgres 16 in GCP | LangGraph state persistence |
+| **Checkpoints** | PostgreSQL 18 (local dev via `pgvector/pgvector:0.8.6-pg18`) | LangGraph state persistence |
 | **Agent Framework** | LangGraph + LangChain | Graph-based pipeline with typed state |
 | **Backend API** | FastAPI + WebSocket | REST/WebSocket with real-time streaming |
 | **Frontend** | React 19 + TypeScript + Tailwind + Zustand | Observability panel + chat UI |
 | **Data** | Amazon ESCI (Shopping Queries Dataset) | 1.8M+ product listings |
-| **Deployment** | GCP Cloud Run (multi-stage Docker) | Serverless auto-scaling |
+| **Deployment** | Local only (Docker Compose) | Conference demo |
 
 ## Example Queries
 
@@ -402,7 +362,7 @@ opensearch2026-agentic-search/
 ├── langchain_agent/              # Main application (see langchain_agent/README.md)
 │   ├── main.py                   # EcommerceSearchAgent: setup, graph wiring, lifecycle (~600 lines)
 │   ├── cli.py                    # Interactive terminal REPL (dev only)
-│   ├── setup.py                  # DB + index init; invoked by scripts/setup.sh and gcp-init.sh
+│   ├── setup.py                  # DB + index init; invoked by scripts/setup.sh
 │   ├── config_generator.py       # Regenerates the Lucille products.conf from OpenSearch
 │   ├── core/                     # agent_state (CustomAgentState), config, exceptions, logging_config
 │   ├── pipeline/                 # pipeline_nodes (the 8 LangGraph nodes), conversation_management, reindex_trigger
@@ -416,8 +376,7 @@ opensearch2026-agentic-search/
 │   ├── scripts/                  # Lifecycle scripts — see scripts/README.md
 │   ├── lucille-esci/             # Lucille ETL config — see lucille-esci/README.md
 │   ├── tests/                    # unit, integration, e2e suites
-│   ├── Dockerfile                # Multi-stage build (Node + Python)
-│   └── cloudbuild.yaml
+│   └── Dockerfile                # Multi-stage build (Node + Python)
 └── esci/                         # Amazon ESCI dataset (created by setup; gitignored)
 ```
 
@@ -425,21 +384,19 @@ opensearch2026-agentic-search/
 
 | Location | Purpose | Audience |
 |----------|---------|----------|
-| [README.md](README.md) (this file) | Architecture, deployment paths, tech stack | Everyone |
+| [README.md](README.md) (this file) | Architecture, local setup, tech stack | Everyone |
 | **For Developers** | | |
 | [langchain_agent/README.md](langchain_agent/README.md) | Day-to-day development, API usage, config, troubleshooting | Backend/Frontend devs |
 | [langchain_agent/ARCHITECTURE.md](langchain_agent/ARCHITECTURE.md) | Deep pipeline reference — every node, state, index design, attribute detection, taxonomy growth & correction mechanism | Backend devs |
 | [langchain_agent/DEMO.md](langchain_agent/DEMO.md) | Live conference demo walkthrough, including the taxonomy self-correction centerpiece | Presenters |
 | [langchain_agent/api/README.md](langchain_agent/api/README.md) | FastAPI backend layers (routes, middleware, schemas, services) | Backend devs |
-| [langchain_agent/scripts/README.md](langchain_agent/scripts/README.md) | Lifecycle scripts (setup, dev, deploy, CI hooks) | All devs |
+| [langchain_agent/scripts/README.md](langchain_agent/scripts/README.md) | Lifecycle scripts (setup, dev, CI hooks) | All devs |
 | [langchain_agent/web/README.md](langchain_agent/web/README.md) | React frontend (components, stores, hooks, testing) | Frontend devs |
 | [langchain_agent/lucille-esci/README.md](langchain_agent/lucille-esci/README.md) | Lucille ETL config for ESCI ingest | Data/DevOps engineers |
 | [langchain_agent/tests/README.md](langchain_agent/tests/README.md) | Test suite overview (unit, integration, e2e) | Test developers |
 | [langchain_agent/tests/integration/README.md](langchain_agent/tests/integration/README.md) | Integration tests (multi-component, live services) | Backend/test devs |
-| [langchain_agent/tests/e2e/README.md](langchain_agent/tests/e2e/README.md) | End-to-end tests (deployed Cloud Run) | QA/test devs |
+| [langchain_agent/tests/e2e/README.md](langchain_agent/tests/e2e/README.md) | End-to-end tests (local backend by default) | QA/test devs |
 | [data/README.md](data/README.md) | Precomputed ESCI parquets (products, judgments) | Data engineers |
-| **For Operations** | | |
-| [docs/operations/README.md](docs/operations/README.md) | Deploy, monitor, scale, troubleshoot Cloud Run | SRE/DevOps/Operators |
 | **For API Consumers** | | |
 | [docs/integration/README.md](docs/integration/README.md) | REST/WebSocket examples, auth patterns | Integrators |
 | **For Contributors** | | |
@@ -457,7 +414,7 @@ opensearch2026-agentic-search/
 
 ### Key Tunables
 
-**Note:** Most retriever and reranker knobs are hardcoded in `langchain_agent/core/config.py` and cannot be changed via `.env` — setting them there has no effect. To modify them, edit `core/config.py` directly and redeploy.
+**Note:** Most retriever and reranker knobs are hardcoded in `langchain_agent/core/config.py` and cannot be changed via `.env` — setting them there has no effect. To modify them, edit `core/config.py` directly and restart the backend.
 
 ```python
 # langchain_agent/core/config.py
@@ -475,8 +432,6 @@ Environment variables (in `.env`) that **do** affect behavior include `ESCI_INGE
 
 ## Operations
 
-### Path A: Local Development With Docker
-
 Local development is fully driven by scripts in `langchain_agent/scripts/`:
 
 ```bash
@@ -493,70 +448,8 @@ cp .env.example .env        # Fill in GOOGLE_API_KEY
 ESCI dataset plus Docker volumes. (Java 21+/Maven only needed for
 `LUCILLE_USE_DOCKER=false`.)
 
-### Path B: Deployment to GCP
-
-`scripts/deploy.sh` handles production deployment:
-
-1. Enables GCP APIs (Cloud Run, SQL, Artifact Registry, Secret Manager)
-2. Builds the multi-stage Docker image (React frontend + Python backend)
-3. Pushes to Artifact Registry
-4. Deploys to Cloud Run with Cloud SQL proxy for checkpoints
-5. Wires secrets via Secret Manager:
-   - `GOOGLE_API_KEY` — LLM/embeddings API key
-   - `LOGIN_PASSWORD` — Web UI login password (if using SessionMiddleware auth)
-   - `SESSION_SECRET` — Cookie signing key (if using SessionMiddleware auth)
-   - `ADMIN_TOKEN` — Automation/CI token for `/api/admin/*` routes
-   - OpenSearch host/user/password credentials
-
-**Cost optimization:**
-
-- `min-instances=0` — scales to zero when idle
-- `max-instances=2` — prevents runaway scaling
-- CPU throttling — CPU only allocated during request processing
-
-```bash
-./scripts/deploy.sh --project <PROJECT_ID>
-
-# One-time: initialize Cloud SQL + ingest ESCI products into OpenSearch
-./scripts/gcp-init.sh --project <PROJECT_ID>
-
-# Smoke test a deployed instance
-./scripts/smoke_test.sh <CLOUD_RUN_URL>
-
-# View logs
-gcloud logging read resource.type=cloud_run_revision --project=<PROJECT_ID>
-
-# Tear everything down
-./scripts/gcp-teardown.sh --project <PROJECT_ID>
-```
-
-**OpenSearch** is hosted externally on a GCP VM (not provisioned by these
-scripts). To do a fresh GCP deployment you must have a running OpenSearch
-instance reachable from Cloud Run, then store its credentials in Secret
-Manager:
-
-```bash
-gcloud secrets create agentic-hybrid-search-opensearch-user --data-file=- <<< "your-user"
-gcloud secrets create agentic-hybrid-search-opensearch-password --data-file=- <<< "your-password"
-```
-
-Set `OPENSEARCH_HOST` and `OPENSEARCH_PORT` in your environment before running `gcp-init.sh`.
-
-### CI/CD (GitHub Actions)
-
-- `.github/workflows/build-deploy.yml` — unified pipeline on PRs and merges
-  to `main`. Runs unit + integration tests (with ephemeral Postgres +
-  OpenSearch), lint (black/isort/flake8/mypy), Docker build, push to
-  Artifact Registry (main only), Cloud Run deploy, and smoke tests. Strict
-  linting is enforced — lint failures block the pipeline.
-- `.github/workflows/reindex.yml` — separate manual-dispatch workflow that
-  re-ingests ESCI data via Lucille ETL (runs via Docker on the Actions runner,
-  which has Docker preinstalled; no Java/Maven/Lucille checkout needed).
-  Reads `data/*.parquet`, targets GCP OpenSearch via WIF-authenticated Secret
-  Manager credentials.
-
-Runners use Node.js 24. Authentication uses Workload Identity Federation
-(no long-lived keys).
+There is no CI/CD pipeline and no deploy step (issue #110/#113) — `make ci`
+run locally is the only gate before merging to `main`.
 
 ### ESCI data ships in `data/`
 
@@ -564,7 +457,7 @@ Runners use Node.js 24. Authentication uses Workload Identity Federation
 768-dim embeddings) and `data/esci_judgments_aggregated.parquet` (97,345
 judgment queries) are committed to the repo and read directly by
 `scripts/lucille_ingest.sh`. The Docker image does not bundle these — ingest
-runs from workstations and the GitHub Actions runner, not inside the container.
+runs from a workstation, not inside the container.
 
 ## Performance
 
@@ -583,4 +476,4 @@ Cached queries (within the 60-minute window) shave ~2–3 s off the total.
 
 ---
 
-**Status:** Deployed on GCP Cloud Run.
+**Status:** Local-only conference demo (issue #110/#113).

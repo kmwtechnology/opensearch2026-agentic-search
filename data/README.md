@@ -67,11 +67,6 @@ bash scripts/lucille_ingest.sh --skip-products
 - **Embeddings** — `models/gemini-embedding-001` (768-dim), generated with `output_dimensionality=768`
 - **Relevance labels** — Amazon e-commerce relevance judgments (5-point scale mapped to 4 numeric levels)
 
-## GCP Cloud Run
-
-When deploying to Cloud Run, `gcp-init.sh` and `reindex.yml` re-ingest ESCI data by running `lucille_ingest.sh`
-on a workstation or GitHub Actions runner. The ingestion uses Docker (runners have Docker preinstalled; no Java/Maven/Lucille checkout needed). The runner reads `data/*.parquet` committed here and indexes into the hosted OpenSearch cluster.
-
 ## Troubleshooting
 
 **Lucille ingest fails with "file not found":**

@@ -239,7 +239,7 @@ The session cookie is invalidated server-side. The `Set-Cookie` response header 
 
 ## Rate Limiting
 
-**Currently:** No rate limiting enforced. Requests are processed sequentially by design (concurrency=1 per Cloud Run instance for stateful WebSocket sessions).
+**Currently:** No rate limiting enforced. Requests are processed sequentially by design (stateful WebSocket sessions).
 
 If you spam requests, you'll simply queue them; they'll be processed in order.
 

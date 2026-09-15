@@ -1,6 +1,5 @@
-# Minimal dependency set for setup.py (used by .github/workflows/reindex.yml
-# and local first-time setup) -- NOT for the main app or test suite, which
-# need the full requirements.txt.
+# Minimal dependency set for setup.py (local first-time setup) -- NOT for
+# the main app or test suite, which need the full requirements.txt.
 #
 # setup.py's own imports plus its lazy `from vector_store import ...` calls
 # resolve to exactly these packages (AST-verified, see #24) -- no torch, no

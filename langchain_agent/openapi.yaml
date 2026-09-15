@@ -6,7 +6,7 @@ info:
     Production-grade RAG agent for Amazon ESCI e-commerce product search.
     Hybrid search (BM25 + vector via RRF), cross-encoder reranking with quality gate,
     intent routing (7 classes), typeahead autocomplete with spell correction.
-    Deployed on GCP Cloud Run.
+    Runs local-only (Docker Compose).
 
     **Authentication:** Two layers: (1) Same-origin check, (2) Session cookie (LoginScreen)
     OR X-Admin-Token header (automation).
@@ -17,8 +17,6 @@ info:
 servers:
   - url: http://localhost:8000
     description: Local development
-  - url: https://agentic-hybrid-search-375500751528.us-central1.run.app
-    description: Production (GCP Cloud Run)
 
 tags:
   - name: auth

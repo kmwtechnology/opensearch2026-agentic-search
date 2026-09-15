@@ -176,7 +176,7 @@ reliably get rewritten.
       2026-05-03T17:28Z)
 - [x] ESCI judgments index populated (1.9M judgments shared between local
       and prod)
-- [ ] Run each demo against the live Cloud Run URL once, day-of, to confirm
+- [ ] Run each demo against the local backend once, day-of, to confirm
       reproducibility (events fire, prefixes appear, expansion text emits)
 - [ ] Demo 1 narration ready: retry won't show a higher max_score (same
       corpus → same docs at any α → same rescore). Frame as honest

@@ -10,7 +10,7 @@ Test pyramid and local testing commands.
 
 ```
          /\
-        /  \  Smoke Tests (Cloud Run)
+        /  \  Smoke Tests (local backend)
        /    \   ~2 min, 20 tests
       /______\
       /      \
@@ -93,7 +93,7 @@ Expected: ~30–120 seconds, 0 failures.
 
 **When:** After adding a new flow (e.g., refinement intent, quality gate retry).
 
-**What:** Tests against a deployed Cloud Run service (or local backend running on :8000).
+**What:** Tests against a running local backend on :8000 by default (or a remote URL via `CLOUD_RUN_URL`).
 
 **How:** Requires Docker services + local backend running.
 
@@ -110,10 +110,10 @@ PYTHONPATH=. pytest tests/e2e/test_deployment_smoke.py -v -m "e2e and slow" --ti
 
 Expected: ~3 minutes, 17 tests, 0 failures.
 
-**Against Cloud Run:**
+**Against a remote backend** (if you ever need to point these somewhere other than local):
 ```bash
 LOGIN_PASSWORD=... \
-CLOUD_RUN_URL=https://agentic-hybrid-search-XXXX.run.app \
+CLOUD_RUN_URL=https://your-remote-backend.example.com \
 PYTHONPATH=. pytest tests/e2e/ -v -m "e2e and slow" --timeout=120
 ```
 
@@ -147,9 +147,10 @@ This is the most valuable gate before pushing. It catches regressions that unit 
 
 ---
 
-## CI Pipeline
+## Local CI Gate
 
-**GitHub Actions (`make ci`)** runs:
+There is no GitHub Actions CI (issue #113) — **`make ci`** run locally is the
+only gate, and it runs:
 
 1. **Backend lint** (black, isort, flake8, mypy) — ~5s
 2. **Unit tests** (pytest tests/unit/) — ~3s
@@ -219,12 +220,9 @@ If you change database credentials in `.env`, update the test conftest too.
 - `LOGIN_PASSWORD` set in `.env`
 - `docker compose up -d` running
 
-**Cloud Run:**
-- Service deployed and healthy
-- `CLOUD_RUN_URL` env var set
-- `LOGIN_PASSWORD` available (retrieve from Secret Manager)
-
-**Important:** E2E tests in `tests/e2e/` are not run automatically by any GitHub Actions workflow (only `build-deploy.yml`, `reindex.yml`, and `smoke-tests.yml` exist) and there is no pre-push hook to trigger them locally either — run them manually against a local backend or Cloud Run as documented above.
+**Important:** E2E tests in `tests/e2e/` are not run automatically — there is
+no GitHub Actions CI (issue #113) and no pre-push hook either. Run them
+manually against a local backend as documented above.
 
 ---
 

@@ -39,7 +39,7 @@ api/
 
 **Auth strategy:** Two-layer enforcement on protected routes:
 1. **Same-origin** — Origin header whitelist (localhost dev ports + `*.run.app`)
-2. **Session or admin token** — HttpOnly signed session cookie (user login) OR `X-Admin-Token` header (GitHub Actions)
+2. **Session or admin token** — HttpOnly signed session cookie (user login) OR `X-Admin-Token` header (automation)
 
 Routes check session first; on `HTTPException`, fall back to token. Constant-time comparison via `hmac.compare_digest`.
 
@@ -65,7 +65,7 @@ Required env vars (set in `.env` or deployment secrets):
 ```bash
 LOGIN_PASSWORD              # Shared login password (12+ hex chars)
 SESSION_SECRET             # Cookie-signing secret (32+ chars)
-SESSION_COOKIE_SECURE      # true (Cloud Run) | false (local HTTP)
+SESSION_COOKIE_SECURE      # true (HTTPS) | false (local HTTP, default)
 SESSION_MAX_AGE_SECONDS    # Default 86400 (24h)
 ADMIN_TOKEN                # Automation token for X-Admin-Token header (32+ chars)
 ```

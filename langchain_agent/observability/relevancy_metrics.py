@@ -19,7 +19,7 @@ Design rules:
   * No I/O, no logging, no globals — these functions are unit-testable
     in isolation and safely callable inside a hot request path.
   * No NumPy dependency. Everything is plain Python so the module can
-    run anywhere the agent runs (Cloud Run, local dev, tests).
+    run anywhere the agent runs (local dev, tests).
   * Inputs are tolerated when imperfect: empty rankings return 0.0,
     missing judgments are treated as relevance 0.
 """

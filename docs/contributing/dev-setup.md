@@ -397,4 +397,4 @@ Wait 5–10 seconds, then try a search again.
 
 ---
 
-**Questions?** Check [docs/operations/](../operations/) for runtime troubleshooting, [ARCHITECTURE.md](../../langchain_agent/ARCHITECTURE.md) for system design, or [docs/integration/](../integration/) for API reference.
+**Questions?** Check [ARCHITECTURE.md](../../langchain_agent/ARCHITECTURE.md) for system design, or [docs/integration/](../integration/) for API reference.
