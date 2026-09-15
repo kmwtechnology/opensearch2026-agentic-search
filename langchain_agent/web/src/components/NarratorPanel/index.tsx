@@ -123,20 +123,45 @@ export function NarratorPanel() {
   // step-events plumbing this event structurally can't reach (#130).
   const pipelineSummary = useObservabilityStore((s) => s.pipelineSummary)
 
-  const lines = useMemo(() => {
-    const all = steps.flatMap((step) => step.events)
-    const narrated = all.map(narrate).filter((l): l is NarratorLine => l !== null)
-    const groundTruth = pipelineSummary ? narrate(pipelineSummary) : null
-    return visibleLines(groundTruth ? [...narrated, groundTruth] : narrated)
-  }, [steps, pipelineSummary])
+  // Two tabs, not one panel that the ground-truth card used to take over
+  // entirely: `lookup_judgments()` runs on every query in every demo, so any
+  // exact-match query can surface real ground truth mid-Arc-1 or mid-Arc-2,
+  // not just in the dedicated bonus scene this was originally built for.
+  // Hiding that turn's actual pipeline steps whenever it happened to fire was
+  // surprising, not helpful — so Steps and Ground Truth get their own tab
+  // each, and neither covers the other.
+  const [activeTab, setActiveTab] = useState<'steps' | 'ground-truth'>('steps')
+
+  // Reset to the steps tab at the start of every new turn, so a ground-truth
+  // tab selection left over from an earlier turn doesn't silently hide the
+  // new turn's steps behind a tab nobody is looking at. Adjusted during
+  // render (React's documented pattern for "reset state when a value
+  // changes") rather than in an Effect, which would cost an extra render
+  // pass for no benefit here.
+  const [prevIsExecuting, setPrevIsExecuting] = useState(isExecuting)
+  if (isExecuting !== prevIsExecuting) {
+    setPrevIsExecuting(isExecuting)
+    if (isExecuting) setActiveTab('steps')
+  }
 
   // Pipeline order, top to bottom — the same path as the architecture diagram
   // the audience was just shown. (This used to render newest-first, which made
   // sense when the panel was a sliding feed; now that every stage keeps its own
   // line for the whole turn, following the pipeline reads better and stays put
   // while the presenter talks through it.)
-  const ordered = lines
-  const latestId = lines.length > 0 ? lines[lines.length - 1].id : null
+  const stepLines = useMemo(() => {
+    const all = steps.flatMap((step) => step.events)
+    const narrated = all.map(narrate).filter((l): l is NarratorLine => l !== null)
+    return visibleLines(narrated)
+  }, [steps])
+
+  const groundTruthCard = useMemo(
+    () => (pipelineSummary ? narrate(pipelineSummary) : null),
+    [pipelineSummary]
+  )
+
+  const ordered = activeTab === 'ground-truth' && groundTruthCard ? [groundTruthCard] : stepLines
+  const latestId = ordered.length > 0 ? ordered[ordered.length - 1].id : null
 
   // Scroll hardening (#130): `visibleLines`'s caps are tuned for a 1920x1080
   // fullscreen viewport (#108). On anything shorter — a smaller external
@@ -186,6 +211,48 @@ export function NarratorPanel() {
         )}
       </header>
 
+      {/* Only shown when this turn actually has a ground-truth reveal to
+          show — an ordinary turn with no exact-match judgment renders no
+          tab bar at all, identical to the panel before tabs existed. */}
+      {groundTruthCard && (
+        <div
+          role="tablist"
+          aria-label="What just happened views"
+          className="flex gap-2 border-b-2 border-[var(--color-stage-border-soft)] px-7 pt-4"
+        >
+          {(
+            [
+              ['steps', 'Steps'],
+              ['ground-truth', 'Ground Truth'],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === key}
+              onClick={() => setActiveTab(key)}
+              className="px-4 py-2 -mb-0.5 rounded-t-lg border-2 border-b-0 font-semibold text-[length:var(--text-stage-label)] transition-colors"
+              style={
+                activeTab === key
+                  ? {
+                      backgroundColor: 'var(--color-stage-surface)',
+                      borderColor: 'var(--color-stage-border-soft)',
+                      color: 'var(--color-stage-ink)',
+                    }
+                  : {
+                      backgroundColor: 'transparent',
+                      borderColor: 'transparent',
+                      color: 'var(--color-stage-ink-soft)',
+                    }
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/*
         `overflow-y-auto`, not `overflow-hidden` (#108).
 
@@ -232,7 +299,10 @@ export function NarratorPanel() {
 
       <footer className="border-t-2 border-[var(--color-stage-border-soft)] px-7 py-4">
         <span className="font-semibold text-[var(--color-stage-ink-soft)] text-[length:var(--text-stage-label)]">
-          {ordered.length} {ordered.length === 1 ? 'step' : 'steps'}
+          {/* Always the Steps tab's count, regardless of which tab is active
+              — "1 step" while looking at the one-card Ground Truth tab would
+              describe that tab, not the turn's actual pipeline step count. */}
+          {stepLines.length} {stepLines.length === 1 ? 'step' : 'steps'}
         </span>
       </footer>
     </section>

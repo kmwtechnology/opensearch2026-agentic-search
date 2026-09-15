@@ -497,11 +497,16 @@ describe('visibleLines', () => {
     expect(MAX_VISIBLE_LINES).toBeGreaterThanOrEqual(6)
   })
 
-  it('shows ONLY the ground-truth card, no pipeline lines above it (#130)', () => {
-    // Unlike the enrichment card (which keeps 3 lines of pipeline context —
-    // the presenter is still narrating up to that moment), the bonus scene is
-    // a single turn whose entire point IS the card. Keeping any pipeline
-    // lines just pushed it below a scroll on shorter viewports for no benefit.
+  it('excludes ground_truth entirely — it renders in its own tab, not among the steps', () => {
+    // Used to cap to a single ground-truth-only card (#130), on the
+    // assumption ground truth only ever fires in its own dedicated bonus
+    // scene. That assumption was false: lookup_judgments() runs on every
+    // query in every demo, so a free-typed query mid-Arc-1 can trigger it
+    // too, and hiding that turn's real pipeline context whenever it did was
+    // surprising. NarratorPanel now renders ground_truth in a separate
+    // "Ground Truth" tab instead, so visibleLines (which only ever feeds the
+    // "Steps" tab) must return the ordinary pipeline lines untouched even
+    // when a ground_truth line is mixed into its input.
     const fullPipeline = [
       line('intent_classifier', 'intent'),
       line('query_evaluator', 'alpha'),
@@ -513,8 +518,15 @@ describe('visibleLines', () => {
 
     const shown = visibleLines([...fullPipeline, groundTruth])
 
-    expect(shown).toHaveLength(1)
-    expect(shown[0].node).toBe('ground_truth')
+    expect(shown).toHaveLength(5)
+    expect(shown.some((l) => l.node === 'ground_truth')).toBe(false)
+    expect(shown.map((l) => l.node)).toEqual([
+      'intent_classifier',
+      'query_evaluator',
+      'retriever',
+      'reranker',
+      'quality_gate',
+    ])
   })
 
   // The enrichment card is roughly four ordinary lines tall. A full pipeline

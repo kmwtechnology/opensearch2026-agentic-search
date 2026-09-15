@@ -469,28 +469,30 @@ export const MAX_VISIBLE_LINES_WITH_MOMENT = 3
 
 /**
  * Node types that render as a full-width card rather than an ordinary line,
- * and how many ordinary lines (if any) stay visible alongside each:
+ * and how many ordinary lines stay visible alongside each — enrichment keeps
+ * 3, since the presenter is still narrating the pipeline context (the
+ * quality-gate retry, the search that led here) right up to the moment the
+ * card appears.
  *
- *  - enrichment keeps 3 — the presenter is still narrating the pipeline
- *    context (the quality-gate retry, the search that led here) right up to
- *    the moment the card appears.
- *  - ground_truth keeps 0 — the bonus scene is a single turn whose entire
- *    point IS the card; showing pipeline steps above it just pushed the card
- *    below a scroll on shorter viewports for no narrative benefit (#130).
- *
- * The two moments never fire in the same turn in any current demo script; if
- * they somehow did, whichever is last in `deduped` (most recently updated)
- * wins the single card slot.
+ * ground_truth is NOT a moment here — it used to replace the step lines
+ * entirely (cap 0), on the assumption it only ever fires in its own
+ * dedicated single-turn bonus scene. That assumption turned out to be false:
+ * `lookup_judgments()` runs on every query in every demo, so any exact-match
+ * query — typed mid-Arc-1, mid-Arc-2, anywhere — can trigger it, and hiding
+ * that turn's actual pipeline context whenever it did was surprising rather
+ * than helpful. It now renders in its own tab (see NarratorPanel/index.tsx)
+ * instead of competing with step lines for space, so it's filtered out here
+ * and never enters the moment-capping logic at all.
  */
 const MOMENT_LINE_CAPS: Partial<Record<NarratorNode, number>> = {
   enrichment: MAX_VISIBLE_LINES_WITH_MOMENT,
-  ground_truth: 0,
 }
 const MOMENT_NODES = new Set<NarratorNode>(Object.keys(MOMENT_LINE_CAPS) as NarratorNode[])
 
 export function visibleLines(lines: NarratorLine[]): NarratorLine[] {
   const byNode = new Map<NarratorNode, NarratorLine>()
   for (const line of lines) {
+    if (line.node === 'ground_truth') continue
     byNode.set(line.node, line)
   }
   // Map preserves insertion order, and a re-set key keeps its original
@@ -504,8 +506,6 @@ export function visibleLines(lines: NarratorLine[]): NarratorLine[] {
   }
 
   const cap = MOMENT_LINE_CAPS[moment.node] ?? MAX_VISIBLE_LINES_WITH_MOMENT
-  if (cap <= 0) return [moment]
-
   // Keep the card, and only the pipeline lines immediately preceding it.
   const rest = deduped.filter((l) => !MOMENT_NODES.has(l.node))
   return [...rest.slice(-cap), moment]
