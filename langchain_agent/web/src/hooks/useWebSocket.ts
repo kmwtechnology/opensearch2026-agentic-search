@@ -4,16 +4,10 @@
  */
 
 import { useCallback, useRef } from 'react'
-import { useAuthStore } from '../stores/authStore'
 import { useChatStore, type ChatMessage } from '../stores/chatStore'
 import { useObservabilityStore } from '../stores/observabilityStore'
 import { useOptimizationsStore } from '../stores/optimizationsStore'
 import type { AgentEvent, NodeName } from '../types/events'
-
-// Custom WebSocket close code: server-side session_auth rejected the
-// handshake (no/invalid login cookie). Mirrors WS_CLOSE_UNAUTHORIZED in
-// langchain_agent/api/middleware/session_auth.py.
-const WS_CLOSE_UNAUTHORIZED = 4401
 
 // Singleton WebSocket instance
 let wsInstance: WebSocket | null = null
@@ -242,15 +236,7 @@ export function useWebSocket(): UseWebSocketReturn {
         setConnectionState(false, false, 'WebSocket connection error')
       }
 
-      ws.onclose = (event) => {
-        // 4401 = server says we are no longer authenticated (session expired
-        // or never established). Flip the auth store so the AuthGate
-        // re-renders the LoginScreen on the next paint.
-        if (event.code === WS_CLOSE_UNAUTHORIZED) {
-          console.warn('WebSocket closed: session expired or unauthenticated')
-          useAuthStore.getState().markUnauthenticated()
-        }
-
+      ws.onclose = () => {
         // Only update state if this is still the current WebSocket instance
         // This prevents stale onclose handlers from overwriting state when switching conversations
         if (wsInstance === ws) {

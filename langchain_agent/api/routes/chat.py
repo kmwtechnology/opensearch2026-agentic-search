@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import verify_same_origin, verify_websocket_origin
-from api.middleware.session_auth import verify_session, verify_websocket_session
 from api.schemas.events import (
     AgentCompleteEvent,
     AgentErrorEvent,
@@ -279,13 +278,8 @@ async def websocket_chat(websocket: WebSocket):
         - `AgentErrorEvent` — Error occurred (recoverable or fatal)
 
     **Authentication:**
-        Two layers, both enforced before the WebSocket is accepted:
-        1. **Same-origin** — Origin header must match the deployed app
-           (allow-list of localhost dev ports + Cloud Run `*.run.app`).
-        2. **Shared-password session cookie** (`ahs_session`) — set by
-           ``POST /api/auth/login``; verified by ``verify_websocket_session``.
-           Rejection closes the socket with code **4401** so the SPA can
-           route back to the login screen.
+        Same-origin only — Origin header must match the deployed app
+        (allow-list of localhost dev ports + Cloud Run `*.run.app`).
 
     **Error Handling:**
         - Invalid thread_id format → disconnects with error
@@ -295,11 +289,6 @@ async def websocket_chat(websocket: WebSocket):
     # Verify same-origin authentication before accepting connection
     if not await verify_websocket_origin(websocket):
         return  # Connection closed by verify function
-
-    # Verify the session cookie carries an authenticated login. Closes with
-    # 4401 on failure so the SPA can route back to the login screen.
-    if not await verify_websocket_session(websocket):
-        return
 
     # Get or generate thread ID
     thread_id = websocket.query_params.get("thread_id")
@@ -578,8 +567,6 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
 
     **Authentication:**
         - Same-origin required (enforced via Origin header)
-        - Shared-password session cookie (`ahs_session`, set by
-          ``POST /api/auth/login``); 401 on missing/expired session
 
     **Request:** `POST /api/chat`
         ```json
@@ -613,7 +600,6 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
     """
     # Verify same-origin authentication
     await verify_same_origin(request)
-    await verify_session(request)
 
     thread_id = chat_request.thread_id or f"conversation_{uuid.uuid4().hex[:8]}"
 

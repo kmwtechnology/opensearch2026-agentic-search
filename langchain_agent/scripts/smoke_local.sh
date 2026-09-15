@@ -37,18 +37,6 @@ if ! pg_isready -h localhost -p 5432 >/dev/null 2>&1 && ! curl -sf http://localh
   fi
 fi
 
-# Read LOGIN_PASSWORD from .env
-if [ ! -f .env ]; then
-  echo "❌ .env not found — run setup.sh first" >&2
-  exit 1
-fi
-LOGIN_PASSWORD=$(grep '^LOGIN_PASSWORD=' .env | cut -d= -f2-)
-if [ -z "$LOGIN_PASSWORD" ]; then
-  echo "❌ LOGIN_PASSWORD not set in .env" >&2
-  exit 1
-fi
-export LOGIN_PASSWORD
-
 STARTED_BACKEND=0
 BACKEND_PID=""
 

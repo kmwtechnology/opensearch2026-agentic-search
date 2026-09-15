@@ -90,25 +90,25 @@ describe('apiGet', () => {
 
 describe('apiPost', () => {
   it('uses POST method', async () => {
-    await apiPost('/api/auth/login', { password: 'secret' })
+    await apiPost('/api/admin/demo-reset', { attribute_type: 'color' })
     const [, options] = mockFetch.mock.calls[0]
     expect(options.method).toBe('POST')
   })
 
   it('JSON-serialises the body', async () => {
-    await apiPost('/api/auth/login', { password: 'abc' })
+    await apiPost('/api/admin/demo-reset', { attribute_type: 'color' })
     const [, options] = mockFetch.mock.calls[0]
-    expect(options.body).toBe(JSON.stringify({ password: 'abc' }))
+    expect(options.body).toBe(JSON.stringify({ attribute_type: 'color' }))
   })
 
   it('sends no body when body argument is omitted', async () => {
-    await apiPost('/api/auth/logout')
+    await apiPost('/api/admin/demo-reset')
     const [, options] = mockFetch.mock.calls[0]
     expect(options.body).toBeUndefined()
   })
 
   it('sends no body when body is undefined', async () => {
-    await apiPost('/api/auth/logout', undefined)
+    await apiPost('/api/admin/demo-reset', undefined)
     const [, options] = mockFetch.mock.calls[0]
     expect(options.body).toBeUndefined()
   })

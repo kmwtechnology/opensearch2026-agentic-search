@@ -29,21 +29,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from starlette.middleware.sessions import SessionMiddleware
 
-from api.middleware.auth import AuthConfigurationError
 from api.middleware.client_ip import get_client_ip
-from api.routes import admin, auth, chat, conversations, health, suggest
-from core.config import (
-    ENABLE_ENRICHMENT_TOOL,
-    LOGIN_PASSWORD,
-    RATE_LIMIT_ENABLED,
-    REQUIRE_LOGIN,
-    SESSION_COOKIE_NAME,
-    SESSION_COOKIE_SECURE,
-    SESSION_MAX_AGE_SECONDS,
-    SESSION_SECRET,
-)
+from api.routes import admin, chat, conversations, health, suggest
+from core.config import ENABLE_ENRICHMENT_TOOL, RATE_LIMIT_ENABLED
 from core.logging_config import configure_logging, get_logger
 from pipeline.reindex_trigger import build_reindex_trigger
 
@@ -82,17 +71,6 @@ async def lifespan(app: FastAPI):
     decorators with a modern async context manager pattern.
     """
     # Startup
-    if REQUIRE_LOGIN and not LOGIN_PASSWORD:
-        raise AuthConfigurationError(
-            "REQUIRE_LOGIN is true but LOGIN_PASSWORD is not set. "
-            "Set LOGIN_PASSWORD in your .env file, or leave REQUIRE_LOGIN unset "
-            "to run without the login gate."
-        )
-    if not SESSION_SECRET or len(SESSION_SECRET) < 32:
-        raise AuthConfigurationError(
-            "SESSION_SECRET must be set to a value of at least 32 characters. "
-            "Generate one with `openssl rand -hex 32`."
-        )
     if ENABLE_ENRICHMENT_TOOL:
         # Fail fast on REINDEX_TRIGGER misconfiguration (e.g. github mode with no
         # token) instead of discovering it on the first live enrichment.
@@ -119,8 +97,6 @@ async def lifespan(app: FastAPI):
         rest_api=f"{base_url}/api",
         websocket=base_url.replace("http", "ws") + "/ws/chat",
         docs=f"{base_url}/swagger",
-        auth_required=True,
-        login_gate=REQUIRE_LOGIN,
     )
 
     yield  # Application runs here
@@ -151,21 +127,13 @@ tags_metadata = [
         ),
     },
     {
-        "name": "auth",
-        "description": (
-            "Shared-password login gate. `POST /api/auth/login` validates the password and "
-            "sets an HttpOnly session cookie; `POST /api/auth/logout` clears it; "
-            "`GET /api/auth/status` reports whether the current request is authenticated."
-        ),
-    },
-    {
         "name": "conversations",
         "description": "Conversation history CRUD (LangGraph checkpoints in Postgres).",
     },
     {
         "name": "admin",
         "description": (
-            "Operational endpoints for index health and diagnostics (requires admin auth). "
+            "Operational endpoints for index health and diagnostics (same-origin only). "
             "Reindexing is handled externally: `bash scripts/lucille_ingest.sh`. "
             "No in-container ingest."
         ),
@@ -206,9 +174,8 @@ app = FastAPI(
         "retriever sent. `query_type` ∈ {`hybrid`, `bm25_baseline`, `quality_gate_retry`} "
         "tags each event so the observability panel can render an eye-icon viewer per query.\n"
         "- **Real-time streaming**: token-by-token output over WebSocket\n\n"
-        "**Authentication:** Two-layer auth (both enforced): "
-        "(1) Same-origin check (localhost dev ports + Cloud Run URL), "
-        "(2) Session cookie (LoginScreen) OR X-Admin-Token header (automation).\n\n"
+        "**Authentication:** Same-origin check (localhost dev ports + Cloud Run URL) "
+        "on every route.\n\n"
         "See [openapi.yaml](https://github.com/kmwtechnology/opensearch2026-agentic-search/blob/main/"
         "langchain_agent/openapi.yaml) for the full hand-authored spec."
     ),
@@ -326,24 +293,8 @@ app.add_middleware(
     allow_origin_regex=r"https://.*\.a\.run\.app",  # Accept all Cloud Run URLs
 )
 
-# Session cookie for the shared-password login gate. Added AFTER CORS so it
-# runs first on the incoming request (Starlette middleware is reverse-add
-# order on the way in), populating ``request.session`` before any route or
-# WebSocket handler reads it. The lifespan check above kills startup if
-# SESSION_SECRET is missing/short, so the placeholder below is only ever
-# consulted during boot before traffic is served.
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=SESSION_SECRET or "unconfigured-startup-will-fail",
-    session_cookie=SESSION_COOKIE_NAME,
-    https_only=SESSION_COOKIE_SECURE,
-    same_site="lax",
-    max_age=SESSION_MAX_AGE_SECONDS,
-)
-
 # Register REST routes
 app.include_router(health.router, prefix="/api", tags=["health"])
-app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(conversations.router, prefix="/api", tags=["conversations"])
 app.include_router(suggest.router, prefix="/api", tags=["suggest"])
 app.include_router(admin.router, tags=["admin"])

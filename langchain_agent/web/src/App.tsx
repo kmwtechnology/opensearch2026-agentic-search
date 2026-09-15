@@ -34,10 +34,9 @@ function ChatApp() {
 }
 
 function App() {
-  // No AuthGate (#103). The shared-password screen put a password prompt
-  // between a presenter and their own demo, on stage, and the backend now
-  // treats the login gate as optional (REQUIRE_LOGIN, default off). Set
-  // REQUIRE_LOGIN=true and this needs a gate again.
+  // No AuthGate (#103, made permanent in #135). The shared-password screen
+  // put a password prompt between a presenter and their own demo, on stage.
+  // The backend has no login gate to match -- every route is same-origin-only.
   return (
     <BrowserRouter>
       <Routes>

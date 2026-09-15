@@ -26,7 +26,6 @@ That is the explicit guard against the original crash class.
 Drive locally:
 
     CLOUD_RUN_URL=http://localhost:8000 \
-      LOGIN_PASSWORD=$(grep '^LOGIN_PASSWORD=' .env | cut -d= -f2) \
       PYTHONPATH=. .venv/bin/pytest tests/e2e/test_demo_queries_smoke.py \
       -v -s --tb=short -m "e2e and slow" --timeout=300 --asyncio-mode=auto
 """

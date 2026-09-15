@@ -1,12 +1,9 @@
 /**
  * API utility with same-origin authentication.
  *
- * Two-layer auth model:
- * 1. Same-origin (Origin/Referer/Host) enforced by the backend on every route.
- * 2. Shared-password session cookie (HttpOnly) set by POST /api/auth/login.
- *
- * The cookie rides automatically because every request below carries
- * `credentials: 'include'`. No API key is sent in headers or query params.
+ * Same-origin (Origin/Referer/Host) is enforced by the backend on every
+ * route -- no login, no session cookie, no API key sent in headers or
+ * query params.
  */
 
 // When frontend and API are on the same domain (Cloud Run, localhost),
@@ -44,10 +41,6 @@ export async function apiFetch(
   return fetch(url, {
     ...options,
     headers,
-    // Send the session cookie set by /api/auth/login. Without this, the
-    // browser would drop the cookie even on same-origin requests when
-    // `credentials` defaults to 'same-origin' isn't relied on (e.g. when
-    // VITE_API_URL points at a different port during local dev).
     credentials: 'include',
   })
 }

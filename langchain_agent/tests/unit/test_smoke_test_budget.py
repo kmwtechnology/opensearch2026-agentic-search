@@ -31,9 +31,8 @@ SMOKE_TEST_FILE = REPO_ROOT / "langchain_agent" / "tests" / "e2e" / "test_deploy
 # (Gemini 3 Flash + reranker scoring 40 docs + network). Kept conservative
 # even for local runs since a cold model/embedding cache can be just as
 # slow as the original network-bound measurement.
-# Setup includes: POST /api/auth/login round-trip (cookie acquisition for the
-# login gate) + ws_connect + connection_established.
-SETUP_OVERHEAD_S = 7  # login round-trip + ws_connect + connection_established
+# Setup includes: ws_connect + connection_established.
+SETUP_OVERHEAD_S = 7  # ws_connect + connection_established
 PER_CHAT_MESSAGE_BUDGET_S = 40  # cross-encoder on 40 docs: 30-37s observed
 PER_RECV_BUDGET_CAP_S = 15  # cap on inner asyncio.wait_for timeouts
 

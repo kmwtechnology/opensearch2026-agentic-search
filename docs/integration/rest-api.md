@@ -8,22 +8,7 @@ Complete REST endpoint documentation with cURL examples.
 
 ## Authentication
 
-> **Note:** Authentication is optional by default. The backend's `REQUIRE_LOGIN` config defaults to `false`, meaning no login gate is enforced and this step can be skipped. See [Auth Patterns](auth-patterns.md) for full details.
-
-First, log in to get a session cookie (when `REQUIRE_LOGIN=true`):
-
-```bash
-# Login
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"password": "your_password"}' \
-  -c cookies.txt
-
-# Expected response (200 OK):
-# Set-Cookie: ahs_session=...
-```
-
-Store the cookie with `-c cookies.txt`, then include it in all subsequent requests with `-b cookies.txt`.
+> **Note:** There is no login gate. Same-origin checking (`Origin`/`Referer` header against an allow-list) is the app's only auth layer — see [Auth Patterns](auth-patterns.md) for full details. Just make sure requests carry an allow-listed `Origin` header (see below); no login step is required.
 
 ### Health Check (No Auth Required)
 
@@ -59,7 +44,7 @@ There is no REST polling endpoint for conversations or messages — all chat hap
 
 ```bash
 curl 'http://localhost:8000/api/suggest?q=wireless' \
-  -b cookies.txt
+  -H "Origin: http://localhost:8000"
 ```
 
 Query parameters:
@@ -90,13 +75,13 @@ Response (200 OK):
 
 ## Admin Endpoints
 
-### Admin Health Check
+> **Note:** `/api/admin/*` routes are protected by same-origin checking only, same as everything else — there's no separate admin-token requirement in front of them today. (`ADMIN_TOKEN`/`verify_admin_token` exists in the codebase as a preserved-but-currently-unused utility for future automation; see [Auth Patterns](auth-patterns.md).)
 
-Requires `X-Admin-Token` header (for automation):
+### Admin Health Check
 
 ```bash
 curl http://localhost:8000/api/admin/health \
-  -H "X-Admin-Token: your_admin_token_here"
+  -H "Origin: http://localhost:8000"
 ```
 
 Response (200 OK):
@@ -117,7 +102,7 @@ This is an index-level probe (does the product index exist and how many document
 
 ```bash
 curl http://localhost:8000/api/admin/diagnose?q=sony \
-  -H "X-Admin-Token: your_admin_token_here"
+  -H "Origin: http://localhost:8000"
 ```
 
 Diagnostic-only: probes the live index for a query (`q`, default `"sony"`) across the suggest fields (`title_suggest`/`brand_suggest`) versus the primary lexical fields (`title`/`product_brand`), and reports whether the mapping includes the suggest fields at all — used to detect a stale mapping that predates the suggest feature.
@@ -132,7 +117,7 @@ Disabled by default; requires `ENABLE_ENRICHMENT_TOOL=true` on the backend.
 
 ```bash
 curl -X POST http://localhost:8000/api/admin/enrich \
-  -H "X-Admin-Token: your_admin_token_here" \
+  -H "Origin: http://localhost:8000" \
   -H "Content-Type: application/json" \
   -d '{"attribute_type": "material", "variant": "chrome", "canonical": "metal"}'
 ```
@@ -179,24 +164,6 @@ Returns 403 when `ENABLE_ENRICHMENT_TOOL` is unset/false, 422 on a missing
 
 ---
 
-## Logout
-
-```bash
-curl -X POST http://localhost:8000/api/auth/logout \
-  -b cookies.txt
-```
-
-Response (200 OK):
-```json
-{
-  "status": "logged_out"
-}
-```
-
-The session cookie is invalidated server-side. The `Set-Cookie` response header instructs the client to delete the cookie.
-
----
-
 ## Error Responses
 
 ### 400 Bad Request
@@ -206,16 +173,6 @@ The session cookie is invalidated server-side. The `Set-Cookie` response header 
   "detail": "Invalid JSON or missing required field 'message'"
 }
 ```
-
-### 401 Unauthorized
-
-```json
-{
-  "detail": "Invalid or missing session. Please login."
-}
-```
-
-**Fix:** Re-authenticate via `POST /api/auth/login`.
 
 ### 403 Forbidden
 
