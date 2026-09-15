@@ -152,32 +152,20 @@ PYTHONPATH=. pytest tests/integration/ -m "integration and not slow" -v
 
 ## CI Behavior
 
-The GitHub Actions workflow `.github/workflows/build-deploy.yml` runs integration tests
-on every push:
-- Ephemeral PostgreSQL + OpenSearch as GitHub Actions `services:` containers
-  (not docker compose)
-- A `setup.py --skip-db --skip-docs --skip-models` step runs first, creating the
-  product index with the correct mapping but no documents
-- `GOOGLE_API_KEY` is a dummy value — no real Google credential is available to
-  this job, so anything needing live LLM calls must be mocked. The real key comes
-  from Secret Manager at Cloud Run deploy time only.
-- Selection: `-m "not slow"` — everything runs except the real-Lucille-reindex
-  test noted above
-- Pytest timeout: 60 seconds
-
-Tests needing seeded taxonomy data point the mapping store at a throwaway index
-via `monkeypatch.setattr(store_module, "INDEX_NAME", ...)` and seed it themselves,
-so they run in CI without any corpus ingest. See `test_config_generator_live.py`.
-
-Note: **`make ci` only runs `pytest --collect-only` on integration tests** to catch import
-errors and signature changes. The actual test suite runs live in GitHub Actions. Before pushing,
-verify integration tests pass locally:
+There is no GitHub Actions CI (issue #113) — **`make ci` only runs
+`pytest --collect-only` on integration tests**, to catch import errors and
+signature changes without needing live services. The actual test suite
+must be run locally before pushing:
 
 ```bash
 docker compose up -d
 make dev-api &
 PYTHONPATH=. pytest tests/integration/ -v
 ```
+
+Tests needing seeded taxonomy data point the mapping store at a throwaway index
+via `monkeypatch.setattr(store_module, "INDEX_NAME", ...)` and seed it themselves,
+so they run without any corpus ingest. See `test_config_generator_live.py`.
 
 ## Difference from Unit Tests
 
@@ -187,16 +175,16 @@ PYTHONPATH=. pytest tests/integration/ -v
 | **API** | Direct function calls | HTTP/WebSocket clients |
 | **Speed** | ~1 s total | ~30–60 s depending on tests |
 | **Setup** | Automatic | Requires `docker compose up -d` + `make dev-api` |
-| **CI** | Collected and run | Collected only; run live in GitHub Actions |
+| **CI** | Collected and run | Collected only; run live locally before push |
 
 ## Difference from E2E Tests
 
 | Aspect | Integration | E2E |
 |--------|-------------|-----|
-| **Target** | Local backend `:8000` | Deployed Cloud Run |
+| **Target** | Local backend `:8000` | Local backend `:8000` by default (or a remote URL via `CLOUD_RUN_URL`) |
 | **Auth** | Session cookie (UI login) or `X-Admin-Token` | Session cookie or `X-Admin-Token` |
 | **Markers** | `integration` | `e2e` |
-| **When** | Locally before push; live on every PR/push | Post-deploy validation + regression |
+| **When** | Locally before push | Locally before push (smoke/regression coverage) |
 
 ## References
 

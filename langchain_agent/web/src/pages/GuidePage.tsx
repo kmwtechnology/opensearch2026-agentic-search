@@ -93,7 +93,7 @@ export function GuidePage() {
 
             <h4 className="font-semibold text-gray-900 mt-4">2. Open the UI</h4>
             <p className="text-[1.375rem]">Visit <a href="http://localhost:5173" className="text-blue-600 hover:underline">http://localhost:5173</a></p>
-            <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-1">The UI automatically detects the API URL: localhost:5173 connects to http://localhost:8000; Cloud Run detects the Cloud Run service URL.</p>
+            <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-1">The UI automatically detects the API URL: localhost:5173 connects to http://localhost:8000.</p>
 
             <h4 className="font-semibold text-gray-900 mt-4">3. Start asking</h4>
             <p className="text-[1.375rem] text-gray-600">Try: "What are the best wireless earbuds with active noise cancellation?"</p>
@@ -324,8 +324,8 @@ export function GuidePage() {
             <ul className="text-amber-900 mt-1 space-y-1 list-disc list-inside">
               <li><code>LOGIN_PASSWORD</code> — shared password (auto-generated on first <code>setup.sh</code>)</li>
               <li><code>SESSION_SECRET</code> — ≥32-char cookie-signing secret (<code>openssl rand -hex 32</code>)</li>
-              <li><code>SESSION_COOKIE_SECURE</code> — <code>true</code> for Cloud Run TLS, <code>false</code> for local HTTP</li>
-              <li><code>ADMIN_TOKEN</code> — (optional) 32+ character token for machine-to-machine auth; required for GitHub Actions reindex</li>
+              <li><code>SESSION_COOKIE_SECURE</code> — <code>true</code> for HTTPS deployments, <code>false</code> for local HTTP (default)</li>
+              <li><code>ADMIN_TOKEN</code> — (optional) 32+ character token for machine-to-machine auth</li>
             </ul>
             <p className="text-amber-900 mt-2 text-[1.25rem]">The frontend never receives these — the user types the password into the login screen and the cookie does the rest.</p>
           </div>
@@ -505,13 +505,13 @@ Server streams back:
           <div className="space-y-2 text-[1.375rem]">
             <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
               <p className="font-mono text-blue-900">GET /api/admin/health</p>
-              <p className="text-blue-600 text-[1.25rem] mt-1">Index-level health: document count, index state, connectivity. Used by GitHub Actions <code>reindex.yml</code> workflow to confirm ingestion completion. Requires <code className="bg-white px-1">X-Admin-Token</code> header or session cookie.</p>
+              <p className="text-blue-600 text-[1.25rem] mt-1">Index-level health: document count, index state, connectivity. Useful to confirm ingestion completed after a reindex. Requires <code className="bg-white px-1">X-Admin-Token</code> header or session cookie.</p>
             </div>
             <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
               <p className="font-mono text-blue-900">GET /api/admin/diagnose?q=query</p>
               <p className="text-blue-600 text-[1.25rem] mt-1">Diagnostic probe: check which fields index a query term (title, product_brand, suggest fields). Helps verify index mapping after reindex. Requires <code className="bg-white px-1">X-Admin-Token</code> header or session cookie.</p>
             </div>
-            <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-2"><strong>Reindexing:</strong> Handled externally by <code>bash scripts/lucille_ingest.sh</code> (local dev) or <code>reindex.yml</code> GitHub Actions workflow (production). No in-container ingest.</p>
+            <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-2"><strong>Reindexing:</strong> Handled externally by <code>bash scripts/lucille_ingest.sh</code>. No in-container ingest.</p>
           </div>
         </div>
       ),
@@ -659,7 +659,7 @@ Server streams back:
 
             <div className="border-l-4 border-yellow-500 pl-3">
               <p className="font-semibold text-gray-900">Slow responses</p>
-              <p className="text-gray-600">Expected latency: ~6–15s local, ~35s on Cloud Run (includes cold start). Bottleneck: usually retrieval or LLM generation, not reranking.</p>
+              <p className="text-gray-600">Expected latency: ~6–15s (first request after startup is slower: cross-encoder model load). Bottleneck: usually retrieval or LLM generation, not reranking.</p>
               <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Check the Observability panel for pipeline latencies. Default cross-encoder reranking is fast (~10ms). If using Gemini reranker (optional), it's ~500ms–1s. Adjust RERANKER_FETCH_K to reduce candidate set or swap to a different reranker via RERANKER_TYPE in .env.</p>
             </div>
           </div>
@@ -675,7 +675,6 @@ Server streams back:
             <p className="font-semibold text-gray-900">Getting Started</p>
             <ul className="space-y-1 text-gray-700">
               <li><a href="https://github.com/kmwtechnology/opensearch2026-agentic-search/blob/main/docs/contributing/dev-setup.md" className="text-blue-600 hover:underline">⚙️ Local Development Setup</a> - Prerequisites, setup.sh walkthrough, daily workflow</li>
-              <li><a href="https://github.com/kmwtechnology/opensearch2026-agentic-search/blob/main/docs/operations/gcp-quickstart.md" className="text-blue-600 hover:underline">☁️ GCP Deployment Guide</a> - First-time GCP setup with Workload Identity Federation</li>
             </ul>
 
             <p className="font-semibold text-gray-900 mt-3">Documentation</p>

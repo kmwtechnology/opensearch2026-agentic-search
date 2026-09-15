@@ -176,7 +176,7 @@ mvn -version           # Maven 3.8+
 ls ~/github/kmwtechnology/lucille  # Lucille source (or set LUCILLE_DIR)
 ```
 
-The Docker path is production-safe (CI/CD, GCP deployments) and is the only path used by `.github/workflows/reindex.yml`.
+The Docker path is the default and doesn't need a local Java/Maven/Lucille checkout.
 
 ## Troubleshooting
 

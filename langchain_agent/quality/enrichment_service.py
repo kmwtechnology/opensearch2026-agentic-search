@@ -15,14 +15,12 @@ on-stage trigger):
   3. Ensure the OpenSearch index mapping has product_<attribute_type>
      (dual-mapped text) + product_<attribute_type>_primary/_secondary
      (keyword) fields — additive, only when the attribute type is new.
-  4. Trigger a REAL full catalog reindex through reindex_trigger: locally
-     that runs scripts/lucille_ingest.sh as a subprocess and waits (~20s);
-     on Cloud Run (REINDEX_TRIGGER=github) it dispatches the reindex.yml
-     workflow and returns immediately (~8 min, fire-and-forget). Either
-     way, scripts/lucille_ingest.sh regenerates products.generated.conf
+  4. Trigger a REAL full catalog reindex through reindex_trigger, which runs
+     scripts/lucille_ingest.sh as a subprocess and waits (~20s).
+     scripts/lucille_ingest.sh regenerates products.generated.conf
      (config_generator.py) itself as part of every ingest run -- this
      service never writes that file directly, since it lives alongside
-     the Lucille ETL source, which isn't present in the Cloud Run image.
+     the Lucille ETL source.
 
 This supersedes an earlier scoped update_by_query design — a real reindex
 was measured fast enough (~17-20s) to run live, so there's no need for a
@@ -64,8 +62,8 @@ class EnrichmentResult:
     reindex_success: bool = False
     docs_processed: int = 0
     duration_seconds: float = 0.0
-    reindex_mode: str = "local"  # "local" (subprocess) or "github" (workflow dispatch)
-    reindex_run_url: Optional[str] = None  # github mode: the dispatched run
+    reindex_mode: str = "local"
+    reindex_run_url: Optional[str] = None  # unused by the local trigger; kept for schema compat
     reindex_error: Optional[str] = None  # short detail when reindex_success is False
     # Set when this replaced an existing (wrong) mapping rather than adding a
     # new one — e.g. correcting the shipped "tan"->"yellow" mis-mapping to

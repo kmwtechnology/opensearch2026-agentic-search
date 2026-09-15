@@ -8,8 +8,7 @@
 #   docker/lucille/Dockerfile. No local Java/Maven/Lucille checkout needed.
 #   Works against both a local OpenSearch (the compose service, targeted via
 #   its DNS name when OPENSEARCH_HOST=localhost) and a remote hosted OpenSearch
-#   (CI, a GCP workstation — targeted directly via OPENSEARCH_URL). This is the
-#   path used by local dev, reindex.yml, and gcp-init.sh alike.
+#   (targeted directly via OPENSEARCH_URL if you point it at one).
 #
 #   Native (LUCILLE_USE_DOCKER=false) — the original path: builds lucille-esci
 #   locally against a Lucille source checkout and runs `java -cp ...`. Requires
@@ -48,8 +47,7 @@
 #   LUCILLE_USE_DOCKER (default: true) — see path selection above
 #   LUCILLE_IMAGE     — Docker path only. Pre-built Lucille image (e.g. from GHCR).
 #                     If set, skips the docker compose build step and uses this
-#                     image directly. Used by CI (reindex.yml) to avoid rebuilding
-#                     on every run; leave unset for local dev (builds from Dockerfile).
+#                     image directly; leave unset for local dev (builds from Dockerfile).
 #   LUCILLE_DIR       — native path only. Path to an external Lucille checkout,
 #                     used in Step 1 to install the lucille-parquet plugin into
 #                     ~/.m2. Defaults to a sibling clone at
@@ -96,8 +94,8 @@ error() { echo -e "${RED}[lucille_ingest] ERROR:${NC} $*" >&2; }
 
 # ── Load .env ────────────────────────────────────────────────────────────────
 # NON-OVERRIDE semantics (matches python-dotenv default): a variable already
-# present in the environment wins over the .env value. This is what lets callers
-# like gcp-init.sh export OPENSEARCH_HOST=<hosted-ip> and have Lucille target it
+# present in the environment wins over the .env value. This is what lets a
+# caller export OPENSEARCH_HOST=<hosted-ip> and have Lucille target it
 # — without this guard the .env line (OPENSEARCH_HOST=localhost) would clobber
 # the exported host and the ingest would silently write to localhost.
 ENV_FILE="$AGENT_DIR/.env"
@@ -160,9 +158,9 @@ export LUCILLE_VERSION
 # docker/lucille/Dockerfile and .env.example before changing either.
 LUCILLE_DOCKER_TAG="${LUCILLE_DOCKER_TAG:-0.11.1.0}"
 export LUCILLE_DOCKER_TAG
-# sha256 digest pinning LUCILLE_DOCKER_TAG's exact content — local dev and
-# GCP/CI both build from this byte-identical image. See .env.example for how
-# to refresh it when LUCILLE_DOCKER_TAG changes.
+# sha256 digest pinning LUCILLE_DOCKER_TAG's exact content — every build
+# uses this byte-identical image. See .env.example for how to refresh it
+# when LUCILLE_DOCKER_TAG changes.
 LUCILLE_DOCKER_DIGEST="${LUCILLE_DOCKER_DIGEST:-sha256:cefa9a3b2b9ed4c3cdf92da9abb93da37dc8ba392cc64ef39b81e02387f81073}"
 export LUCILLE_DOCKER_DIGEST
 
@@ -189,8 +187,8 @@ if [[ "$LUCILLE_USE_DOCKER" == "true" ]]; then
     exit 1
   fi
 
-  # If LUCILLE_IMAGE is set (e.g., by CI via reindex.yml), skip the build and
-  # use that pre-built/cached image directly. Otherwise, build from Dockerfile.
+  # If LUCILLE_IMAGE is set, skip the build and use that pre-built/cached
+  # image directly. Otherwise, build from Dockerfile.
   if [[ -n "${LUCILLE_IMAGE:-}" ]]; then
     info "Using pre-built Lucille image: $LUCILLE_IMAGE"
     # Ensure the image is available locally (pull if needed)
@@ -310,9 +308,6 @@ if ! generate_products_conf; then
     warn "No detect* stages will run: every product is indexed with no product_color_primary /"
     warn "product_material_primary fields, so color/material filters and the enrichment flywheel"
     warn "cannot work against this cluster. Re-run with --seed-taxonomy to seed it (see #71)."
-    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-      echo "::warning title=Empty attribute taxonomy::Mapping store at $_DISPLAY_URL has no attribute types; products indexed without color/material fields. Re-run reindex.yml with seed_taxonomy=true."
-    fi
   fi
 fi
 

@@ -206,8 +206,7 @@ both methods without needing probability calibration.
 **Was that re-index real, or just the affected products?** The whole catalog — a
 full Lucille run, ~20s for 9,618 products. A full reindex turned out to be fast
 enough to run live, so there was no need for a narrower, less authentic
-mechanism. On Cloud Run the same call dispatches `reindex.yml` and reports the
-run URL (`REINDEX_TRIGGER`).
+mechanism.
 
 **Why didn't the quality gate catch the bug itself?** Because it is not a
 failure by any tracked metric — it is a wrong-but-confident result, scoring 0.56

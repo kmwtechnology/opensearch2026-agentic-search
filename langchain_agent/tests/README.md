@@ -36,10 +36,8 @@ tests/
 │   ├── test_suggest.py
 │   └── test_websocket_integration.py
 │
-├── e2e/                           # Against a deployed Cloud Run instance
-│   ├── test_cloud_run_deployment.py
+├── e2e/                           # Against a local backend by default
 │   ├── test_demo_queries_smoke.py
-│   ├── test_deployment_data.py
 │   ├── test_deployment_smoke.py
 │   ├── test_latency_profiling.py
 │   ├── test_performance_load.py
@@ -65,7 +63,7 @@ PYTHONPATH=. pytest tests/ -v
 ```bash
 PYTHONPATH=. pytest tests/unit/ -v             # ~0.5 s, no deps
 PYTHONPATH=. pytest tests/integration/ -v      # needs Postgres + OpenSearch + GOOGLE_API_KEY
-PYTHONPATH=. pytest tests/e2e/ -v              # needs CLOUD_RUN_URL (and ADMIN_TOKEN)
+PYTHONPATH=. pytest tests/e2e/ -v              # needs a running backend + ADMIN_TOKEN (CLOUD_RUN_URL defaults to localhost:8000)
 ```
 
 ### By file or pattern
@@ -130,11 +128,11 @@ services — everything is mocked through `conftest.py`.
 | `test_routing_functions.py` | LangGraph edge routing logic |
 | `test_search_optimizations.py` | BM25 synonym expansion, fuzzy, phrase-boost, phonetic config |
 | `test_vector_store.py` | `OpenSearchVectorStore` hybrid search, RRF fusion, facets, collapse |
-| `test_e2e_ws_url_routes.py` | Pre-flight guard: every `/ws/*` URL referenced in `tests/e2e/` must resolve to a registered FastAPI WebSocket route — catches path/query-style mismatches locally before they reach Cloud Run |
+| `test_e2e_ws_url_routes.py` | Pre-flight guard: every `/ws/*` URL referenced in `tests/e2e/` must resolve to a registered FastAPI WebSocket route — catches path/query-style mismatches before they reach a running backend |
 | `test_e2e_event_types.py` | Pre-flight guard: every `event["type"] == "..."` literal in `tests/e2e/` must be declared in `api/schemas/events.py`; flags use of `event["event_type"]` (wire field is `type`) |
 | `test_e2e_payload_shapes.py` | Pre-flight guard: every `json.dumps({...})` WS payload in `tests/e2e/` must match the `chat_message` / `stop_execution` contract enforced by `api/routes/chat.py` (catches stale `{"query":, "session_id":}` shapes) |
 | `test_frontend_backend_event_parity.py` | Pre-flight guard: every backend `type: Literal[...]` in `events.py` must appear in `web/src/types/events.ts`; per-event `node:` literals must match between backend and frontend; `AgentEvent` union cannot reference Python builtins |
-| `test_smoke_test_budget.py` | Pre-flight guard: AST-walks each smoke / cloud-run / data e2e test, counts `chat_message` sends, computes a worst-case Cloud Run budget (`SETUP_OVERHEAD_S=5` + `PER_CHAT_MESSAGE_BUDGET_S=25` × sends), and asserts the workflow's `pytest --timeout=N` covers it. Also asserts inner `asyncio.wait_for(timeout=...)` ≤ workflow `--timeout` and `WEBSOCKET_TIMEOUT` ≥ per-message budget. Tighten constants only if you have new wall-clock data — they reflect production observation, not aspirational SLOs. |
+| `test_smoke_test_budget.py` | Pre-flight guard: AST-walks the smoke e2e test, counts `chat_message` sends, computes a worst-case budget (`SETUP_OVERHEAD_S=7` + `PER_CHAT_MESSAGE_BUDGET_S=40` × sends), and asserts `scripts/smoke_local.sh`'s `pytest --timeout=N` covers it. Also asserts inner `asyncio.wait_for(timeout=...)` ≤ that `--timeout` and `WEBSOCKET_TIMEOUT` ≥ per-message budget. Tighten constants only if you have new wall-clock data — they reflect production observation, not aspirational SLOs. |
 
 **Run time:** ~0.9 s. ~919 unit tests total. **Best for:** TDD,
 pre-commit, CI fast lane.
@@ -163,47 +161,28 @@ test suite locally after middleware/WebSocket changes before pushing.
 
 ### E2E (`tests/e2e/`)
 
-**Purpose:** smoke and regression testing against a deployed Cloud Run
-instance. See [`tests/e2e/README.md`](e2e/README.md) for scenarios and
+**Purpose:** smoke and regression testing against a running backend, local
+by default. See [`tests/e2e/README.md`](e2e/README.md) for scenarios and
 required environment.
 
 | File | Focus |
 | --- | --- |
 | `test_deployment_smoke.py` | Health check, auth, basic round-trip (18 tests) |
-| `test_cloud_run_deployment.py` | Cold start, scaling, service metadata, rate-limit ordering (17 tests) |
-| `test_deployment_data.py` | Product index population, sample queries, checkpoint persistence (10 tests) |
-| `test_demo_queries_smoke.py` | Demo query regression checks against deployed data |
-| `test_real_world_scenarios.py` | All 6 intents against live data with realistic queries |
+| `test_demo_queries_smoke.py` | Demo query regression checks |
+| `test_real_world_scenarios.py` | All 6 intents with realistic queries |
 | `test_latency_profiling.py` | Per-node latency breakdown |
 | `test_performance_load.py` | Sustained load, throughput, p95/p99 |
 | `test_stress.py` | Concurrent users, failure modes under pressure |
 
-> **2026-04-29:** the smoke / cloud-run / data trio (45 tests) all
-> execute on every push to `main` against the live Cloud Run deploy.
-> Until 2026-04-29 the cloud-run + data files silently skipped 12
-> tests because they used the legacy `websockets.client.connect`
-> without an Origin header — both files now use
-> `websockets.asyncio.client` + `additional_headers={"Origin":
-> ORIGIN_HEADER}` to match the smoke pattern. **Always run e2e files
-> against a real backend before pushing** — `make ci` only does
-> `--collect-only` on `tests/e2e/`.
+**Always run e2e files against a real backend before pushing** — `make ci`
+only does `--collect-only` on `tests/e2e/`.
 
 **Run time:** ~10 s – several minutes (load/stress). **Requires:** a
 backend URL and an `ADMIN_TOKEN` (or a session cookie from `/api/auth/login`).
-Two common configurations:
 
 ```bash
-# Against the deployed Cloud Run service:
-export CLOUD_RUN_URL="https://agentic-hybrid-search-375500751528.us-central1.run.app"
-export ADMIN_TOKEN="$(gcloud secrets versions access latest \
-  --secret=agentic-hybrid-search-admin-token \
-  --project=gen-lang-client-0250737934)"
-PYTHONPATH=. pytest tests/e2e/ -v
-
-# Against a local backend (faster iteration):
 docker compose up -d                           # PostgreSQL + OpenSearch
 make dev-api                                   # backend on :8000
-export CLOUD_RUN_URL="http://localhost:8000"   # in dev allow-list
 export ADMIN_TOKEN="$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2)"
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
@@ -234,17 +213,11 @@ pip install -r requirements-dev.txt
 PYTHONPATH=. pytest tests/ -v
 ```
 
-### CI (GitHub Actions)
+### CI
 
-`.github/workflows/build-deploy.yml` runs on PRs and pushes — unit +
-integration tests (ephemeral Postgres + OpenSearch), strict lint
-(black/isort/flake8/mypy), Docker build, and (on `main`) push + Cloud Run
-deploy + smoke test. Runners use Node.js 24.
-
-`.github/workflows/reindex.yml` is a separate manual-dispatch workflow
-that runs `scripts/lucille_ingest.sh` on the runner to re-ingest ESCI data
-into the deployed OpenSearch index — not invoked by the regular test/deploy
-flow. Verify the result via `GET /api/admin/health`.
+There is no GitHub Actions CI (issue #113) — `make ci` run locally
+(lint, unit tests, `--collect-only` on integration/e2e, frontend
+test/lint/type/build) is the only gate before merging to `main`.
 
 ## Common Issues
 
@@ -275,8 +248,8 @@ the backend if the test exercises the HTTP/WebSocket layer.
 
 ### E2E tests failing with 401
 
-Check `ADMIN_TOKEN` matches what's stored in Secret Manager for the deployed
-service, and that `CLOUD_RUN_URL` has the correct scheme + host.
+Check `ADMIN_TOKEN` matches the value in `.env`, and that `CLOUD_RUN_URL`
+(if set) has the correct scheme + host — it defaults to `http://localhost:8000`.
 
 ## Performance Testing
 

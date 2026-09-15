@@ -295,7 +295,7 @@ See [Testing](testing.md) for the test pyramid. Key patterns:
 
 - Unit tests: no external deps, fast, use mocks
 - Integration tests: real PostgreSQL + OpenSearch, slower
-- E2E tests: full system, deployed Cloud Run
+- E2E tests: full system, local backend by default
 - Smoke tests: regression suite before push
 
 ```python
@@ -312,7 +312,7 @@ async def test_retriever_with_opensearch():
 
 # E2E test (full system)
 async def test_chat_end_to_end():
-    # Uses live Cloud Run service
+    # Uses a running local backend
     response = await send_chat_message("wireless headphones")
     assert "headphones" in response["citations"][0]["title"]
 ```

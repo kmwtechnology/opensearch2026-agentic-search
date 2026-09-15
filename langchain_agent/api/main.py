@@ -166,8 +166,8 @@ tags_metadata = [
         "name": "admin",
         "description": (
             "Operational endpoints for index health and diagnostics (requires admin auth). "
-            "Reindexing is handled externally: `bash scripts/lucille_ingest.sh` (local dev) "
-            "or `reindex.yml` GitHub Actions workflow (production). No in-container ingest."
+            "Reindexing is handled externally: `bash scripts/lucille_ingest.sh`. "
+            "No in-container ingest."
         ),
     },
     {
@@ -183,7 +183,7 @@ app = FastAPI(
     title="Agentic Hybrid Search API",
     description=(
         "Production-grade RAG agent for Amazon ESCI e-commerce product search, "
-        "deployed on GCP Cloud Run.\n\n"
+        "running local-only (Docker Compose).\n\n"
         "**Features:**\n"
         "- **Hybrid search**: BM25 + vector (RRF fusion, k=60) with dynamic alpha per intent\n"
         "- **Intent routing**: 7 classes (search, comparison, attribute_filter, refinement, "
