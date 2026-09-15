@@ -217,7 +217,7 @@ export function Layout() {
               it fits on one line and it is the thing the presenter actually
               needs in front of them. A presenter who improvises is not
               corrected; this stays a hint. */}
-          <p className="truncate text-[length:var(--text-stage-body)] font-semibold text-[var(--color-stage-ink-muted)]">
+          <p className="truncate text-[1.75rem] font-semibold text-[var(--color-stage-ink-muted)]">
             {nextTurn ? (
               <>
                 {/* Names the query the Next button will SEND, which during a
@@ -264,9 +264,6 @@ export function Layout() {
             ) : nextTurn ? (
               <>
                 Next
-                <span className="font-semibold opacity-90">
-                  {currentTurn}/{demo.turns.length}
-                </span>
                 <ChevronRight className="h-7 w-7" strokeWidth={3} aria-hidden="true" />
               </>
             ) : (
@@ -330,7 +327,7 @@ export function Layout() {
           className={`${mobileTab === 'pipeline' ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 overflow-hidden`}
         >
           {rightPane === 'narrator' ? (
-            <NarratorPanel onShowDetails={() => setRightPane('details')} />
+            <NarratorPanel />
           ) : (
             <ObservabilityPanel />
           )}

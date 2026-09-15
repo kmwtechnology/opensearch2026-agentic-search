@@ -25,9 +25,9 @@ export function ChatPanel() {
   return (
     <div className="flex h-full w-full flex-col bg-[var(--color-stage-surface)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-stage-border)]">
+      <div className="flex items-center justify-between border-b-2 border-[var(--color-stage-border-soft)] px-7 py-5">
         <div className="flex items-center gap-2">
-          <h1 className="text-[1.75rem] font-semibold text-[var(--color-stage-ink)]">Chat</h1>
+          <h1 className="text-[length:var(--text-stage-body)] font-semibold text-[var(--color-stage-ink)]">Chat</h1>
           {(isProcessing || isExecuting) && (
             <span
               className="node-badge node-badge-running"

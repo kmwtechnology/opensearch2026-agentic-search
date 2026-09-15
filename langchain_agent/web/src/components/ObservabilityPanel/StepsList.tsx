@@ -39,12 +39,9 @@ export function StepsList() {
     }
     return (
       <div className="flex flex-col items-center justify-center h-full text-[var(--color-stage-ink-soft)] px-4">
-        <div className="text-center max-w-sm">
-          <p className="text-[var(--text-stage-body)] font-medium text-[var(--color-stage-ink-muted)]">
-            Send a message to see the agent's execution steps in real-time.
-          </p>
-          <p className="text-[1.375rem] mt-2 text-[var(--color-stage-ink-muted)]">
-            Each step shows what the agent is doing and why.
+        <div className="text-center max-w-md">
+          <p className="text-[length:var(--text-stage-lead)] font-semibold text-[var(--color-stage-ink-muted)]">
+            Send a message to see the agent's execution steps.
           </p>
         </div>
       </div>
