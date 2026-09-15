@@ -575,7 +575,7 @@ Symptom: Agent stalls after a certain node
 
 **Fix**:
 
-1. Check `QUERY_EVAL_TIMEOUT_MS`, `LINK_VERIFICATION_TIMEOUT_MS` in config
+1. Check `ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS`, `LINK_VERIFICATION_TIMEOUT_MS` in config
 2. Add `asyncio.timeout()` to long-running operations
 3. Use LangSmith tracing to profile which node is slow
 4. Consider async/parallel execution if multiple independent operations
