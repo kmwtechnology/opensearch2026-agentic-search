@@ -111,11 +111,7 @@ function Line({ line, lead }: { line: NarratorLine; lead: boolean }) {
   )
 }
 
-interface Props {
-  onShowDetails?: () => void
-}
-
-export function NarratorPanel({ onShowDetails }: Props) {
+export function NarratorPanel() {
   const steps = useObservabilityStore((s) => s.steps)
   const isExecuting = useObservabilityStore((s) => s.isExecuting)
   const enrichmentStartedAt = useObservabilityStore((s) => s.enrichmentStartedAt)
@@ -179,7 +175,7 @@ export function NarratorPanel({ onShowDetails }: Props) {
       aria-label="What just happened"
     >
       <header className="flex items-center justify-between border-b-2 border-[var(--color-stage-border-soft)] px-7 py-5">
-        <h2 className="font-bold uppercase tracking-[0.12em] text-[var(--color-stage-ink-soft)] text-[length:var(--text-stage-label)]">
+        <h2 className="text-[length:var(--text-stage-body)] font-semibold text-[var(--color-stage-ink)]">
           What just happened
         </h2>
         {isExecuting && (
@@ -234,16 +230,10 @@ export function NarratorPanel({ onShowDetails }: Props) {
         )}
       </div>
 
-      <footer className="flex items-center justify-between border-t-2 border-[var(--color-stage-border-soft)] px-7 py-4">
+      <footer className="border-t-2 border-[var(--color-stage-border-soft)] px-7 py-4">
         <span className="font-semibold text-[var(--color-stage-ink-soft)] text-[length:var(--text-stage-label)]">
           {steps.length} {steps.length === 1 ? 'step' : 'steps'}
         </span>
-        <button
-          onClick={onShowDetails}
-          className="font-semibold text-[var(--color-stage-ink-soft)] text-[length:var(--text-stage-label)] focus:outline-none focus:ring-2 focus:ring-[#1E40AF] rounded"
-        >
-          Press <kbd className="rounded bg-[var(--color-stage-raised)] px-2 py-0.5 font-mono text-[1.25rem] text-[var(--color-stage-ink)]">F2</kbd> for full detail
-        </button>
       </footer>
     </section>
   )

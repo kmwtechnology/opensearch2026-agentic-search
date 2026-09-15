@@ -194,7 +194,7 @@ export function MessageList() {
     // presenter or already shown in the demo header.
     return (
       <div className="flex h-full items-center justify-center px-6">
-        <p className="text-center text-[length:var(--text-stage-body)] font-medium text-[var(--color-stage-ink-soft)]">
+        <p className="text-center text-[length:var(--text-stage-lead)] font-semibold text-[var(--color-stage-ink-soft)]">
           Ask a question to begin.
         </p>
       </div>
