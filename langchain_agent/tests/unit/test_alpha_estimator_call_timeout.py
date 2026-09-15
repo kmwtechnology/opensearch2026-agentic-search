@@ -1,5 +1,5 @@
-"""Regression: the retriever's hidden alpha_estimator_llm calls must not
-block indefinitely.
+"""Regression: the pipeline's hidden alpha_estimator_llm / structured
+alpha-estimation calls must not block indefinitely.
 
 Retriever._extract_attributes and Retriever._expand_vague_query both make
 a synchronous self.alpha_estimator_llm.invoke(prompt) call with no timeout
@@ -7,9 +7,17 @@ of their own -- one was measured hanging ~18.7s vs. a normal <1s in a
 reindex-adjacent trial, invisible to the user (no node event, no bound on
 how long it can run). See issue #117/#120.
 
+query_evaluator_node's structured_llm.invoke(evaluation_prompt) call had
+the same shape of bug, plus a documentation trap: it looked protected by
+an `except SearchTimeoutError` clause backed by QUERY_EVAL_TIMEOUT_MS, but
+that constant was never wired to anything and SearchTimeoutError is only
+ever raised by OpenSearch search calls, never an LLM invoke() -- the
+except-clause was dead code. See issue #122.
+
 These tests pin the fix: _invoke_with_timeout enforces
-ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS and both call sites fall back
-gracefully (empty filter list / original query) rather than hanging.
+ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS (now the single shared budget for all
+three call sites) and each falls back gracefully (empty filter list /
+original query / collection-default alpha) rather than hanging.
 """
 
 from __future__ import annotations
@@ -88,4 +96,22 @@ class TestAlphaEstimatorCallTimeout:
             elapsed = time.monotonic() - start
 
         assert expanded == "those but blue"
+        assert elapsed < 1.0, f"should not block for the full hang duration, took {elapsed:.2f}s"
+
+    def test_query_evaluator_falls_back_to_default_alpha_on_timeout(self) -> None:
+        agent = _agent_with_slow_llm(delay_seconds=5)
+        agent.alpha_estimator_llm = None  # not used by this path
+        agent.alpha_structured = _SlowLLM(delay_seconds=5)
+        state = {
+            "messages": [HumanMessage(content="best headphones for long flights")],
+            "intent": "search",  # LLM path, not a fast-path intent
+        }
+
+        with patch("pipeline.pipeline_nodes.ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS", 0.05):
+            start = time.monotonic()
+            result = agent.query_evaluator_node(state)
+            elapsed = time.monotonic() - start
+
+        assert result["intent_description"] == "Unknown (timeout)"
+        assert result["alpha"] == 0.65  # esci_products collection default
         assert elapsed < 1.0, f"should not block for the full hang duration, took {elapsed:.2f}s"

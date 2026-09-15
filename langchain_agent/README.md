@@ -277,8 +277,9 @@ ENABLE_RERANKING = True
 RERANKER_FETCH_K = 40         # Candidates reranked
 RERANKER_TOP_K = 10           # Final top-K
 ENABLE_QUERY_EVALUATION = True
-QUERY_EVAL_TIMEOUT_MS = 3000
 ```
+
+`ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS` (default 5) **is** `.env`-settable — it bounds the query evaluator's alpha-estimation call and the retriever's attribute-extraction/query-expansion calls (same underlying model), replacing the formerly-dead `QUERY_EVAL_TIMEOUT_MS`.
 
 ### Intent routing
 

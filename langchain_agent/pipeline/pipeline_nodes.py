@@ -33,7 +33,7 @@ from core.config import (
     SEARCH_DEFAULTS,
     VECTOR_COLLECTION_NAME,
 )
-from core.exceptions import LLMError, SearchTimeoutError
+from core.exceptions import LLMError
 from observability.llm_content import _flatten_llm_content
 from pipeline import enrichment_events
 from quality.enrichment_value_judge import EnrichmentValueJudge
@@ -383,7 +383,9 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         structured_llm = self.alpha_structured or self.llm.with_structured_output(AlphaEstimation)
         try:
-            result = structured_llm.invoke(evaluation_prompt)
+            result = self._invoke_with_timeout(
+                structured_llm, evaluation_prompt, ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS
+            )
 
             alpha = max(0.0, min(1.0, result.alpha))
             reasoning = result.reasoning or "No reasoning provided"
@@ -413,7 +415,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 "intent_optimized": False,  # LLM-driven, not fast-path
             }
 
-        except SearchTimeoutError as e:
+        except FutureTimeoutError:
             elapsed = time.time() - start_time
             collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
             fallback_alpha = collection_defaults.get("alpha", DEFAULT_ALPHA)
@@ -421,7 +423,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 "Query evaluation timeout",
                 extra={
                     "elapsed_ms": int(elapsed * 1000),
-                    "timeout_ms": getattr(e, "timeout_ms", None),
+                    "timeout_ms": int(ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS * 1000),
                     "fallback_alpha": fallback_alpha,
                 },
             )
