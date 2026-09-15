@@ -665,7 +665,7 @@ class TestCaptureBody:
 
     def test_capture_body_is_pure_dsl(self):
         """The body field must contain ONLY valid OpenSearch DSL — no internal
-        sentinels — so users can paste it into Dashboards Dev Tools."""
+        sentinels — so users can paste it into OpenSearch's Dev Tools or any REST client."""
         store, mock_client = _make_store()
         mock_client.search.return_value = {"hits": {"hits": []}}
 

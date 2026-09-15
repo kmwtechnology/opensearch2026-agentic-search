@@ -106,7 +106,7 @@ This script handles all initialization in 6 phases:
 | 2: ESCI Clone | Downloads 10K product sample (1.5 GB, GitHub) | 2–5 min |
 | 3: Python venv | Creates `.venv`, installs dependencies (pip install) | 3–5 min |
 | 4: Node deps | Installs frontend packages (npm install) | 1–2 min |
-| 5: Docker up | Starts Postgres, OpenSearch, Dashboards containers | ~30s |
+| 5: Docker up | Starts Postgres, OpenSearch containers | ~30s |
 | 6: Ingest | Initializes DB + indexes products (Lucille ETL) | 3–5 min |
 
 **At the end**, the script prints your login credentials and URLs. Note the `LOGIN_PASSWORD` — you'll need it to log in on your first run.
@@ -135,7 +135,6 @@ You'll see output like:
 ```
 ✓ Backend running on http://localhost:8000
 ✓ Frontend running on http://localhost:5173
-✓ OpenSearch Dashboards on http://localhost:5601
 ```
 
 Then:

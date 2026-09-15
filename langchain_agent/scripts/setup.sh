@@ -84,7 +84,7 @@ WHAT THIS SCRIPT DOES:
     5. Creates frontend .env configuration
     6. Installs Python dependencies in root .venv
     7. Installs Node.js frontend dependencies
-    8. Starts PostgreSQL, OpenSearch, and OpenSearch Dashboards containers
+    8. Starts PostgreSQL and OpenSearch containers
     9. Initializes database and OpenSearch index
     10. Runs Lucille ETL to ingest precomputed 10K ESCI products + judgments into OpenSearch
         (reads from data/esci_products_sample_10000.parquet — no API calls needed),
@@ -95,7 +95,6 @@ WHAT THIS SCRIPT DOES:
 SERVICES STARTED:
     - PostgreSQL (checkpoint storage) → localhost:5432
     - OpenSearch (document search) → localhost:9200
-    - OpenSearch Dashboards (visualization) → http://localhost:5601
 
 REQUIREMENTS:
     GOOGLE_API_KEY must be set in .env file
@@ -433,29 +432,6 @@ else
     echo "✓ OpenSearch already running"
 fi
 
-if ! docker compose ps 2>/dev/null | grep -q "opensearch-dashboards.*Up"; then
-    log "   Starting OpenSearch Dashboards..."
-    echo "   Starting OpenSearch Dashboards..."
-    docker compose up -d opensearch-dashboards > /dev/null 2>&1
-    echo "   Waiting for OpenSearch Dashboards to be ready..."
-    for i in {1..30}; do
-        if curl -s http://localhost:5601/api/status 2>/dev/null | grep -q 'state'; then
-            log "✓ OpenSearch Dashboards started → http://localhost:5601"
-            echo "✓ OpenSearch Dashboards started → http://localhost:5601"
-            break
-        fi
-        if [ "$i" -eq 30 ]; then
-            log "⚠ OpenSearch Dashboards is starting (may take a moment)"
-            echo "⚠ OpenSearch Dashboards is starting (may take a moment)"
-            echo "   Access at: http://localhost:5601"
-            break
-        fi
-        sleep 2
-    done
-else
-    log "✓ OpenSearch Dashboards already running → http://localhost:5601"
-    echo "✓ OpenSearch Dashboards already running → http://localhost:5601"
-fi
 cd "$PROJECT_DIR"
 
 end_step
@@ -507,4 +483,3 @@ echo "Services running at:"
 echo "  • Backend API: http://localhost:8000"
 echo "  • Frontend: http://localhost:5173"
 echo "  • OpenSearch: http://localhost:9200"
-echo "  • OpenSearch Dashboards: http://localhost:5601"

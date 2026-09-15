@@ -172,7 +172,7 @@ class OpenSearchQueryEvent(BaseEvent):
     # `quality_gate_retry` if the gate triggers a re-run.
     query_type: Literal["hybrid", "bm25_baseline", "quality_gate_retry"] = "hybrid"
     # Full DSL body sent to OpenSearch (with embedding vectors scrubbed to a
-    # placeholder). Pure DSL — paste-able into Dashboards Dev Tools.
+    # placeholder). Pure DSL — paste-able into OpenSearch's Dev Tools or any REST client.
     body: Optional[Dict[str, Any]] = None
     # Index the search ran against (e.g. ``agentic_hybrid_search_docs``).
     index: Optional[str] = None

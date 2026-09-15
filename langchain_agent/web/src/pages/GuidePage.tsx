@@ -158,7 +158,7 @@ export function GuidePage() {
             <div className="border-l-4 border-amber-500 pl-4">
               <h4 className="font-semibold text-gray-900">OpenSearch DSL Viewer</h4>
               <p className="text-[1.375rem] text-gray-600">Click the small "DSL" eye icon to see the exact query body the retriever sent to OpenSearch.</p>
-              <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-1">Three viewers: hybrid query (knn + BM25 fused via the normalization pipeline), BM25 baseline (parallel, optimization toggles applied), and quality-gate retry (only when the gate fires). Embedding vectors are scrubbed; the rest is paste-able into Dashboards Dev Tools.</p>
+              <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-1">Three viewers: hybrid query (knn + BM25 fused via the normalization pipeline), BM25 baseline (parallel, optimization toggles applied), and quality-gate retry (only when the gate fires). Embedding vectors are scrubbed; the rest is paste-able into OpenSearch's Dev Tools or any REST client.</p>
             </div>
           </div>
         </div>
