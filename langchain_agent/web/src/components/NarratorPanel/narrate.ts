@@ -22,6 +22,8 @@ import type {
   EnrichmentTriggeredEvent,
   IntentClassificationEvent,
   OpenSearchQueryEvent,
+  PipelineStageName,
+  PipelineSummaryEvent,
   QualityGateEvent,
   QueryExpansionEvent,
   QueryEvaluationEvent,
@@ -40,6 +42,7 @@ export type NarratorNode =
   | 'quality_gate'
   | 'agent'
   | 'enrichment'
+  | 'ground_truth'
 
 /**
  * 'moment' lines get oversized, full-width treatment. Reserved for the three
@@ -73,6 +76,14 @@ export interface NarratorGauge {
   caption: string
 }
 
+/** One stage's real ESCI-judged relevance, for the ground-truth reveal card. */
+export interface GroundTruthStage {
+  stage: PipelineStageName
+  label: string
+  ndcg10: number
+  judgedCount: number
+}
+
 export interface NarratorLine {
   /** Stable within a turn, so React keys and de-duplication behave. */
   id: string
@@ -95,6 +106,8 @@ export interface NarratorLine {
   error?: string
   /** Optional bar rendered under the sentence. */
   gauge?: NarratorGauge
+  /** Set when this is a ground-truth reveal — one entry per judged stage. */
+  groundTruthStages?: GroundTruthStage[]
 }
 
 const INTENT_PHRASING: Record<string, string> = {
@@ -109,6 +122,20 @@ const INTENT_PHRASING: Record<string, string> = {
 function percent(value: number | undefined): string | null {
   if (value === undefined || value === null) return null
   return `${Math.round(value * 100)}%`
+}
+
+/**
+ * Same buckets the backend uses to label `search_strategy`
+ * (query_evaluator_node in pipeline_nodes.py) so the retriever's own sentence
+ * agrees with the gauge above it instead of restating generic boilerplate
+ * regardless of where alpha actually landed.
+ */
+function describeAlpha(alpha: number): string {
+  if (alpha <= 0.15) return 'by exact words alone'
+  if (alpha <= 0.4) return 'mostly by exact words'
+  if (alpha <= 0.6) return 'by blending exact words and meaning evenly'
+  if (alpha <= 0.75) return 'mostly by meaning'
+  return 'by meaning alone'
 }
 
 function intentLine(e: IntentClassificationEvent): NarratorLine {
@@ -133,7 +160,10 @@ function evaluatorLine(e: QueryEvaluationEvent): NarratorLine {
     id: `alpha-${e.timestamp}`,
     node: 'query_evaluator',
     label: 'Query Evaluator',
-    text: `Leaned ${strategy} — how literally to read this question, chosen per query, not configured once.`,
+    // The gauge right below already shows "how literally" via its own
+    // exact-words/meaning axis labels — restating the concept in words every
+    // single turn was pure boilerplate, not something specific to this turn.
+    text: `Leaned ${strategy}.`,
     weight: 'step',
     gauge: {
       kind: 'alpha',
@@ -173,7 +203,7 @@ function searchLine(e: OpenSearchQueryEvent): NarratorLine | null {
     label: 'Knowledge Search',
     text: isRetry
       ? `Searched the catalog again with the rebalanced settings.${filters}`
-      : `Searched the catalog, blending keyword matching with meaning.${filters}`,
+      : `Searched the catalog, ${describeAlpha(e.alpha)}.${filters}`,
     weight: 'step',
   }
 }
@@ -181,13 +211,21 @@ function searchLine(e: OpenSearchQueryEvent): NarratorLine | null {
 function rerankerLine(e: RerankerResultEvent): NarratorLine {
   const top = e.results?.[0]
   const score = top ? ` Best match scores ${top.score.toFixed(2)}.` : ''
+  // reranking_changed_order is coarse (true if ANY candidate moved); the
+  // audience cares specifically about whether the #1 result changed, since
+  // that's the one they see first. top.original_rank is the pre-rerank
+  // position of whichever document now sits at rank 1.
+  const topPromoted = Boolean(top && top.original_rank !== 1)
+  const text = topPromoted
+    ? `Re-read every candidate against the question and promoted a new top pick.${score}`
+    : e.reranking_changed_order
+      ? `Re-read every candidate against the question — the top pick held, but the rest reordered.${score}`
+      : `Re-read every candidate against the question; the order already held up.${score}`
   return {
     id: `rerank-${e.timestamp}`,
     node: 'reranker',
     label: 'Reranker',
-    text: e.reranking_changed_order
-      ? `Re-read every candidate against the question and changed the order.${score}`
-      : `Re-read every candidate against the question; the order already held up.${score}`,
+    text,
     weight: 'step',
   }
 }
@@ -316,6 +354,51 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
   }
 }
 
+const GROUND_TRUTH_STAGE_LABELS: Record<PipelineStageName, string> = {
+  stock_bm25: 'Stock BM25',
+  bm25: 'Your BM25',
+  hybrid: 'Hybrid',
+  reranked: 'Reranked',
+}
+
+/**
+ * The bonus scene's entire point: real ESCI-judged relevance instead of the
+ * self-referential confidence proxy every other turn shows. Without this
+ * case, `pipeline_summary` events silently narrate to nothing (the default
+ * branch below) and the one thing the scene exists to prove never reaches
+ * the panel the audience is actually watching — only the full F2 detail view,
+ * which DEMO.md itself says is for Q&A, not the walkthrough (#130).
+ */
+function groundTruthLine(e: PipelineSummaryEvent): NarratorLine | null {
+  if (!e.has_ground_truth) return null
+
+  const stageOrder: PipelineStageName[] = ['stock_bm25', 'bm25', 'hybrid', 'reranked']
+  const stages: GroundTruthStage[] = stageOrder
+    .map((stage) => {
+      const metrics = e[stage]
+      if (!metrics) return null
+      return {
+        stage,
+        label: GROUND_TRUTH_STAGE_LABELS[stage],
+        ndcg10: metrics.ndcg10,
+        judgedCount: metrics.judged_count,
+      }
+    })
+    .filter((s): s is GroundTruthStage => s !== null)
+
+  if (stages.length === 0) return null
+
+  const best = stages[stages.length - 1]
+  return {
+    id: `ground-truth-${e.timestamp}`,
+    node: 'ground_truth',
+    label: 'Real Ground Truth',
+    text: `Measured against real ESCI relevance judgments, not this system's own scoring — NDCG@10 climbs to ${best.ndcg10.toFixed(2)}.`,
+    weight: 'moment',
+    groundTruthStages: stages,
+  }
+}
+
 /**
  * Map one event to at most one narrator line.
  *
@@ -338,6 +421,8 @@ export function narrate(event: AgentEvent): NarratorLine | null {
       return qualityGateLine(event)
     case 'enrichment_triggered':
       return enrichmentLine(event)
+    case 'pipeline_summary':
+      return groundTruthLine(event)
     default:
       return null
   }
@@ -382,6 +467,27 @@ export const MAX_VISIBLE_LINES = 7
  */
 export const MAX_VISIBLE_LINES_WITH_MOMENT = 3
 
+/**
+ * Node types that render as a full-width card rather than an ordinary line,
+ * and how many ordinary lines (if any) stay visible alongside each:
+ *
+ *  - enrichment keeps 3 — the presenter is still narrating the pipeline
+ *    context (the quality-gate retry, the search that led here) right up to
+ *    the moment the card appears.
+ *  - ground_truth keeps 0 — the bonus scene is a single turn whose entire
+ *    point IS the card; showing pipeline steps above it just pushed the card
+ *    below a scroll on shorter viewports for no narrative benefit (#130).
+ *
+ * The two moments never fire in the same turn in any current demo script; if
+ * they somehow did, whichever is last in `deduped` (most recently updated)
+ * wins the single card slot.
+ */
+const MOMENT_LINE_CAPS: Partial<Record<NarratorNode, number>> = {
+  enrichment: MAX_VISIBLE_LINES_WITH_MOMENT,
+  ground_truth: 0,
+}
+const MOMENT_NODES = new Set<NarratorNode>(Object.keys(MOMENT_LINE_CAPS) as NarratorNode[])
+
 export function visibleLines(lines: NarratorLine[]): NarratorLine[] {
   const byNode = new Map<NarratorNode, NarratorLine>()
   for (const line of lines) {
@@ -391,12 +497,16 @@ export function visibleLines(lines: NarratorLine[]): NarratorLine[] {
   // position — exactly the "first-seen order, latest content" we want.
   const deduped = [...byNode.values()]
 
-  const moment = deduped.find((l) => l.node === 'enrichment')
+  const moments = deduped.filter((l) => MOMENT_NODES.has(l.node))
+  const moment = moments[moments.length - 1]
   if (!moment) {
     return deduped.slice(-MAX_VISIBLE_LINES)
   }
 
+  const cap = MOMENT_LINE_CAPS[moment.node] ?? MAX_VISIBLE_LINES_WITH_MOMENT
+  if (cap <= 0) return [moment]
+
   // Keep the card, and only the pipeline lines immediately preceding it.
-  const rest = deduped.filter((l) => l.node !== 'enrichment')
-  return [...rest.slice(-MAX_VISIBLE_LINES_WITH_MOMENT), moment]
+  const rest = deduped.filter((l) => !MOMENT_NODES.has(l.node))
+  return [...rest.slice(-cap), moment]
 }

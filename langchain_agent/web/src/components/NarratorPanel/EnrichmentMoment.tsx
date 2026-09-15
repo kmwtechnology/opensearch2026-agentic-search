@@ -8,8 +8,7 @@
  *
  *   started  → a live elapsed counter, because the ~20s re-index used to be a
  *              completely silent freeze and silence reads as a crash
- *   complete → what changed, plus the real doc count, plus the one button the
- *              presenter needs
+ *   complete → what changed, plus the real doc count
  *   failed   → says plainly that the tag is unchanged
  *   declined → the guardrail firing, which is a feature worth showing
  */
@@ -36,11 +35,9 @@ function useElapsedSeconds(startedAt: number | null, running: boolean): number {
 interface Props {
   line: NarratorLine
   startedAt: number | null
-  onRerun?: () => void
-  rerunPending?: boolean
 }
 
-export function EnrichmentMoment({ line, startedAt, onRerun, rerunPending }: Props) {
+export function EnrichmentMoment({ line, startedAt }: Props) {
   const running = line.enrichment === 'started'
   const elapsed = useElapsedSeconds(startedAt, running)
 
@@ -60,13 +57,18 @@ export function EnrichmentMoment({ line, startedAt, onRerun, rerunPending }: Pro
           ? RefreshCw
           : Check
 
-  // github-mode dispatches never report completion, so the re-run button
-  // would sit enabled over a catalog that has not changed yet.
-  const canRerun =
-    line.enrichment === 'complete' && Boolean(line.docsProcessed) && Boolean(onRerun)
+  // The demo's single biggest moment — a live reindex just finished — gets a
+  // brief flourish on arrival rather than becoming a static box the instant
+  // it's ready. `animate-glow-pulse` is iteration-count: 2 (see index.css),
+  // so it stops on its own; no extra state needed to remove the class.
+  const isFreshCorrection = line.enrichment === 'complete' && Boolean(line.correctedFrom)
 
   return (
-    <div className={`rounded-2xl border-4 ${tone.border} ${tone.bg} p-7 flex flex-col gap-5`}>
+    <div
+      className={`rounded-2xl border-4 ${tone.border} ${tone.bg} p-7 flex flex-col gap-5 ${
+        isFreshCorrection ? 'animate-glow-pulse' : ''
+      }`}
+    >
       <div className="flex items-center gap-4">
         <Icon
           className={`w-11 h-11 flex-shrink-0 ${tone.fg} ${running ? 'animate-spin' : ''}`}
@@ -134,26 +136,10 @@ export function EnrichmentMoment({ line, startedAt, onRerun, rerunPending }: Pro
         </div>
       )}
 
-      {canRerun && (
-        <button
-          onClick={onRerun}
-          disabled={rerunPending}
-          className="flex items-center justify-center gap-4 rounded-xl bg-[#065F46] px-7 py-5 text-white text-[1.75rem] font-bold disabled:opacity-60 focus:outline-none focus:ring-4 focus:ring-[#065F46]/40"
-        >
-          <RefreshCw
-            className={`w-8 h-8 ${rerunPending ? 'animate-spin' : ''}`}
-            strokeWidth={2.5}
-            aria-hidden="true"
-          />
-          {rerunPending ? 'Starting a clean search…' : 'Re-run search with corrected taxonomy'}
-        </button>
-      )}
-
       {/* The cloud fallback. Locally this never appears. */}
       {line.enrichment === 'complete' && !line.docsProcessed && line.reindexRunUrl && (
         <p className="text-[length:var(--text-stage-body)] font-medium text-[var(--color-stage-ink-muted)]">
-          The cloud build reports no completion signal back to the app, so the re-run button stays
-          disabled. Build:{' '}
+          The cloud build reports no completion signal back to the app. Build:{' '}
           <span className="font-mono break-all">{line.reindexRunUrl}</span>
         </p>
       )}
