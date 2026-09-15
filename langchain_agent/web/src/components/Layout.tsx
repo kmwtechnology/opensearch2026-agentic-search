@@ -31,7 +31,7 @@ import {
   Code2,
   LayoutList,
   MessageSquare,
-  Plus,
+  RotateCcw,
   Sparkles,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -189,34 +189,16 @@ export function Layout() {
 
   return (
     <div className="flex h-screen flex-col bg-[var(--color-stage-bg)] text-[var(--color-stage-ink)]">
-      <header className="flex flex-shrink-0 flex-col border-b-[3px] border-[var(--color-stage-border)] bg-[var(--color-stage-surface)]">
-        {/* Masthead — separate row so the logo can read at a legible size
-            without competing with the dense turn-control toolbar below it. */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-stage-border-soft)] px-7 py-3">
-          <img src="/kmw-logo.svg" alt="KMW Technology" className="h-16 w-auto flex-shrink-0" />
-          <div className="flex items-center gap-3">
-            <Link
-              to="/guide"
-              aria-label="Guide"
-              className="flex items-center gap-2 rounded-xl border-2 border-[var(--color-stage-border)] bg-white px-3 py-2 text-[1.25rem] font-semibold focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
-            >
-              <BookOpen className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
-              Guide
-            </Link>
-            <Link
-              to="/swagger"
-              aria-label="API reference"
-              className="flex items-center gap-2 rounded-xl border-2 border-[var(--color-stage-border)] bg-white px-3 py-2 text-[1.25rem] font-semibold focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
-            >
-              <Code2 className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
-              API reference
-            </Link>
-          </div>
-        </div>
-
-        {/* Toolbar — the presenter's controls: demo selector, turn progress,
-            Next/Restart/Details. */}
-        <div className="flex flex-wrap items-center gap-8 px-7 py-4">
+      <header className="flex flex-shrink-0 flex-wrap items-center gap-7 border-b-[3px] border-[var(--color-stage-border)] bg-[var(--color-stage-surface)] px-7 py-4">
+        {/* The logo costs no extra header height: DemoSelector's own stack
+            (eyebrow + title button) is already ~95px tall, so a logo sized
+            to that same budget just fills space the row already needs.
+            A separate masthead row was tried and reverted -- it roughly
+            doubled the header's height, which matters here because the
+            chat/narrator panes below are a fixed 45/55 split tuned for
+            1920x1080, not a resizable layout that can absorb it. */}
+        <img src="/kmw-logo.svg" alt="KMW Technology" className="h-16 w-auto flex-shrink-0" />
+        <div className="h-16 w-px flex-shrink-0 bg-[var(--color-stage-border)]" aria-hidden="true" />
         <DemoSelector demoId={demoId} onSelect={handleSelectDemo} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -300,32 +282,43 @@ export function Layout() {
           <button
             onClick={() => void handleRestart()}
             disabled={isResetting}
-            title="Clear the conversation and restore the catalog's original tagging"
-            className="flex items-center gap-2.5 rounded-xl border-2 border-[var(--color-stage-border)] bg-white px-4 py-2.5 text-[1.4rem] font-semibold disabled:text-[var(--color-stage-ink-soft)] focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+            aria-label={isResetting ? 'Resetting…' : 'Restart'}
+            title="Restart: clear the conversation and restore the catalog's original tagging"
+            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 disabled:text-[var(--color-stage-ink-soft)] focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
           >
-            <Plus
+            <RotateCcw
               className={`h-6 w-6 ${isResetting ? 'animate-spin' : ''}`}
               strokeWidth={2.5}
               aria-hidden="true"
             />
-            {isResetting ? 'Resetting…' : 'Restart'}
           </button>
           <button
             onClick={() => setRightPane((p) => (p === 'narrator' ? 'details' : 'narrator'))}
             aria-pressed={rightPane === 'details'}
-            className="flex items-center gap-2.5 rounded-xl border-2 border-[var(--color-stage-border)] bg-white px-4 py-2.5 text-[1.4rem] font-semibold focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+            aria-label={rightPane === 'details' ? 'Show narration (F2)' : 'Show details (F2)'}
+            title={rightPane === 'details' ? 'Show narration (F2)' : 'Show details (F2)'}
+            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
           >
             {rightPane === 'details' ? (
               <Sparkles className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
             ) : (
               <LayoutList className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
             )}
-            {rightPane === 'details' ? 'Narration' : 'Details'}
-            <kbd className="rounded bg-[var(--color-stage-raised)] px-2 py-0.5 font-mono text-[1.25rem] text-[var(--color-stage-ink-soft)]">
-              F2
-            </kbd>
           </button>
-        </div>
+          <Link
+            to="/guide"
+            aria-label="Guide"
+            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+          >
+            <BookOpen className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+          </Link>
+          <Link
+            to="/swagger"
+            aria-label="API reference"
+            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+          >
+            <Code2 className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+          </Link>
         </div>
       </header>
 
