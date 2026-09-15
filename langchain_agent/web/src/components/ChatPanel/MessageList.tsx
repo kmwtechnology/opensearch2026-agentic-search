@@ -19,6 +19,8 @@ export function MessageList() {
   const rerankerProgress = useObservabilityStore((s) => s.rerankerProgress)
   const intentClassification = useObservabilityStore((s) => s.intentClassification)
   const queryEvaluation = useObservabilityStore((s) => s.queryEvaluation)
+  const qualityGate = useObservabilityStore((s) => s.qualityGate)
+  const searchCandidates = useObservabilityStore((s) => s.searchCandidates)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   // Elapsed seconds for the in-progress status. The model can spend ten-plus
   // seconds composing before its first token arrives, and a status line that
@@ -26,6 +28,26 @@ export function MessageList() {
   // the difference between "working" and "stuck" (#103).
   const [elapsed, setElapsed] = useState(0)
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  // Mirrors the two gates in pipeline_nodes.py's agent_node that decide
+  // whether the agent's first model call is a genuine tool-offer/correction
+  // check, versus skipping straight to the real answer call: a correction
+  // check only runs on refinement/follow_up turns, and an enrichment check
+  // only runs when retrieval came back empty (attribute_filter with zero
+  // candidates) or the quality gate retried and still scored below the
+  // relevance floor. Most turns hit neither gate, so unconditionally
+  // labelling the pre-token wait "Checking whether a tool is needed" was
+  // misleading on the common case — a demo turn spent the whole wait on
+  // ordinary answer-generation latency with no tool check in flight (#106).
+  // This is a frontend-only approximation (no backend event marks gate
+  // eligibility yet), not a byte-for-byte replay of the backend condition.
+  const isToolCheckEligible = (): boolean => {
+    const intent = intentClassification?.intent
+    if (intent === 'refinement' || intent === 'follow_up') return true
+    if (intent === 'attribute_filter' && searchCandidates.length === 0) return true
+    if (qualityGate?.triggered && qualityGate.max_score < 0.1) return true
+    return false
+  }
 
   // Map node IDs to user-friendly display names
   const getNodeDisplayName = (node: string): string => {
@@ -38,10 +60,14 @@ export function MessageList() {
       reranker: 'Re-reading the best candidates',
       quality_gate: 'Checking the results are good enough',
       // Split deliberately — see getCurrentStepSummary. The agent node makes
-      // two model calls, and calling the first one "Writing the answer" is
-      // what made the wait look idle: nothing can appear yet, because those
-      // tokens are suppressed on purpose.
-      agent: streamingContent ? 'Writing the answer' : 'Checking whether a tool is needed',
+      // a second, tool-offer model call only when isToolCheckEligible() is
+      // true; otherwise it skips straight to the answer call, so the label
+      // must reflect which case this turn is in (#106).
+      agent: streamingContent
+        ? 'Writing the answer'
+        : isToolCheckEligible()
+          ? 'Checking whether a tool is needed'
+          : 'Thinking through the answer',
       llm_judge: 'Checking the answer against the sources',
     }
     return names[node] || 'Working'
@@ -64,16 +90,17 @@ export function MessageList() {
     if (currentNode === 'query_evaluator' && intentClassification?.intent) {
       return `Read as "${intentClassification.intent}"`
     }
-    // The agent node runs TWO model calls. The first decides whether a tool is
-    // needed (the enrichment/correction path); its tokens are suppressed on
-    // purpose \u2014 INTERNAL_LLM_TAG \u2014 because they are the model reasoning out
-    // loud, not the reply. Only when that resolves does the visible answer
-    // begin. Labelling the whole span "Writing the answer" made a working
-    // system look hung for its entire first half, since by construction
-    // nothing could appear on screen yet.
+    // The agent node's first model call only exists when isToolCheckEligible()
+    // is true \u2014 see getNodeDisplayName. When it does run, its tokens are
+    // suppressed on purpose (INTERNAL_LLM_TAG), because they are the model
+    // reasoning out loud, not the reply, and only when that resolves does the
+    // visible answer begin. When it's not eligible, the wait is ordinary
+    // answer-generation latency (#106).
     if (currentNode === 'agent') {
       if (!streamingContent) {
-        return 'Deciding if the catalog needs changing before answering'
+        return isToolCheckEligible()
+          ? 'Deciding if the catalog needs changing before answering'
+          : 'Composing a response from the retrieved matches'
       }
       if (queryEvaluation) {
         return `Using the top matches at \u03b1 ${queryEvaluation.alpha.toFixed(2)}`
