@@ -1,5 +1,17 @@
 # Demo Queries — Agentic Hybrid Search Conference Talk
 
+> **⚠️ STALE (2026-09-15, issue #114).** This describes an earlier
+> three-scenario demo structure, superseded by the two-arc script in
+> `DEMO.md` / `web/src/demos/registry.ts` (#103). Its specific numbers no
+> longer hold either — the `esci_judgments` index has since been rebuilt
+> much sparser (most queries now have ~1 judged product, not the
+> dozens/68 claimed below for "wireless headphones"); re-checked live
+> 2026-09-15, several of this doc's named queries (`gift ideas for hair
+> dresser`, `hiking boots`) no longer have ANY judgments at all. Kept for
+> its query-validation methodology, not its current numbers. For the
+> current script and its one verified ground-truth-bearing query, see
+> `DEMO.md`'s "Bonus — proving it with real judgments" section.
+
 **Validated:** 2026-05-03 against local backend; all three picks reproducible
 3/3.
 

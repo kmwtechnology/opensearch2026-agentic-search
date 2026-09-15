@@ -62,7 +62,7 @@ Armed looks like `yellow: 35`. Already-run looks like `brown: 29`.
 | **Next** | Fills and sends the next scripted turn. Click it and talk. |
 | **Restart** | Clears the transcript, resets the narration, rewinds to turn 1, **and re-arms the index**. |
 | **F2** | Full pipeline detail — raw DSL, per-node timings. For Q&A, not for the walkthrough. |
-| Demo dropdown | Switches arcs. Selecting arc 2 re-arms it. |
+| Demo dropdown | Switches arcs (and the optional bonus scene — see below). Selecting arc 2 re-arms it. |
 
 The header reads **"Next up · Turn N of M"** — it names the query the button
 will send, which during a running turn is one ahead of what is on screen.
@@ -189,6 +189,37 @@ Each of these was tested; the measurements are in the commit history.
   arc recovers after a failed gate; extra candidates cannot invent a product.
 - **Do not promise a reshuffled product list in arc 2 turn 3.** The honest proof
   is the filter value.
+
+---
+
+## Bonus — proving it with real judgments (optional, ~1 min)
+
+The retrieval pipeline computes real ESCI ground-truth relevance metrics
+(NDCG@10, MRR, Recall@20, Precision@10) every turn via `lookup_judgments()` —
+but that only fires on an **exact match** against a query string that exists
+in the `esci_judgments` index, and **none of the six scripted turns above
+hit one.** Every turn in Arc 1 and Arc 2 shows the self-referential
+confidence proxy, not real ground truth. This is not a bug in either arc —
+it's just never been demonstrated on stage.
+
+If there's time (skip it if not — neither arc depends on this), select the
+**"Bonus: Proving It With Real Judgments"** demo from the dropdown and run
+its one turn:
+
+**Query: `cowboy boots women`**
+
+Watch the Pipeline Quality Summary switch from the confidence proxy to real
+numbers: **stock BM25 NDCG@10 0.47 → BM25 0.44 → hybrid 0.85 → reranked
+0.90**, against 3 relevance judgments from Amazon's own ESCI benchmark —
+not this system's own scoring. This is the concrete version of the claim
+both arcs make in passing (hybrid + reranking beat plain lexical search):
+here it's measured against an external, academic ground truth instead of
+the system grading its own homework.
+
+**Don't oversell the sample size.** Only 3 products are judged for this
+query — the demo corpus' judgment sets are sparse (~1 judged product per
+query on average; this one is unusually rich at 3). The point is that the
+number is *real*, not that it's large.
 
 ---
 
