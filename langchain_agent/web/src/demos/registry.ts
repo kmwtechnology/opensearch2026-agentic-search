@@ -165,6 +165,39 @@ export const DEMOS: Demo[] = [
       },
     ],
   },
+  {
+    id: 'ground-truth-proof',
+    title: 'Bonus: Proving It With Real Judgments',
+    subtitle:
+      'One query, real academic relevance judgments. Neither arc above happens to trigger this — see the note in DEMO.md before adding it to a run.',
+    /*
+     * #114: the retrieval pipeline computes real ESCI ground-truth IR metrics
+     * (NDCG@10, MRR, Recall@20, Precision@10) on every turn via
+     * lookup_judgments() — but has_ground_truth depends on an EXACT match
+     * against esci_judgments' `query.keyword`, and none of the six turns in
+     * the two arcs above happen to hit one (verified live 2026-09-15;
+     * has_ground_truth=False for all six as scripted). This turn is
+     * deliberately separate so it can't silently break arc pacing.
+     *
+     * 'cowboy boots women' was chosen after checking every judged query
+     * thematically close to the shoe/boot narrative already running through
+     * both arcs (see DEMO_QUERIES.md's note about the index being far
+     * sparser now than when that doc was written — most judged queries have
+     * only 1-3 graded products). It reproduced identically across 3 live
+     * runs 2026-09-15: stock_bm25 NDCG@10=0.4693 -> bm25=0.4441 ->
+     * hybrid=0.8520 -> reranked=0.9010, against 3 real Amazon-graded
+     * relevance judgments, not the self-referential confidence proxy the
+     * other six turns fall back to.
+     */
+    turns: [
+      {
+        query: 'cowboy boots women',
+        watchFor:
+          'has_ground_truth flips to true — the Pipeline Quality Summary switches from the self-referential confidence proxy to real ESCI NDCG@10 per stage: stock BM25 0.47, BM25 0.44, hybrid 0.85, reranked 0.90. This is the same progression the other six turns imply but never actually show: hybrid and reranking measurably beating plain BM25, graded by Amazon\'s own relevance judgments, not this system\'s own scoring.',
+        note: 'Only 3 products are judged for this query (the sample corpus\' judgment sets are sparse, average ~1 per query) — do not oversell the sample size. The point is that the number is REAL, not that it is large.',
+      },
+    ],
+  },
 ]
 
 export const DEFAULT_DEMO_ID = 'adaptive-query'
