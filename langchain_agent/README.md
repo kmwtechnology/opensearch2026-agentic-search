@@ -241,9 +241,9 @@ Everything lives in `core/config.py`; most (but not all) values are `.env`-overr
 ### Models
 
 ```bash
-LLM_MODEL=gemini-3-flash-preview                   # generation
-RERANKER_MODEL=gemini-3.1-flash-lite-preview       # reranking
-QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview     # query evaluator
+LLM_MODEL=gemini-3.5-flash-lite                    # generation
+RERANKER_MODEL=gemini-3.1-flash-lite-preview       # reranking (unused by default; RERANKER_TYPE=cross-encoder)
+QUERY_EVAL_MODEL=gemini-2.5-flash-lite             # query evaluator
 EMBEDDINGS_MODEL=models/gemini-embedding-001      # 768-dim embeddings
 LLM_TEMPERATURE=0
 QUERY_EVAL_TEMPERATURE=0

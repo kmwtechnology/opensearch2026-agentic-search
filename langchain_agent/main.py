@@ -12,8 +12,9 @@ A production-grade LangGraph pipeline for e-commerce product discovery:
 - Per-turn Pipeline Quality Summary (NDCG@10, MRR, Recall@20, Precision@10)
 
 Powered by:
-- LLM: Google Gemini (gemini-3-flash-preview) for generation
-- Classify/Rerank: Google Gemini (gemini-3.1-flash-lite-preview)
+- LLM: Google Gemini (gemini-3.5-flash-lite) for generation
+- Classify/Eval/Judge: Google Gemini (gemini-2.5-flash-lite)
+- Rerank: local cross-encoder by default (Gemini gemini-3.1-flash-lite-preview available via RERANKER_TYPE=gemini)
 - Embeddings: Google Gemini (text-embedding-005, 768-dim) for semantic search
 - Vector Store: OpenSearch 2.19.1 with HNSW knn + BM25
 - Database: PostgreSQL for LangGraph checkpoints

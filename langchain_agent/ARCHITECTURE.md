@@ -69,7 +69,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 
 **Process**:
 
-- Single structured-output LLM call (Gemini 3.1 Flash Lite) classifies into 6 intents
+- Single structured-output LLM call (Gemini 2.5 Flash-Lite, #126) classifies into 6 intents
   — there is no keyword-based fast-path (see #26); every request pays this LLM
   round-trip
   - `search` — product discovery ("find me...")
@@ -244,7 +244,7 @@ the shipped default — `RERANKER_TYPE=cross-encoder` is set explicitly in `.env
 **Process**:
 
 - **Document formatting**: Creates context window with product details
-- **LLM generation**: Gemini 3 Flash generates conversational response
+- **LLM generation**: Gemini 3.5 Flash-Lite generates conversational response (#126)
 - **Citation building**:
   - Extracts product titles from metadata (ESCI products have no ASIN; use title-based search for robustness)
   - Constructs Amazon URLs: `https://www.amazon.com/s?k={title}` (search by title; ASIN-based `/dp/` links 404 frequently)

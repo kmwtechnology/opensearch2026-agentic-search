@@ -155,7 +155,7 @@ class TestModelNameConfiguration:
 
     def test_llm_model_default_value(self):
         """Test LLM_MODEL has correct default."""
-        model = os.getenv("LLM_MODEL", "gemini-3-flash-preview")
+        model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
 
         assert model is not None
         assert "gemini" in model.lower()
@@ -171,7 +171,7 @@ class TestModelNameConfiguration:
 
     def test_query_eval_model_default_value(self):
         """Test QUERY_EVAL_MODEL has correct default."""
-        model = os.getenv("QUERY_EVAL_MODEL", "gemini-3.1-flash-lite-preview")
+        model = os.getenv("QUERY_EVAL_MODEL", "gemini-2.5-flash-lite")
 
         assert model is not None
         assert "gemini" in model.lower()
@@ -186,7 +186,7 @@ class TestModelNameConfiguration:
 
     def test_llm_model_format_valid(self):
         """Test LLM model name follows Gemini naming convention."""
-        model = os.getenv("LLM_MODEL", "gemini-3-flash-preview")
+        model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
 
         # Should be gemini-<version>-<type>[-<qualifier>]
         assert model.startswith("gemini-")
@@ -211,9 +211,9 @@ class TestModelNameConfiguration:
     def test_model_names_not_empty_strings(self):
         """Test model names are never empty strings."""
         models = {
-            "LLM_MODEL": "gemini-3-flash-preview",
+            "LLM_MODEL": "gemini-3.5-flash-lite",
             "RERANKER_MODEL": "gemini-3.1-flash-lite-preview",
-            "QUERY_EVAL_MODEL": "gemini-3.1-flash-lite-preview",
+            "QUERY_EVAL_MODEL": "gemini-2.5-flash-lite",
             "EMBEDDINGS_MODEL": "models/text-embedding-005",
         }
 
