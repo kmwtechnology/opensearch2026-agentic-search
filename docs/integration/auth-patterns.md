@@ -6,6 +6,24 @@ Two authentication flows for different use cases.
 
 ---
 
+## Login is off by default
+
+`REQUIRE_LOGIN` defaults to **`false`** (`core/config.py`). With it off, there is no
+login screen, no session check on any route, and **`/api/admin/*` is reachable by
+any same-origin caller with no credentials** — that's what lets the header's
+Restart button call `POST /api/admin/demo-reset` straight from the browser.
+`verify_same_origin` still runs on every route regardless of `REQUIRE_LOGIN`, so a
+cross-site caller is still rejected; only the *same-origin, no-login* gap is what
+`REQUIRE_LOGIN=false` opens up.
+
+Everything below — Pattern A's login flow, Pattern B's admin token — still exists
+and still works exactly as described; it's just optional. **Any deployment where an
+unauthenticated same-origin caller reaching `/api/admin/*` is unacceptable must set
+`REQUIRE_LOGIN=true`.** `setup.sh` generates a `LOGIN_PASSWORD` unconditionally
+(so it's ready if you flip the flag), but does not set `REQUIRE_LOGIN=true` itself.
+
+---
+
 ## Pattern A: Session Cookie (Browser / Interactive)
 
 Use this when a **user is actively interacting** with the application (web UI, mobile app, etc.).

@@ -55,7 +55,11 @@ class StatusResponse(BaseModel):
     authenticated: bool
 
 
-@router.post("/auth/login", response_model=LoginResponse)
+@router.post(
+    "/auth/login",
+    response_model=LoginResponse,
+    summary="Validate shared password and start a session (no-op unless REQUIRE_LOGIN=true)",
+)
 @limiter.limit(RATE_LIMIT_LOGIN)
 async def login(request: Request, body: LoginRequest):
     """Validate the shared password and mark the session authenticated.
@@ -91,7 +95,11 @@ async def login(request: Request, body: LoginRequest):
     return LoginResponse(authenticated=True)
 
 
-@router.post("/auth/logout", response_model=LoginResponse)
+@router.post(
+    "/auth/logout",
+    response_model=LoginResponse,
+    summary="Clear the session cookie (idempotent)",
+)
 async def logout(request: Request):
     """Clear the session. Always succeeds (idempotent)."""
     await verify_same_origin(request)
@@ -99,7 +107,11 @@ async def logout(request: Request):
     return LoginResponse(authenticated=False)
 
 
-@router.get("/auth/status", response_model=StatusResponse)
+@router.get(
+    "/auth/status",
+    response_model=StatusResponse,
+    summary="Check whether the current session is authenticated",
+)
 async def auth_status(request: Request):
     """Report whether the current session is authenticated.
 

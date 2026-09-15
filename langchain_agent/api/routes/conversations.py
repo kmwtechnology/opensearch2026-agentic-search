@@ -1,5 +1,13 @@
 """
 REST endpoints for managing conversations.
+
+These back conversation history/resume-by-thread_id (list, fetch, delete,
+fetch observability). The projector-demo UI revamp (#104) removed the
+conversations sidebar that used to call them, so nothing in the current
+frontend exercises these routes anymore -- but they are not dead code: they
+are still exercised by scripts/smoke_test.sh, tests/integration/test_conversations.py,
+and multiple tests/e2e/ suites, and remain a supported REST API for anyone
+resuming a conversation by thread_id outside the demo UI (issue #105).
 """
 
 import re
@@ -144,7 +152,11 @@ class ConversationDetail(BaseModel):
 # ============================================================================
 
 
-@router.get("/conversations", response_model=List[ConversationSummary])
+@router.get(
+    "/conversations",
+    response_model=List[ConversationSummary],
+    summary="List past conversations (not called by the current UI -- see module docstring)",
+)
 @limiter.limit(RATE_LIMIT_CONVERSATIONS)
 async def list_conversations(
     request: Request,
@@ -155,7 +167,9 @@ async def list_conversations(
     """
     List all previous conversations with summaries.
 
-    **Purpose:** Populate conversation sidebar/history in the UI.
+    **Purpose:** List past conversations for resume-by-thread_id use cases.
+    Not currently called by the projector-demo frontend (its sidebar was
+    removed in #104) -- see the module docstring.
 
     **Features:**
         - Sorted by most recent first (by updated_at or created_at)
@@ -238,7 +252,11 @@ def _list_conversations_sync(limit: int) -> List[ConversationSummary]:
             return conversations
 
 
-@router.get("/conversations/{thread_id}", response_model=ConversationDetail)
+@router.get(
+    "/conversations/{thread_id}",
+    response_model=ConversationDetail,
+    summary="Fetch one conversation's message history by thread_id",
+)
 @limiter.limit(RATE_LIMIT_CONVERSATIONS)
 async def get_conversation(request: Request, thread_id: str):
     """
@@ -372,7 +390,11 @@ def _get_conversation_sync(thread_id: str) -> ConversationDetail:
             )
 
 
-@router.get("/conversations/{thread_id}/observability", response_model=ObservabilitySnapshot)
+@router.get(
+    "/conversations/{thread_id}/observability",
+    response_model=ObservabilitySnapshot,
+    summary="Fetch a conversation's last-turn pipeline observability snapshot",
+)
 @limiter.limit(RATE_LIMIT_CONVERSATIONS)
 async def get_conversation_observability(request: Request, thread_id: str):
     """Return the last observability snapshot for a conversation, hydrated from
@@ -444,7 +466,11 @@ def _get_conversation_observability_sync(thread_id: str) -> ObservabilitySnapsho
             )
 
 
-@router.delete("/conversations", status_code=204)
+@router.delete(
+    "/conversations",
+    status_code=204,
+    summary="Delete ALL conversations (irreversible)",
+)
 @limiter.limit(RATE_LIMIT_CONVERSATIONS)
 async def clear_all_conversations(request: Request):
     """
@@ -513,7 +539,11 @@ def _clear_all_conversations_sync() -> None:
             logger.info(f"Cleared all conversations")
 
 
-@router.delete("/conversations/{thread_id}", status_code=204)
+@router.delete(
+    "/conversations/{thread_id}",
+    status_code=204,
+    summary="Delete one conversation by thread_id (irreversible)",
+)
 @limiter.limit(RATE_LIMIT_CONVERSATIONS)
 async def delete_conversation(request: Request, thread_id: str):
     """

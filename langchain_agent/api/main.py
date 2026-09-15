@@ -360,7 +360,15 @@ if static_dir.exists():
     # Serve React app for all non-API routes
     @app.get("/{full_path:path}")
     async def serve_react(full_path: str):
-        """Serve React frontend for all non-API routes"""
+        """Serve React frontend for all non-API routes.
+
+        Note (#105): there is no dedicated `/docs` route, and there should
+        not be -- `docs_url=None` above deliberately disables FastAPI's
+        built-in one (see test_swagger_route.py). `/docs` returns 200 only
+        because this catch-all serves index.html for it like any other
+        unknown path; the response is identical to `/nonsense-path-xyz`.
+        The real, projector-sized API docs live at `/swagger`.
+        """
         # Skip API routes and documentation
         if (
             full_path.startswith("api/")

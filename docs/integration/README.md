@@ -31,6 +31,8 @@ Two auth patterns:
 
 User logs in via `POST /api/auth/login` and receives a signed HttpOnly cookie.
 
+> **Note:** Authentication is optional by default. The backend's `REQUIRE_LOGIN` config defaults to `false`, meaning no login gate is enforced and this step can be skipped entirely. See [Auth Patterns](auth-patterns.md) for full details.
+
 ```bash
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
