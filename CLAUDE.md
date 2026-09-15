@@ -76,6 +76,14 @@ npm run test                 # vitest run
 
 **Local git hooks**: `.git/hooks/pre-commit` (installed by `scripts/setup.sh` from `scripts/pre-commit.sh`) runs black/isort/flake8 on *staged* `.py` files only — mirrors `ci-format`/`lint`. `.git/hooks/pre-push` is Git LFS's own hook only; nothing there runs tests. Run `make check` by hand before pushing.
 
+### Local dev lifecycle
+
+Spoken triggers "start local dev" / "stop local dev" / "teardown local dev" map 1:1 to these (all from `langchain_agent/`):
+
+- **start local dev** → `make dev`. Blocks forever (backend + frontend run in the foreground) — always launch it backgrounded and watch the log, never wait on it synchronously. Two-stage readiness: `Uvicorn running on http://127.0.0.1:8000` binds the port, but `Application startup complete` (after LLM/embeddings/reranker/vector-store init) is the real "ready for requests" signal; frontend readiness is `VITE vX ready in Yms`. Failure signatures: `Address already in use`, `EADDRINUSE`, `Connection refused`, `Traceback`.
+- **stop local dev** → `make stop`. Non-destructive — kills backend/frontend processes and stops the Docker containers, but keeps volumes (Postgres + OpenSearch data survive).
+- **teardown local dev** → `make teardown` (→ `scripts/teardown.sh`). DESTRUCTIVE and runs non-interactively (no prompt of its own) — deletes `.venv`, `web/node_modules`, all Docker volumes (Postgres + OpenSearch data), and logs. Confirm with the user before running this even though the script won't ask.
+
 ## Architecture
 
 ### Pipeline graph
