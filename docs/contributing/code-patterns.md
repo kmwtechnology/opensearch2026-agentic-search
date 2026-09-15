@@ -186,19 +186,20 @@ Both must match exactly. If you add a field to the backend, add it to the fronte
 
 ## Auth Patterns
 
-Never wire new routes through `verify_api_key` — it doesn't exist. `api/middleware/auth.py`
-is 9 lines holding only `AuthConfigurationError`; a `verify_api_key` import raises
-`ImportError`, not a working-but-dead call (see #26).
+There is no login gate — same-origin checking is the app's only auth layer.
+Never wire new routes through `verify_api_key` — it doesn't exist anywhere in
+`api/middleware/` (there is no `auth.py` module at all; it held only
+`AuthConfigurationError` and was deleted along with the login gate, issue
+#135). A `verify_api_key` import raises `ImportError`, not a working-but-dead
+call (see #26).
 
 **✓ Correct:**
 ```python
-from api.middleware.session_auth import verify_session
 from api.middleware.origin_auth import verify_same_origin
 
 @app.get("/api/conversations")
 async def list_conversations(request: Request):
-    verify_same_origin(request)
-    verify_session(request)
+    await verify_same_origin(request)
     # Continue
 ```
 
@@ -208,15 +209,27 @@ from api.middleware.auth import verify_api_key  # ImportError -- doesn't exist
 
 @app.get("/api/conversations")
 async def list_conversations(request: Request):
-    verify_api_key(request)  # Use verify_same_origin + verify_session instead
+    verify_api_key(request)  # Use verify_same_origin instead
 ```
 
-### Two-Layer Auth
+If a route is specifically for unattended automation (no browser involved),
+`verify_admin_token` (`api/middleware/admin_auth.py`) is available as an
+additional, opt-in credential check — an `ADMIN_TOKEN`-backed `X-Admin-Token`
+header check with constant-time comparison. It's preserved from the removed
+session-auth module and unit-tested on its own, but no route wires it in
+today; every existing route (including `/api/admin/*`) relies on
+`verify_same_origin` alone:
 
-1. **Same-origin check** (`verify_same_origin`) — validates Origin header against allow-list
-2. **Session or admin token** (`verify_session` or `verify_admin_token`) — validates authentication credential
+```python
+from api.middleware.admin_auth import verify_admin_token
+from api.middleware.origin_auth import verify_same_origin
 
-Both must pass for protected routes.
+@app.get("/api/admin/some-automation-route")
+async def automation_only(request: Request):
+    await verify_same_origin(request)
+    await verify_admin_token(request)
+    # Continue
+```
 
 ---
 

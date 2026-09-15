@@ -286,61 +286,36 @@ export function GuidePage() {
       content: (
         <div className="space-y-4">
           <p className="text-[1.375rem] text-gray-700">
-            Two layers, both enforced on every REST call and on the WebSocket handshake — but the second one is
-            <strong> off by default</strong>.
+            One layer, enforced on every REST call and on the WebSocket handshake: same-origin.
+            There is no login screen and no session cookie — this is a demo box, not a
+            multi-tenant deployment.
           </p>
 
           <div className="bg-amber-50 border-l-4 border-amber-500 p-3 my-2 text-[1.375rem]">
-            <p className="font-semibold text-amber-900">REQUIRE_LOGIN defaults to false.</p>
+            <p className="font-semibold text-amber-900">Every same-origin caller is unauthenticated.</p>
             <p className="text-amber-900 mt-1">
-              With it off, there is no login screen and any same-origin caller — including{' '}
-              <code>/api/admin/*</code> — is unauthenticated. That's what lets the header's Restart button call{' '}
-              <code>demo-reset</code> straight from the browser. Set <code>REQUIRE_LOGIN=true</code> for any
-              deployment where an unauthenticated same-origin caller reaching the admin routes is unacceptable.
+              That includes <code>/api/admin/*</code> — it's what lets the header's Restart button
+              call <code>demo-reset</code> straight from the browser with no credentials.
             </p>
           </div>
 
-          <div className="space-y-3">
-            <div className="border-l-4 border-blue-500 pl-3">
-              <h4 className="font-semibold text-gray-900">1. Same-origin check (always on)</h4>
-              <p className="text-[1.375rem] text-gray-600">Origin header must match an allow-listed dev port (localhost:5173, :3000, :8000) or this service's Cloud Run <code>*.run.app</code> URL. Disallowed origins are rejected with HTTP 403 — this applies regardless of <code>REQUIRE_LOGIN</code>.</p>
-            </div>
-
-            <div className="border-l-4 border-emerald-500 pl-3">
-              <h4 className="font-semibold text-gray-900">2. Shared-password session cookie (opt-in via REQUIRE_LOGIN=true)</h4>
-              <p className="text-[1.375rem] text-gray-600">When enabled, a login screen takes the password configured in <code>LOGIN_PASSWORD</code>; on submit, <code>POST /api/auth/login</code> validates it (constant-time, <code>hmac.compare_digest</code>) and sets a signed HttpOnly <code>ahs_session</code> cookie (SameSite=Lax). Subsequent REST calls and the WebSocket carry it automatically.</p>
-              <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-1">WebSocket rejection closes the socket with code <strong>4401</strong>. With <code>REQUIRE_LOGIN=false</code> (the default) this layer is skipped entirely — every session is treated as authenticated.</p>
-            </div>
-          </div>
-
-          <h4 className="font-semibold text-gray-900 mt-2">User-Facing Endpoints</h4>
-          <div className="space-y-2 text-[1.375rem]">
-            <div className="bg-gray-50 p-2 rounded font-mono text-[1.25rem]">
-              POST /api/auth/login &nbsp;<span className="text-[var(--color-stage-ink-soft)]">— validate password, set cookie</span>
-            </div>
-            <div className="bg-gray-50 p-2 rounded font-mono text-[1.25rem]">
-              POST /api/auth/logout &nbsp;<span className="text-[var(--color-stage-ink-soft)]">— clear cookie (idempotent)</span>
-            </div>
-            <div className="bg-gray-50 p-2 rounded font-mono text-[1.25rem]">
-              GET /api/auth/status &nbsp;<span className="text-[var(--color-stage-ink-soft)]">— is this session authenticated?</span>
-            </div>
+          <div className="border-l-4 border-blue-500 pl-3">
+            <h4 className="font-semibold text-gray-900">Same-origin check</h4>
+            <p className="text-[1.375rem] text-gray-600">Origin header must match an allow-listed dev port (localhost:5173, :3000, :8000) or this service's Cloud Run <code>*.run.app</code> URL. Disallowed origins are rejected with HTTP 403.</p>
           </div>
 
           <h4 className="font-semibold text-gray-900 mt-2">Machine-to-Machine (Admin Token)</h4>
           <p className="text-[1.375rem] text-gray-600">
-            For automation and backend-to-backend calls, use the <code>X-Admin-Token</code> header with a 32+ character token instead of the session cookie. GitHub Actions and unattended callers use this for operations like reindexing.
+            <code>verify_admin_token</code> (X-Admin-Token header, 32+ character token) exists as a
+            preserved utility for unattended automation, but isn't wired into any route today —
+            same-origin already covers <code>/api/admin/*</code> for this demo box.
           </p>
 
           <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mt-2 text-[1.375rem]">
             <p className="font-semibold text-amber-900">Required env vars (server)</p>
             <ul className="text-amber-900 mt-1 space-y-1 list-disc list-inside">
-              <li><code>REQUIRE_LOGIN</code> — <code>true</code> to turn the login screen on (default <code>false</code>)</li>
-              <li><code>LOGIN_PASSWORD</code> — shared password, used only when <code>REQUIRE_LOGIN=true</code> (auto-generated on first <code>setup.sh</code> regardless)</li>
-              <li><code>SESSION_SECRET</code> — ≥32-char cookie-signing secret (<code>openssl rand -hex 32</code>)</li>
-              <li><code>SESSION_COOKIE_SECURE</code> — <code>true</code> for HTTPS deployments, <code>false</code> for local HTTP (default)</li>
-              <li><code>ADMIN_TOKEN</code> — (optional) 32+ character token for machine-to-machine auth, works whether or not <code>REQUIRE_LOGIN</code> is set</li>
+              <li><code>ADMIN_TOKEN</code> — (optional) 32+ character token, only meaningful if you wire <code>verify_admin_token</code> into a route</li>
             </ul>
-            <p className="text-amber-900 mt-2 text-[1.25rem]">The frontend never receives these — when the login screen is on, the user types the password there and the cookie does the rest.</p>
           </div>
         </div>
       ),
@@ -514,15 +489,15 @@ Server streams back:
             </div>
           </div>
 
-          <h4 className="font-semibold text-gray-900 mt-4">Admin Operations (Requires X-Admin-Token or Session)</h4>
+          <h4 className="font-semibold text-gray-900 mt-4">Admin Operations (Same-Origin Only)</h4>
           <div className="space-y-2 text-[1.375rem]">
             <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
               <p className="font-mono text-blue-900">GET /api/admin/health</p>
-              <p className="text-blue-600 text-[1.25rem] mt-1">Index-level health: document count, index state, connectivity. Useful to confirm ingestion completed after a reindex. Requires <code className="bg-white px-1">X-Admin-Token</code> header or session cookie.</p>
+              <p className="text-blue-600 text-[1.25rem] mt-1">Index-level health: document count, index state, connectivity. Useful to confirm ingestion completed after a reindex.</p>
             </div>
             <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
               <p className="font-mono text-blue-900">GET /api/admin/diagnose?q=query</p>
-              <p className="text-blue-600 text-[1.25rem] mt-1">Diagnostic probe: check which fields index a query term (title, product_brand, suggest fields). Helps verify index mapping after reindex. Requires <code className="bg-white px-1">X-Admin-Token</code> header or session cookie.</p>
+              <p className="text-blue-600 text-[1.25rem] mt-1">Diagnostic probe: check which fields index a query term (title, product_brand, suggest fields). Helps verify index mapping after reindex.</p>
             </div>
             <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-2"><strong>Reindexing:</strong> Handled externally by <code>bash scripts/lucille_ingest.sh</code>. No in-container ingest.</p>
           </div>

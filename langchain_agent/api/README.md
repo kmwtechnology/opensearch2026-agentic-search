@@ -13,7 +13,7 @@ Four layers: **routes** → **middleware** → **schemas** → **services**.
 api/
 ├── main.py               # FastAPI app, lifespan, middleware stack
 ├── routes/               # HTTP/WebSocket endpoints
-├── middleware/           # Auth, CORS, session handling
+├── middleware/           # Origin auth, admin token, CORS, client IP
 ├── schemas/              # Pydantic event models
 └── services/             # Observable agent wrapper
 ```
@@ -26,22 +26,16 @@ api/
 | `conversations.py` | `GET /api/conversations`, `GET/DELETE /api/conversations/{thread_id}`, `GET /api/conversations/{thread_id}/observability` | Checkpoint-backed conversation listing/detail/delete + observability snapshot (no REST create/send — that's WebSocket-only) |
 | `suggest.py` | `GET /api/suggest?q=...` | Typeahead autocomplete (edge-ngram + spell correction) |
 | `health.py` | `GET /api/health` | Index health + document count |
-| `admin.py` | `GET /api/admin/health` · `GET /api/admin/diagnose` · `POST /api/admin/enrich` | Index health, field diagnostics, and the live attribute-taxonomy enrichment flywheel (session or `X-Admin-Token`) |
-| `auth.py` | `POST /api/auth/login` · `POST /api/auth/logout` | Session login/logout |
+| `admin.py` | `GET /api/admin/health` · `GET /api/admin/diagnose` · `POST /api/admin/enrich` | Index health, field diagnostics, and the live attribute-taxonomy enrichment flywheel (same-origin only) |
 
 ## Middleware (`api/middleware/`)
 
 | File | Purpose |
 |------|---------|
-| `auth.py` | Holds only `AuthConfigurationError`; no API key validation logic (removed) — do not wire new routes through it |
 | `origin_auth.py` | Origin header allow-list enforcement (falls back to `Referer` for same-origin GETs); disallowed Origin always 403s, no further fallback |
-| `session_auth.py` | Session cookie verification + admin token fallback for automation |
+| `admin_auth.py` | `verify_admin_token` — X-Admin-Token header check for unattended automation. Not wired into any route today; preserved as a utility. |
 
-**Auth strategy:** Two-layer enforcement on protected routes:
-1. **Same-origin** (always on) — Origin header whitelist (localhost dev ports + `*.run.app`)
-2. **Session or admin token** (opt-in, `REQUIRE_LOGIN=false` by default) — HttpOnly signed session cookie (user login) OR `X-Admin-Token` header (automation). With `REQUIRE_LOGIN` off, the session check is skipped entirely and every same-origin caller is treated as authenticated.
-
-Routes check session first; on `HTTPException`, fall back to token. Constant-time comparison via `hmac.compare_digest`.
+**Auth strategy:** Same-origin only — Origin header whitelist (localhost dev ports + `*.run.app`). There is no login gate; do not wire new routes through anything but `verify_same_origin` (plus `verify_admin_token` if you specifically want token-based automation access to that route).
 
 ## Schemas (`api/schemas/`)
 
@@ -60,19 +54,10 @@ Routes check session first; on `HTTPException`, fall back to token. Constant-tim
 
 ## Configuration
 
-Required env vars (set in `.env` or deployment secrets):
+No auth-related env vars are required — the app has no login gate. Optional:
 
 ```bash
-LOGIN_PASSWORD              # Shared login password (12+ hex chars)
-SESSION_SECRET             # Cookie-signing secret (32+ chars)
-SESSION_COOKIE_SECURE      # true (HTTPS) | false (local HTTP, default)
-SESSION_MAX_AGE_SECONDS    # Default 86400 (24h)
-ADMIN_TOKEN                # Automation token for X-Admin-Token header (32+ chars)
-```
-
-Optional:
-
-```bash
+ADMIN_TOKEN                # Automation token for X-Admin-Token header (32+ chars) -- not wired into any route today
 CORS_ORIGINS               # Comma-separated allow-list; empty for local dev
 ENABLE_ENRICHMENT_TOOL     # Default false. Gates the agent's trigger_enrichment
                             # tool AND POST /api/admin/enrich (403 when unset).
@@ -93,8 +78,7 @@ Starts on `:8000` with auto-reload on file changes.
 ## Testing
 
 ```bash
-PYTHONPATH=. pytest tests/unit/test_auth_routes.py -v         # Route auth contracts
-PYTHONPATH=. pytest tests/unit/test_admin_routes_auth.py -v    # Admin auth
+PYTHONPATH=. pytest tests/unit/test_admin_routes_auth.py -v    # Admin/origin auth
 PYTHONPATH=. pytest tests/integration/test_websocket_integration.py -v  # WS lifecycle
 PYTHONPATH=. pytest tests/unit/test_frontend_backend_event_parity.py -v # Event sync
 ```

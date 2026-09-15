@@ -60,8 +60,8 @@ PYTHONPATH=. pytest tests/integration/ -m "integration and not slow" -v
 | `test_retriever_reranker.py` | Hybrid search + RRF fusion + reranker scoring | `integration`, `search`, `rerank` |
 | `test_quality_gate_retry.py` | Retry triggered when max reranker score < 0.5, α ±0.3 adjustment | `integration`, `search`, `rerank` |
 | `test_agent_response.py` | Response generation, citation formatting, Amazon URL construction | `integration`, `search` |
-| `test_conversations.py` | Conversation CRUD, checkpoint-backed state, session behavior | `integration`, `database` |
-| `test_websocket_integration.py` | WebSocket lifecycle, auth, event ordering | `integration`, `websocket` |
+| `test_conversations.py` | Conversation CRUD, checkpoint-backed state, same-origin-only auth (no session/login gate) | `integration`, `database` |
+| `test_websocket_integration.py` | WebSocket lifecycle, same-origin auth, event ordering | `integration`, `websocket` |
 | `test_suggest.py` | `/api/suggest` typeahead: prefix matches, spell correction, fuzzy fallback | `integration`, `search` |
 | `test_admin_enrich_route.py` | `POST /api/admin/enrich` request/response contract, `ENABLE_ENRICHMENT_TOOL` gating | `integration` |
 | `test_edge_cases.py` | Empty retrievals, malformed input, low-confidence intents | `integration` |
@@ -83,11 +83,11 @@ PYTHONPATH=. pytest tests/integration/ -m "integration and not slow" -v
 
 - Conversation CRUD (create, read, update)
 - LangGraph checkpoint persistence
-- Session/authentication state
+- Same-origin auth state (no session/login gate exists)
 
 ### API Contracts
 
-- WebSocket handshake and auth
+- WebSocket handshake and same-origin auth
 - Event emission ordering
 - Typeahead ranking and spell correction
 - Admin reindex status polling
@@ -112,10 +112,11 @@ PGPASSWORD=postgres psql -h localhost -U postgres -d langchain_agent -c 'SELECT 
 
 ### WebSocket tests fail with auth error
 
-Backend not running or credentials wrong:
+Backend not running, or the request's `Origin` header doesn't match the allow-list
+(there is no login gate — same-origin checking is the only auth layer):
 ```bash
 curl http://localhost:8000/api/health
-grep LOGIN_PASSWORD .env
+grep -A5 "def get_allowed_origins" ../../api/middleware/origin_auth.py
 ```
 
 ### `ModuleNotFoundError`
@@ -182,7 +183,7 @@ so they run without any corpus ingest. See `test_config_generator_live.py`.
 | Aspect | Integration | E2E |
 |--------|-------------|-----|
 | **Target** | Local backend `:8000` | Local backend `:8000` by default (or a remote URL via `CLOUD_RUN_URL`) |
-| **Auth** | Session cookie (UI login) or `X-Admin-Token` | Session cookie or `X-Admin-Token` |
+| **Auth** | Same-origin checking only (no login gate) | Same-origin checking only (no login gate) |
 | **Markers** | `integration` | `e2e` |
 | **When** | Locally before push | Locally before push (smoke/regression coverage) |
 

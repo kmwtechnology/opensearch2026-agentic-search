@@ -24,16 +24,12 @@ The path is the fixed route `/ws/chat`; `thread_id` is an **optional** query par
 
 ### Authentication
 
-> **Note:** Authentication is optional by default. The backend's `REQUIRE_LOGIN` config defaults to `false`. With this default, the session cookie is not required. See [Auth Patterns](auth-patterns.md) for full details.
-
-If authentication is enabled, the session cookie **must** be present in the WebSocket handshake. Browsers send it automatically; custom clients must include it explicitly.
+> **Note:** There is no login gate. Same-origin checking (`verify_websocket_origin`) is the only auth layer on the WebSocket handshake — the connecting `Origin` must match the allow-list. See [Auth Patterns](auth-patterns.md) for full details.
 
 **JavaScript (browser):**
 ```javascript
 const ws = new WebSocket(
-  `wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id=${threadId}`,
-  [],
-  { credentials: 'include' }  // Include cookies
+  `wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id=${threadId}`
 );
 ```
 
@@ -44,7 +40,7 @@ import json
 
 async def connect():
     headers = {
-        'Cookie': 'ahs_session=...'  # From login response
+        'Origin': 'http://localhost:8000'
     }
     async with websockets.connect(
         f'wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id={thread_id}',
@@ -177,10 +173,10 @@ The server streams back a sequence of **typed events**. All events have a `type`
 |------|---------|--------|
 | 1000 | Normal close | Conversation ended |
 | 1001 | Going away | Server shutting down |
-| 4401 | Auth failed | Session cookie expired; re-authenticate |
+| 4003 | Origin not allowed | Reconnect from an allow-listed Origin |
 | 4500 | Server error | Unexpected error; reconnect |
 
-**On close code 4401:** User must re-authenticate via `POST /api/auth/login` and reconnect with a new cookie.
+**On close code 4003:** the connecting `Origin` header didn't match the allow-list — there is no login/session step to retry; fix the `Origin` header and reconnect.
 
 ---
 
@@ -225,8 +221,8 @@ export function ChatComponent() {
     ws.current.onerror = (error) => console.error('WebSocket error:', error);
     ws.current.onclose = (event) => {
       setIsConnected(false);
-      if (event.code === 4401) {
-        console.log('Session expired; re-authenticate');
+      if (event.code === 4003) {
+        console.log('Origin not allowed; check the Origin header and reconnect');
       }
     };
 
@@ -272,9 +268,9 @@ import asyncio
 import json
 import websockets
 
-async def chat_session(thread_id: str, cookie: str):
+async def chat_session(thread_id: str):
     url = f"wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id={thread_id}"
-    headers = {"Cookie": f"ahs_session={cookie}"}
+    headers = {"Origin": "http://localhost:8000"}
 
     async with websockets.connect(url, additional_headers=headers) as ws:
         # Wait for connection_established
@@ -314,9 +310,8 @@ async def chat_session(thread_id: str, cookie: str):
 
 # Run
 if __name__ == "__main__":
-    cookie = "..."  # From login
     thread_id = "conv_abc123def456"
-    asyncio.run(chat_session(thread_id, cookie))
+    asyncio.run(chat_session(thread_id))
 ```
 
 ---

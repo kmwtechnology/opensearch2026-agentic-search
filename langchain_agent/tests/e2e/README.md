@@ -16,16 +16,18 @@ These are pytest + httpx + websockets tests (not browser automation).
 
 ```bash
 # Local (default) — start the backend first via ./scripts/start.sh or make dev-api
-export ADMIN_TOKEN="$(grep '^ADMIN_TOKEN=' ../../.env | cut -d= -f2)"
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
 
-Real backend auth is a session cookie (`POST /api/auth/login`, cookie `ahs_session`)
-or the `X-Admin-Token` header (`ADMIN_TOKEN` env var, 32+ chars) for automation —
-see `test_deployment_smoke.py`'s `TestAuthentication` for the current
-session/origin-based auth tests. Some older e2e/load-test files still
-reference a legacy `API_KEY`/`X-API-Key` scheme that the backend no longer
-checks; treat those as stale until updated.
+There is no login gate. Same-origin checking (`api/middleware/origin_auth.py:verify_same_origin`)
+is the backend's only auth layer, so no credential/env var is required to run
+these tests — see `test_deployment_smoke.py`'s `TestAuthentication` for the
+current origin-based auth tests. `ADMIN_TOKEN`/`verify_admin_token`
+(`api/middleware/admin_auth.py`) is preserved as a standalone utility for
+future automation but isn't wired into any route today, so it plays no part
+in these tests either. Some older e2e/load-test files still reference a
+legacy `API_KEY`/`X-API-Key` scheme that the backend no longer checks; treat
+those as stale until updated.
 
 All suites auto-skip individual tests when the target origin rejects the
 request (via `_skip_if_origin_blocked`) — useful when CORS rules block
@@ -40,10 +42,9 @@ This is the file `scripts/smoke_local.sh` runs (`make smoke-local` /
 `smoke-local-quick`) — the project's real local pre-push smoke gate.
 
 - `TestDeploymentHealth` — `/api/health` returns 200 + expected fields
-- `TestAuthentication` — missing/invalid key → 401, valid key → 200,
-  constant-time compare
-- `TestWebSocketConnectivity` — `/api/chat` upgrade, origin checks,
-  auth via header/query
+- `TestAuthentication` — valid Origin → 200/400, disallowed Origin → 403,
+  `/api/health` stays public with no auth at all
+- `TestWebSocketConnectivity` — `/api/chat` upgrade, origin checks
 - `TestSearchPipeline` — each of the 6 intents (`search`, `comparison`,
   `attribute_filter`, `refinement`, `follow_up`, `summary`) produces a
   valid response with expected event ordering
@@ -164,16 +165,16 @@ curl-based smoke test, no pytest required, works against any URL:
 Validates connectivity, `/api/health`, PostgreSQL + OpenSearch status,
 and response time. Color-coded output; non-zero exit on any failure. Note:
 the script's `API_KEY`/`Authorization: Bearer` auth check is legacy — the
-backend only recognizes a session cookie or `X-Admin-Token`, so that
-particular check is currently a no-op.
+backend has no login gate at all and recognizes only same-origin checking
+(`Origin`/`Referer`), so that particular check is currently a no-op.
 
 ## Environment Variables
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CLOUD_RUN_URL` | `http://localhost:8000` | Backend URL under test (the name predates local-only mode; it's just the target URL) |
-| `API_KEY` | `test-api-key` | Legacy `smoke_test.sh` var; sent as `Authorization: Bearer`, which the backend no longer checks (real auth is session cookie / `X-Admin-Token`) |
-| `ADMIN_TOKEN` | (unset) | Value for the `X-Admin-Token` header on `/api/admin/*` routes |
+| `API_KEY` | `test-api-key` | Legacy `smoke_test.sh` var; sent as `Authorization: Bearer`, which the backend no longer checks (the only auth layer is same-origin checking) |
+| `ADMIN_TOKEN` | (unset) | Not currently used by these tests — `verify_admin_token` exists as a preserved-but-unused utility, not wired into any route |
 | `TIMEOUT` | 30 (pytest), 10 (curl) | Request timeout in seconds |
 | `PYTHONPATH` | (unset) | Must be `.` for pytest module resolution |
 

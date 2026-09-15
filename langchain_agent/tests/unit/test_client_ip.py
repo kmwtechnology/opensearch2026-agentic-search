@@ -80,7 +80,7 @@ class TestGetClientIp:
         assert get_client_ip(a) != get_client_ip(b)
 
     def test_tolerates_magicmock_requests_used_by_other_unit_tests(self):
-        # test_session_auth.py builds MagicMock requests; headers.get returns a
+        # Other unit tests build MagicMock requests; headers.get returns a
         # MagicMock (truthy, not a str) -- must fall through to client.host.
         req = MagicMock()
         req.client.host = "1.2.3.4"

@@ -22,7 +22,6 @@ from websockets.asyncio.client import connect as ws_connect
 from tests.e2e.conftest import (
     auth_rest_headers,
     auth_ws_headers,
-    get_auth_cookie,
 )
 
 
@@ -143,12 +142,10 @@ class TestDeploymentHealth:
 
 
 class TestAuthentication:
-    """Two-layer authentication tests: same-origin + shared-password session.
+    """Same-origin authentication tests.
 
-    The deployment gates protected routes via two layers (in order):
-    1. `api/middleware/origin_auth.py:verify_same_origin` — blocks cross-site.
-    2. `api/middleware/session_auth.py:verify_session` — blocks anyone-with-the-URL
-       who hasn't entered the shared password.
+    The deployment gates protected routes via one layer:
+    `api/middleware/origin_auth.py:verify_same_origin` — blocks cross-site.
 
     These tests probe the contract from the outside; the unit-test guard at
     `tests/unit/test_origin_auth_contract.py` exercises the origin layer in
@@ -157,8 +154,8 @@ class TestAuthentication:
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_request_with_valid_origin_and_session_accepted(self):
-        """Valid origin + valid session cookie → 200 on protected route."""
+    def test_request_with_valid_origin_accepted(self):
+        """Valid origin → 200 on a same-origin-only route."""
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(
                 f"{DEPLOYMENT_URL}/api/conversations", headers=auth_rest_headers()
@@ -169,32 +166,13 @@ class TestAuthentication:
         assert response.status_code in [
             200,
             400,
-        ], f"Valid origin+session rejected: {response.status_code} - {response.text}"
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    def test_request_with_valid_origin_no_session_returns_401(self):
-        """Valid origin but no session cookie → 401 (login gate active)."""
-        headers = {"Origin": ORIGIN_HEADER}
-        with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(f"{DEPLOYMENT_URL}/api/conversations", headers=headers)
-
-        if response.status_code == 429:
-            pytest.skip("Rate limited; cannot verify session gate")
-        assert response.status_code == 401, (
-            f"Unauthenticated request should 401, got {response.status_code}. "
-            "If this is 200 the login gate is bypassed."
-        )
+        ], f"Valid origin rejected: {response.status_code} - {response.text}"
 
     @pytest.mark.e2e
     @pytest.mark.slow
     def test_request_with_disallowed_origin_rejected(self):
-        """Cross-origin request (Origin does not match) is rejected with 403.
-
-        Origin auth runs *before* session auth, so even an authenticated
-        cookie cannot rescue a disallowed Origin.
-        """
-        headers = {"Origin": "https://evil.example.com", "Cookie": get_auth_cookie()}
+        """Cross-origin request (Origin does not match) is rejected with 403."""
+        headers = {"Origin": "https://evil.example.com"}
 
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(f"{DEPLOYMENT_URL}/api/conversations", headers=headers)
@@ -207,29 +185,14 @@ class TestAuthentication:
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_health_endpoint_does_not_require_session(self):
-        """Health endpoint stays public — no session cookie required."""
+    def test_health_endpoint_is_public(self):
+        """Health endpoint stays public — no auth required at all."""
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(f"{DEPLOYMENT_URL}/api/health")
 
         assert (
             response.status_code == 200
         ), f"/api/health must remain public for monitoring; got {response.status_code}"
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    def test_login_endpoint_round_trips_a_session_cookie(self):
-        """POST /api/auth/login on a valid password returns a Set-Cookie header.
-
-        This is the smoke-test corollary of the conftest helper: if the
-        deployment ever stops setting the cookie (misconfigured
-        SessionMiddleware, https_only mismatch), every other test in the
-        suite would fail confusingly. Surfacing it here makes the cause obvious.
-        """
-        with httpx.Client(timeout=TIMEOUT) as client:
-            # Just confirm the cookie helper works against the live deployment.
-            cookie = get_auth_cookie()
-        assert cookie and "=" in cookie, f"Login did not return a usable cookie: {cookie!r}"
 
 
 class TestWebSocketConnectivity:
