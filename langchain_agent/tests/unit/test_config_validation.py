@@ -11,7 +11,7 @@ Tests that:
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -486,7 +486,7 @@ class TestConfigurationConsistency:
     def test_timeout_values_positive(self):
         """Test all timeout values are positive."""
         timeouts = {
-            "QUERY_EVAL_TIMEOUT_MS": "3000",
+            "ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS": "5",
             "LINK_VERIFICATION_TIMEOUT_MS": "2000",
         }
 

@@ -3,7 +3,7 @@ Configuration constants for Agentic Hybrid Search RAG Agent.
 
 Most configuration values are loaded from the `.env` file via python-dotenv;
 a subset (see #26 -- notably RETRIEVER_K/FETCH_K/ALPHA, RERANKER_FETCH_K/
-TOP_K, ENABLE_RERANKING, ENABLE_QUERY_EVALUATION, QUERY_EVAL_TIMEOUT_MS,
+TOP_K, ENABLE_RERANKING, ENABLE_QUERY_EVALUATION,
 VECTOR_DIMENSION, ENABLE_COMPACTION, MAX_CONTEXT_TOKENS, DEFAULT_THREAD_ID)
 are plain Python literals below and are NOT env-overridable, regardless of
 what a matching-looking entry in `.env.example` might suggest. Copy
@@ -39,7 +39,7 @@ Controls hybrid search balance and LLM-based relevance scoring.
 ### Query Evaluation & Alpha (`ENABLE_QUERY_EVALUATION`, `QUERY_EVAL_*`)
 Dynamic alpha selection based on query intent.
 - `QUERY_EVAL_MODEL`: Fast classifier (gemini-3.1-flash-lite-preview)
-- `QUERY_EVAL_TIMEOUT_MS`: Max wait for alpha decision
+- `ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS`: Max wait for the alpha-decision LLM call (shared with the retriever's attribute-extraction/query-expansion calls, same model family)
 - Alpha table: 0.0 (pure lexical) ← intent categories → 1.0 (pure semantic)
 
 ### Quality Gate (`ENABLE_QUALITY_GATE`, `QUALITY_GATE_THRESHOLD`)
@@ -134,7 +134,6 @@ __all__ = [
     # Query evaluation configuration
     "ENABLE_QUERY_EVALUATION",
     "DEFAULT_ALPHA",
-    "QUERY_EVAL_TIMEOUT_MS",
     "ENABLE_QUERY_EVAL_CACHE",
     "QUERY_EVAL_CACHE_MAX_SIZE",
     "QUERY_EVAL_MODEL",
@@ -302,13 +301,15 @@ RETRIEVER_ALPHA = 0.25
 # Default search type: "similarity" (vector-only) or "hybrid" (vector + lexical using RRF)
 RETRIEVER_SEARCH_TYPE = "hybrid"
 
-# Max wait (seconds) for the retriever's two hidden alpha_estimator_llm
-# calls: Retriever._extract_attributes (brand/color/material/price parsing
-# for attribute_filter/refinement queries) and Retriever._expand_vague_query
-# (follow-up query expansion). Neither call has a timeout of its own -- one
-# was measured hanging ~18.7s in one reindex-adjacent trial vs. a normal
-# <1s (issue #117/#120). On timeout, each falls back gracefully (no filters /
-# original query) rather than blocking the whole turn.
+# Max wait (seconds) for the pipeline's three hidden alpha_estimator_llm /
+# structured-alpha-estimator calls: Retriever._extract_attributes
+# (brand/color/material/price parsing for attribute_filter/refinement
+# queries), Retriever._expand_vague_query (follow-up query expansion), and
+# query_evaluator_node's alpha-estimation call. None of these calls has a
+# timeout of its own -- one was measured hanging ~18.7s in one
+# reindex-adjacent trial vs. a normal <1s (issue #117/#120/#122). On
+# timeout, each falls back gracefully (no filters / original query /
+# collection-default alpha) rather than blocking the whole turn.
 ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS = float(os.getenv("ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS", "5"))
 
 # ============================================================================
@@ -360,8 +361,12 @@ ENABLE_QUERY_EVALUATION = True
 # Default alpha when evaluation is disabled or fails (0.0 = lexical, 1.0 = semantic)
 DEFAULT_ALPHA = 0.25
 
-# Query evaluation timeout (milliseconds) - max time to wait for LLM evaluation
-QUERY_EVAL_TIMEOUT_MS = 3000  # 3 seconds max for LLM evaluation
+# Query evaluation timeout: see ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS above
+# (retriever config section) -- shared with the retriever's attribute-
+# extraction/query-expansion calls, same underlying model. Was previously
+# its own dead constant (QUERY_EVAL_TIMEOUT_MS, declared but never wired to
+# anything that enforced it -- issue #122); collapsed into the one real
+# timeout budget instead of carrying two.
 
 # Query evaluator caching configuration
 ENABLE_QUERY_EVAL_CACHE = True
