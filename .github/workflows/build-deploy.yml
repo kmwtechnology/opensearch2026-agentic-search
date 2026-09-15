@@ -1,12 +1,12 @@
-name: Build & Deploy
+name: CI
 
 on:
   # push and pull_request intentionally list the same paths (see #24): a PR
   # touching only a path missing from pull_request's list runs zero CI, then
-  # merging runs the full pipeline *and* deploys, unverified, on the first
-  # real attempt. docker/** and root scripts/** are deliberately NOT
-  # included -- verified neither is referenced by this workflow or the
-  # Dockerfile (they belong to docker-compose/reindex.yml instead).
+  # merging runs the full pipeline unverified on the first real attempt.
+  # docker/** and root scripts/** are deliberately NOT included -- verified
+  # neither is referenced by this workflow or the Dockerfile (they belong to
+  # docker-compose / the local Lucille ingest scripts instead).
   push:
     branches: [main, develop]
     paths:
@@ -21,27 +21,14 @@ on:
       - '.github/workflows/build-deploy.yml'
       - 'docker-compose.yml'
       - '.dockerignore'
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Deployment environment'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - staging
+  workflow_dispatch: {}
 
 env:
-  PROJECT_ID: gen-lang-client-0250737934
-  REGION: us-central1
-  SERVICE_NAME: agentic-hybrid-search
-  ARTIFACT_REGISTRY_REPO: agentic-hybrid-search
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Cancel stale PR runs when a new push lands on the same branch — saves CI
-# minutes on rapid-fire pushes. Main-branch runs are NEVER cancelled so we
-# always finish a deploy after merge.
+# minutes on rapid-fire pushes. Main-branch runs are NEVER cancelled so a
+# push to main always finishes its full check run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -181,8 +168,7 @@ jobs:
         run: |
           cd langchain_agent
           # Index + search pipeline only -- no Postgres, no real product data,
-          # no Google API validation. Same code path reindex.yml's --reset-index
-          # flow already runs successfully in CI. Several integration tests
+          # no Google API validation. Several integration tests
           # (enrichment_service.py) only need the index to exist with the
           # right mapping, not to contain real documents -- they mock the
           # actual Lucille subprocess.
@@ -343,7 +329,7 @@ jobs:
       - name: Lint workflow files with actionlint
         # actionlint runs shellcheck on every `run:` block inside workflow YAML,
         # catching the class of bash -e / &&-chain bugs that hit us in production.
-        run: actionlint .github/workflows/build-deploy.yml .github/workflows/reindex.yml
+        run: actionlint .github/workflows/build-deploy.yml
 
       - name: ShellCheck scripts
         uses: ludeeus/action-shellcheck@2.0.0
@@ -360,204 +346,10 @@ jobs:
             echo "Scanned: \`langchain_agent/scripts/*.sh\` and \`.github/workflows/*.yml\` (via actionlint)"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  build-docker:
-    name: Build Docker Image
-    runs-on: ubuntu-latest
-    # No `needs:` on the test/lint jobs (see #24) -- the Docker build doesn't
-    # consume their output, so it runs in parallel with them instead of
-    # serialized behind them. deploy-cloud-run's `needs:` below is what
-    # actually gates the deploy on both build AND test success; this job
-    # alone completing doesn't mean anything shipped.
-    #
-    # Only build & push on main (or manual dispatch) — PRs run lint + tests
-    # only. A broken Dockerfile will be caught by the next push to main; the
-    # `make ci` gate covers the Python failures that were the common case.
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      # lfs: false -- the Dockerfile COPYs nothing under data/ (only
-      # requirements.txt, *.py, api/, and web/), so fetching the ~87MB of
-      # LFS parquet objects here only bloats the build context for no
-      # reason. reindex.yml is the workflow that actually needs them.
-      - uses: actions/checkout@v6
-        with:
-          lfs: false
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-        with:
-          project_id: ${{ env.PROJECT_ID }}
-          version: latest
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Configure Docker authentication
-        run: |
-          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
-
-      - name: Build and push Docker image (main)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./langchain_agent/Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
-            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:latest
-          cache-from: type=registry,ref=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:buildcache,mode=max
-
-  deploy-cloud-run:
-    name: Deploy to Cloud Run
-    runs-on: ubuntu-latest
-    # build-docker no longer needs the test jobs (see #24 -- it now runs in
-    # parallel with them), so this is the job that actually gates a deploy
-    # on both a successful image build AND all tests/lint passing.
-    needs: [build-docker, unit-tests, integration-tests, lint-backend, frontend-tests, shellcheck]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      # No checkout: this job only runs `gcloud run deploy` against the
-      # already-built-and-pushed image (build-docker) with inline env vars
-      # and secrets -- it never reads a repo file (see #24).
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-        with:
-          project_id: ${{ env.PROJECT_ID }}
-
-      - name: Deploy to Cloud Run
-        run: |
-          # --concurrency=8: without an explicit value Cloud Run defaults to 80,
-          # which never triggers scale-out under concurrent WebSocket chat load.
-          # --startup-probe uses httpGet against /api/health/ready, not
-          # tcpSocket: a bare TCP probe passes as soon as uvicorn binds the
-          # port, well before the cross-encoder reranker model finishes
-          # loading. Cloud Run was routing concurrent chat traffic to cold
-          # instances still warming up, starving the event loop's ability to
-          # answer WebSocket keepalive pings (`1011 keepalive ping timeout`).
-          # /api/health/ready now reflects real agent/reranker readiness, not
-          # just "process is up" -- see #23 for the full investigation
-          # (ruled out CPU throttling via Cloud Monitoring: ~6% utilization
-          # during a failing request; an earlier attempt at --max-instances=4
-          # made things worse specifically because cold instances weren't
-          # gated on real readiness yet -- now that they are, via the probe
-          # above, --max-instances=4 gives real headroom instead of more
-          # unguarded cold starts).
-          #
-          # ADMIN_TOKEN (see #26 -- api/middleware/session_auth.py reads it
-          # for X-Admin-Token automation auth, but it was never wired into
-          # any deploy path, so admin automation couldn't authenticate in
-          # prod at all) is sourced from a GitHub Actions repo secret via
-          # --set-env-vars, not GCP Secret Manager via --set-secrets like
-          # every other credential below. That's a real, deliberate
-          # inconsistency: unlike Secret Manager-backed values, this one
-          # is visible in plain text via `gcloud run services describe`.
-          # Move it to Secret Manager (matching the others) if that's not
-          # an acceptable tradeoff.
-          #
-          # ENABLE_ENRICHMENT_TOOL=true: the code default is off (see
-          # config.py); prod needs it on so the agent's trigger_enrichment
-          # tool -- and the taxonomy self-correction demo built on it -- work
-          # against the live deployment.
-          gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-            --region=${{ env.REGION }} \
-            --platform=managed \
-            --set-env-vars="\
-          POSTGRES_HOST=136.111.249.119,\
-          POSTGRES_DB=langchain_agent,\
-          POSTGRES_USER=postgres,\
-          OPENSEARCH_HOST=34.138.97.13,\
-          OPENSEARCH_PORT=9200,\
-          OPENSEARCH_USE_SSL=true,\
-          OPENSEARCH_VERIFY_CERTS=false,\
-          LLM_MODEL=gemini-3-flash-preview,\
-          RERANKER_TYPE=cross-encoder,\
-          CROSS_ENCODER_MODEL=cross-encoder/ms-marco-MiniLM-L-12-v2,\
-          RERANKER_WARMUP_ENABLED=true,\
-          QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,\
-          EMBEDDINGS_MODEL=models/gemini-embedding-001,\
-          LOG_LEVEL=INFO,\
-          LOG_FORMAT=json,\
-          REINDEX_TRIGGER=github,\
-          ENABLE_ENRICHMENT_TOOL=true,\
-          ADMIN_TOKEN=${{ secrets.ADMIN_TOKEN }}" \
-            --set-secrets="\
-          API_KEY=agentic-hybrid-search-api-key:latest,\
-          GITHUB_REINDEX_TOKEN=agentic-hybrid-search-github-reindex-token:latest,\
-          GOOGLE_API_KEY=agentic-hybrid-search-google-api-key:latest,\
-          POSTGRES_PASSWORD=agentic-hybrid-search-db-password:latest,\
-          OPENSEARCH_USER=agentic-hybrid-search-opensearch-user:latest,\
-          OPENSEARCH_PASSWORD=agentic-hybrid-search-opensearch-password:latest,\
-          LOGIN_PASSWORD=agentic-hybrid-search-login-password:latest,\
-          SESSION_SECRET=agentic-hybrid-search-session-secret:latest" \
-            --memory=2Gi \
-            --cpu=4 \
-            --timeout=3600 \
-            --min-instances=0 \
-            --max-instances=4 \
-            --concurrency=8 \
-            --startup-probe=timeoutSeconds=10,periodSeconds=10,failureThreshold=30,httpGet.path=/api/health/ready,httpGet.port=8080 \
-            --no-traffic \
-            --quiet
-
-      - name: Run smoke tests
-        run: |
-          # Wait for service to be ready
-          sleep 10
-          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --format='value(status.url)')
-          echo "Service URL: $SERVICE_URL"
-
-          # Test health endpoint
-          curl -f "$SERVICE_URL/api/health" || exit 1
-          echo "✓ Health check passed"
-
-      - name: Generate deploy summary
-        if: always()
-        run: |
-          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --format='value(status.url)' 2>/dev/null || echo "unavailable")
-          REVISION=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --format='value(status.latestCreatedRevisionName)' 2>/dev/null || echo "unavailable")
-          {
-            echo "## Cloud Run Deployment"
-            echo ""
-            echo "| Field | Value |"
-            echo "|-------|-------|"
-            echo "| Service URL | [$SERVICE_URL]($SERVICE_URL) |"
-            echo "| Revision | \`$REVISION\` |"
-            echo "| Image SHA | \`${{ github.sha }}\` |"
-            echo "| Region | ${{ env.REGION }} |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Promote to production (100% traffic)
-        if: success()
-        run: |
-          gcloud run services update-traffic ${{ env.SERVICE_NAME }} \
-            --region=${{ env.REGION }} \
-            --to-revisions=LATEST=100
-
   notify:
     name: Workflow Status Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests, lint-backend, frontend-tests, shellcheck, build-docker, deploy-cloud-run]
+    needs: [unit-tests, integration-tests, lint-backend, frontend-tests, shellcheck]
     if: always()
 
     steps:
@@ -578,8 +370,6 @@ jobs:
           LINT_RESULT="${{ needs.lint-backend.result }}"
           FRONTEND_RESULT="${{ needs.frontend-tests.result }}"
           SHELLCHECK_RESULT="${{ needs.shellcheck.result }}"
-          DOCKER_RESULT="${{ needs.build-docker.result }}"
-          DEPLOY_RESULT="${{ needs.deploy-cloud-run.result }}"
 
           {
             echo "## Workflow Summary — ${{ github.ref_name }} @ \`${{ github.sha }}\`"
@@ -591,12 +381,10 @@ jobs:
             echo "| Linting & Type Checks | $(result_icon $LINT_RESULT) |"
             echo "| Frontend Tests & Lint | $(result_icon $FRONTEND_RESULT) |"
             echo "| ShellCheck & Workflow Lint | $(result_icon $SHELLCHECK_RESULT) |"
-            echo "| Build Docker Image | $(result_icon $DOCKER_RESULT) |"
-            echo "| Deploy to Cloud Run | $(result_icon $DEPLOY_RESULT) |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           FAILED=0
-          for r in $UNIT_RESULT $INT_RESULT $LINT_RESULT $FRONTEND_RESULT $SHELLCHECK_RESULT $DOCKER_RESULT $DEPLOY_RESULT; do
+          for r in $UNIT_RESULT $INT_RESULT $LINT_RESULT $FRONTEND_RESULT $SHELLCHECK_RESULT; do
             [ "$r" = "failure" ] && FAILED=1
           done
 

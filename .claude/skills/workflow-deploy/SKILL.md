@@ -1,11 +1,13 @@
 ---
 name: workflow-deploy
-description: "Address review feedback, merge the PR, and verify the Cloud Run deployment for opensearch2026-agentic-search. Steps 12-14."
+description: "Address review feedback and merge the PR for opensearch2026-agentic-search. Steps 12-13. There is no production deploy to verify (issue #110, local-only demo)."
 ---
 
 # workflow-deploy — Opensearch2026 Project
 
-Final steps: address review feedback, merge the PR, and verify in production. Runs steps 12–14 of the 14-step workflow.
+Final steps: address review feedback and merge the PR. Runs steps 12–13 of the 14-step workflow.
+
+**No step 14.** As of issue #110 (2026-09-15) this project has no Cloud Run deploy — it runs local-only for the conference demo. `build-deploy.yml` (now named `CI`) only runs tests/lint; `deploy-cloud-run`, `build-docker`, `reindex.yml`, and `smoke-tests.yml` no longer exist. Once a PR merges, there is nothing to watch or verify remotely — see "Post-Merge (Local)" below instead of a deploy-watch step.
 
 ## Setup & Auth (Run Once)
 
@@ -200,99 +202,32 @@ git branch -v
 # Should show: "* main <hash>"
 ```
 
-## Step 14: Post-Deploy ✓
+## Post-Merge (Local) ✓
 
-The PR is merged. Now watch deployment and verify it shipped.
+The PR is merged. There is no deploy to watch — verify locally instead.
 
-### 1. Monitor CI/Deployment on `main`
+### 1. Confirm CI on `main` (best-effort — see caveat)
 
-There is **no manual deploy script** (deploy.sh/gcp-init.sh do not exist). Deployment is fully automated:
-
-**Flow:** Push to `main` → `build-deploy.yml` runs → (if all jobs pass) → `deploy-cloud-run` runs
-
-**Jobs (run in parallel):**
-- `unit-tests`
-- `integration-tests`
-- `lint-backend`
-- `frontend-tests`
-- `shellcheck`
-
-**Then (if all above pass):**
-- `build-docker` (builds & pushes image to GCP Artifact Registry)
-- `deploy-cloud-run` (deploys image to Cloud Run)
-
-**Then (if deploy succeeds):**
-- `notify` (posts summary to GitHub Actions summary)
+`build-deploy.yml` is now named `CI` and only runs `unit-tests`, `integration-tests`, `lint-backend`, `frontend-tests`, `shellcheck`, then a `notify` summary. There is no `build-docker` or `deploy-cloud-run` job anymore.
 
 ```bash
 # Check the latest main run
-gh run list --workflow build-deploy.yml \
+gh run list --workflow CI \
   --repo kmwtechnology/opensearch2026-agentic-search \
   --branch main \
   --limit 1
-
-# Watch the run in real-time
-gh run watch <run-id> \
-  --repo kmwtechnology/opensearch2026-agentic-search
-
-# OR: view logs after completion
-gh run view <run-id> \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --log
 ```
 
-**Real project constants** (hardcoded in `build-deploy.yml`):
-- `PROJECT_ID`: `gen-lang-client-0250737934`
-- `REGION`: `us-central1`
-- `SERVICE_NAME`: `agentic-hybrid-search`
+**Caveat:** if GitHub Actions jobs are failing in ~3s with 0 steps across every workflow, that is the known runner-assignment/billing issue documented in project memory, not a real CI failure — don't treat it as a regression. Local `make ci` remains the real gate.
 
-### 2. Verify Deployment to Cloud Run
-
-Once `deploy-cloud-run` succeeds, the image is live.
-
-**Get the live service URL** (Cloud Run URLs are hash-suffixed, not derivable):
+### 2. Verify Locally
 
 ```bash
-SERVICE_URL=$(gcloud run services describe agentic-hybrid-search \
-  --region us-central1 \
-  --project gen-lang-client-0250737934 \
-  --format 'value(status.url)')
-
-echo "Live service: $SERVICE_URL"
+cd langchain_agent
+make dev            # Docker + Langfuse + backend + frontend
 ```
 
-**Quick manual health checks:**
-
-```bash
-# Health endpoint
-curl -s "$SERVICE_URL/health" | jq .
-
-# Config endpoint (requires admin token)
-curl -s -H "X-Admin-Token: $ADMIN_TOKEN" \
-  "$SERVICE_URL/api/config" | jq .
-```
-
-**Better: Run the automated smoke suite** (more comprehensive):
-
-```bash
-# Trigger the smoke-tests.yml workflow (manual dispatch)
-gh workflow run smoke-tests.yml \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  -f service_url="$SERVICE_URL" \
-  -f timeout_minutes=15
-
-# Get the run ID
-SMOKE_RUN=$(gh run list --workflow smoke-tests.yml \
-  --repo kmwtechnology/opensearch2026-agentic-search \
-  --limit 1 \
-  --json databaseId -q '.[0].databaseId')
-
-# Watch it
-gh run watch $SMOKE_RUN \
-  --repo kmwtechnology/opensearch2026-agentic-search
-```
-
-**User-facing test:** Try a search in the live web UI (`$SERVICE_URL`) and verify your fix works end-to-end.
+Try the feature in the live local web UI (`http://localhost:5173`) and confirm it works end-to-end — this is now the only "production" this project has.
 
 ### 3. Close the Issue
 
@@ -341,14 +276,12 @@ echo "- [Finding Title](finding_$(date +%Y-%m-%d)_<slug>.md) — one-line hook" 
   ~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md
 ```
 
-## Deployment Checklist
+## Post-Merge Checklist
 
 Before calling this step "done":
 
-- [ ] CI on `main` is fully green (all jobs, including `deploy-cloud-run`)
-- [ ] Cloud Run service updated (verify with `gcloud run services describe`)
-- [ ] Live API responds to health checks (`curl ... /health`)
-- [ ] Feature works in production (tested in live web UI or via API)
+- [ ] CI on `main` is green, or the 0-steps runner/billing issue is confirmed (see memory) and local `make ci` was green pre-merge
+- [ ] Feature verified locally (`make dev`, tried in the browser)
 - [ ] Issue is closed (auto-closed or manually)
 - [ ] Memory updated if findings emerged
 - [ ] No follow-up issues filed (if edge cases discovered, file them as new tickets)
@@ -357,12 +290,10 @@ Before calling this step "done":
 
 | Issue | Recovery |
 |-------|----------|
-| Build failed in CI after merge | Diagnose: `gh run view <run-id> --log`. Commit fix, push to `main`. CI re-runs automatically. |
-| `build-docker` succeeded but `deploy-cloud-run` didn't run/failed | Check if all *prerequisite* jobs passed (`unit-tests`, `integration-tests`, `lint-backend`, `frontend-tests`, `shellcheck`). `deploy-cloud-run` is gated on ALL. If it ran but failed, check WIF auth (see memory ref below). |
-| Production app is broken | **Revert immediately:** `git revert <commit-sha>`, push to `main`. CI redeploys old version. Then debug locally and file a new issue. |
-| Issue didn't auto-close | Manually close: `gh issue close <N> --comment "Fixed in PR #<PR>. Deployed."` |
-| Deployment took >10 min | Likely Lucille Docker image rebuild (one-time cost). Check `build-deploy.yml` logs. |
-| Smoke tests timeout | Increase `timeout_minutes` when dispatching, or run manual health checks instead. |
+| CI failed in `main` after merge | Diagnose: `gh run view <run-id> --log`. Commit fix, push to `main`. CI re-runs automatically. |
+| Every job fails in ~3s with 0 steps | Not a real failure — known GitHub Actions runner-assignment/billing issue (see memory: `project_actions_runners_unavailable_2026_09_14.md`). Confirm via `gh api repos/.../actions/runs/<id>/jobs --jq '.jobs[] | .steps | length'` — all zero means it's the outage, not your code. Gate on local `make ci` instead. |
+| Local app is broken after merge | **Revert:** `git revert <commit-sha>`, push to `main`. Then debug locally and file a new issue. |
+| Issue didn't auto-close | Manually close: `gh issue close <N> --comment "Fixed in PR #<PR>."` |
 
 ## Breadcrumbs & Quick Reference
 
@@ -374,9 +305,7 @@ Before calling this step "done":
 | **Get PR comments** | `gh pr view <PR> --json comments` |
 | **Post PR comment** | `gh pr comment <PR> --body "..."` |
 | **Add reviewer** | `gh pr edit <PR> --add-reviewer <handle>` |
-| **Get live service URL** | `gcloud run services describe agentic-hybrid-search --region us-central1 --project gen-lang-client-0250737934 --format 'value(status.url)'` |
-| **Run smoke tests** | `gh workflow run smoke-tests.yml -f service_url="..."` |
-| **Check deployment status** | `gh run list --workflow build-deploy.yml --branch main --limit 1` |
+| **Check CI status** | `gh run list --workflow CI --branch main --limit 1` |
 | **Close issue** | `gh issue close <N> --comment "..."` |
 | **Memory location** | `~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md` |
 | **Project config** | `CLAUDE.md` (source of truth) |
@@ -385,17 +314,15 @@ Before calling this step "done":
 
 - **No automatic branch deletion** — you must pass `--delete-branch` to `gh pr merge`. GitHub doesn't auto-delete even after merge.
 - **No branch protection** — CI doesn't automatically gate the merge. You must check `gh pr checks` yourself before merging.
-- **No manual deploy script** — `deploy.sh` and `gcp-init.sh` don't exist. Deployment is GitHub Actions only.
-- **Deployment is all-or-nothing** — `deploy-cloud-run` waits for ALL prerequisite jobs to pass. One flaky test blocks the deploy.
+- **No deploy at all, local-only (issue #110)** — `deploy.sh`/`gcp-init.sh` still exist as manual/reference tooling but aren't part of the day-to-day flow; nothing runs them automatically.
 - **No Slack** — skip any "post to Slack" steps.
 - **GitHub Issues, not Jira** — use `gh issue` for all issue operations.
-- **WIF auth required** — Cloud Run deploy uses Workload Identity Federation. If it fails, check the memory ref on GCP IAM setup.
 
 ## See Also
 
 - **Previous step:** `/workflow-check <PR-number>` to audit the PR
-- **Deployment details:** Memory reference on GCP WIF IAM binding
-- **CI/CD workflows:** Memory reference on GitHub Actions
+- **GCP CI removal:** issue #110 and its PR for what changed and why
+- **CI/CD workflows:** Memory reference on GitHub Actions runner outage
 - **Project `CLAUDE.md`** — source of truth for tech stack, patterns, commands
 - **Home memory:** `~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md`
 - **View all PRs:** `gh pr list --repo kmwtechnology/opensearch2026-agentic-search --state all`
