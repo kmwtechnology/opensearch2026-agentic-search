@@ -17,12 +17,7 @@ echo ""
 echo "→ To pause development (keep data), use: ./scripts/stop.sh"
 echo "→ To resume later, use: ./scripts/start.sh"
 echo ""
-read -r -p "Type 'teardown' to continue, or press Enter to cancel: "
-if [[ "$REPLY" != "teardown" ]]; then
-    echo "Teardown cancelled."
-    exit 0
-fi
-
+echo "Proceeding non-interactively (no confirmation prompt)."
 echo ""
 
 # Get the directory where this script is located
@@ -88,19 +83,6 @@ if [ -d "$PROJECT_DIR/logs" ]; then
     echo "✓ Logs removed"
 else
     echo "  No logs found"
-fi
-
-# 6. Remove .env file (optional - ask first)
-if [ -f "$PROJECT_DIR/.env" ]; then
-    echo ""
-    read -p "Remove .env file (contains API keys)? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -f "$PROJECT_DIR/.env"
-        echo "✓ .env file removed"
-    else
-        echo "  .env file kept"
-    fi
 fi
 
 echo ""
