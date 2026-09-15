@@ -8,7 +8,6 @@ Zustand state management stores for global UI and application state.
 
 | Store | Purpose | Main State | Key Actions |
 |-------|---------|-----------|-------------|
-| **authStore** | Login/logout, session state | `isAuthenticated`, `isChecking`, `isLoggingIn`, `loginError` | `checkAuth()`, `login(password)`, `logout()`, `markUnauthenticated()` |
 | **chatStore** | Messages, conversation, streaming | `threadId`, `messages[]`, `isProcessing`, `streamingContent` | `addMessage()`, `setThreadId()`, `updateMessageStatus()` |
 | **observabilityStore** | Event stream, pipeline timeline | `events[]`, `activeStep`, `snapshots[]` | `addEvent()`, `setActiveStep()`, `saveSnapshot()` |
 | **optimizationsStore** | UI search-optimization toggles | `optimizations` (a `Record<OptimizationKey, boolean>` — `hybrid`, `fuzzy`, `synonyms`, `phonetic`, `phrase_boost`, `field_boost`, `typeahead`, `reranking`, `llm`, `llm_judge`) | `toggle(key)`, `setAll(value)`, `reset()` |
@@ -17,12 +16,10 @@ Zustand state management stores for global UI and application state.
 
 ```
 stores/
-├── authStore.ts                    ← Session, login password, logout
 ├── chatStore.ts                    ← Messages, thread, streaming, processing state
 ├── observabilityStore.ts           ← Event stream, snapshots, timeline
 ├── optimizationsStore.ts           ← UI toggle switches
 └── __tests__/                      ← Vitest tests for each store
-    ├── authStore.test.ts
     ├── chatStore.test.ts
     ├── observabilityStore.test.ts
     └── optimizationsStore.test.ts
@@ -40,23 +37,6 @@ function MyComponent() {
   // Rendered with messages, addMessage is action
 }
 ```
-
-## authStore
-
-```typescript
-interface AuthState {
-  isAuthenticated: boolean
-  isChecking: boolean
-  isLoggingIn: boolean
-  loginError: string | null
-  checkAuth: () => Promise<void>
-  login: (password: string) => Promise<boolean>
-  logout: () => Promise<void>
-  markUnauthenticated: () => void
-}
-```
-
-**When to use:** LoginScreen, Layout (conditionally render chat), useWebSocket (auth failures trigger reconnect).
 
 ## chatStore
 
@@ -111,6 +91,5 @@ interface OptimizationsState {
 ## Persistence
 
 - `chatStore`: Recent messages persisted to localStorage + server (via REST)
-- `authStore`: Login state tied to HTTP-only cookie (not persisted in JS)
 - `observabilityStore`: Events ephemeral (cleared on new conversation or page reload)
 - `optimizationsStore`: UI toggles saved to localStorage for session recall
