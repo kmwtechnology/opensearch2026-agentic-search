@@ -14,7 +14,7 @@ button; you never type a query.
 
 ```bash
 cd langchain_agent
-make dev            # Docker + Langfuse + backend + frontend
+make dev            # Docker + backend + frontend
 make demo-reset     # ARM ARC 2 — see below
 ```
 

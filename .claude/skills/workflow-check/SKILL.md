@@ -117,7 +117,7 @@ gh pr view <PR-number> \
 
 **Good PR body examples:**
 - ✓ "Fixes timeout issue by increasing reranker batch size. Quality gate now retries on low scores (fixes #38)."
-- ✓ "Add Langfuse tracing for cost visibility. Wrapped `langfuse.CallbackHandler` in config; zero prod overhead (fixes #18)."
+- ✓ "Fix flaky WebSocket reconnect by adding exponential backoff. Client was retrying in a tight loop and exhausting the connection pool (fixes #52)."
 - ✗ "Update reranker" ← too vague, no why
 - ✗ "Change line 88" ← implementation detail, not rationale
 

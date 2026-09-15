@@ -51,7 +51,6 @@ COPY langchain_agent/retrieval/ ./retrieval/
 COPY langchain_agent/quality/ ./quality/
 COPY langchain_agent/observability/ ./observability/
 COPY langchain_agent/checkpoints/ ./checkpoints/
-COPY langchain_agent/integrations/ ./integrations/
 COPY langchain_agent/tools/ ./tools/
 # benchmarks/ and scripts/ are deliberately NOT copied: they are local dev
 # entry points invoked from the Makefile, never imported at runtime.

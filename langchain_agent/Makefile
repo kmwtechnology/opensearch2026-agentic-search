@@ -1,4 +1,4 @@
-.PHONY: help doctor setup reindex reindex-products seed-taxonomy demo-reset test lint format clean run stop teardown test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick langfuse-up langfuse-down langfuse-eval capture-langfuse-prompts register-langfuse-evaluators analyze-quality-gate
+.PHONY: help doctor setup reindex reindex-products seed-taxonomy demo-reset test lint format clean run stop teardown test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -8,7 +8,7 @@ help:
 	@echo ""
 	@echo "Setup & Initialization:"
 	@echo "  make doctor             - Check prerequisites and system health"
-	@echo "  make setup              - Run complete system setup (Docker + Langfuse + database, models, data)"
+	@echo "  make setup              - Run complete system setup (Docker + database, models, data)"
 	@echo "  make install-web        - Install web UI dependencies (npm install)"
 	@echo ""
 	@echo "Data (Lucille ETL, local mechanism -- Cloud Run dispatches reindex.yml instead):"
@@ -16,14 +16,6 @@ help:
 	@echo "  make reindex-products   - Products only (--skip-judgments), what the enrichment flywheel runs"
 	@echo "  make seed-taxonomy      - Rediscover color/material taxonomy + products pass (DESTRUCTIVE: wipes agent-learned mappings)"
 	@echo "  make demo-reset         - Re-arm the taxonomy demo (restore tan->yellow + reindex). Run BETWEEN rehearsals."
-	@echo ""
-	@echo "Observability (Local Development Only — make setup/dev/stop already manage this automatically):"
-	@echo "  make langfuse-up        - Start just Langfuse tracing (docker compose --profile observability up -d)"
-	@echo "  make langfuse-down      - Stop just Langfuse tracing (docker compose --profile observability down)"
-	@echo "  make capture-langfuse-prompts - Capture current prompts for local Langfuse authoring"
-	@echo "  make langfuse-eval      - Run a Langfuse Experiment (Dataset Run) against esci-ground-truth"
-	@echo "  make register-langfuse-evaluators - Register /evals Evaluators (Code + LLM-as-judge templates)"
-	@echo "  make analyze-quality-gate - Report quality-gate threshold calibration vs. eval outcomes"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test               - Run the unit suite (tests/unit/, no services needed)"
@@ -49,10 +41,10 @@ help:
 	@echo ""
 	@echo "Running:"
 	@echo "  make run                - Start the CLI agent"
-	@echo "  make dev                - Start full dev environment (Docker + Langfuse + API + Web UI)"
+	@echo "  make dev                - Start full dev environment (Docker + API + Web UI)"
 	@echo "  make dev-api            - Start FastAPI backend only (port 8000; Docker must already be up)"
 	@echo "  make dev-web            - Start React frontend only (port 5173)"
-	@echo "  make stop               - Stop all running services (processes + Docker/Langfuse, containers persist for a fast restart)"
+	@echo "  make stop               - Stop all running services (processes + Docker, containers persist for a fast restart)"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make teardown           - Full destructive cleanup (delegates to scripts/teardown.sh: removes .venv, node_modules, Docker volumes)"
@@ -219,8 +211,8 @@ stop:
 	@echo "  Stopping npm/Node processes..."
 	pkill -f "npm.*dev" || true
 	pkill -f "vite" || true
-	@echo "  Stopping Docker services (PostgreSQL + OpenSearch + Langfuse)..."
-	@cd .. && docker compose --profile observability stop
+	@echo "  Stopping Docker services (PostgreSQL + OpenSearch)..."
+	@cd .. && docker compose stop
 	@echo "✓ All services stopped"
 
 teardown:
@@ -261,13 +253,12 @@ dev-web:
 	cd web && npm run dev
 
 dev:
-	@echo "Ensuring Docker services (PostgreSQL + OpenSearch + Langfuse) are up..."
-	@cd .. && docker compose --profile observability up -d --wait
+	@echo "Ensuring Docker services (PostgreSQL + OpenSearch) are up..."
+	@cd .. && docker compose up -d --wait
 	@echo ""
 	@echo "Starting full development environment..."
 	@echo "  Backend:  http://localhost:8000"
 	@echo "  Frontend: http://localhost:5173"
-	@echo "  Langfuse: http://localhost:3000 (dev@example.com / localdev123)"
 	@echo ""
 	@echo "Run in separate terminals:"
 	@echo "  Terminal 1: make dev-api"
@@ -275,34 +266,5 @@ dev:
 	@echo ""
 	@echo "Or start both now (backend in background):"
 	@( PYTHONPATH=. $(VENV)/uvicorn api.main:app --reload --port 8000 & ) && cd web && npm run dev
-
-langfuse-up:
-	@echo "Starting Langfuse observability stack..."
-	cd .. && docker compose --profile observability up -d --wait
-	@echo "Configuring Playground (Google AI Studio, from GOOGLE_API_KEY)..."
-	@PYTHONPATH=. $(VENV)/python scripts/configure_langfuse_playground.py || true
-	@echo "✓ Langfuse started at http://localhost:3000"
-	@echo "  UI login: dev@example.com / localdev123"
-	@echo "  Next: set LANGFUSE_ENABLED=true in .env and restart the agent"
-
-langfuse-down:
-	@echo "Stopping Langfuse observability stack..."
-	cd .. && docker compose --profile observability down
-	@echo "✓ Langfuse stopped"
-
-langfuse-eval:
-	@echo "Running a Langfuse Experiment (Dataset Run) against esci-ground-truth..."
-	@PYTHONPATH=. $(VENV)/python scripts/run_langfuse_eval.py
-
-capture-langfuse-prompts:
-	@echo "Capturing current prompts into local Langfuse..."
-	@PYTHONPATH=. $(VENV)/python scripts/capture_langfuse_prompts.py
-
-register-langfuse-evaluators:
-	@echo "Registering Langfuse Evaluators (citation-precision-ts, answer-groundedness, context-precision)..."
-	@PYTHONPATH=. $(VENV)/python scripts/register_langfuse_evaluator.py
-
-analyze-quality-gate:
-	@PYTHONPATH=. $(VENV)/python scripts/analyze_quality_gate_thresholds.py
 
 .SILENT: help
