@@ -271,14 +271,14 @@ gh pr checks <PR-number> \
   --repo kmwtechnology/opensearch2026-agentic-search
 ```
 
-**Expected checks (from `build-deploy.yml`):**
+**Expected checks (from the `CI` workflow, formerly `build-deploy.yml` — issue #110 dropped the GCP build/deploy jobs, local-only demo now):**
 - `unit-tests` ✓
 - `integration-tests` ✓
 - `lint-backend` (black/isort/flake8/mypy) ✓
 - `frontend-tests` ✓
 - `shellcheck` ✓
 
-**Note:** `build-docker` and `deploy-cloud-run` only run on `main`, not on PRs.
+**Note:** if every check fails in ~3s with 0 steps, that's the known GitHub Actions runner/billing issue (see memory), not a real failure — gate on local `make ci` instead.
 
 **If CI fails:**
 - Diagnose the failure
