@@ -366,6 +366,22 @@ export function narrate(event: AgentEvent): NarratorLine | null {
  */
 export const MAX_VISIBLE_LINES = 7
 
+/**
+ * How many pipeline lines survive alongside the enrichment card (#108).
+ *
+ * The enrichment moment is roughly four ordinary lines tall — a headline, the
+ * WAS/NOW pair, and the re-run button. Seven lines plus that card overflows a
+ * 1920x1080 viewport, and the panel does not scroll by design, so the card and
+ * its button were rendered but unreachable: the arc's entire payoff sat below
+ * the fold at exactly the resolution the demo is presented at. It only fit on
+ * the larger development display, which is why it survived review.
+ *
+ * Dropping the earliest lines rather than shortening the card is deliberate.
+ * The card IS the point of the turn; the stages above it are context the
+ * presenter has already narrated by the time it appears.
+ */
+export const MAX_VISIBLE_LINES_WITH_MOMENT = 3
+
 export function visibleLines(lines: NarratorLine[]): NarratorLine[] {
   const byNode = new Map<NarratorNode, NarratorLine>()
   for (const line of lines) {
@@ -373,5 +389,14 @@ export function visibleLines(lines: NarratorLine[]): NarratorLine[] {
   }
   // Map preserves insertion order, and a re-set key keeps its original
   // position — exactly the "first-seen order, latest content" we want.
-  return [...byNode.values()].slice(-MAX_VISIBLE_LINES)
+  const deduped = [...byNode.values()]
+
+  const moment = deduped.find((l) => l.node === 'enrichment')
+  if (!moment) {
+    return deduped.slice(-MAX_VISIBLE_LINES)
+  }
+
+  // Keep the card, and only the pipeline lines immediately preceding it.
+  const rest = deduped.filter((l) => l.node !== 'enrichment')
+  return [...rest.slice(-MAX_VISIBLE_LINES_WITH_MOMENT), moment]
 }

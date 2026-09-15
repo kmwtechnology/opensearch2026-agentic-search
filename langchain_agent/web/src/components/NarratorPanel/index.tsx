@@ -141,7 +141,18 @@ export function NarratorPanel({ onRerun, rerunPending, onShowDetails }: Props) {
         )}
       </header>
 
-      <div className="flex flex-1 flex-col gap-5 overflow-hidden px-7 py-6">
+      {/*
+        `overflow-y-auto`, not `overflow-hidden` (#108).
+
+        The line cap in `visibleLines` is what keeps this panel from needing to
+        scroll, and that remains the design. This is the safety net underneath
+        it: with `overflow-hidden`, anything that did overflow — a longer
+        filter summary, a wrapped rewrite, a shorter projector — became
+        permanently unreachable rather than merely inconvenient, with no
+        on-screen sign that content had been cut. Failing to a scrollbar is
+        strictly better than failing to silence.
+      */}
+      <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-7 py-6">
         {ordered.length === 0 && (
           <p className="text-[length:var(--text-stage-body)] font-medium text-[var(--color-stage-ink-soft)]">
             Ask a question and the pipeline's reasoning appears here, one step at a time.
