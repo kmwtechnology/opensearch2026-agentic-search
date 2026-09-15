@@ -38,8 +38,8 @@ api/
 | `session_auth.py` | Session cookie verification + admin token fallback for automation |
 
 **Auth strategy:** Two-layer enforcement on protected routes:
-1. **Same-origin** — Origin header whitelist (localhost dev ports + `*.run.app`)
-2. **Session or admin token** — HttpOnly signed session cookie (user login) OR `X-Admin-Token` header (automation)
+1. **Same-origin** (always on) — Origin header whitelist (localhost dev ports + `*.run.app`)
+2. **Session or admin token** (opt-in, `REQUIRE_LOGIN=false` by default) — HttpOnly signed session cookie (user login) OR `X-Admin-Token` header (automation). With `REQUIRE_LOGIN` off, the session check is skipped entirely and every same-origin caller is treated as authenticated.
 
 Routes check session first; on `HTTPException`, fall back to token. Constant-time comparison via `hmac.compare_digest`.
 

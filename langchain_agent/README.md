@@ -83,9 +83,13 @@ Takes ~3–5 min on first run (embeddings are precomputed in the shipped sample 
 Backend FastAPI runs on `:8000`, React frontend on `:5173` (Vite proxies
 `/api` to the backend).
 
-The login password is stored as `LOGIN_PASSWORD` in `.env`. The UI uses a
-signed session cookie after login; admin automation can use
-`X-Admin-Token: $ADMIN_TOKEN` on protected admin routes.
+The login gate is **off by default** (`REQUIRE_LOGIN=false`) — the UI opens
+straight to the chat with no login screen, and every same-origin caller,
+including `/api/admin/*`, is unauthenticated. `setup.sh` still generates
+`LOGIN_PASSWORD` in `.env` so it's ready if you set `REQUIRE_LOGIN=true`; when
+enabled, the UI takes it via a login screen and issues a signed session
+cookie. Admin automation can use `X-Admin-Token: $ADMIN_TOKEN` on protected
+admin routes either way. See [auth-patterns.md](../docs/integration/auth-patterns.md).
 
 Stop or clean up local services:
 
@@ -800,11 +804,13 @@ curl http://localhost:8000/api/health          # Backend
 
 ## Security
 
-- **Session-cookie auth** — `POST /api/auth/login` validates `LOGIN_PASSWORD`
-  via `hmac.compare_digest` (timing-safe), sets a signed HttpOnly
-  `ahs_session` cookie (SameSite=Lax). All protected routes call
-  `verify_session`; WebSocket handshake uses `verify_websocket_session`
-  (rejects with code 4401).
+- **Session-cookie auth (opt-in, `REQUIRE_LOGIN=false` by default)** —
+  `POST /api/auth/login` validates `LOGIN_PASSWORD` via `hmac.compare_digest`
+  (timing-safe), sets a signed HttpOnly `ahs_session` cookie (SameSite=Lax).
+  All protected routes call `verify_session`; WebSocket handshake uses
+  `verify_websocket_session` (rejects with code 4401). With `REQUIRE_LOGIN`
+  off, `verify_session` is a no-op and every same-origin caller is treated
+  as authenticated.
 - **Admin token** — `X-Admin-Token` header accepted on `/api/admin/*` and
   `/api/health` for automation. Constant-time comparison via
   `hmac.compare_digest`. Requires `ADMIN_TOKEN` env var (32+ chars).

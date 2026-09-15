@@ -169,19 +169,20 @@ export function GuidePage() {
       title: '💬 Using the Chat UI',
       content: (
         <div className="space-y-4">
-          <h4 className="font-semibold text-gray-900">The Three-Panel Layout</h4>
-          <div className="grid grid-cols-3 gap-4 my-3">
+          <h4 className="font-semibold text-gray-900">The Layout</h4>
+          <p className="text-[1.375rem] text-gray-600 mb-2">
+            A header (demo selector, turn progress, New Demo, Details, sign out) above two panels sized for a
+            1920×1080 projector — no resizable panes, no sidebar. There is no conversations list; each demo
+            re-arms itself instead of letting you browse history.
+          </p>
+          <div className="grid grid-cols-2 gap-4 my-3">
             <div className="bg-gray-100 p-3 rounded">
-              <p className="font-semibold text-[1.375rem]">Left: Conversations</p>
-              <p className="text-[1.25rem] text-gray-600 mt-1">View, resume, or delete past conversations</p>
-            </div>
-            <div className="bg-gray-100 p-3 rounded">
-              <p className="font-semibold text-[1.375rem]">Center: Chat</p>
+              <p className="font-semibold text-[1.375rem]">Left: Chat</p>
               <p className="text-[1.25rem] text-gray-600 mt-1">Type questions, see streaming responses with citations</p>
             </div>
             <div className="bg-gray-100 p-3 rounded">
-              <p className="font-semibold text-[1.375rem]">Right: Observability</p>
-              <p className="text-[1.25rem] text-gray-600 mt-1">Watch the pipeline execute step-by-step</p>
+              <p className="font-semibold text-[1.375rem]">Right: Narrator / Observability</p>
+              <p className="text-[1.25rem] text-gray-600 mt-1">Watch the pipeline execute step-by-step; press D for the full detail panel</p>
             </div>
           </div>
 
@@ -285,19 +286,30 @@ export function GuidePage() {
       content: (
         <div className="space-y-4">
           <p className="text-[1.375rem] text-gray-700">
-            All protected routes are gated by two layers, both enforced on every REST call and on the WebSocket handshake.
+            Two layers, both enforced on every REST call and on the WebSocket handshake — but the second one is
+            <strong> off by default</strong>.
           </p>
+
+          <div className="bg-amber-50 border-l-4 border-amber-500 p-3 my-2 text-[1.375rem]">
+            <p className="font-semibold text-amber-900">REQUIRE_LOGIN defaults to false.</p>
+            <p className="text-amber-900 mt-1">
+              With it off, there is no login screen and any same-origin caller — including{' '}
+              <code>/api/admin/*</code> — is unauthenticated. That's what lets the header's Restart button call{' '}
+              <code>demo-reset</code> straight from the browser. Set <code>REQUIRE_LOGIN=true</code> for any
+              deployment where an unauthenticated same-origin caller reaching the admin routes is unacceptable.
+            </p>
+          </div>
 
           <div className="space-y-3">
             <div className="border-l-4 border-blue-500 pl-3">
-              <h4 className="font-semibold text-gray-900">1. Same-origin check</h4>
-              <p className="text-[1.375rem] text-gray-600">Origin header must match an allow-listed dev port (localhost:5173, :3000, :8000) or this service's Cloud Run <code>*.run.app</code> URL. Disallowed origins are rejected with HTTP 403.</p>
+              <h4 className="font-semibold text-gray-900">1. Same-origin check (always on)</h4>
+              <p className="text-[1.375rem] text-gray-600">Origin header must match an allow-listed dev port (localhost:5173, :3000, :8000) or this service's Cloud Run <code>*.run.app</code> URL. Disallowed origins are rejected with HTTP 403 — this applies regardless of <code>REQUIRE_LOGIN</code>.</p>
             </div>
 
             <div className="border-l-4 border-emerald-500 pl-3">
-              <h4 className="font-semibold text-gray-900">2. Shared-password session cookie</h4>
-              <p className="text-[1.375rem] text-gray-600">A typed login screen takes the password configured in <code>LOGIN_PASSWORD</code>; on submit, <code>POST /api/auth/login</code> validates it (constant-time, <code>hmac.compare_digest</code>) and sets a signed HttpOnly <code>ahs_session</code> cookie (SameSite=Lax). Subsequent REST calls and the WebSocket carry it automatically.</p>
-              <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-1">WebSocket rejection closes the socket with code <strong>4401</strong>, which the frontend translates into a return to the login screen.</p>
+              <h4 className="font-semibold text-gray-900">2. Shared-password session cookie (opt-in via REQUIRE_LOGIN=true)</h4>
+              <p className="text-[1.375rem] text-gray-600">When enabled, a login screen takes the password configured in <code>LOGIN_PASSWORD</code>; on submit, <code>POST /api/auth/login</code> validates it (constant-time, <code>hmac.compare_digest</code>) and sets a signed HttpOnly <code>ahs_session</code> cookie (SameSite=Lax). Subsequent REST calls and the WebSocket carry it automatically.</p>
+              <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-1">WebSocket rejection closes the socket with code <strong>4401</strong>. With <code>REQUIRE_LOGIN=false</code> (the default) this layer is skipped entirely — every session is treated as authenticated.</p>
             </div>
           </div>
 
@@ -322,12 +334,13 @@ export function GuidePage() {
           <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mt-2 text-[1.375rem]">
             <p className="font-semibold text-amber-900">Required env vars (server)</p>
             <ul className="text-amber-900 mt-1 space-y-1 list-disc list-inside">
-              <li><code>LOGIN_PASSWORD</code> — shared password (auto-generated on first <code>setup.sh</code>)</li>
+              <li><code>REQUIRE_LOGIN</code> — <code>true</code> to turn the login screen on (default <code>false</code>)</li>
+              <li><code>LOGIN_PASSWORD</code> — shared password, used only when <code>REQUIRE_LOGIN=true</code> (auto-generated on first <code>setup.sh</code> regardless)</li>
               <li><code>SESSION_SECRET</code> — ≥32-char cookie-signing secret (<code>openssl rand -hex 32</code>)</li>
               <li><code>SESSION_COOKIE_SECURE</code> — <code>true</code> for HTTPS deployments, <code>false</code> for local HTTP (default)</li>
-              <li><code>ADMIN_TOKEN</code> — (optional) 32+ character token for machine-to-machine auth</li>
+              <li><code>ADMIN_TOKEN</code> — (optional) 32+ character token for machine-to-machine auth, works whether or not <code>REQUIRE_LOGIN</code> is set</li>
             </ul>
-            <p className="text-amber-900 mt-2 text-[1.25rem]">The frontend never receives these — the user types the password into the login screen and the cookie does the rest.</p>
+            <p className="text-amber-900 mt-2 text-[1.25rem]">The frontend never receives these — when the login screen is on, the user types the password there and the cookie does the rest.</p>
           </div>
         </div>
       ),

@@ -8,7 +8,9 @@ Complete REST endpoint documentation with cURL examples.
 
 ## Authentication
 
-First, log in to get a session cookie:
+> **Note:** Authentication is optional by default. The backend's `REQUIRE_LOGIN` config defaults to `false`, meaning no login gate is enforced and this step can be skipped. See [Auth Patterns](auth-patterns.md) for full details.
+
+First, log in to get a session cookie (when `REQUIRE_LOGIN=true`):
 
 ```bash
 # Login
@@ -41,7 +43,7 @@ Response (200 OK):
 }
 ```
 
-`status` is `"ok"` when postgres and google_ai are both healthy, otherwise `"degraded"` (always returns 200, even when degraded — fail-open for monitoring). Check [Troubleshooting](../operations/troubleshooting.md).
+`status` is `"ok"` when postgres and google_ai are both healthy, otherwise `"degraded"` (always returns 200, even when degraded — fail-open for monitoring).
 
 ---
 

@@ -69,7 +69,7 @@ def _health_check_sync() -> dict:
     return status
 
 
-@router.get("/health")
+@router.get("/health", summary="Full dependency health check (postgres, google_ai, opensearch)")
 async def health_check():
     """
     Comprehensive health check of API and all dependencies.
@@ -123,7 +123,7 @@ async def health_check():
     return await run_in_threadpool(_health_check_sync)
 
 
-@router.get("/health/ready")
+@router.get("/health/ready", summary="Kubernetes/Cloud Run readiness probe")
 async def readiness_check():
     """
     Kubernetes-style readiness probe.
@@ -198,7 +198,7 @@ async def readiness_check():
     return JSONResponse(status_code=503, content={"ready": False, "reason": health})
 
 
-@router.get("/config")
+@router.get("/config", summary="Runtime frontend config (API URL discovery)")
 async def get_frontend_config(request: Request):
     """
     Runtime configuration for frontend.
