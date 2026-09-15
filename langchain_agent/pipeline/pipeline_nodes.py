@@ -10,6 +10,7 @@ import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from langchain_core.documents import Document
@@ -18,6 +19,7 @@ from pydantic import BaseModel
 
 from core.agent_state import CustomAgentState
 from core.config import (
+    ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS,
     ANSWER_STREAM_TAG,
     DEFAULT_ALPHA,
     ENABLE_RERANKING,
@@ -1422,7 +1424,9 @@ RULES:
 Return ONLY the query text, nothing else."""
 
         try:
-            response = self.alpha_estimator_llm.invoke(prompt)
+            response = self._invoke_with_timeout(
+                self.alpha_estimator_llm, prompt, ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS
+            )
             expanded = _flatten_llm_content(response).strip()
 
             # Remove any quotes the LLM might have added
@@ -1676,6 +1680,25 @@ Query: "{query}" """
 
         return single_term_classify(term, canonical_seeds, existing_lookup=lookup)
 
+    def _invoke_with_timeout(self, llm, prompt: str, timeout_seconds: float):
+        """Invoke an LLM off-thread with a hard wall-clock bound.
+
+        A plain ``llm.invoke(prompt)`` has no timeout of its own -- a slow or
+        hung call blocks whichever pipeline node called it for as long as the
+        provider takes. Measured hanging ~18.7s vs. a normal <1s in one
+        reindex-adjacent trial for the retriever's hidden attribute/query
+        LLM calls (issue #117/#120). Raises ``concurrent.futures.TimeoutError``
+        on timeout; the orphaned call is left to finish in the background
+        rather than waited on further, since blocking on it would defeat the
+        point of the timeout.
+        """
+        executor = ThreadPoolExecutor(max_workers=1)
+        try:
+            future = executor.submit(llm.invoke, prompt)
+            return future.result(timeout=timeout_seconds)
+        finally:
+            executor.shutdown(wait=False)
+
     def _extract_attributes(self, query: str) -> list:
         """
         Extract product attributes from attribute_filter queries.
@@ -1712,7 +1735,17 @@ Return ONLY a JSON object (use null for missing attributes):
 {{"brand": "...", "color": "...", "material_or_feature": "...", "size": "...", "price_max": null, "price_min": null}}"""
 
         try:
-            response = self.alpha_estimator_llm.invoke(prompt)
+            try:
+                response = self._invoke_with_timeout(
+                    self.alpha_estimator_llm, prompt, ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS
+                )
+            except FutureTimeoutError:
+                logger.warning(
+                    "Attribute extraction timed out after %.1fs -- proceeding without "
+                    "attribute filters",
+                    ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS,
+                )
+                return []
             text = _flatten_llm_content(response).strip()
 
             # Extract JSON from response
@@ -2583,6 +2616,16 @@ Original query: {query}
         # Extract attributes for attribute_filter and refinement intents
         attribute_filters = None
         if intent in ("attribute_filter", "refinement"):
+            if SearchProgressEvent:
+                try:
+                    self._emit_event_from_sync(
+                        SearchProgressEvent(
+                            stage="attribute_extraction",
+                            message="Extracting attribute filters...",
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not emit attribute extraction progress event: {e}")
             attribute_filters = self._extract_attributes(query)
             if attribute_filters:
                 logger.info(f"Retriever: applying {len(attribute_filters)} attribute filter(s)")

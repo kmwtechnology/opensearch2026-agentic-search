@@ -120,6 +120,7 @@ __all__ = [
     "RETRIEVER_FETCH_K",
     "RETRIEVER_ALPHA",
     "RETRIEVER_SEARCH_TYPE",
+    "ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS",
     # Reranker configuration
     "ENABLE_RERANKING",
     "RERANKER_TYPE",
@@ -300,6 +301,15 @@ RETRIEVER_ALPHA = 0.25
 
 # Default search type: "similarity" (vector-only) or "hybrid" (vector + lexical using RRF)
 RETRIEVER_SEARCH_TYPE = "hybrid"
+
+# Max wait (seconds) for the retriever's two hidden alpha_estimator_llm
+# calls: Retriever._extract_attributes (brand/color/material/price parsing
+# for attribute_filter/refinement queries) and Retriever._expand_vague_query
+# (follow-up query expansion). Neither call has a timeout of its own -- one
+# was measured hanging ~18.7s in one reindex-adjacent trial vs. a normal
+# <1s (issue #117/#120). On timeout, each falls back gracefully (no filters /
+# original query) rather than blocking the whole turn.
+ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS = float(os.getenv("ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS", "5"))
 
 # ============================================================================
 # RERANKER CONFIGURATION (Gemini LLM-as-Reranker)
