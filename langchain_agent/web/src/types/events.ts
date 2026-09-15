@@ -157,7 +157,7 @@ export interface RerankerResultEvent extends BaseEvent {
 export interface SearchProgressEvent extends BaseEvent {
   type: 'search_progress'
   node: 'retriever'
-  stage: 'embedding' | 'vector_search' | 'text_search' | 'fusion'
+  stage: 'attribute_extraction' | 'embedding' | 'vector_search' | 'text_search' | 'fusion'
   message: string
 }
 

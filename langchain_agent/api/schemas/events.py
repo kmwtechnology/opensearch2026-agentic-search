@@ -304,7 +304,9 @@ class SearchProgressEvent(BaseEvent):
 
     type: Literal["search_progress"] = "search_progress"
     node: Literal["retriever"] = "retriever"
-    stage: Literal["embedding", "vector_search", "text_search", "fusion"] = "embedding"
+    stage: Literal[
+        "attribute_extraction", "embedding", "vector_search", "text_search", "fusion"
+    ] = "embedding"
     message: str  # e.g., "Embedding query...", "Searching vector index..."
 
 
