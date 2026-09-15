@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-commit: enforce black + isort formatting and flake8 lint on staged Python files.
-# Mirrors ci-format + ci-lint steps in Makefile so CI never catches what local didn't.
+# Mirrors ci-format + lint steps in Makefile so CI never catches what local didn't.
 #
 # Installed by scripts/setup.sh as .git/hooks/pre-commit — do not run this
 # directly against a clean checkout expecting it to do anything: it only

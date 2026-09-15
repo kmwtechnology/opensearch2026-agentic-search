@@ -7,7 +7,7 @@ description: "Verify a push to main and close out the issue for opensearch2026-a
 
 Final steps after pushing straight to `main`: verify locally and close out the issue. There's no PR to merge — `main` has no branch protection, so `/workflow-check` already served as the review gate before the push.
 
-**No production deploy to verify either.** As of issue #110 (2026-09-15) this project has no Cloud Run deploy — it runs local-only for the conference demo. As of issue #113 (2026-09-15), GitHub Actions CI is gone too (`.github/workflows/build-deploy.yml` deleted outright) — `make ci` run locally (in `/workflow-check`) was the only gate. Once pushed, there is nothing to watch or verify remotely — everything below is local.
+**No production deploy to verify either.** As of issue #110 (2026-09-15) this project has no Cloud Run deploy — it runs local-only for the conference demo. As of issue #113 (2026-09-15), GitHub Actions CI is gone too (`.github/workflows/build-deploy.yml` deleted outright) — `make check` run locally (in `/workflow-check`) was the only gate. Once pushed, there is nothing to watch or verify remotely — everything below is local.
 
 ## Setup & Auth (Run Once)
 
@@ -103,7 +103,7 @@ echo "- [Finding Title](finding_$(date +%Y-%m-%d)_<slug>.md) — one-line hook" 
 
 Before calling this step "done":
 
-- [ ] `make ci` was green pre-push (done in `/workflow-check`)
+- [ ] `make check` was green pre-push (done in `/workflow-check`)
 - [ ] Feature verified locally (`make dev`, tried in the browser)
 - [ ] Issue is closed (auto-closed or manually)
 - [ ] Memory updated if findings emerged
@@ -131,7 +131,7 @@ Before calling this step "done":
 ## Notes & Common Gotchas
 
 - **No PR, no merge step** — the push in `/workflow-check` already landed the change on `main`.
-- **No branch protection, no CI at all** — nothing automatically gated the push except `/workflow-check`'s local `make ci`.
+- **No branch protection, no CI at all** — nothing automatically gated the push except `/workflow-check`'s local `make check`.
 - **No deploy at all, local-only (issue #110, tooling removed #113)** — there is no `deploy.sh`/`gcp-init.sh` anymore; nothing to run.
 - **No Slack** — skip any "post to Slack" steps.
 - **GitHub Issues, not Jira** — use `gh issue` for all issue operations.

@@ -5,9 +5,9 @@ These back conversation history/resume-by-thread_id (list, fetch, delete,
 fetch observability). The projector-demo UI revamp (#104) removed the
 conversations sidebar that used to call them, so nothing in the current
 frontend exercises these routes anymore -- but they are not dead code: they
-are still exercised by scripts/smoke_test.sh, tests/integration/test_conversations.py,
-and multiple tests/e2e/ suites, and remain a supported REST API for anyone
-resuming a conversation by thread_id outside the demo UI (issue #105).
+are still exercised by tests/integration/test_conversations.py and
+tests/e2e/test_deployment_smoke.py, and remain a supported REST API for
+anyone resuming a conversation by thread_id outside the demo UI (issue #105).
 """
 
 import re

@@ -117,7 +117,7 @@ Commit as you go (small, logical commits are still good practice even without a 
 | **Repo** | `kmwtechnology/opensearch2026-agentic-search` |
 | **Default flow** | Commit directly to `main` — no branch, no PR |
 | **Issue tracking** | GitHub Issues; use `#<N>` (not Jira tickets) |
-| **Test before push** | `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` |
+| **Test before push** | `make check` (full gate) before pushing; `PYTHONPATH=. pytest tests/unit/` or `make ci` while iterating |
 | **Local hooks** | `pre-commit` (installed by `setup.sh`) runs black/isort/flake8 on staged `.py` files; no pre-push hook exists — tests/smoke gates must still be run by hand |
 | **Next step** | Code, test → run `/workflow-check` when ready to push |
 

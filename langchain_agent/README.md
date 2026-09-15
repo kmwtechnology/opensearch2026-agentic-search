@@ -580,10 +580,12 @@ PYTHONPATH=. pytest tests/e2e/            # requires a running local backend (se
 PYTHONPATH=. pytest --cov=. --cov-report=html
 ```
 
-`make ci` runs the local pre-push gate used by this repo: backend format,
-lint/import checks, unit tests, and frontend test/lint/type/build. It only
-collects integration and e2e tests; execute those suites separately when a
-change touches service wiring, WebSocket contracts, or OpenSearch mappings.
+`make check` is the local pre-push gate used by this repo: `make ci` (backend
+format, lint/import checks, unit tests, frontend test/lint/type/build) plus
+`make smoke` (a real round-trip against a running backend). `ci` alone
+only collects integration and e2e tests; execute those suites separately
+when a change touches service wiring, WebSocket contracts, or OpenSearch
+mappings.
 
 See [tests/README.md](tests/README.md) for the full layout and fixtures, and
 [tests/e2e/README.md](tests/e2e/README.md) for the local smoke/regression
@@ -592,11 +594,10 @@ scenarios.
 ### Lint / format / types
 
 ```bash
-make lint            # pylint
-make format          # black
+make lint            # flake8 + mypy
 make format-fix      # black + isort (run before every commit)
-make type-check      # mypy
-make ci              # full local gate: black + isort + flake8 + mypy + unit tests + frontend
+make ci              # fast local gate: black/isort check + flake8 + mypy + unit tests + frontend
+make check           # ci + smoke — run this before every push
 ```
 
 A git pre-commit hook (`.git/hooks/pre-commit`) automatically runs black,
@@ -646,8 +647,7 @@ langchain_agent/
 │   ├── start.sh           # Start services
 │   ├── stop.sh            # Stop services
 │   ├── teardown.sh        # Full local cleanup
-│   ├── logs.sh            # View backend/frontend logs
-│   └── smoke_test.sh      # Health check + basic round-trip against any URL
+│   └── logs.sh            # View backend/frontend logs
 ├── api/                   # FastAPI backend — see api/README.md
 │   ├── main.py            # FastAPI lifespan
 │   ├── routes/            # chat (WebSocket), conversations, health, suggest, admin, auth

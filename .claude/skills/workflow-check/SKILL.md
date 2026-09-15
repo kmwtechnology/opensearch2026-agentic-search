@@ -84,10 +84,8 @@ git diff origin/main..HEAD --name-status
 **Confirm:** All tests pass locally.
 
 **Checklist:**
-- [ ] `cd langchain_agent && PYTHONPATH=. pytest tests/unit/ -v --tb=short` — all pass?
-- [ ] `make ci` — black/isort/flake8/mypy/frontend tests all pass?
-- [ ] `make smoke-local-quick` — ~13s search-intent smoke test pass?
-- [ ] Frontend touched? `cd langchain_agent/web && npm run lint && npm run test` — all pass?
+- [ ] `cd langchain_agent && make check` — the one command: black/isort/flake8/mypy/unit tests/frontend tests+lint+build, plus a real smoke round-trip against a running backend (needs Docker up). Passes clean?
+- [ ] (Optional, faster while iterating) `make ci` alone — same checks minus the live-backend smoke test, no Docker required.
 
 **If tests fail:**
 - Commit fixes, re-run this checklist.
@@ -103,11 +101,7 @@ git log origin/main..HEAD --pretty=format:"%H %s"
 
 **Each commit should:**
 - Have a clear, imperative-mood message (e.g., "Add latency tracking to reranker node")
-- Have been run through formatters:
-  ```bash
-  cd langchain_agent
-  .venv/bin/black . && .venv/bin/isort . && .venv/bin/flake8 . && .venv/bin/mypy main.py
-  ```
+- Have been run through formatters: `cd langchain_agent && make format-fix`
 - **Important:** `.git/hooks/pre-commit` (installed by `scripts/setup.sh`, issue #99) runs black/isort/flake8 on staged `.py` files automatically at commit time. There is still NO pre-push hook — `.git/hooks/pre-push` is Git LFS's own hook only. **You must run tests/smoke gates by hand before pushing.**
 
 **If referencing an issue:** `Closes #<N>` in a commit message auto-closes it on push to `main` (GitHub closes issues on merge to the default branch, not just via PR merge).
@@ -152,7 +146,7 @@ git log origin/main..HEAD --pretty=format:"%H %s"
 
 ### Step 7: CI Reality Check (No GitHub Actions)
 
-There is no GitHub Actions CI to wait for (issue #113 removed `.github/workflows/build-deploy.yml` entirely — it had never provided working CI anyway, since runners were unavailable on this repo). `make ci` run locally is the only gate that exists, and you've already run it in Step 4.
+There is no GitHub Actions CI to wait for (issue #113 removed `.github/workflows/build-deploy.yml` entirely — it had never provided working CI anyway, since runners were unavailable on this repo). `make check` run locally is the only gate that exists, and you've already run it in Step 4.
 
 ### Step 8: Self-Review
 
@@ -183,9 +177,10 @@ git push origin main
 
 | Blocker | Recovery |
 |---------|----------|
-| `make ci` fails intermittently | Run it twice; check for flakiness (test ordering, stray state from a prior run). |
-| `make ci` fails on formatting (black/isort) | Run `make format-fix`, commit. |
-| Self-review finds a bug | Commit the fix (new commit) before pushing. Re-run `make ci`. |
+| `make check` fails intermittently | Run it twice; check for flakiness (test ordering, stray state from a prior run). |
+| `make check` fails on formatting (black/isort) | Run `make format-fix`, commit. |
+| Self-review finds a bug | Commit the fix (new commit) before pushing. Re-run `make check`. |
+| `make check` fails at the smoke step with exit code 2 | Docker services aren't up — `docker compose up -d` from repo root, then re-run. |
 | Stale memory from prior session | Update `CLAUDE.md` and memory files NOW before continuing. Future-you will thank you. |
 | Push rejected (`main` moved) | `git pull --rebase origin main`, resolve conflicts, re-run this checklist, push again. |
 
@@ -196,10 +191,10 @@ git push origin main
 | **GH auth account** | `agileresearchservices` (switch with `gh auth switch -u agileresearchservices`) |
 | **Repo** | `kmwtechnology/opensearch2026-agentic-search` |
 | **Unpushed commits** | `git log origin/main..HEAD --oneline` |
-| **CI gate** | `make ci` locally — no GitHub Actions CI exists (issue #113) |
+| **CI gate** | `make check` locally — no GitHub Actions CI exists (issue #113) |
 | **Push** | `git push origin main` |
 | **View diff** | `git diff origin/main..HEAD` |
-| **Test commands** | `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` |
+| **Test commands** | `make check` (full gate), `make ci` (fast, no live services), `PYTHONPATH=. pytest tests/unit/` (unit only) |
 | **Format fix** | `make format-fix` (or manually: `black .`, `isort .`, `flake8 .`, `mypy main.py`) |
 | **Memory location** | `~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md` |
 | **Project config** | `CLAUDE.md` (source of truth) |
@@ -207,7 +202,7 @@ git push origin main
 ## Notes & Common Gotchas
 
 - **Step 6 is CRITICAL** — many sessions skip memory updates and rot guidance. Do not cut this corner.
-- **The pre-commit hook only catches formatting/lint** — no local hook runs tests or the smoke gate. Run `make ci` locally before pushing.
+- **The pre-commit hook only catches formatting/lint** — no local hook runs tests or the smoke gate. Run `make check` locally before pushing.
 - **GitHub Issues, not Jira** — all references use `#N`, not `TICKET-NNN`.
 - **No Slack** — skip any "post to Slack" steps.
 - **No PR, no reviewer, no CI** — this checklist is the only gate. Take it seriously.

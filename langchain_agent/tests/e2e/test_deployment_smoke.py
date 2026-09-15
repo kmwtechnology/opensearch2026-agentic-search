@@ -3,9 +3,9 @@ Smoke Tests for Agentic Hybrid Search
 
 Tests core functionality against a running backend to ensure the system is
 working correctly. Runs locally by default (this is what scripts/smoke_local.sh
-invokes for `make smoke-local`/`smoke-local-quick`); CLOUD_RUN_URL can point
-it at a remote backend instead. Includes health checks, API authentication,
-WebSocket connectivity, and search pipeline validation.
+invokes for `make smoke`); CLOUD_RUN_URL can point it at a remote
+backend instead. Includes health checks, API authentication, WebSocket
+connectivity, and search pipeline validation.
 
 Markers: @pytest.mark.e2e, @pytest.mark.slow, @pytest.mark.phase3
 """

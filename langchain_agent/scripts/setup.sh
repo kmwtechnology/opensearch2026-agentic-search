@@ -338,7 +338,7 @@ echo "✓ Python dependencies installed (including dev tools: black, isort, flak
 GIT_HOOKS_DIR="$PARENT_DIR/.git/hooks"
 PRE_COMMIT_HOOK="$GIT_HOOKS_DIR/pre-commit"
 if [ -d "$GIT_HOOKS_DIR" ]; then
-    if [ ! -e "$PRE_COMMIT_HOOK" ] || grep -q "Mirrors ci-format + ci-lint steps in Makefile" "$PRE_COMMIT_HOOK" 2>/dev/null; then
+    if [ ! -e "$PRE_COMMIT_HOOK" ] || grep -q "Mirrors ci-format + lint steps in Makefile" "$PRE_COMMIT_HOOK" 2>/dev/null; then
         cp "$SCRIPT_DIR/pre-commit.sh" "$PRE_COMMIT_HOOK"
         chmod +x "$PRE_COMMIT_HOOK"
         log "✓ Installed pre-commit hook (black + isort + flake8 on staged .py files)"

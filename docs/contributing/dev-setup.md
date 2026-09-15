@@ -232,10 +232,11 @@ python main.py
 
 **Good news:** The Makefile sets this automatically. So these work fine:
 ```bash
-make lint        # flake8 + mypy (the real gate; black/isort live in `make format`)
-make ci          # full CI gate
+make lint        # flake8 + mypy (black/isort check-only live in `make ci`; use `make format-fix` to auto-fix)
+make ci          # fast static gate, no live services needed
+make check       # the pre-push gate: ci + smoke test
 make test        # unit tests
-make smoke-local-quick  # smoke tests
+make smoke # smoke test
 ```
 
 **For ad-hoc commands**, remember to set PYTHONPATH.
@@ -247,12 +248,13 @@ make smoke-local-quick  # smoke tests
 | Task | Command | How Long |
 |------|---------|----------|
 | Unit tests (no services needed) | `PYTHONPATH=. pytest tests/unit/` | ~5s |
-| Quick smoke test | `make smoke-local-quick` | ~15s |
-| Full local CI gate | `make ci` | ~3–5 min |
+| Smoke test | `make smoke` | ~13-20s |
+| Fast static gate (no live services) | `make ci` | ~40-45s |
+| Full pre-push gate | `make check` | `ci` + smoke test |
 | Frontend tests | `npm run test` (from `web/`) | ~5s |
 | Linting only | `make lint` | ~15s |
 
-The **quick smoke test** (`make smoke-local-quick`) runs 20 tests against your local backend. Use this before pushing a change to catch any integration bugs.
+The **smoke test** (`make smoke`) runs a focused search-intent regression test against your local backend. Use `make check` before pushing a change to catch any integration bugs; run `bash scripts/smoke_local.sh` directly for the full 21-test suite when you want deeper coverage (no dedicated Make target for it).
 
 ---
 
@@ -266,12 +268,12 @@ Common targets for daily development:
 | `make dev` | Start backend + frontend (Docker must be up) | Daily development |
 | `make dev-api` | Start backend only | Testing backend in isolation |
 | `make dev-web` | Start frontend only | Testing frontend in isolation |
-| `make lint` | Run flake8 + mypy (same checks as CI's lint job) | Before committing |
+| `make lint` | Run flake8 + mypy (same checks as `ci`'s lint step) | Before committing |
 | `make test` | Run unit tests | Before pushing |
 | `make format-fix` | Auto-format code (black + isort) | Fix linting errors |
-| `make ci` | Full CI gate (lint + tests + frontend build) | Before pushing |
-| `make smoke-local-quick` | Quick smoke test (search intent only) | Before pushing |
-| `make smoke-local` | Full smoke test (all 20 tests) | Before pushing critical changes |
+| `make ci` | Fast static gate (lint + tests + frontend build), no live services | Iterative coding |
+| `make smoke` | Smoke test (search intent only) | Part of `make check` |
+| `make check` | **The pre-push gate**: `ci` + smoke test | Before every push or PR merge |
 
 See `Makefile` for all targets. See [Testing.md](testing.md) for the test pyramid.
 
@@ -377,7 +379,7 @@ Wait 5–10 seconds, then try a search again.
 ## Next Steps
 
 - **Write code:** Use `make dev` to start the servers. Changes auto-reload in both backend (uvicorn --reload) and frontend (Vite HMR).
-- **Test locally:** Run `make smoke-local-quick` before pushing.
+- **Test locally:** Run `make check` before pushing.
 - **Read more:** See [Testing.md](testing.md) for test strategies, [Code Patterns](code-patterns.md) for backend/frontend conventions, and [PR Process](pr-process.md) for commit and PR guidance.
 
 ---

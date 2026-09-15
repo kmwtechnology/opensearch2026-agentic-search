@@ -17,7 +17,6 @@ deployment path anymore — the project is local-only as of issue #110/#113.
 | `start.sh` | Start Docker, backend (:8000), frontend (:5173) | Session start | 10–15 s |
 | `stop.sh` | Stop backend + frontend; keep Docker up | Before committing | 5 s |
 | `logs.sh` | Tail backend/frontend logs | Debugging | — |
-| `smoke_test.sh` | Health check + basic round-trip against any URL (local by default) | Manual verification | 10 s |
 | **CI/Manual Gates** |
 | `pre-commit.sh` | Black + isort + flake8 on staged `.py` files | Installed as `.git/hooks/pre-commit` by `setup.sh` — runs automatically on `git commit` | ~2 s |
 | `lucille_ingest.sh` | ESCI re-ingestion (builds Lucille on first run, reads `data/*.parquet`) | Manual re-ingest | 30 s–1 min |
@@ -62,19 +61,23 @@ There is still **no pre-push hook** — `.git/hooks/pre-push` is Git LFS's own h
 ### Before committing
 
 The pre-commit hook covers black/isort/flake8 automatically. Also run manually if applicable:
-- Smoke gate (`make smoke-local-quick`) if `api/services/`, `api/routes/`, `main.py`, `core/agent_state.py` changed AND Docker is up
+- Smoke gate (`make smoke`) if `api/services/`, `api/routes/`, `main.py`, `core/agent_state.py` changed AND Docker is up
 
 **If the hook blocks a commit:** Run `make format-fix`, re-stage, retry.
 
 ### Before pushing
 
-Run manually before every push:
-- `make ci` — full local gate (lint + unit + frontend + collect-only integration/e2e)
-- `make smoke-local` if any backend-path file changed AND Docker is up (20-test suite, ~90 s)
+Run `make check` before every push or PR merge — it's the one command that
+combines everything: `make ci` (lint + unit + frontend + collect-only
+integration/e2e) plus `make smoke` (a real round-trip against a
+running backend; requires Docker up). Use `make ci` on its own for fast
+iterative feedback while coding (no live services needed). There's no
+dedicated Make target for the broader regression suite — run it directly
+when you want it: `bash scripts/smoke_local.sh` (~90s, all e2e+slow scenarios).
 
-Nothing stops a push with failing tests except CI (formatting is caught earlier, at commit time, by the pre-commit hook above).
+Nothing stops a push with failing tests except this local gate (formatting is caught earlier, at commit time, by the pre-commit hook above).
 
-**If checks fail:** Fix root cause, re-run `make ci` locally, push retry.
+**If checks fail:** Fix root cause, re-run `make check` locally, push retry.
 
 ## Smoke Test Budget
 

@@ -8,14 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## New Session Checklist
 
-**Cowboy mode (2026-09-15):** commit directly to `main`, no feature branch or PR required by default. `main` has no branch protection — this is a private repo without GitHub Pro, so classic branch protection and rulesets both 403; `gh api .../branches/main` confirms `"protected": false`. Confirm `git status` is clean and `main` is up to date before starting. Run `make ci` (or at minimum `PYTHONPATH=. pytest tests/unit/`) before pushing — that local run is the only gate that exists, for anything. A feature branch + PR is still fine when you explicitly want something reviewed before it lands, but it's opt-in now, not the default.
+**Cowboy mode (2026-09-15):** commit directly to `main`, no feature branch or PR required by default. `main` has no branch protection — this is a private repo without GitHub Pro, so classic branch protection and rulesets both 403; `gh api .../branches/main` confirms `"protected": false`. Confirm `git status` is clean and `main` is up to date before starting. Run `make check` before pushing — that local run is the only gate that exists, for anything. A feature branch + PR is still fine when you explicitly want something reviewed before it lands, but it's opt-in now, not the default.
 
 ## Workflow skills
 
 This repo has project-level skills at `.claude/skills/` (`workflow-start`, `workflow-check`, `workflow-deploy`), rewritten 2026-09-15 for the direct-to-main flow — use them instead of generic process assumptions:
 
 - **`workflow-start`**: get issue context, plan, then code straight on `main` — no branch, no draft PR.
-- **`workflow-check`**: pre-push checklist (tests, `make ci`, self-review, docs/memory update) — this is the review gate, since there's no PR/reviewer.
+- **`workflow-check`**: pre-push checklist (tests, `make check`, self-review, docs/memory update) — this is the review gate, since there's no PR/reviewer.
 - **`workflow-deploy`**: push, verify locally (`make dev`), close the issue.
 
 Load-bearing facts:
@@ -52,17 +52,19 @@ PYTHONPATH=. pytest tests/ -m phase1             # by marker (see pytest.ini for
                                                   #  requires_real_api, evaluator, intent, quality_gate)
 PYTHONPATH=. pytest tests/unit/test_foo.py::test_bar -v   # single test
 
-make ci               # black --check + isort --check + flake8 + mypy main.py + pytest unit
-                       # + collect-only on integration/e2e + frontend (vitest + eslint) — the ONLY gate, see above
+make check             # THE pre-push gate — run before every push/PR merge: ci + smoke
+make ci                # fast static sub-check (no live services): black/isort --check + flake8
+                        # + mypy main.py + pytest unit + collect-only integration/e2e + frontend
 make format-fix        # black + isort, fixes in place
 
 # Benchmarks (requires docker compose up -d)
 make benchmark-esci-fast   # ~5 min, deterministic (no LLM)
 make benchmark-esci        # ~10 min, full adaptive (requires GOOGLE_API_KEY)
 
-# Smoke tests (run by hand — no git hook triggers these)
-make smoke-local-quick     # ~13s, search-intent smoke
-make smoke-local           # ~90s, full 20-test suite
+# Smoke test (run standalone, or via `make check` above — no git hook triggers this)
+make smoke           # ~13-20s, search-intent smoke, needs Docker + backend
+# Full regression suite (no dedicated Make target — run directly when wanted):
+bash scripts/smoke_local.sh   # ~90s, all e2e+slow scenarios
 
 # Frontend (from langchain_agent/web/)
 npm install && npm run dev   # :5173, proxies API to :8000
@@ -70,7 +72,7 @@ npm run lint                 # eslint, --max-warnings 0
 npm run test                 # vitest run
 ```
 
-**Local git hooks**: `.git/hooks/pre-commit` (installed by `scripts/setup.sh` from `scripts/pre-commit.sh`) runs black/isort/flake8 on *staged* `.py` files only — mirrors `ci-format`/`ci-lint`. `.git/hooks/pre-push` is Git LFS's own hook only; nothing there runs tests. Run `make ci` / `make smoke-local-quick` by hand before pushing.
+**Local git hooks**: `.git/hooks/pre-commit` (installed by `scripts/setup.sh` from `scripts/pre-commit.sh`) runs black/isort/flake8 on *staged* `.py` files only — mirrors `ci-format`/`lint`. `.git/hooks/pre-push` is Git LFS's own hook only; nothing there runs tests. Run `make check` by hand before pushing.
 
 ## Architecture
 
@@ -139,7 +141,7 @@ Beyond ingest-time detection, the agent can grow *or fix* the live taxonomy at r
 
 ## Deploy & CI reality
 
-No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely from local Docker + `make dev`. `make ci` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either).
+No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely from local Docker + `make dev`. `make check` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either). `make ci` alone is a faster no-live-services sub-check for iterative coding; `make check` = `ci` + `smoke` and is the actual thing to run before pushing.
 
 ## Reference Docs
 

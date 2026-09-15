@@ -1,4 +1,4 @@
-.PHONY: help doctor setup reindex reindex-products seed-taxonomy demo-reset test lint format clean run stop teardown test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick precheck
+.PHONY: help doctor setup reindex reindex-products seed-taxonomy demo-reset test lint format-fix clean run stop teardown dev dev-api dev-web install-web ci ci-format ci-test ci-frontend ci-tools benchmark-esci benchmark-esci-fast smoke check clean-db
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -17,28 +17,17 @@ help:
 	@echo "  make seed-taxonomy      - Rediscover color/material taxonomy + products pass (DESTRUCTIVE: wipes agent-learned mappings)"
 	@echo "  make demo-reset         - Re-arm the taxonomy demo (restore tan->yellow + reindex). Run BETWEEN rehearsals."
 	@echo ""
-	@echo "Testing:"
-	@echo "  make test               - Run the unit suite (tests/unit/, no services needed)"
-	@echo "  make test-reranker      - Run reranker unit tests only"
-	@echo "  make test-hybrid        - Run hybrid search integration tests (needs OpenSearch)"
-	@echo "  make test-query         - Run query evaluator unit tests only"
-	@echo ""
-	@echo "Code Quality:"
-	@echo "  make lint               - Run the real lint gate (flake8 + mypy), same as CI"
-	@echo "  make format             - Format code with black + isort"
+	@echo "Testing & Pre-push Gate (local only -- no GitHub Actions, issue #113):"
+	@echo "  make check              - Run this before every push or PR merge: ci + smoke"
+	@echo "  make ci                 - Fast static gate, no live services needed (format, lint, unit, frontend)"
+	@echo "  make test               - Run the unit suite only (tests/unit/, no services needed)"
+	@echo "  make lint               - Run the lint gate (flake8 + mypy), same as ci"
+	@echo "  make format-fix         - Auto-fix black + isort formatting"
+	@echo "  make smoke        - Focused search-intent smoke test (~13-20s, needs Docker + backend)"
 	@echo ""
 	@echo "Benchmarking & Performance:"
 	@echo "  make benchmark-esci     - ESCI relevancy benchmark (full, with adaptive intent)"
 	@echo "  make benchmark-esci-fast- ESCI benchmark (fast, deterministic, no LLM alpha)"
-	@echo "  make smoke-local        - Local smoke test suite (~90s)"
-	@echo "  make smoke-local-quick  - Focused search-intent smoke test (~13s, pre-commit gate)"
-	@echo ""
-	@echo "Pre-push CI gate (local only -- no GitHub Actions, issue #113):"
-	@echo "  make precheck           - Everything before a push in one command: ci + smoke-local-quick"
-	@echo "  make ci                 - Run all CI checks locally before push (format, lint, unit, frontend)"
-	@echo "  make ci-frontend        - Frontend tests, lint, and type-check only"
-	@echo "  make ci-docker          - Validate Dockerfile builds (no push)"
-	@echo "  make format-fix         - Auto-fix black + isort formatting"
 	@echo ""
 	@echo "Running:"
 	@echo "  make run                - Start the CLI agent"
@@ -76,35 +65,18 @@ test:
 	@echo "Running unit tests (no services required)..."
 	PYTHONPATH=. $(VENV)/pytest tests/unit/ -q
 
-test-reranker:
-	@echo "Running reranker tests..."
-	PYTHONPATH=. $(VENV)/pytest tests/unit/test_reranker.py -q
-
-test-hybrid:
-	@echo "Running hybrid search tests (requires OpenSearch)..."
-	PYTHONPATH=. $(VENV)/pytest tests/integration/test_retriever_reranker.py -q
-
-test-query:
-	@echo "Running query evaluator tests..."
-	PYTHONPATH=. $(VENV)/pytest tests/unit/evaluator/test_query_evaluator.py -q
-
 lint: ci-tools
 	@echo "[lint] flake8 . --count"
 	$(VENV)/flake8 . --count
 	@echo "[lint] mypy main.py"
 	$(VENV)/mypy main.py
 
-format:
-	@echo "Formatting code with black + isort..."
-	$(VENV)/black .
-	$(VENV)/isort .
-
 # ----------------------------------------------------------------------------
-# `make ci` is the pre-push gate -- there is no GitHub Actions CI (issue #113),
-# so this is the only check that runs. ci-test is not full coverage: unit
-# tests run for real, but integration/e2e only get --collect-only here
-# (import + signature check) -- running them against real services needs
-# `docker compose up -d` + `make dev-api` first (see
+# `make check` (below) is the pre-push gate -- there is no GitHub Actions CI
+# (issue #113), so it's the only check that runs. `ci`'s ci-test step is not
+# full coverage: unit tests run for real, but integration/e2e only get
+# --collect-only here (import + signature check) -- running them against
+# real services needs `docker compose up -d` + `make dev-api` first (see
 # tests/integration/README.md). A green `make ci` means lint/types/unit are
 # safe; it does NOT guarantee integration/e2e pass -- run those manually.
 # ----------------------------------------------------------------------------
@@ -120,12 +92,6 @@ ci-format: ci-tools
 	@echo "[CI] isort --check-only ."
 	@$(VENV)/isort --check-only .
 
-ci-lint: ci-tools
-	@echo "[CI] flake8 . --count"
-	@$(VENV)/flake8 . --count
-	@echo "[CI] mypy main.py"
-	@$(VENV)/mypy main.py
-
 ci-test: ci-tools
 	@echo "[CI] pytest tests/unit/"
 	@PYTHONPATH=. $(VENV)/pytest tests/unit/ -q
@@ -134,7 +100,7 @@ ci-test: ci-tools
 
 ci-frontend:
 	@echo "[CI] npm test (vitest)"
-	@cd web && npm ci --silent && npm run test
+	@cd web && npm install --silent && npm run test
 	@echo "[CI] npm run lint (eslint)"
 	@cd web && npm run lint
 	@echo "[CI] tsc --noEmit"
@@ -142,53 +108,32 @@ ci-frontend:
 	@echo "[CI] npm run build (production build)"
 	@cd web && npm run build
 
-ci-docker:
-	@echo "[CI] docker build (no push)"
-	@docker build -f Dockerfile -t agentic-hybrid-search:ci-check .. --quiet
-	@echo "✓ Docker build succeeded"
-
-# Integration test gate — actually executes tests/integration/, not just
-# collect-only. Requires PostgreSQL + OpenSearch already running locally:
-#     docker compose up -d   (from repo root)
-# Slower (~30–120 s) so kept out of `make ci` and PR gating; run it manually
-# before pushing when a change touches service wiring or WebSocket contracts.
-ci-integration: ci-tools
-	@echo "[CI] pytest tests/integration/ -m 'not slow'"
-	@PYTHONPATH=. $(VENV)/pytest tests/integration/ -m 'not slow' -q --timeout=120
-
-# Full pre-push gate (no GitHub Actions CI to mirror -- issue #113):
-#   lint-backend   → ci-format + ci-lint
-#   unit-tests     → ci-test
-#   frontend-tests → ci-frontend
-# Integration tests and docker build are intentionally omitted from the
-# default gate (they need live services / are slow). Run individually:
-#   make ci-docker    — validate the Dockerfile builds cleanly
-# Integration tests require: docker compose up -d (PG + OpenSearch)
-ci: ci-format ci-lint ci-test ci-frontend
+# Fast static gate (no GitHub Actions CI to mirror -- issue #113): format,
+# lint, unit tests, frontend tests/lint/build. Needs no live services --
+# integration/e2e only get --collect-only here (import + signature check).
+# `make check` below is the full pre-push gate; use `make ci` on its own for
+# quick iterative feedback while coding.
+ci: ci-format lint ci-test ci-frontend
 	@echo ""
-	@echo "✅ Local CI gate passed — safe to push."
+	@echo "✅ ci passed (no live services) — run 'make check' before pushing."
 
-# Single pre-push command combining everything a developer should run before
-# opening/updating a PR: the full `ci` gate (format, lint, unit tests via
-# ci-test, frontend tests/lint/build) plus the live-backend smoke test. `ci`
-# already runs tests/unit/ once via ci-test, so this does not run unit tests
-# a second time -- it just adds the one check `ci` can't cover (a real
-# request/response round-trip against a running backend). Requires Docker
-# services up (`docker compose up -d` from repo root); smoke_local.sh starts
-# its own uvicorn if one isn't already running on :8000.
-precheck: ci smoke-local-quick
+# THE single command to run before every push or PR merge: the full `ci`
+# gate (format, lint, unit tests via ci-test, frontend tests/lint/build)
+# plus a real request/response round-trip against a running backend via
+# smoke. Requires Docker services up (`docker compose up -d` from
+# repo root); smoke_local.sh starts its own uvicorn if one isn't already
+# running on :8000.
+check: ci smoke
 	@echo ""
-	@echo "✅ Precheck passed — CI gate + smoke test, safe to push."
+	@echo "✅ check passed — CI gate + smoke test, safe to push."
 
-# Run a focused smoke test against the local backend. Catches the search-intent
-# WebSocket regression class (deadlocks, agent_complete never emitted).
-# Usage:
-#   make smoke-local         — full smoke suite (~90s)
-#   make smoke-local-quick   — search intent only (~20s; pre-commit gate)
-smoke-local:
-	@bash scripts/smoke_local.sh
-
-smoke-local-quick:
+# Focused smoke test against the local backend (~13-20s). Catches the
+# search-intent WebSocket regression class (deadlocks, agent_complete never
+# emitted) -- the one check `ci` can't cover (a real running backend). This
+# is what `make check` runs; there is no separate "full" Make target for the
+# broader regression suite -- run it manually when you want it:
+#   bash scripts/smoke_local.sh
+smoke:
 	@bash scripts/smoke_local.sh -k test_search_intent_returns_results -q --tb=short
 
 benchmark-esci-fast:
@@ -203,7 +148,7 @@ format-fix:
 	@echo "Auto-fixing formatting (black + isort) across the whole package..."
 	@$(VENV)/black .
 	@$(VENV)/isort .
-	@echo "✓ Formatted. Re-run 'make ci' to verify."
+	@echo "✓ Formatted. Re-run 'make ci' to verify, or 'make check' before pushing."
 
 run:
 	@echo "Starting Agentic Hybrid Search agent..."

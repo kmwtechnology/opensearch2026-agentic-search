@@ -46,7 +46,7 @@ make doctor    # Check prerequisites
 
 1. **Create a feature branch:** `git checkout -b feat/issue-NNN-slug`
 2. **Make changes** — edit code, add tests
-3. **Run local tests:** `PYTHONPATH=. pytest tests/unit/` + `make smoke-local-quick`
+3. **Run local tests:** `make check` (or `make ci` alone for fast iteration, no live services needed)
 4. **Commit with ticket prefix:** `git commit -m "TICKET-NNN: description"`
 5. **Push:** `git push origin feat/issue-NNN-slug`
 6. **Open PR:** GitHub Actions CI runs automatically
@@ -117,13 +117,11 @@ See [Code Patterns](code-patterns.md) for full details.
 
 ## Before You Push
 
-1. ✅ All unit tests pass: `PYTHONPATH=. pytest tests/unit/`
-2. ✅ Smoke tests pass: `make smoke-local-quick` (or full `make smoke-local`)
-3. ✅ Linting clean: `make lint` (or `make format-fix`)
-4. ✅ No dead code or stale comments
-5. ✅ Event parity verified (if you touched events)
+1. ✅ `make check` passes — runs unit tests, linting, frontend checks, and the smoke test in one command
+2. ✅ No dead code or stale comments
+3. ✅ Event parity verified (if you touched events)
 
-`.git/hooks/pre-commit` (installed by `scripts/setup.sh`) runs black/isort/flake8 on staged `.py` files at commit time, so #3 above is partly caught automatically. There is still no pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only) — #1, #2, #4, and #5 above are not automated, so run `make ci` and the smoke gates manually before pushing.
+`.git/hooks/pre-commit` (installed by `scripts/setup.sh`) runs black/isort/flake8 on staged `.py` files at commit time, so formatting is partly caught automatically. There is still no pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only) — run `make check` manually before pushing.
 
 ---
 
