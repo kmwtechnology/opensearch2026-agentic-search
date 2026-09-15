@@ -553,7 +553,11 @@ class ChatResponse(BaseModel):
     )
 
 
-@router.post("/api/chat", response_model=ChatResponse)
+@router.post(
+    "/api/chat",
+    response_model=ChatResponse,
+    summary="Non-streaming chat (use /ws/chat for streaming + observability)",
+)
 @limiter.limit(RATE_LIMIT_CHAT)
 async def chat_rest(request: Request, chat_request: ChatRequest):
     """

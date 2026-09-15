@@ -8,8 +8,9 @@ info:
     intent routing (7 classes), typeahead autocomplete with spell correction.
     Runs local-only (Docker Compose).
 
-    **Authentication:** Two layers: (1) Same-origin check, (2) Session cookie (LoginScreen)
-    OR X-Admin-Token header (automation).
+    **Authentication:** Two layers: (1) Same-origin check (always on), (2) Session
+    cookie OR X-Admin-Token header (automation) -- optional, gated by
+    REQUIRE_LOGIN (defaults to false, i.e. off). See auth-patterns.md.
   contact:
     name: KMW Technology
     url: https://github.com/kmwtechnology/opensearch2026-agentic-search

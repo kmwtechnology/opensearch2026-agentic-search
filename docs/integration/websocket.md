@@ -24,7 +24,9 @@ The path is the fixed route `/ws/chat`; `thread_id` is an **optional** query par
 
 ### Authentication
 
-The session cookie **must** be present in the WebSocket handshake. Browsers send it automatically; custom clients must include it explicitly.
+> **Note:** Authentication is optional by default. The backend's `REQUIRE_LOGIN` config defaults to `false`. With this default, the session cookie is not required. See [Auth Patterns](auth-patterns.md) for full details.
+
+If authentication is enabled, the session cookie **must** be present in the WebSocket handshake. Browsers send it automatically; custom clients must include it explicitly.
 
 **JavaScript (browser):**
 ```javascript

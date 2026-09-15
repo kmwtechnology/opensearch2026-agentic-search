@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger.info(f"Admin router created with prefix: {router.prefix}")
 
 
-@router.get("/diagnose")
+@router.get("/diagnose", summary="Diagnose index field coverage for a query")
 async def diagnose(request: Request, q: str = "sony") -> dict:
     """
     Probe the live index for a query across multiple fields.
@@ -97,7 +97,7 @@ def _diagnose_sync(q: str) -> dict:
         return {"error": f"{type(e).__name__}: {e}"}
 
 
-@router.get("/health")
+@router.get("/health", summary="Product index health and document count")
 async def admin_health(request: Request) -> dict:
     """Index-level health probe for the OpenSearch product index.
 
@@ -169,7 +169,11 @@ def _admin_health_sync() -> dict:
         }
 
 
-@router.post("/enrich", response_model=EnrichmentResponse)
+@router.post(
+    "/enrich",
+    response_model=EnrichmentResponse,
+    summary="Add a taxonomy mapping and trigger a live reindex (mutates the index)",
+)
 async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentResponse:
     """
     Enrich a color or material taxonomy with a new variant term: write the
@@ -235,7 +239,7 @@ def _enrich_sync(attribute_type: str, variant: str, canonical: Optional[str]):
     return enrich_attribute(attribute_type, variant, explicit_canonical=canonical)
 
 
-@router.post("/demo-reset")
+@router.post("/demo-reset", summary="Re-arm the taxonomy demo (mutates the index)")
 async def demo_reset(request: Request) -> dict:
     """
     Re-arm the taxonomy self-correction demo (#103).
