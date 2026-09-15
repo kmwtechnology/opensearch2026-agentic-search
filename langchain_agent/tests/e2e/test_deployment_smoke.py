@@ -1,8 +1,11 @@
 """
-Post-Deployment Smoke Tests for Agentic Hybrid Search
+Smoke Tests for Agentic Hybrid Search
 
-Tests core functionality after deployment to ensure the system is working correctly.
-Includes health checks, API authentication, WebSocket connectivity, and search pipeline validation.
+Tests core functionality against a running backend to ensure the system is
+working correctly. Runs locally by default (this is what scripts/smoke_local.sh
+invokes for `make smoke-local`/`smoke-local-quick`); CLOUD_RUN_URL can point
+it at a remote backend instead. Includes health checks, API authentication,
+WebSocket connectivity, and search pipeline validation.
 
 Markers: @pytest.mark.e2e, @pytest.mark.slow, @pytest.mark.phase3
 """
@@ -11,13 +14,10 @@ import asyncio
 import json
 import os
 import time
-from datetime import datetime
-from typing import Optional
 
 import httpx
 import pytest
 from websockets.asyncio.client import connect as ws_connect
-from websockets.exceptions import WebSocketException
 
 from tests.e2e.conftest import (
     auth_rest_headers,
@@ -34,7 +34,7 @@ def _fail_if_origin_blocked(exc: BaseException) -> None:
     if "http 403" in msg or "rejected websocket" in msg:
         pytest.fail(
             f"WebSocket rejected despite Origin={ORIGIN_HEADER}. "
-            "Check CORS/origin config on Cloud Run."
+            "Check the same-origin allow-list in api/middleware/origin_auth.py."
         )
 
 
@@ -109,7 +109,7 @@ class TestDeploymentHealth:
         assert "vector_store" in data, "Missing 'vector_store' field"
         assert isinstance(data["vector_store"], bool), "vector_store field should be boolean"
         if not data["vector_store"]:
-            pytest.skip("OpenSearch not yet initialized (run reindex.yml to initialize)")
+            pytest.skip("OpenSearch not yet initialized (run scripts/lucille_ingest.sh)")
 
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -139,7 +139,7 @@ class TestDeploymentHealth:
         assert "document_count" in data, "Missing 'document_count' field"
         assert isinstance(data["document_count"], int), "document_count should be integer"
         if data["document_count"] == 0:
-            pytest.skip("No products indexed yet (run reindex.yml to ingest ESCI data)")
+            pytest.skip("No products indexed yet (run scripts/lucille_ingest.sh)")
 
 
 class TestAuthentication:
@@ -591,11 +591,9 @@ class TestResponseTiming:
 
                 elapsed = time.time() - start_time
                 # SLO ceiling 45s. Cross-encoder predict() on 40 docs (RERANKER_FETCH_K)
-                # is ~10s on a 4-core Cloud Run instance; total budget covers
-                # embed + hybrid retrieve + rerank + LLM stream + TLS overhead.
-                assert (
-                    elapsed < 45
-                ), f"Search took {elapsed:.1f}s, should be under 45s (Cloud Run + network)"
+                # is ~10s on typical hardware; total budget covers embed +
+                # hybrid retrieve + rerank + LLM stream + network overhead.
+                assert elapsed < 45, f"Search took {elapsed:.1f}s, should be under 45s"
         except Exception as e:
             _fail_if_origin_blocked(e)
             pytest.fail(f"Response timing test failed: {e}")
@@ -642,9 +640,7 @@ class TestResponseTiming:
                 # product synthesis than search's single-list response, so it
                 # legitimately needs more budget than test_search_response_time_
                 # under_5_seconds's 45s ceiling for the same reranker batch size.
-                assert (
-                    elapsed < 60
-                ), f"Generation took {elapsed:.1f}s, should be under 60s (Cloud Run + network)"
+                assert elapsed < 60, f"Generation took {elapsed:.1f}s, should be under 60s"
         except Exception as e:
             _fail_if_origin_blocked(e)
             pytest.fail(f"Generation timing test failed: {e}")

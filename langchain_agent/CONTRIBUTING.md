@@ -479,10 +479,12 @@ Tests nodes together with real services.
 ### E2E Tests (Full System)
 
 ```bash
-CLOUD_RUN_URL=https://... API_KEY=... PYTHONPATH=. pytest tests/e2e/ -v
+PYTHONPATH=. pytest tests/e2e/ -v
 ```
 
-Test against deployed Cloud Run instance.
+Test against a running local backend (`CLOUD_RUN_URL` env var, despite the
+name, just points at whatever backend URL you're testing; defaults to
+`http://localhost:8000`).
 
 ### Manual Testing Checklist
 
@@ -599,7 +601,7 @@ Symptom: Quality gate keeps retrying, never reaches agent
 5. Create pull request with description
 6. Request review (especially for new nodes/events)
 7. Address feedback, retest
-8. Merge to `main` → auto-deploy to Cloud Run via GitHub Actions
+8. Merge to `main` — local-only demo, no deploy step
 
 ---
 

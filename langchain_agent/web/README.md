@@ -148,13 +148,13 @@ npm run build       # Output: dist/
 npx http-server dist   # Serve dist/ locally for testing
 ```
 
-### Cloud Run Deployment
+### Docker Build
 
 Multi-stage Docker build in `../Dockerfile`:
 1. **Build stage** — Node 24, `npm install && npm run build` → `dist/`
 2. **Runtime stage** — Python 3.14 + gunicorn serves `dist/` + proxies `/api` to Python backend
 
-The frontend is built into the Docker image and served from the Python backend on Cloud Run.
+The frontend is built into the Docker image and served from the Python backend.
 No separate Node.js service — all one container.
 
 ## Configuration
@@ -163,9 +163,9 @@ Environment variables (Vite requires `VITE_` prefix):
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
-| `VITE_API_URL` | Backend API endpoint | `http://localhost:8000/api` (local) or `https://example.run.app/api` (Cloud Run) |
+| `VITE_API_URL` | Backend API endpoint | `http://localhost:8000/api` |
 
-Set in `.env.local` (local) or via Docker build `--build-arg` (Cloud Run).
+Set in `.env.local` (local) or via Docker build `--build-arg`.
 
 ## Troubleshooting
 

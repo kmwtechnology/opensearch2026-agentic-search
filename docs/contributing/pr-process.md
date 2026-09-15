@@ -86,7 +86,7 @@ Closes #42.
 
 ## Deployment
 - [ ] Ready to merge
-- [ ] Requires post-deploy validation (manual smoke test on Cloud Run)
+- [ ] `make smoke-local` passes if backend paths changed (no deploy step — local-only demo, issue #110/#113)
 
 ## Related
 Closes #42.
@@ -107,7 +107,7 @@ Self-review before asking for review:
 - [ ] **PYTHONPATH** — all test commands include `PYTHONPATH=.`
 - [ ] **Exception handling** — no bare `except Exception`, use subclasses
 - [ ] **State access** — use `.get()` on `CustomAgentState`, not `[]`
-- [ ] **Env vars** — if new config added, it's in `.env.example` AND `build-deploy.yml --set-secrets`
+- [ ] **Env vars** — if new config added, it's documented in `.env.example`
 - [ ] **Tests** — new code has unit tests; integration tests if multi-component
 
 ---

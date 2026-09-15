@@ -262,29 +262,22 @@ gh pr edit <PR-number> \
   --body "New body"
 ```
 
-### Step 9: CI Watch ✓
+### Step 9: CI Watch ✓ (Local Gate — No GitHub Actions)
 
-**Confirm:** CI passed (or you documented false positives with reasons).
+**Confirm:** `make ci` passed locally. There is no GitHub Actions CI to check
+(issue #113 removed `.github/workflows/build-deploy.yml` entirely — it had
+never provided working CI anyway, since runners were unavailable on this
+repo, see memory). `gh pr checks` will show no checks at all; that's
+expected, not a failure to diagnose.
 
 ```bash
-gh pr checks <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search
+cd langchain_agent && make ci
 ```
 
-**Expected checks (from the `CI` workflow, formerly `build-deploy.yml` — issue #110 dropped the GCP build/deploy jobs, local-only demo now):**
-- `unit-tests` ✓
-- `integration-tests` ✓
-- `lint-backend` (black/isort/flake8/mypy) ✓
-- `frontend-tests` ✓
-- `shellcheck` ✓
-
-**Note:** if every check fails in ~3s with 0 steps, that's the known GitHub Actions runner/billing issue (see memory), not a real failure — gate on local `make ci` instead.
-
-**If CI fails:**
+**If `make ci` fails:**
 - Diagnose the failure
 - Commit fixes, push
-- Wait for CI to re-run (it auto-updates the PR)
-- Re-check `gh pr checks` once CI goes green
+- Re-run `make ci` locally until green
 
 ### Step 10: Self-Review ✓
 
@@ -311,13 +304,9 @@ gh pr diff <PR-number> \
 
 ### Step 11: Flip Draft → Ready ✓
 
-**Confirm:** CI is green, self-review is done. Mark the PR ready for review.
+**Confirm:** local `make ci` is green, self-review is done. Mark the PR ready for review.
 
 ```bash
-# Confirm CI is green one more time
-gh pr checks <PR-number> \
-  --repo kmwtechnology/opensearch2026-agentic-search
-
 # Mark ready (flip from draft to ready)
 gh pr ready <PR-number> \
   --repo kmwtechnology/opensearch2026-agentic-search
@@ -337,12 +326,11 @@ gh pr view <PR-number> \
 
 | Blocker | Recovery |
 |---------|----------|
-| Tests fail locally but pass in CI | Run tests twice; check for flakiness. If CI is green, it's likely an env issue on your machine. |
-| CI fails on formatting (black/isort) after push | Run `make format-fix`, commit, push. |
-| Self-review finds a bug | Commit the fix (new commit, don't amend), push. CI re-runs. Re-check and re-request review. |
+| `make ci` fails intermittently | Run it twice; check for flakiness (test ordering, stray state from a prior run). |
+| `make ci` fails on formatting (black/isort) | Run `make format-fix`, commit, push. |
+| Self-review finds a bug | Commit the fix (new commit, don't amend), push. Re-run `make ci`. |
 | Stale memory from prior session | Update `CLAUDE.md` and memory files NOW before continuing. Future-you will thank you. |
 | PR title/body unclear | Use `gh pr edit <PR-number>` to clarify before requesting review. |
-| CI won't go green | Check if your change touches only root-level files outside the monitored paths — if so, `build-deploy.yml` won't run CI at all (intentional but risky). Flag this to the user. |
 
 ## Breadcrumbs & Quick Reference
 
@@ -351,7 +339,7 @@ gh pr view <PR-number> \
 | **GH auth account** | `agileresearchservices` (switch with `gh auth switch -u agileresearchservices`) |
 | **Repo** | `kmwtechnology/opensearch2026-agentic-search` |
 | **Get issue from PR** | `gh pr view <PR> --json body \| sed -n 's/.*Closes #\([0-9]*\).*/\1/p'` |
-| **Get PR CI status** | `gh pr checks <PR>` |
+| **CI gate** | `make ci` locally — no GitHub Actions CI exists (issue #113) |
 | **Mark PR ready** | `gh pr ready <PR>` |
 | **View PR diff** | `gh pr diff <PR>` |
 | **Test commands** | `PYTHONPATH=. pytest tests/unit/`, `make ci`, `make smoke-local-quick` |
@@ -365,7 +353,7 @@ gh pr view <PR-number> \
 - **The pre-commit hook only catches formatting/lint** — no local hook runs tests or the smoke gate. Run `make ci` locally before pushing.
 - **GitHub Issues, not Jira** — all references use `#N`, not `TICKET-NNN`.
 - **No Slack** — skip any "post to Slack" steps.
-- **CI doesn't run on root files** — if your change touches only files outside `langchain_agent/`, `.github/workflows/`, `docker-compose.yml`, `.dockerignore`, CI won't trigger. This is intentional but risky — flag it.
+- **No GitHub Actions CI** (issue #113) — `make ci` run locally is the only gate; there is nothing to wait for or re-check remotely.
 
 ## See Also
 

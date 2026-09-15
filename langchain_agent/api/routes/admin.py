@@ -2,15 +2,14 @@
 Admin routes for operational tasks: health checks, index diagnostics, and
 the live material enrichment flywheel.
 
-Re-indexing is handled externally by ``lucille_ingest.sh`` (local dev) or the
-``reindex.yml`` GitHub Actions workflow (Lucille ETL on the runner). There is no
+Re-indexing is handled externally by ``lucille_ingest.sh``. There is no
 in-container ingest path.
 
 Protected by two-layer auth:
 1. Origin check (``verify_same_origin``) — blocks cross-site usage
 2. Session cookie OR admin token:
    - Session: normal authenticated user via LoginScreen
-   - Admin token: automation (GitHub Actions) via X-Admin-Token header
+   - Admin token: automation via X-Admin-Token header
 """
 
 import logging
@@ -224,10 +223,9 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
 
 
 def _enrich_sync(attribute_type: str, variant: str, canonical: Optional[str]):
-    """enrich_attribute triggers a real catalog reindex -- locally a Lucille
-    subprocess measured at ~17-20s, on Cloud Run a workflow dispatch that still
-    makes blocking HTTP calls (see reindex_trigger.py). Called directly on the event loop
-    this would freeze every in-flight WebSocket chat stream for the whole
+    """enrich_attribute triggers a real catalog reindex -- a Lucille subprocess
+    measured at ~17-20s (see reindex_trigger.py). Called directly on the event
+    loop this would freeze every in-flight WebSocket chat stream for the whole
     duration; run_in_threadpool (see #25) keeps it off the loop. The live
     agent's own trigger_enrichment tool call is unaffected by this bug --
     it already runs inside a LangGraph node, which astream_events dispatches

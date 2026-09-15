@@ -16,17 +16,10 @@ REST API and WebSocket examples for integrating Agentic Hybrid Search into your 
 
 ## API Base URL
 
-**Development (local):**
+**Local (only supported target — issue #110/#113):**
 ```
 http://localhost:8000
 ```
-
-**Production (Cloud Run):**
-```
-https://agentic-hybrid-search-XXXX.run.app
-```
-
-Replace `XXXX` with your Cloud Run service region suffix.
 
 ---
 
@@ -58,7 +51,7 @@ curl -X GET http://localhost:8000/api/admin/health \
   -H "X-Admin-Token: your_admin_token_here"
 ```
 
-**When to use:** GitHub Actions, scheduled jobs, service-to-service calls (no user interaction).
+**When to use:** scheduled jobs, scripts, service-to-service calls (no user interaction).
 
 ---
 
@@ -72,7 +65,7 @@ curl -X GET http://localhost:8000/api/admin/health \
 
 **Allow-listed Origins:**
 - localhost: `http://localhost:8000`, `http://127.0.0.1:8000` (dev ports 8000–9000)
-- Cloud Run: `https://*.run.app` (all Cloud Run services)
+- `https://*.run.app` — dormant Cloud Run pattern, kept in the allow-list but no deployment target exists today (issue #110/#113)
 - Disallowed Origins always return `403 Forbidden`
 
 ---

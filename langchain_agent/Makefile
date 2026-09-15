@@ -11,7 +11,7 @@ help:
 	@echo "  make setup              - Run complete system setup (Docker + database, models, data)"
 	@echo "  make install-web        - Install web UI dependencies (npm install)"
 	@echo ""
-	@echo "Data (Lucille ETL, local mechanism -- Cloud Run dispatches reindex.yml instead):"
+	@echo "Data (Lucille ETL):"
 	@echo "  make reindex            - Full local reindex: products + judgments (bash scripts/lucille_ingest.sh)"
 	@echo "  make reindex-products   - Products only (--skip-judgments), what the enrichment flywheel runs"
 	@echo "  make seed-taxonomy      - Rediscover color/material taxonomy + products pass (DESTRUCTIVE: wipes agent-learned mappings)"
@@ -33,7 +33,7 @@ help:
 	@echo "  make smoke-local        - Local smoke test suite (~90s)"
 	@echo "  make smoke-local-quick  - Focused search-intent smoke test (~13s, pre-commit gate)"
 	@echo ""
-	@echo "Pre-push CI gate (mirrors GitHub Actions build-deploy.yml):"
+	@echo "Pre-push CI gate (local only -- no GitHub Actions, issue #113):"
 	@echo "  make ci                 - Run all CI checks locally before push"
 	@echo "  make ci-frontend        - Frontend tests, lint, and type-check only"
 	@echo "  make ci-docker          - Validate Dockerfile builds (no push)"
@@ -99,15 +99,13 @@ format:
 	$(VENV)/isort .
 
 # ----------------------------------------------------------------------------
-# CI parity: `make ci` is the pre-push gate. ci-format/ci-lint run the exact
-# same commands as build-deploy.yml's lint job (black/isort/flake8/mypy,
-# same flags, same failure behavior -- a regression here WILL fail CI too).
-# ci-test is not full parity: unit tests run for real (same as CI's Phase 1),
-# but integration/e2e only get --collect-only here (import + signature check)
-# -- CI's Phase 2 runs them against real services this Makefile has no way to
-# provide locally without `docker compose up -d` + `make dev-api` first (see
+# `make ci` is the pre-push gate -- there is no GitHub Actions CI (issue #113),
+# so this is the only check that runs. ci-test is not full coverage: unit
+# tests run for real, but integration/e2e only get --collect-only here
+# (import + signature check) -- running them against real services needs
+# `docker compose up -d` + `make dev-api` first (see
 # tests/integration/README.md). A green `make ci` means lint/types/unit are
-# safe; it does NOT guarantee integration/e2e will pass in CI.
+# safe; it does NOT guarantee integration/e2e pass -- run those manually.
 # ----------------------------------------------------------------------------
 
 ci-tools:
@@ -151,13 +149,13 @@ ci-docker:
 # Integration test gate — actually executes tests/integration/, not just
 # collect-only. Requires PostgreSQL + OpenSearch already running locally:
 #     docker compose up -d   (from repo root)
-# Slower (~30–120 s) so kept out of `make ci` and PR gating; runs in the
-# nightly GitHub Actions cron (.github/workflows/integration-nightly.yml).
+# Slower (~30–120 s) so kept out of `make ci` and PR gating; run it manually
+# before pushing when a change touches service wiring or WebSocket contracts.
 ci-integration: ci-tools
 	@echo "[CI] pytest tests/integration/ -m 'not slow'"
 	@PYTHONPATH=. $(VENV)/pytest tests/integration/ -m 'not slow' -q --timeout=120
 
-# Full pre-push gate. Mirrors GitHub Actions build-deploy.yml jobs:
+# Full pre-push gate (no GitHub Actions CI to mirror -- issue #113):
 #   lint-backend   → ci-format + ci-lint
 #   unit-tests     → ci-test
 #   frontend-tests → ci-frontend
@@ -170,8 +168,7 @@ ci: ci-format ci-lint ci-test ci-frontend
 	@echo "✅ Local CI gate passed — safe to push."
 
 # Run a focused smoke test against the local backend. Catches the search-intent
-# WebSocket regression class (deadlocks, agent_complete never emitted) without
-# needing a full Cloud Run deployment.
+# WebSocket regression class (deadlocks, agent_complete never emitted).
 # Usage:
 #   make smoke-local         — full smoke suite (~90s)
 #   make smoke-local-quick   — search intent only (~20s; pre-commit gate)

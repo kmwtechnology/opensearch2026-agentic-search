@@ -38,25 +38,15 @@ vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 
 ---
 
-## Deployment Paths
+## Local Development
 
-This application has two supported run paths:
-
-- **Path A: Local development with Docker** — `setup.sh` and `start.sh`
-  run PostgreSQL/OpenSearch locally with Docker, plus the FastAPI backend
-  and React frontend.
-- **Path B: Deployment to GCP** — `deploy.sh` deploys to Cloud Run,
-  connects to Cloud SQL for checkpoints, reads secrets from Secret
-  Manager, and uses an externally hosted OpenSearch cluster.
-
-Path A is the right starting point for development and tests. Path B is
-for deployed Cloud Run environments.
+This application runs local-only (issue #110/#113) — `setup.sh` and
+`start.sh` run PostgreSQL/OpenSearch locally with Docker, plus the FastAPI
+backend and React frontend.
 
 ### Prerequisites
 
-Both paths need a Google API key from <https://aistudio.google.com/apikey>.
-
-Path A needs:
+A Google API key from <https://aistudio.google.com/apikey>, plus:
 
 ```bash
 docker --version      # Docker Desktop
@@ -68,16 +58,10 @@ Lucille ETL ingest runs via Docker by default (`LUCILLE_USE_DOCKER=true`) —
 no local Java/Maven needed. Set `LUCILLE_USE_DOCKER=false` to use the native
 path instead (requires Java 21+ and Maven: `brew install openjdk@21 maven`).
 
-Path B needs the Google Cloud SDK authenticated to the target project,
-permissions for Cloud Run, Cloud SQL, Artifact Registry, Secret Manager,
-and IAM, plus a reachable OpenSearch cluster. The deployment scripts do
-not provision OpenSearch.
+`setup.sh` generates `LOGIN_PASSWORD` and `SESSION_SECRET` in `.env`;
+`SESSION_COOKIE_SECURE=false` locally (HTTP, not HTTPS).
 
-For local browser login, `setup.sh` generates `LOGIN_PASSWORD`,
-`SESSION_SECRET`, and `SESSION_COOKIE_SECURE=false` in `.env`. In
-production, keep `SESSION_COOKIE_SECURE=true`.
-
-### Path A: Local Development With Docker
+### Local Development With Docker
 
 ```bash
 cd langchain_agent
@@ -112,19 +96,6 @@ Stop or clean up local services:
 
 Removes running services, the Docker volumes, `.venv`, `node_modules`, and
 log files. Keeps `.env` by default (prompted separately).
-
-### Path B: Deployment to GCP
-
-```bash
-cd langchain_agent
-./scripts/deploy.sh --project <GCP_PROJECT_ID>
-./scripts/gcp-init.sh --project <GCP_PROJECT_ID>
-./scripts/smoke_test.sh <CLOUD_RUN_URL>
-```
-
-`deploy.sh` builds and deploys the Cloud Run service. `gcp-init.sh`
-initializes Cloud SQL and ingests ESCI products into OpenSearch. The smoke
-test verifies the deployed API.
 
 ---
 
@@ -233,11 +204,9 @@ curl http://localhost:8000/api/admin/health \
 ```
 
 There is no in-container ingest/reindex endpoint. Reindexing happens via
-`scripts/lucille_ingest.sh` (local dev) or the GitHub Actions
-`.github/workflows/reindex.yml` manual-dispatch workflow (Lucille ETL on the
-runner); `POST /api/admin/enrich` triggers a real reindex as a side effect
-of adding/correcting one taxonomy mapping. Verify the result via
-`GET /api/admin/health`.
+`scripts/lucille_ingest.sh`; `POST /api/admin/enrich` triggers a real
+reindex as a side effect of adding/correcting one taxonomy mapping. Verify
+the result via `GET /api/admin/health`.
 
 #### Conversations observability — `GET /api/conversations/{thread_id}/observability`
 
@@ -327,51 +296,6 @@ The 6-intent classifier routes every turn:
 Documentation-style asks ("write a guide", "create a comparison") are
 detected during content-type classification inside the generator pipeline
 rather than as a separate intent class.
-
----
-
-## GCP Deployment Details
-
-### Path B: Deploy to Cloud Run
-
-```bash
-./scripts/deploy.sh --project <GCP_PROJECT_ID>
-```
-
-This will:
-
-1. Build the multi-stage Docker image locally
-2. Push to Artifact Registry
-3. Deploy to Cloud Run
-4. Wire secrets (`GOOGLE_API_KEY`, `API_KEY`, OpenSearch creds) via Secret Manager
-5. Connect to Cloud SQL via the built-in proxy
-
-### Path B: One-time Cloud SQL + product ingestion
-
-```bash
-./scripts/gcp-init.sh --project <GCP_PROJECT_ID>
-```
-
-### Path B: Check Cloud Run logs
-
-```bash
-gcloud logging read resource.type=cloud_run_revision --project=<GCP_PROJECT_ID>
-```
-
-Useful signals:
-
-- `POST /api/chat` 200 — successful request
-- `AgentCompleteEvent` — generation finished
-- `DocReplacer` — broken citation link auto-fixed
-- `ERROR` — investigate
-
-### Live Deployment
-
-- **Service URL:** <https://agentic-hybrid-search-375500751528.us-central1.run.app>
-- **Health:** `/api/health`
-- **API docs:** `/swagger` (FastAPI Swagger UI)
-- **OpenSearch:** hosted externally on GCP VM, ESCI products indexed
-- **PostgreSQL:** Cloud SQL (checkpoints only)
 
 ---
 
@@ -485,15 +409,12 @@ presence per field. `POST /api/admin/enrich` grows or corrects the
 color/material taxonomy and triggers a real full Lucille reindex
 (~19-20s) — see "Agentic Taxonomy Growth & Correction" below and
 `docs/integration/rest-api.md` for the request/response shape. All three
-require session auth (UI login) or `X-Admin-Token` header (GitHub Actions
-automation).
+require session auth (UI login) or `X-Admin-Token` header (automation).
 
-Routine full re-ingestion (not tied to a specific taxonomy change) is
-handled by a dedicated GitHub Actions workflow
-(`.github/workflows/reindex.yml`, manual dispatch against a deployed Cloud
-Run instance, or `bash scripts/lucille_ingest.sh` locally) rather than an
-HTTP endpoint — add `reindex_judgments=true` to that workflow's inputs when
-the ESCI judgment index also needs a rebuild.
+Routine full re-ingestion (not tied to a specific taxonomy change) is done
+via `bash scripts/lucille_ingest.sh` rather than an HTTP endpoint — it
+reindexes both products and judgments by default; pass `--skip-judgments`
+to reindex products only.
 
 ### Agentic Taxonomy Growth & Correction
 
@@ -663,18 +584,17 @@ PYTHONPATH=. python checkpoints/checkpoint_optimizer.py     # tune checkpoint pe
 ```bash
 PYTHONPATH=. pytest tests/unit/           # no external deps, ~0.5 s
 PYTHONPATH=. pytest tests/integration/    # requires Postgres + OpenSearch
-PYTHONPATH=. pytest tests/e2e/            # requires deployed Cloud Run
+PYTHONPATH=. pytest tests/e2e/            # requires a running local backend (see tests/e2e/README.md)
 PYTHONPATH=. pytest --cov=. --cov-report=html
 ```
 
 `make ci` runs the local pre-push gate used by this repo: backend format,
 lint/import checks, unit tests, and frontend test/lint/type/build. It only
 collects integration and e2e tests; execute those suites separately when a
-change touches service wiring, WebSocket contracts, OpenSearch mappings, or
-Cloud Run behavior.
+change touches service wiring, WebSocket contracts, or OpenSearch mappings.
 
 See [tests/README.md](tests/README.md) for the full layout and fixtures, and
-[tests/e2e/README.md](tests/e2e/README.md) for Cloud Run smoke/regression
+[tests/e2e/README.md](tests/e2e/README.md) for the local smoke/regression
 scenarios.
 
 ### Lint / format / types
@@ -716,7 +636,7 @@ npm run lint         # eslint
 | Query evaluation (α + expansion) | ~300–500 ms |
 | Quality Gate retry | +1–2 s |
 | LLM response (streaming) | ~3–8 s |
-| **Total per query** | **~6–15 s** local; ~10–35 s Cloud Run (cross-encoder on cold container adds latency) |
+| **Total per query** | **~6–15 s** (first request after startup is slower: cross-encoder model load) |
 | Link verification (cached) | ~50 ms / URL |
 
 Optimizations: HNSW vector index · embedding cache (60-min TTL) ·
@@ -735,10 +655,7 @@ langchain_agent/
 │   ├── stop.sh            # Stop services
 │   ├── teardown.sh        # Full local cleanup
 │   ├── logs.sh            # View backend/frontend logs
-│   ├── deploy.sh          # GCP Cloud Run deploy
-│   ├── gcp-init.sh        # Cloud SQL + product ingestion (one-time)
-│   ├── gcp-teardown.sh    # Remove GCP resources
-│   └── smoke_test.sh      # Post-deploy smoke test
+│   └── smoke_test.sh      # Health check + basic round-trip against any URL
 ├── api/                   # FastAPI backend — see api/README.md
 │   ├── main.py            # FastAPI lifespan
 │   ├── routes/            # chat (WebSocket), conversations, health, suggest, admin, auth
@@ -760,7 +677,7 @@ langchain_agent/
 ├── tests/                 # Test suite — see tests/README.md
 │   ├── unit/              # Fast, no external services (~0.5s, 612 tests)
 │   ├── integration/       # Multi-component, live services — see tests/integration/README.md
-│   └── e2e/               # Deployed Cloud Run checks — see tests/e2e/README.md
+│   └── e2e/               # Local backend checks by default — see tests/e2e/README.md
 │
 │  # --- Entry points (stay at root: invoked by path from shell scripts/CI) ---
 ├── main.py                # EcommerceSearchAgent: setup, graph wiring, routers, lifecycle (~600 lines)
@@ -777,7 +694,7 @@ langchain_agent/
 ├── pipeline/
 │   ├── pipeline_nodes.py  # PipelineNodesMixin: the 8 LangGraph nodes + helpers (~3,000 lines)
 │   ├── conversation_management.py  # ConversationManagementMixin: threads, titles, summarize/compact
-│   └── reindex_trigger.py # local subprocess vs. reindex.yml dispatch
+│   └── reindex_trigger.py # local Lucille subprocess trigger
 ├── retrieval/
 │   ├── vector_store.py    # OpenSearchVectorStore + retriever (RRF)
 │   ├── reranker.py        # CrossEncoderReranker (default) + GeminiReranker (fallback)
@@ -800,7 +717,6 @@ langchain_agent/
 │   ├── benchmark_esci.py     # ESCI relevancy benchmark (`make benchmark-esci`)
 │   └── benchmark_search.py   # Latency benchmarks
 ├── Dockerfile             # Multi-stage (Node + Python)
-├── cloudbuild.yaml
 ├── Makefile
 ├── requirements.txt
 ├── requirements-dev.txt
@@ -889,8 +805,8 @@ curl http://localhost:8000/api/health          # Backend
   `verify_session`; WebSocket handshake uses `verify_websocket_session`
   (rejects with code 4401).
 - **Admin token** — `X-Admin-Token` header accepted on `/api/admin/*` and
-  `/api/health` for automation (GitHub Actions). Constant-time comparison
-  via `hmac.compare_digest`. Requires `ADMIN_TOKEN` env var (32+ chars).
+  `/api/health` for automation. Constant-time comparison via
+  `hmac.compare_digest`. Requires `ADMIN_TOKEN` env var (32+ chars).
 - **Same-origin enforcement** — `Origin` header allow-list (localhost dev
   ports + `*.run.app`). Disallowed origins always 403; host-fallback only
   when both Origin and Referer are absent.
@@ -910,4 +826,3 @@ curl http://localhost:8000/api/health          # Backend
 - OpenSearch Python client: <https://opensearch-project.github.io/opensearch-py/>
 - Google Gemini: <https://ai.google.dev/>
 - Google AI Studio: <https://aistudio.google.com/>
-- Google Cloud Run: <https://cloud.google.com/run/docs>

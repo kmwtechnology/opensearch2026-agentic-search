@@ -199,9 +199,6 @@ __all__ = [
     "ENABLE_ENRICHMENT_TOOL",
     "REINDEX_TRIGGER",
     "REINDEX_LOCAL_TIMEOUT_SECONDS",
-    "GITHUB_REPO",
-    "GITHUB_REINDEX_REF",
-    "GITHUB_REINDEX_TOKEN",
 ]
 
 # ============================================================================
@@ -616,14 +613,7 @@ INTERNAL_LLM_TAG = "internal_deliberation"
 ANSWER_STREAM_TAG = "answer_stream"
 
 # How enrich_attribute triggers the catalog reindex after writing a mapping:
-#   local  -- run scripts/lucille_ingest.sh as a subprocess (dev: Docker on this
-#             host, ~20s, synchronous).
-#   github -- dispatch the reindex.yml GitHub Actions workflow (Cloud Run: the
-#             image has no Docker/Lucille; fire-and-forget, ~8 min).
+# runs scripts/lucille_ingest.sh as a subprocess (Docker on this host, ~20s,
+# synchronous). Only "local" is supported.
 REINDEX_TRIGGER = os.getenv("REINDEX_TRIGGER", "local").strip().lower()
 REINDEX_LOCAL_TIMEOUT_SECONDS = int(os.getenv("REINDEX_LOCAL_TIMEOUT_SECONDS", "180"))
-GITHUB_REPO = os.getenv("GITHUB_REPO", "kmwtechnology/opensearch2026-agentic-search")
-GITHUB_REINDEX_REF = os.getenv("GITHUB_REINDEX_REF", "main")
-# Fine-grained PAT with Actions: read/write on GITHUB_REPO only. Required when
-# REINDEX_TRIGGER=github (Secret Manager on Cloud Run); never needed locally.
-GITHUB_REINDEX_TOKEN = os.getenv("GITHUB_REINDEX_TOKEN")

@@ -188,8 +188,7 @@ previously only described the alternative LLM-based path):
 
 An LLM-based alternative (`RERANKER_TYPE=gemini`) exists (`retrieval/reranker.py`'s `GeminiReranker`):
 batch-scores documents via structured-output Gemini calls instead of a local model. Not
-the shipped default; both deploy paths (`build-deploy.yml`, `scripts/deploy.sh`) set
-`RERANKER_TYPE=cross-encoder` explicitly.
+the shipped default — `RERANKER_TYPE=cross-encoder` is set explicitly in `.env.example`.
 
 **Output State**:
 
@@ -470,15 +469,17 @@ UI-assist path.
 
 ## Re-Indexing
 
-The canonical re-indexing mechanism is the **GitHub Actions workflow** `.github/workflows/reindex.yml`, which runs **Lucille ETL via Docker** on the Actions runner to ingest ESCI products and (optionally) judgments into the remote OpenSearch cluster.
+The canonical re-indexing mechanism is **`scripts/lucille_ingest.sh`**, which
+runs Lucille ETL via Docker (or natively) to ingest ESCI products and
+judgments into the local OpenSearch cluster (~19-20s for 9,618 products).
 
-**Workflow dispatch parameters**:
-- `reset_index` (default: `true`) — drop and recreate the products index before ingest
-- `reindex_judgments` (default: `false`) — also rebuild the esci_judgments (ground-truth) index
+**Flags**:
+- `--reset-index` (default: off) — drop and recreate the products index before ingest
+- `--skip-judgments` (default: off, i.e. judgments run) — skip the judgments ingest
+- `--seed-taxonomy` — rediscover the color/material attribute taxonomy (destructive to agent-learned mappings; see `make seed-taxonomy`)
 
 **For details**, see:
-- `.github/workflows/reindex.yml` — workflow file with WIF auth, Secret Manager credential fetch, and Lucille Docker invocation
-- `langchain_agent/scripts/lucille_ingest.sh` — orchestrates Lucille container with Docker Compose
+- `langchain_agent/scripts/lucille_ingest.sh` — orchestrates the Lucille container
 - `data/README.md` — data format and file descriptions
 
 **Admin API** (`api/routes/admin.py`):
@@ -818,30 +819,17 @@ explicit action) bypasses this gate.
 classify (or use the LLM-supplied canonical directly) → write the
 mapping to OpenSearch → additively ensure the index mapping has the
 `product_<type>` fields → regenerate `products.generated.conf` →
-trigger a real catalog reindex through `pipeline/reindex_trigger.py`. Same
-result, two mechanisms, selected by `REINDEX_TRIGGER`:
-
-- `local` (default, dev): `LocalReindexTrigger` runs
-  `scripts/lucille_ingest.sh --skip-judgments` as a subprocess and waits
-  (~19-20s for 9,618 products — a genuine full reindex, not a scoped
-  patch). `make reindex` / `make reindex-products` are the human-facing
-  entry points to the same script.
-- `github` (Cloud Run): `GitHubActionsReindexTrigger` dispatches the
-  `reindex.yml` workflow via the GitHub API (fine-grained PAT in
-  `GITHUB_REINDEX_TOKEN`, Actions: read/write on this repo only) and
-  returns immediately with the run URL — the prod image has no
-  Docker/Lucille. The runner regenerates `products.generated.conf` from
-  the hosted mapping store, which now contains the new mapping, so
-  nothing else needs plumbing. Fire-and-forget: ~8 minutes, and
-  `reindex.yml`'s `concurrency: reindex-opensearch` queues overlapping
-  dispatches rather than running them concurrently.
+trigger a real catalog reindex through `pipeline/reindex_trigger.py`:
+`LocalReindexTrigger` runs `scripts/lucille_ingest.sh --skip-judgments` as
+a subprocess and waits (~19-20s for 9,618 products — a genuine full
+reindex, not a scoped patch). `make reindex` / `make reindex-products` are
+the human-facing entry points to the same script.
 
 `EnrichmentResult.reindex_mode` / `reindex_run_url` / `reindex_error`
-carry which path ran; the agent tool phrases its reply accordingly
-("re-indexed N products in Xs" vs. "dispatched … goes live when it
-finishes"). A follow-up query (gap case) or a direct field check
-(correction case, since ranking itself barely moves — see `DEMO.md`)
-now reflects the fix — immediately locally, after the run on Cloud Run.
+carry the outcome; the agent tool phrases its reply accordingly
+("re-indexed N products in Xs"). A follow-up query (gap case) or a direct
+field check (correction case, since ranking itself barely moves — see
+`DEMO.md`) now reflects the fix immediately.
 
 **Filter relaxation** (`pipeline/pipeline_nodes.py` retriever, pre-existing, load-bearing
 for the gap-mechanism asymmetry above): when an

@@ -131,7 +131,6 @@ See [Code Patterns](code-patterns.md) for full details.
 
 - **Architecture:** See [ARCHITECTURE.md](../../langchain_agent/ARCHITECTURE.md)
 - **API endpoints:** See [docs/integration/](../integration/)
-- **Operations:** See [docs/operations/](../operations/)
 - **Project structure:** See [langchain_agent/README.md](../../langchain_agent/README.md)
 
 ---
