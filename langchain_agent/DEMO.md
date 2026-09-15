@@ -156,10 +156,13 @@ same. The fix is in the data, permanent, for every future shopper.
 The closing beat is what the agent *stops* saying: in turn 1 it volunteered a
 tagging error; here it says nothing, because there is nothing left to flag.
 
-> **Heads-up:** turn 3 can sit on "Checking whether a tool is needed" for ~30s
-> before streaming — longer than any other turn, because the correction is now in
-> the conversation history for the tool-offer call to reason about. The status
-> card says what it is doing. Have a sentence ready.
+> **Heads-up:** turn 3 can sit on the status card for ~30s before streaming —
+> longer than any other turn — despite retrieving the same 10 documents as turn 1
+> in a plain `attribute_filter` query with no tool-offer/correction check running
+> (see #106: the earlier "reasoning about the correction" explanation was wrong —
+> nothing is checking anything on this turn). The cause of the spike itself is
+> still unconfirmed; treat it as ordinary answer-generation latency and have a
+> sentence ready rather than narrating what the status card says.
 
 ---
 
