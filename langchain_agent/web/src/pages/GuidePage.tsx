@@ -752,9 +752,13 @@ Server streams back:
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8 px-4">
       <div className="max-w-[1500px] mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-          <h1 className="text-[2.75rem] font-bold text-gray-900 mb-2">📖 Agentic Hybrid Search Guide</h1>
-          <p className="text-gray-600">Complete guide to using the API, UI, and features</p>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6 flex flex-wrap items-center gap-6">
+          <img src="/kmw-logo.svg" alt="KMW Technology" className="h-16 w-auto flex-shrink-0" />
+          <div className="h-16 w-px flex-shrink-0 bg-gray-200" aria-hidden="true" />
+          <div>
+            <h1 className="text-[2.75rem] font-bold text-gray-900 mb-2">📖 Agentic Hybrid Search Guide</h1>
+            <p className="text-gray-600">Complete guide to using the API, UI, and features</p>
+          </div>
         </div>
 
         {/* Table of Contents */}

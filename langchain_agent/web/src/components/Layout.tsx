@@ -31,7 +31,7 @@ import {
   Code2,
   LayoutList,
   MessageSquare,
-  Plus,
+  RotateCcw,
   Sparkles,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -189,7 +189,16 @@ export function Layout() {
 
   return (
     <div className="flex h-screen flex-col bg-[var(--color-stage-bg)] text-[var(--color-stage-ink)]">
-      <header className="flex flex-shrink-0 flex-wrap items-center gap-8 border-b-[3px] border-[var(--color-stage-border)] bg-[var(--color-stage-surface)] px-7 py-4">
+      <header className="flex flex-shrink-0 flex-wrap items-center gap-7 border-b-[3px] border-[var(--color-stage-border)] bg-[var(--color-stage-surface)] px-7 py-4">
+        {/* The logo costs no extra header height: DemoSelector's own stack
+            (eyebrow + title button) is already ~95px tall, so a logo sized
+            to that same budget just fills space the row already needs.
+            A separate masthead row was tried and reverted -- it roughly
+            doubled the header's height, which matters here because the
+            chat/narrator panes below are a fixed 45/55 split tuned for
+            1920x1080, not a resizable layout that can absorb it. */}
+        <img src="/kmw-logo.svg" alt="KMW Technology" className="h-[66px] w-auto flex-shrink-0" />
+        <div className="h-[66px] w-px flex-shrink-0 bg-[var(--color-stage-border)]" aria-hidden="true" />
         <DemoSelector demoId={demoId} onSelect={handleSelectDemo} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -208,17 +217,14 @@ export function Layout() {
               it fits on one line and it is the thing the presenter actually
               needs in front of them. A presenter who improvises is not
               corrected; this stays a hint. */}
-          <p className="truncate text-[length:var(--text-stage-body)] font-semibold text-[var(--color-stage-ink-muted)]">
+          <p className="truncate text-[1.75rem] font-semibold text-[var(--color-stage-ink-muted)]">
             {nextTurn ? (
               <>
-                {/* "Next up" is load-bearing, not decoration. This line names
-                    the query the Next button will SEND, which during a running
-                    turn is one ahead of the answer on screen — it read as
-                    "Turn 5 of 5" while turn 4 was still streaming, so the
-                    header looked like it had skipped a turn. The pips show
-                    completed progress; this shows what is queued. */}
+                {/* Names the query the Next button will SEND, which during a
+                    running turn is one ahead of the answer on screen. The
+                    pips show completed progress; this shows what is queued. */}
                 <span className="text-[var(--color-stage-ink-soft)]">
-                  Next up · Turn {currentTurn} of {demo.turns.length} —{' '}
+                  Turn {currentTurn} of {demo.turns.length} —{' '}
                 </span>
                 <span className="text-[var(--color-stage-ink)]">“{nextTurn.query}”</span>
                 {nextTurn.requiresNewConversation && (
@@ -251,16 +257,13 @@ export function Layout() {
                 ? `Run turn ${currentTurn} of ${demo.turns.length}: ${nextTurn.query}`
                 : 'Demo complete'
             }
-            className="flex items-center gap-2.5 rounded-xl bg-[#065F46] px-6 py-3 text-[1.5rem] font-bold text-white disabled:bg-[var(--color-stage-raised)] disabled:text-[var(--color-stage-ink-soft)] focus:outline-none focus:ring-4 focus:ring-[#065F46]/40"
+            className="flex h-[66px] items-center gap-2.5 rounded-xl bg-[#065F46] px-6 text-[1.5rem] font-bold text-white disabled:bg-[var(--color-stage-raised)] disabled:text-[var(--color-stage-ink-soft)] focus:outline-none focus:ring-4 focus:ring-[#065F46]/40"
           >
             {!isConnected ? (
               <>Connecting…</>
             ) : nextTurn ? (
               <>
                 Next
-                <span className="font-semibold opacity-90">
-                  {currentTurn}/{demo.turns.length}
-                </span>
                 <ChevronRight className="h-7 w-7" strokeWidth={3} aria-hidden="true" />
               </>
             ) : (
@@ -273,45 +276,42 @@ export function Layout() {
           <button
             onClick={() => void handleRestart()}
             disabled={isResetting}
-            title="Clear the conversation and restore the catalog's original tagging"
-            className="flex items-center gap-2.5 rounded-xl border-2 border-[var(--color-stage-border)] bg-white px-4 py-2.5 text-[1.4rem] font-semibold disabled:text-[var(--color-stage-ink-soft)] focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+            aria-label={isResetting ? 'Resetting…' : 'Restart'}
+            title="Restart: clear the conversation and restore the catalog's original tagging"
+            className="flex h-[66px] w-[66px] flex-shrink-0 items-center justify-center rounded-xl border-2 border-[var(--color-stage-border)] bg-white disabled:text-[var(--color-stage-ink-soft)] focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
           >
-            <Plus
-              className={`h-6 w-6 ${isResetting ? 'animate-spin' : ''}`}
+            <RotateCcw
+              className={`h-7 w-7 ${isResetting ? 'animate-spin' : ''}`}
               strokeWidth={2.5}
               aria-hidden="true"
             />
-            {isResetting ? 'Resetting…' : 'Restart'}
           </button>
           <button
             onClick={() => setRightPane((p) => (p === 'narrator' ? 'details' : 'narrator'))}
             aria-pressed={rightPane === 'details'}
-            className="flex items-center gap-2.5 rounded-xl border-2 border-[var(--color-stage-border)] bg-white px-4 py-2.5 text-[1.4rem] font-semibold focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+            aria-label={rightPane === 'details' ? 'Show narration (F2)' : 'Show details (F2)'}
+            title={rightPane === 'details' ? 'Show narration (F2)' : 'Show details (F2)'}
+            className="flex h-[66px] w-[66px] flex-shrink-0 items-center justify-center rounded-xl border-2 border-[var(--color-stage-border)] bg-white focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
           >
             {rightPane === 'details' ? (
-              <Sparkles className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+              <Sparkles className="h-7 w-7" strokeWidth={2.5} aria-hidden="true" />
             ) : (
-              <LayoutList className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+              <LayoutList className="h-7 w-7" strokeWidth={2.5} aria-hidden="true" />
             )}
-            {rightPane === 'details' ? 'Narration' : 'Details'}
-            <kbd className="rounded bg-[var(--color-stage-raised)] px-2 py-0.5 font-mono text-[1.25rem] text-[var(--color-stage-ink-soft)]">
-              F2
-            </kbd>
           </button>
-          {/* These three lived only in the sidebar that this layout removes. */}
           <Link
             to="/guide"
             aria-label="Guide"
-            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+            className="flex h-[66px] w-[66px] flex-shrink-0 items-center justify-center rounded-xl border-2 border-[var(--color-stage-border)] bg-white focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
           >
-            <BookOpen className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+            <BookOpen className="h-7 w-7" strokeWidth={2.5} aria-hidden="true" />
           </Link>
           <Link
             to="/swagger"
             aria-label="API reference"
-            className="rounded-xl border-2 border-[var(--color-stage-border)] bg-white p-2.5 focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
+            className="flex h-[66px] w-[66px] flex-shrink-0 items-center justify-center rounded-xl border-2 border-[var(--color-stage-border)] bg-white focus:outline-none focus:ring-4 focus:ring-[#1E40AF]/40"
           >
-            <Code2 className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+            <Code2 className="h-7 w-7" strokeWidth={2.5} aria-hidden="true" />
           </Link>
         </div>
       </header>
@@ -327,7 +327,7 @@ export function Layout() {
           className={`${mobileTab === 'pipeline' ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 overflow-hidden`}
         >
           {rightPane === 'narrator' ? (
-            <NarratorPanel onShowDetails={() => setRightPane('details')} />
+            <NarratorPanel />
           ) : (
             <ObservabilityPanel />
           )}
