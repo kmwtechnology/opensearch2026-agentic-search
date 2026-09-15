@@ -10,7 +10,7 @@ a brief justification, and any specific hallucinations the judge spotted.
 Bias mitigations:
   * Use a different model for the judge than the agent (we use
     gemini-2.5-flash-lite by default; the agent uses
-    gemini-3.5-flash-lite). Reduces self-preference.
+    gemini-2.5-flash). Reduces self-preference.
   * Randomize "Response A" / "Response B" labels per call to mitigate
     positional bias on the pairwise verdict. The judge sees blind
     labels; we map back to llm/baseline server-side.

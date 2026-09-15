@@ -2,7 +2,7 @@
 Unit tests for model compatibility and configuration.
 
 Tests that models are correctly configured:
-- Gemini 3.5 Flash-Lite for generation (issue #126)
+- Gemini 2.5 Flash for generation (issue #126)
 - Gemini 2.5 Flash-Lite for classification/query-eval/judge (issue #126)
 - Gemini 3.1 Flash Lite for the (unused-by-default) Gemini reranker path
 - Correct embedding dimensions (768)
@@ -24,11 +24,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 class TestGeminiModelNames:
     """Test Gemini model naming conventions."""
 
-    def test_llm_model_is_gemini_flash_lite(self):
-        """Test LLM model is a Gemini Flash-Lite generation model."""
-        model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+    def test_llm_model_is_gemini_flash(self):
+        """Test LLM model is a Gemini Flash generation model."""
+        model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
-        assert "gemini-3" in model or "gemini-4" in model
+        assert "gemini-2" in model or "gemini-3" in model or "gemini-4" in model
         assert "flash" in model
 
     def test_reranker_model_is_gemini_3_1_flash_lite(self):
@@ -54,10 +54,11 @@ class TestGeminiModelNames:
 
     def test_llm_model_not_deprecated(self):
         """Test LLM model is not a deprecated version."""
-        model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+        model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
-        # Avoid deprecated models
-        assert "gemini-2" not in model
+        # Avoid deprecated models (gemini-2.0 and earlier were discontinued
+        # mid-2026; gemini-2.5+ remain current -- see #126)
+        assert "gemini-2.0" not in model
         assert "gemini-1" not in model
         assert "bison" not in model
 
@@ -84,12 +85,19 @@ class TestModelTypeAssignment:
     def test_llm_model_for_generation(self):
         """Test LLM model is suitable for text generation.
 
-        As of #126, generation intentionally uses a Flash-Lite model too
-        (gemini-3.5-flash-lite) — benchmarking showed it matches full Flash
-        on citation/tool-call quality for this app's RAG-style responses at
-        ~4x lower time-to-first-token, so "lite" is no longer disqualifying.
+        As of #126, generation uses gemini-2.5-flash (not a Gemini 3.x model,
+        and not the Lite variant). Gemini 3.x's mandatory "thinking" made
+        every call pay a latency tax with no way to disable it; the Flash-Lite
+        candidates tested alongside it failed in different ways instead:
+        gemini-3.5-flash-lite looked fast in a single isolated call but
+        ballooned to ~30s once real multi-turn conversation history piled up,
+        and gemini-2.5-flash-lite stayed fast but dropped required prompt
+        instructions (e.g. the refinement intent's "From the N products I
+        showed you earlier" framing) in favor of generic phrasing. Full
+        gemini-2.5-flash was the only candidate that stayed both fast
+        (~6-11s, no multi-turn blowup) and instruction-following-accurate.
         """
-        model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+        model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
         assert "flash" in model
 
@@ -124,7 +132,7 @@ class TestModelAPICompatibility:
     def test_model_format_matches_google_ai_api(self):
         """Test model names match Google AI API format."""
         models_to_test = [
-            os.getenv("LLM_MODEL", "gemini-3.5-flash-lite"),
+            os.getenv("LLM_MODEL", "gemini-2.5-flash"),
             os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview"),
             os.getenv("QUERY_EVAL_MODEL", "gemini-2.5-flash-lite"),
         ]
@@ -143,7 +151,7 @@ class TestModelAPICompatibility:
     def test_model_names_are_valid_strings(self):
         """Test all model names are valid strings."""
         models = {
-            "LLM_MODEL": os.getenv("LLM_MODEL", "gemini-3.5-flash-lite"),
+            "LLM_MODEL": os.getenv("LLM_MODEL", "gemini-2.5-flash"),
             "RERANKER_MODEL": os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview"),
             "QUERY_EVAL_MODEL": os.getenv("QUERY_EVAL_MODEL", "gemini-2.5-flash-lite"),
             "EMBEDDINGS_MODEL": os.getenv("EMBEDDINGS_MODEL", "models/text-embedding-005"),
@@ -163,7 +171,7 @@ class TestModelPerformanceCharacteristics:
 
     def test_flash_models_are_faster_than_pro(self):
         """Test Flash models are configured for speed."""
-        llm_model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+        llm_model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
         # Flash models are faster and cheaper than Pro
         assert "flash" in llm_model
@@ -254,12 +262,13 @@ class TestModelVersionConsistency:
     def test_all_gemini_models_are_recent_versions(self):
         """Test all Gemini models are recent (2.5+), not legacy.
 
-        As of #126, model choice is decoupled per role rather than pinned
-        to one shared version family: generation and query-eval intentionally
-        span gemini-3.x and gemini-2.5 respectively, chosen per role for
-        latency (Gemini 2.5 has no mandatory "thinking" tax that 3.x does).
+        As of #126, generation and query-eval/judge both landed on the
+        gemini-2.5 family (full Flash for generation, Flash-Lite for
+        classify/eval/judge) rather than Gemini 3.x, specifically to avoid
+        Gemini 3's mandatory "thinking" tax (no way to fully disable it).
+        Only the unused-by-default Gemini reranker path stays on 3.1.
         """
-        llm = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+        llm = os.getenv("LLM_MODEL", "gemini-2.5-flash")
         reranker = os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview")
         query_eval = os.getenv("QUERY_EVAL_MODEL", "gemini-2.5-flash-lite")
 
@@ -268,7 +277,7 @@ class TestModelVersionConsistency:
 
     def test_model_names_not_mixed_generations(self):
         """Test models are not from vastly different generations."""
-        llm = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+        llm = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
         # Should not mix gemini-2 with gemini-3
         assert "gemini-1" not in llm
@@ -282,7 +291,7 @@ class TestModelFeatureCompatibility:
 
     def test_llm_model_supports_streaming(self):
         """Test LLM model supports streaming."""
-        model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+        model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
         # Gemini 3 Flash supports streaming
         assert "flash" in model
@@ -310,12 +319,12 @@ class TestModelSelectionRationale:
     def test_generation_uses_flash_family(self):
         """Test generation uses a Flash-family model.
 
-        As of #126, this is deliberately Flash-Lite (gemini-3.5-flash-lite),
-        not full Flash — benchmarking showed it matches full Flash's citation
-        and tool-call quality for this app's RAG responses at ~4x lower
-        time-to-first-token, so Lite is no longer excluded here.
+        As of #126, this is full gemini-2.5-flash, not Flash-Lite -- the Lite
+        variant (gemini-2.5-flash-lite) is fast but drops required prompt
+        instructions under this app's long system prompt (see
+        test_llm_model_for_generation for the full comparison).
         """
-        model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+        model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
         assert "flash" in model
 
@@ -349,7 +358,7 @@ class TestModelAPIEndpointCompatibility:
     def test_gemini_model_names_valid_for_google_ai_api(self):
         """Test Gemini model names are valid for google.generativeai."""
         models = [
-            os.getenv("LLM_MODEL", "gemini-3.5-flash-lite"),
+            os.getenv("LLM_MODEL", "gemini-2.5-flash"),
             os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview"),
         ]
 
@@ -367,7 +376,7 @@ class TestModelAPIEndpointCompatibility:
     def test_no_invalid_model_names(self):
         """Test no invalid/malformed model names."""
         models = {
-            "LLM_MODEL": os.getenv("LLM_MODEL", "gemini-3.5-flash-lite"),
+            "LLM_MODEL": os.getenv("LLM_MODEL", "gemini-2.5-flash"),
             "RERANKER_MODEL": os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview"),
             "QUERY_EVAL_MODEL": os.getenv("QUERY_EVAL_MODEL", "gemini-2.5-flash-lite"),
             "EMBEDDINGS_MODEL": os.getenv("EMBEDDINGS_MODEL", "models/text-embedding-005"),
@@ -388,7 +397,7 @@ class TestModelInstanceCreation:
 
     def test_llm_model_instantiable(self):
         """Test LLM model name is instantiable format."""
-        model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+        model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
         # Should be simple string, not complex object
         assert isinstance(model, str)
@@ -423,7 +432,7 @@ class TestModelCostEfficiency:
 
     def test_generation_uses_flash_not_pro(self):
         """Test generation uses Flash (faster, cheaper than Pro)."""
-        model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+        model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
         # Flash is cheaper than Pro
         assert "flash" in model

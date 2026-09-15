@@ -244,7 +244,7 @@ the shipped default — `RERANKER_TYPE=cross-encoder` is set explicitly in `.env
 **Process**:
 
 - **Document formatting**: Creates context window with product details
-- **LLM generation**: Gemini 3.5 Flash-Lite generates conversational response (#126)
+- **LLM generation**: Gemini 2.5 Flash generates conversational response (#126)
 - **Citation building**:
   - Extracts product titles from metadata (ESCI products have no ASIN; use title-based search for robustness)
   - Constructs Amazon URLs: `https://www.amazon.com/s?k={title}` (search by title; ASIN-based `/dp/` links 404 frequently)
