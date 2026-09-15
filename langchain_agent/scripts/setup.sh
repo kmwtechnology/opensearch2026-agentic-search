@@ -257,33 +257,15 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
 
     # Generate API key
     API_KEY=$(openssl rand -hex 32)
-    # Generate session-cookie signing secret for the login gate.
-    SESSION_SECRET=$(openssl rand -hex 32)
-    # Generate a memorable-but-unguessable default LOGIN_PASSWORD; the
-    # operator can replace it after install. We use 12 hex chars (~48 bits)
-    # which is plenty of entropy against online brute force given the
-    # 5/min rate limit while still being short enough to share verbally.
-    LOGIN_PASSWORD=$(openssl rand -hex 6)
 
     # Use sed to replace the placeholders (works on both macOS and Linux).
-    # SESSION_COOKIE_SECURE is left at its default (true); operators set it
-    # to false in their local .env if they want to drive the UI over HTTP.
     if [[ "$OSTYPE" == "darwin"* ]]; then
         sed -i '' "s/your-secure-api-key-here/$API_KEY/" "$PROJECT_DIR/.env"
-        sed -i '' "s/^SESSION_SECRET=.*/SESSION_SECRET=$SESSION_SECRET/" "$PROJECT_DIR/.env"
-        sed -i '' "s/^LOGIN_PASSWORD=.*/LOGIN_PASSWORD=$LOGIN_PASSWORD/" "$PROJECT_DIR/.env"
-        sed -i '' "s/^SESSION_COOKIE_SECURE=.*/SESSION_COOKIE_SECURE=false/" "$PROJECT_DIR/.env"
     else
         sed -i "s/your-secure-api-key-here/$API_KEY/" "$PROJECT_DIR/.env"
-        sed -i "s/^SESSION_SECRET=.*/SESSION_SECRET=$SESSION_SECRET/" "$PROJECT_DIR/.env"
-        sed -i "s/^LOGIN_PASSWORD=.*/LOGIN_PASSWORD=$LOGIN_PASSWORD/" "$PROJECT_DIR/.env"
-        sed -i "s/^SESSION_COOKIE_SECURE=.*/SESSION_COOKIE_SECURE=false/" "$PROJECT_DIR/.env"
     fi
 
     echo "   ✓ Generated API_KEY"
-    echo "   ✓ Generated SESSION_SECRET"
-    echo "   ✓ Generated LOGIN_PASSWORD: $LOGIN_PASSWORD"
-    echo "     (Type this into the login screen; change it in .env to share with someone else.)"
     echo ""
     echo "   ERROR: GOOGLE_API_KEY is required. Set it in .env before running."
     echo "   Get your key from: https://aistudio.google.com/apikey"

@@ -5,11 +5,9 @@ the live material enrichment flywheel.
 Re-indexing is handled externally by ``lucille_ingest.sh``. There is no
 in-container ingest path.
 
-Protected by two-layer auth:
-1. Origin check (``verify_same_origin``) — blocks cross-site usage
-2. Session cookie OR admin token:
-   - Session: normal authenticated user via LoginScreen
-   - Admin token: automation via X-Admin-Token header
+Protected by same-origin check only (``verify_same_origin``) — this is a
+demo box, and that's what lets the header's Restart button call
+``/api/admin/demo-reset`` directly from the browser with no credentials.
 """
 
 import logging
@@ -19,7 +17,6 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 
 from api.middleware.origin_auth import verify_same_origin
-from api.middleware.session_auth import verify_admin_token, verify_session
 from api.schemas.admin import EnrichmentRequest, EnrichmentResponse
 
 logger = logging.getLogger(__name__)
@@ -34,7 +31,7 @@ async def diagnose(request: Request, q: str = "sony") -> dict:
     """
     Probe the live index for a query across multiple fields.
 
-    **Authentication:** Requires session (user login) OR X-Admin-Token header (automation).
+    **Authentication:** Same-origin only (see module docstring).
 
     Diagnostic-only: answers "is there Sony data in the index, and which fields
     index it?" Compares hit counts for the suggest fields (title_suggest /
@@ -46,10 +43,6 @@ async def diagnose(request: Request, q: str = "sony") -> dict:
     Also returns whether the mapping includes the suggest fields at all.
     """
     await verify_same_origin(request)
-    try:
-        await verify_session(request)
-    except HTTPException:
-        await verify_admin_token(request)
     return await run_in_threadpool(_diagnose_sync, q)
 
 
@@ -101,7 +94,7 @@ def _diagnose_sync(q: str) -> dict:
 async def admin_health(request: Request) -> dict:
     """Index-level health probe for the OpenSearch product index.
 
-    **Authentication:** Requires session (user login) OR X-Admin-Token header (automation).
+    **Authentication:** Same-origin only (see module docstring).
 
     Distinct from ``/api/health`` (which probes Postgres + OpenSearch
     cluster + Google AI reachability) — this endpoint reports the state
@@ -120,10 +113,6 @@ async def admin_health(request: Request) -> dict:
           exception message for debugging.
     """
     await verify_same_origin(request)
-    try:
-        await verify_session(request)
-    except HTTPException:
-        await verify_admin_token(request)
     return await run_in_threadpool(_admin_health_sync)
 
 
@@ -183,7 +172,7 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
     uses (enrichment_service.enrich_attribute), exposed here so it can be
     exercised and verified independently of the LLM loop.
 
-    **Authentication:** Requires session (user login) OR X-Admin-Token header (automation).
+    **Authentication:** Same-origin only (see module docstring).
 
     Gated by ``ENABLE_ENRICHMENT_TOOL`` (default off) — returns 403 when disabled.
 
@@ -194,10 +183,6 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
     way the live agent tool supplies its own LLM-classified canonical.
     """
     await verify_same_origin(request)
-    try:
-        await verify_session(request)
-    except HTTPException:
-        await verify_admin_token(request)
 
     from core.config import ENABLE_ENRICHMENT_TOOL
 
@@ -244,7 +229,7 @@ async def demo_reset(request: Request) -> dict:
     """
     Re-arm the taxonomy self-correction demo (#103).
 
-    **Authentication:** Requires session (user login) OR X-Admin-Token header.
+    **Authentication:** Same-origin only (see module docstring).
 
     The demo destroys its own preconditions: it works because the catalog
     mis-tags tan boots as ``yellow``, and succeeding rewrites that mapping to
@@ -265,10 +250,6 @@ async def demo_reset(request: Request) -> dict:
     machinery, so a deployment that cannot run the demo cannot reset it either.
     """
     await verify_same_origin(request)
-    try:
-        await verify_session(request)
-    except HTTPException:
-        await verify_admin_token(request)
 
     from core.config import ENABLE_ENRICHMENT_TOOL
 

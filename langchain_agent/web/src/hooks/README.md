@@ -45,11 +45,10 @@ const handleSend = (msg: string) => {
 - Connects to `wss://<host>/ws/{threadId}` on `connect()`
 - Reuses singleton instance (no duplicate connections)
 - Emits typed events → `observabilityStore.addEvent()`
-- Handles close code `4401` (unauthorized) → triggers reauth
 - Auto-reconnect on transient failures
 - `stopExecution()` sends cancel signal to backend
 
-**Important:** Connection requires valid session cookie (set by LoginScreen). WS handshake validates via `verify_websocket_session()` in backend.
+**Important:** Connection requires same-origin (Origin header matches the allow-list). WS handshake validates via `verify_websocket_origin()` in backend.
 
 ## useRecentSearches
 

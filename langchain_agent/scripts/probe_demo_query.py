@@ -14,30 +14,13 @@ import os
 import sys
 import uuid
 
-import httpx
 import websockets.asyncio.client as ws_client
 
 URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
-PASSWORD = os.environ.get("LOGIN_PASSWORD")
-
-
-async def login() -> str:
-    if not PASSWORD:
-        raise SystemExit("LOGIN_PASSWORD env var unset")
-    async with httpx.AsyncClient(timeout=30) as c:
-        r = await c.post(
-            f"{URL}/api/auth/login",
-            json={"password": PASSWORD},
-            headers={"Origin": URL},
-        )
-        r.raise_for_status()
-        cookie = r.headers["set-cookie"].split(";", 1)[0]
-        return cookie
 
 
 async def probe(message: str, second_message: str | None = None) -> None:
-    cookie = await login()
-    headers = {"Origin": URL, "Cookie": cookie}
+    headers = {"Origin": URL}
     ws_url = URL.replace("http://", "ws://").replace("https://", "wss://") + "/ws/chat"
     thread = f"probe-{uuid.uuid4().hex[:8]}"
     print(f"[connect] {ws_url} thread={thread}")

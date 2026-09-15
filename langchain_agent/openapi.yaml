@@ -8,9 +8,7 @@ info:
     intent routing (7 classes), typeahead autocomplete with spell correction.
     Runs local-only (Docker Compose).
 
-    **Authentication:** Two layers: (1) Same-origin check (always on), (2) Session
-    cookie OR X-Admin-Token header (automation) -- optional, gated by
-    REQUIRE_LOGIN (defaults to false, i.e. off). See auth-patterns.md.
+    **Authentication:** Same-origin check on every route. See auth-patterns.md.
   contact:
     name: KMW Technology
     url: https://github.com/kmwtechnology/opensearch2026-agentic-search
@@ -20,8 +18,6 @@ servers:
     description: Local development
 
 tags:
-  - name: auth
-    description: Authentication (shared-password login gate with session cookies)
   - name: health
     description: System and index health probes
   - name: suggest
@@ -342,11 +338,6 @@ paths:
 
 components:
   securitySchemes:
-    SessionAuth:
-      type: apiKey
-      in: cookie
-      name: ahs_session
-      description: HttpOnly session cookie set by POST /api/auth/login (shared password authentication)
     AdminTokenAuth:
       type: apiKey
       in: header
@@ -543,7 +534,7 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           example: { detail: "Invalid thread_id format. Must be 1-64 alphanumeric characters, underscores, or hyphens." }
     Unauthorized:
-      description: Same-origin check failed OR session cookie/admin token invalid
+      description: Same-origin check failed
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

@@ -58,9 +58,6 @@ Lucille ETL ingest runs via Docker by default (`LUCILLE_USE_DOCKER=true`) —
 no local Java/Maven needed. Set `LUCILLE_USE_DOCKER=false` to use the native
 path instead (requires Java 21+ and Maven: `brew install openjdk@21 maven`).
 
-`setup.sh` generates `LOGIN_PASSWORD` and `SESSION_SECRET` in `.env`;
-`SESSION_COOKIE_SECURE=false` locally (HTTP, not HTTPS).
-
 ### Local Development With Docker
 
 ```bash
@@ -83,13 +80,9 @@ Takes ~3–5 min on first run (embeddings are precomputed in the shipped sample 
 Backend FastAPI runs on `:8000`, React frontend on `:5173` (Vite proxies
 `/api` to the backend).
 
-The login gate is **off by default** (`REQUIRE_LOGIN=false`) — the UI opens
-straight to the chat with no login screen, and every same-origin caller,
-including `/api/admin/*`, is unauthenticated. `setup.sh` still generates
-`LOGIN_PASSWORD` in `.env` so it's ready if you set `REQUIRE_LOGIN=true`; when
-enabled, the UI takes it via a login screen and issues a signed session
-cookie. Admin automation can use `X-Admin-Token: $ADMIN_TOKEN` on protected
-admin routes either way. See [auth-patterns.md](../docs/integration/auth-patterns.md).
+There is no login gate — the UI opens straight to the chat, and every
+same-origin caller, including `/api/admin/*`, is unauthenticated. See
+[auth-patterns.md](../docs/integration/auth-patterns.md).
 
 Stop or clean up local services:
 
@@ -119,18 +112,11 @@ PYTHONPATH=. python main.py
 
 ### API
 
-All endpoints require a valid session cookie (issued on
-`POST /api/auth/login`). Automated callers can use the `X-Admin-Token`
-header instead for admin/health routes.
+`/api/health` is public. Every other endpoint is same-origin-only (see
+[auth-patterns.md](../docs/integration/auth-patterns.md)).
 
 ```bash
-# Login and save the session cookie
-curl -c /tmp/cookies.txt -s -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"password":"<LOGIN_PASSWORD>"}' | jq .
-
-# Use the cookie on subsequent requests
-curl -b /tmp/cookies.txt http://localhost:8000/api/health
+curl -H "Origin: http://localhost:8000" http://localhost:8000/api/conversations
 ```
 
 The primary surface is the WebSocket endpoint under `/api/chat` — see
@@ -804,19 +790,14 @@ curl http://localhost:8000/api/health          # Backend
 
 ## Security
 
-- **Session-cookie auth (opt-in, `REQUIRE_LOGIN=false` by default)** —
-  `POST /api/auth/login` validates `LOGIN_PASSWORD` via `hmac.compare_digest`
-  (timing-safe), sets a signed HttpOnly `ahs_session` cookie (SameSite=Lax).
-  All protected routes call `verify_session`; WebSocket handshake uses
-  `verify_websocket_session` (rejects with code 4401). With `REQUIRE_LOGIN`
-  off, `verify_session` is a no-op and every same-origin caller is treated
-  as authenticated.
-- **Admin token** — `X-Admin-Token` header accepted on `/api/admin/*` and
-  `/api/health` for automation. Constant-time comparison via
-  `hmac.compare_digest`. Requires `ADMIN_TOKEN` env var (32+ chars).
 - **Same-origin enforcement** — `Origin` header allow-list (localhost dev
   ports + `*.run.app`). Disallowed origins always 403; host-fallback only
-  when both Origin and Referer are absent.
+  when both Origin and Referer are absent. This is the only auth layer —
+  there is no login gate.
+- **Admin token utility** — `api/middleware/admin_auth.py:verify_admin_token`
+  (constant-time comparison via `hmac.compare_digest`, `ADMIN_TOKEN` env var,
+  32+ chars) is preserved for unattended automation but isn't wired into any
+  route today; same-origin already covers `/api/admin/*` for this demo box.
 - **Timing-attack resistant** — `hmac.compare_digest` used throughout.
 - **Input validation** — thread IDs validated by regex
 - **Thread safety** — all caches use `threading.Lock`

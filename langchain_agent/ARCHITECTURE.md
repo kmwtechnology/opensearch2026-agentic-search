@@ -398,9 +398,9 @@ If the two schemas diverge, WebSocket serialization will fail or frontend won't 
 
 **Handshake**:
 - Frontend initiates `GET /ws/<thread_id>` (via `useWebSocket` hook)
-- Backend checks session cookie (or admin token) before upgrading to WebSocket
-- If auth fails, the backend closes with code **4401** — frontend interprets this as `markUnauthenticated()` and redirects to LoginScreen
-- Once upgraded, the connection is authenticated for its lifetime (session cookie persists across messages)
+- Backend checks the `Origin` header (`verify_websocket_origin`) before upgrading to WebSocket
+- If the origin is disallowed, the backend closes the connection
+- Once upgraded, the connection stays open for its lifetime — there is no session to expire
 
 **Inbound Message Contract** (frontend → backend):
 ```typescript
@@ -488,7 +488,7 @@ judgments into the local OpenSearch cluster (~19-20s for 9,618 products).
 - `POST /api/admin/enrich` — grow or correct the color/material taxonomy
   and trigger a real reindex; see "Taxonomy Growth & Correction" below
   (gated by `ENABLE_ENRICHMENT_TOOL`, default off)
-- Protected by same-origin check + (SessionMiddleware or Admin Token auth)
+- Protected by same-origin check only (no login gate)
 
 ---
 

@@ -109,9 +109,7 @@ This script handles all initialization in 6 phases:
 | 5: Docker up | Starts Postgres, OpenSearch, Dashboards containers | ~30s |
 | 6: Ingest | Initializes DB + indexes products (Lucille ETL) | 3–5 min |
 
-**At the end**, the script prints your login credentials and URLs. Note the `LOGIN_PASSWORD` — you'll need it to log in on your first run.
-
-> **Login is optional by default.** The `REQUIRE_LOGIN` setting defaults to `false`, so you won't see a login screen on a standard local run. You can skip the login step and go straight to the app. The `LOGIN_PASSWORD` is only used if you set `REQUIRE_LOGIN=true` in `.env` (useful for testing authentication locally).
+**At the end**, the script prints the app URLs. There is no login gate — the app is open to any same-origin caller, so you'll go straight from setup to using the app with no login step.
 
 ### Step 4: Verify the Setup
 
@@ -140,8 +138,7 @@ You'll see output like:
 
 Then:
 1. **Visit the app:** Open http://localhost:5173 in your browser
-2. **Log in (if prompted):** If you see a login screen, use the `LOGIN_PASSWORD` from `.env` (printed at end of setup.sh). By default, login is disabled, so you'll skip straight to the app.
-3. **Try a search:** "Find wireless headphones under $100"
+2. **Try a search:** "Find wireless headphones under $100" — there is no login gate, so you go straight to the app
 
 ---
 
@@ -349,21 +346,6 @@ brew install maven
 # Then re-run:
 ./scripts/setup.sh
 ```
-
----
-
-### Login page rejects all passwords
-
-**Note:** If you don't see a login screen at all, that's the default expected behavior — `REQUIRE_LOGIN` defaults to `false`. You can skip this section and go straight to using the app.
-
-**Cause:** `.env` not sourced, or `LOGIN_PASSWORD` changed.
-
-**Fix:** Check your `.env` file:
-```bash
-cat .env | grep LOGIN_PASSWORD
-```
-
-The password printed at the end of `setup.sh` is also saved here. Use that password.
 
 ---
 

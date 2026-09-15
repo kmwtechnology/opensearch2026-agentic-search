@@ -3,20 +3,13 @@ Integration tests for /api/conversations — list, get, and delete endpoints.
 
 PostgreSQL is fully mocked. Origin auth is bypassed by sending a localhost
 Origin header that matches the allowed-origins list in origin_auth.py.
-
-Session auth (PR #8 / feat/login-gate) is bypassed at fixture-build time by
-monkeypatching ``verify_session`` to a no-op. The session-cookie contract
-is exercised independently in ``tests/unit/test_auth_routes.py`` and
-``tests/unit/test_session_auth.py``; duplicating it here would mean every
-integration test had to perform a login round-trip, which a) costs an
-extra request per test, b) interacts badly with the 5/min login rate
-limit, and c) couples integration tests to LOGIN_PASSWORD env state.
+There is no session/login gate to bypass — these routes are same-origin-only.
 """
 
 import asyncio
 import time
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -26,16 +19,6 @@ from api.main import app
 
 ORIGIN = "http://localhost:5173"
 HEADERS = {"origin": ORIGIN}
-
-
-@pytest.fixture(autouse=True)
-def _bypass_session_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No-op verify_session for every test in this module.
-
-    The session middleware is still wired into the app, but the dependency
-    short-circuits to True so route logic runs against the mocked DB.
-    """
-    monkeypatch.setattr("api.routes.conversations.verify_session", AsyncMock(return_value=True))
 
 
 @pytest.fixture

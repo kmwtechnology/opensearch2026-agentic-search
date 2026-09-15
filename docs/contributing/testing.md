@@ -103,9 +103,7 @@ cd langchain_agent
 PYTHONPATH=. uvicorn api.main:app --reload --port 8000
 
 # Terminal 2: Run e2e tests
-# Note: LOGIN_PASSWORD is only needed if REQUIRE_LOGIN=true in .env (default is false)
 cd langchain_agent
-LOGIN_PASSWORD=$(grep '^LOGIN_PASSWORD=' .env | cut -d= -f2) \
 PYTHONPATH=. pytest tests/e2e/test_deployment_smoke.py -v -m "e2e and slow" --timeout=120 --asyncio-mode=auto
 ```
 
@@ -113,8 +111,6 @@ Expected: ~3 minutes, 17 tests, 0 failures.
 
 **Against a remote backend** (if you ever need to point these somewhere other than local):
 ```bash
-# Note: LOGIN_PASSWORD is only needed if REQUIRE_LOGIN=true on the remote backend
-LOGIN_PASSWORD=... \
 CLOUD_RUN_URL=https://your-remote-backend.example.com \
 PYTHONPATH=. pytest tests/e2e/ -v -m "e2e and slow" --timeout=120
 ```
@@ -142,7 +138,7 @@ Expected: All 20 tests pass.
 - WebSocket connection failures
 - Agent not emitting events
 - Event fields missing
-- Auth gate broken
+- Same-origin checking broken
 - Latency SLO exceeded
 
 This is the most valuable gate before pushing. It catches regressions that unit tests can't see.
@@ -219,8 +215,8 @@ If you change database credentials in `.env`, update the test conftest too.
 
 **Local (backend on localhost):**
 - Backend running on `:8000`
-- `LOGIN_PASSWORD` set in `.env` *(only needed if `REQUIRE_LOGIN=true` is set; default is `false`, meaning no login gate)*
 - `docker compose up -d` running
+- No login step required — there is no login gate; same-origin checking is the only auth layer
 
 **Important:** E2E tests in `tests/e2e/` are not run automatically — there is
 no GitHub Actions CI (issue #113) and no pre-push hook either. Run them

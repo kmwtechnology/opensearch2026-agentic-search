@@ -33,7 +33,6 @@ src/
 ├── stores/                    # Zustand state management
 │   ├── chatStore.ts           # Messages, conversations, UI state
 │   ├── observabilityStore.ts  # Pipeline events + stage visualization
-│   ├── authStore.ts           # Login/logout, session state
 │   └── ...
 ├── types/                     # TypeScript type definitions
 │   ├── events.ts              # Pydantic event models (MUST match api/schemas/events.py)
@@ -81,7 +80,6 @@ Start with the components directory to understand the UI structure, then explore
 |-------|---------|
 | `chatStore.ts` | Messages, active conversation, UI state (chat vs. pipeline view); `ChatMessage` carries `corrected`, `originalContent`, `originalFaithfulness`, `correctedFaithfulness` for judge auto-correction display |
 | `observabilityStore.ts` | Pipeline events from WebSocket, stage-by-stage visualization |
-| `authStore.ts` | Login state, session validity, user credentials |
 
 ### WebSocket Integration
 

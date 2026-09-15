@@ -108,8 +108,7 @@ services — everything is mocked through `conftest.py`.
 | `intent/test_intent_classifier.py` | 6-intent classification via single LLM call (no keyword fast-path — see #26), confidence thresholds |
 | `evaluator/test_query_evaluator.py` | Dynamic α selection, query expansion, fast-path vs LLM-path |
 | `quality_gate/test_quality_gate.py` | Retry decision logic, α adjustment bounds, intent-specific thresholds |
-| `test_auth_routes.py` | Login/logout/session route behavior |
-| `test_admin_routes_auth.py` | Admin route auth contract: session or `X-Admin-Token` |
+| `test_admin_routes_auth.py` | Admin route auth contract: same-origin checking (the only thing wired into `/api/admin/*`), plus standalone coverage of the preserved-but-unused `verify_admin_token` utility |
 | `test_config_validation.py` | Required env vars, value ranges, type checks |
 | `test_doc_replacer.py` | Replacement scoring, broken-link substitution, cleanup |
 | `test_embedding_cache.py` | LRU eviction, TTL, disabled-cache no-op, thread safety |
@@ -177,13 +176,13 @@ required environment.
 **Always run e2e files against a real backend before pushing** — `make ci`
 only does `--collect-only` on `tests/e2e/`.
 
-**Run time:** ~10 s – several minutes (load/stress). **Requires:** a
-backend URL and an `ADMIN_TOKEN` (or a session cookie from `/api/auth/login`).
+**Run time:** ~10 s – several minutes (load/stress). **Requires:** a backend
+URL. No login/credential is needed — same-origin checking is the only auth
+layer and a same-origin caller needs no credentials at all.
 
 ```bash
 docker compose up -d                           # PostgreSQL + OpenSearch
 make dev-api                                   # backend on :8000
-export ADMIN_TOKEN="$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2)"
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
 

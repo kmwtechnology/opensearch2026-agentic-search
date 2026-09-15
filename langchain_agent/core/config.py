@@ -170,15 +170,7 @@ __all__ = [
     # API Security
     "RATE_LIMIT_CONVERSATIONS",
     "RATE_LIMIT_CHAT",
-    "RATE_LIMIT_LOGIN",
     "RATE_LIMIT_ENABLED",
-    # Login gate (shared-password session auth)
-    "LOGIN_PASSWORD",
-    "REQUIRE_LOGIN",
-    "SESSION_SECRET",
-    "SESSION_COOKIE_SECURE",
-    "SESSION_MAX_AGE_SECONDS",
-    "SESSION_COOKIE_NAME",
     # Server
     "PORT",
     # Logging
@@ -521,46 +513,10 @@ ENABLE_ASYNC_STREAMING = True
 # API SECURITY CONFIGURATION
 # ============================================================================
 
-# API Key authentication (REQUIRED)
 # Rate limiting configuration
 RATE_LIMIT_CONVERSATIONS = "10/minute"  # List/manage conversations
 RATE_LIMIT_CHAT = "20/minute"  # Chat requests (REST + WebSocket)
-RATE_LIMIT_LOGIN = "5/minute"  # Login attempts per IP
 RATE_LIMIT_ENABLED = True
-
-# ----------------------------------------------------------------------------
-# Login gate (shared-password session auth)
-# ----------------------------------------------------------------------------
-# Single shared password to gate UI access and reduce token burn during demos.
-# A login submits the password; on match the server stores authenticated=True
-# in a Starlette signed-cookie session (HttpOnly, SameSite=Lax). The cookie
-# rides every REST + WebSocket request thereafter.
-
-LOGIN_PASSWORD = os.getenv("LOGIN_PASSWORD")
-
-# Whether to put the shared-password login screen in front of the UI.
-#
-# Default OFF. The gate existed to reduce token burn during demos, but it also
-# put a password prompt between a presenter and their own demo, on stage. With
-# it off the app opens straight into the demo.
-#
-# Turning it off does NOT remove the other layer: verify_same_origin still
-# rejects cross-site requests. It does mean anyone who opens the deployed URL
-# directly can use the app and spend API tokens, so set REQUIRE_LOGIN=true for
-# any deployment reachable by people you would rather not pay for.
-REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "false").lower() == "true"
-SESSION_SECRET = os.getenv("SESSION_SECRET")
-
-# In dev (HTTP) the cookie must not be Secure-flagged or browsers drop it.
-# Cloud Run terminates TLS so this should be true in production.
-SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"
-
-# 24h default — long enough for a demo session, short enough that a leaked
-# cookie ages out without a redeploy.
-SESSION_MAX_AGE_SECONDS = int(os.getenv("SESSION_MAX_AGE_SECONDS", "86400"))
-
-# Cookie name kept short and non-revealing.
-SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "ahs_session")
 
 # ============================================================================
 # LOGGING CONFIGURATION

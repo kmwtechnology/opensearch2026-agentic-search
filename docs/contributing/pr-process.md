@@ -103,7 +103,7 @@ Self-review before asking for review:
 - [ ] **No dead code** — remove unused variables, functions, imports
 - [ ] **No stale comments** — comments should explain why, not what
 - [ ] **Event parity** — if backend events changed, frontend types match
-- [ ] **Auth pattern** — new routes use `verify_same_origin` + `verify_session`, not `verify_api_key`
+- [ ] **Auth pattern** — new routes use `verify_same_origin` (add `verify_admin_token` only for automation-only routes), not `verify_api_key`
 - [ ] **PYTHONPATH** — all test commands include `PYTHONPATH=.`
 - [ ] **Exception handling** — no bare `except Exception`, use subclasses
 - [ ] **State access** — use `.get()` on `CustomAgentState`, not `[]`

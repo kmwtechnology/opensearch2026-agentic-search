@@ -27,7 +27,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import verify_same_origin
-from api.middleware.session_auth import verify_session
 from core.config import DATABASE_URL, RATE_LIMIT_CONVERSATIONS
 from core.logging_config import get_logger
 
@@ -213,7 +212,6 @@ async def list_conversations(
         List of conversation summaries ordered by most recent first.
     """
     await verify_same_origin(request)
-    await verify_session(request)
 
     try:
         return await run_in_threadpool(_list_conversations_sync, limit)
@@ -309,7 +307,6 @@ async def get_conversation(request: Request, thread_id: str):
         Full conversation details with message history.
     """
     await verify_same_origin(request)
-    await verify_session(request)
     thread_id = validate_thread_id(thread_id)
 
     try:
@@ -407,7 +404,6 @@ async def get_conversation_observability(request: Request, thread_id: str):
     full retrieval).
     """
     await verify_same_origin(request)
-    await verify_session(request)
     thread_id = validate_thread_id(thread_id)
 
     try:
@@ -509,7 +505,6 @@ async def clear_all_conversations(request: Request):
         204 No Content on success.
     """
     await verify_same_origin(request)
-    await verify_session(request)
 
     try:
         await run_in_threadpool(_clear_all_conversations_sync)
@@ -587,7 +582,6 @@ async def delete_conversation(request: Request, thread_id: str):
         204 No Content on success.
     """
     await verify_same_origin(request)
-    await verify_session(request)
     thread_id = validate_thread_id(thread_id)
 
     try:
