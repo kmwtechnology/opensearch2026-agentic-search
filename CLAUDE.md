@@ -21,9 +21,8 @@ This repo has project-level skills at `.claude/skills/` (`workflow-start`, `work
 Load-bearing facts:
 
 - **Issue tracking**: GitHub Issues (`kmwtechnology/opensearch2026-agentic-search`); `gh issue view <N>`; done = `state == CLOSED`. `Closes #N` in a commit message auto-closes the issue on push to `main` (closing keywords work on direct pushes to the default branch, not just PR merges).
-- **No CI gate exists** (GitHub Actions was removed entirely, issue #113) — `make ci` run locally is the only gate, run before every push.
-- **No deploy step** — this is local-only (issues #110/#113); nothing to verify post-push beyond local `make ci` + a manual `make dev` check.
 - **Never force-push `main`** — even in cowboy mode, fix a bad push with `git revert`, not history rewriting, unless the user explicitly asks for that.
+- CI/deploy facts (no CI gate, no deploy step) are in "Deploy & CI reality" below — don't restate them per-skill.
 
 ## Commands
 
@@ -140,7 +139,7 @@ Beyond ingest-time detection, the agent can grow *or fix* the live taxonomy at r
 
 ## Deploy & CI reality
 
-No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely from local Docker + `make dev`. `make ci` run locally is the only gate on this repo, for both PRs and merges.
+No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely from local Docker + `make dev`. `make ci` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either).
 
 ## Reference Docs
 
