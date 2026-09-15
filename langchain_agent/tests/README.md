@@ -28,8 +28,11 @@ tests/
 ├── integration/                   # Multi-component; requires services
 │   ├── test_admin_enrich_route.py
 │   ├── test_agent_response.py
+│   ├── test_attribute_mapping_store.py
+│   ├── test_config_generator_live.py
 │   ├── test_conversations.py
 │   ├── test_edge_cases.py
+│   ├── test_enrichment_service.py
 │   ├── test_pipeline_flow.py
 │   ├── test_quality_gate_retry.py
 │   ├── test_retriever_reranker.py
@@ -39,14 +42,9 @@ tests/
 ├── e2e/                           # Against a local backend by default
 │   ├── test_demo_queries_smoke.py
 │   ├── test_deployment_smoke.py
-│   ├── test_latency_profiling.py
-│   ├── test_performance_load.py
-│   ├── test_real_world_scenarios.py
-│   ├── test_stress.py
 │   └── README.md
 │
 ├── conftest.py                    # Shared fixtures + env defaults
-├── load_test_phase3.js            # k6 load script
 └── README.md                      # This file
 ```
 
@@ -63,7 +61,7 @@ PYTHONPATH=. pytest tests/ -v
 ```bash
 PYTHONPATH=. pytest tests/unit/ -v             # ~0.5 s, no deps
 PYTHONPATH=. pytest tests/integration/ -v      # needs Postgres + OpenSearch + GOOGLE_API_KEY
-PYTHONPATH=. pytest tests/e2e/ -v              # needs a running backend + ADMIN_TOKEN (CLOUD_RUN_URL defaults to localhost:8000)
+PYTHONPATH=. pytest tests/e2e/ -v              # needs a running backend (CLOUD_RUN_URL defaults to localhost:8000); no credential required, same-origin checking is the only auth layer
 ```
 
 ### By file or pattern
@@ -79,15 +77,14 @@ PYTHONPATH=. pytest tests/ -k "quality_gate"
 ```bash
 PYTHONPATH=. pytest tests/ -m unit
 PYTHONPATH=. pytest tests/ -m "integration and not slow"
-PYTHONPATH=. pytest tests/ -m performance
 ```
 
 Available markers (kept in sync with `pytest.ini`'s `markers =` list; a
 marker not declared there fails collection under `--strict-markers`):
 `phase1`, `phase3`, `unit`, `integration`, `e2e`, `slow`, `websocket`,
-`performance`, `load`, `stress`, `profile`, `asyncio`, `agent`,
-`edge_cases`, `pipeline`, `quality_gate_retry`, `retriever_reranker`,
-`requires_real_api`, `evaluator`, `intent`, `quality_gate`.
+`asyncio`, `agent`, `edge_cases`, `pipeline`, `quality_gate_retry`,
+`retriever_reranker`, `requires_real_api`, `evaluator`, `intent`,
+`quality_gate`.
 
 ### Coverage
 
@@ -133,7 +130,7 @@ services — everything is mocked through `conftest.py`.
 | `test_frontend_backend_event_parity.py` | Pre-flight guard: every backend `type: Literal[...]` in `events.py` must appear in `web/src/types/events.ts`; per-event `node:` literals must match between backend and frontend; `AgentEvent` union cannot reference Python builtins |
 | `test_smoke_test_budget.py` | Pre-flight guard: AST-walks the smoke e2e test, counts `chat_message` sends, computes a worst-case budget (`SETUP_OVERHEAD_S=7` + `PER_CHAT_MESSAGE_BUDGET_S=40` × sends), and asserts `scripts/smoke_local.sh`'s `pytest --timeout=N` covers it. Also asserts inner `asyncio.wait_for(timeout=...)` ≤ that `--timeout` and `WEBSOCKET_TIMEOUT` ≥ per-message budget. Tighten constants only if you have new wall-clock data — they reflect production observation, not aspirational SLOs. |
 
-**Run time:** ~0.9 s. ~919 unit tests total. **Best for:** TDD,
+**Run time:** ~7 s. 863 unit tests total. **Best for:** TDD,
 pre-commit, CI fast lane.
 
 ### Integration (`tests/integration/`)
@@ -167,16 +164,16 @@ required environment.
 | File | Focus |
 | --- | --- |
 | `test_deployment_smoke.py` | Health check, auth, basic round-trip (18 tests) |
-| `test_demo_queries_smoke.py` | Demo query regression checks |
-| `test_real_world_scenarios.py` | All 6 intents with realistic queries |
-| `test_latency_profiling.py` | Per-node latency breakdown |
-| `test_performance_load.py` | Sustained load, throughput, p95/p99 |
-| `test_stress.py` | Concurrent users, failure modes under pressure |
+| `test_demo_queries_smoke.py` | Demo query regression checks (3 tests) |
 
-**Always run e2e files against a real backend before pushing** — `make ci`
-only does `--collect-only` on `tests/e2e/`.
+**Always run e2e files against a real backend before pushing** — `ci`
+only does `--collect-only` on `tests/e2e/`. `make check` (the pre-push gate)
+executes `test_deployment_smoke.py`'s search-intent test for real via the
+smoke step, but the rest of `tests/e2e/` — including `test_demo_queries_smoke.py`
+in the narrow default — still needs a manual run when you've touched
+service wiring or WebSocket contracts.
 
-**Run time:** ~10 s – several minutes (load/stress). **Requires:** a backend
+**Run time:** ~10-90 s. **Requires:** a backend
 URL. No login/credential is needed — same-origin checking is the only auth
 layer and a same-origin caller needs no credentials at all.
 
@@ -214,9 +211,10 @@ PYTHONPATH=. pytest tests/ -v
 
 ### CI
 
-There is no GitHub Actions CI (issue #113) — `make ci` run locally
-(lint, unit tests, `--collect-only` on integration/e2e, frontend
-test/lint/type/build) is the only gate before merging to `main`.
+There is no GitHub Actions CI (issue #113) — `make check` run locally
+(`ci`'s lint, unit tests, `--collect-only` on integration/e2e, frontend
+test/lint/type/build, plus a real smoke round-trip) is the only gate before
+pushing or merging to `main`.
 
 ## Common Issues
 
@@ -245,39 +243,11 @@ They assert against running services — start them via
 `docker compose up -d` from the repo root plus `./scripts/start.sh` for
 the backend if the test exercises the HTTP/WebSocket layer.
 
-### E2E tests failing with 401
+### E2E tests failing with 403
 
-Check `ADMIN_TOKEN` matches the value in `.env`, and that `CLOUD_RUN_URL`
-(if set) has the correct scheme + host — it defaults to `http://localhost:8000`.
-
-## Performance Testing
-
-The performance suite lives in `tests/e2e/` and is split across four files:
-
-| File | Markers | Focus |
-| --- | --- | --- |
-| `test_performance_load.py` | `load`, `performance` | Concurrent users (1/5/10/20), p50/p95/p99 latency, throughput, regression detection |
-| `test_real_world_scenarios.py` | `performance` | 9 user-journey scenarios (shopper, expert, content creator, support, mobile, power, accessibility, cold start, network jitter) |
-| `test_stress.py` | `stress`, `slow` | Sustained 50-user/60s load, 100-req burst, connection pool, error recovery, leak detection |
-| `test_latency_profiling.py` | `profile` | Per-stage latency (embedding, vector, rerank, full pipeline), α comparison, cache effectiveness |
-
-```bash
-PYTHONPATH=. pytest -m load -v
-PYTHONPATH=. pytest -m stress -v
-PYTHONPATH=. pytest -m profile -v
-PYTHONPATH=. pytest tests/e2e/test_real_world_scenarios.py -v
-```
-
-Results land in `tests/performance_results/`, `tests/stress_results/`,
-`tests/profiling_results/`. Baselines (`baseline.json`) are committed for
-regression comparison; >10% latency regression fails CI.
-
-Key thresholds: p50 <5s single-user, error rate <10% (1u) → <25% (20u),
-sustained-50u success >70%, no detectable memory leak. Per-stage budgets:
-embed <2s, vector <3s, rerank <5s, full pipeline <15s.
-
-The k6 script (`load_test_phase3.js`) can be run against localhost or a
-deployed instance for HTTP-level load testing outside pytest.
+Check `CLOUD_RUN_URL` (if set) has the correct scheme + host — it defaults
+to `http://localhost:8000`. There's no 401/login gate; a 403 means the
+`Origin` wasn't on the same-origin allow-list (`api/middleware/origin_auth.py`).
 
 ## Frontend Tests (Vitest)
 

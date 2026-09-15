@@ -9,24 +9,20 @@ Test pyramid and local testing commands.
 ## Test Pyramid
 
 ```
-         /\
-        /  \  Smoke Tests (local backend)
-       /    \   ~2 min, 20 tests
-      /______\
-      /      \
-     /  E2E   \  End-to-End Tests
-    / Tests    \   ~3 min, 17 tests
-   /____________\
-   /            \
-  / Integration  \  Integration Tests
- /   Tests       \   ~2 min, live PostgreSQL + OpenSearch
-/________________\
-/                  \
- Unit Tests         ~3 sec, 919 tests, mocked deps
-/____________________\
+       /\
+      /  \  E2E / Smoke (tests/e2e/, 21 tests, 2 files)
+     /    \   make smoke: 1 test, ~13-20s, real backend
+    /______\   full run: bash scripts/smoke_local.sh, ~90s
+    /      \
+   / Integ. \  Integration Tests (tests/integration/, ~207 tests)
+  /  Tests   \   ~30-120s, live PostgreSQL + OpenSearch + GOOGLE_API_KEY
+ /____________\
+ /              \
+  Unit Tests      863 tests, ~7s, mocked deps
+ /________________\
 ```
 
-**Rule:** More tests at the bottom (fast, deterministic), fewer at the top (slow, flaky).
+**Rule:** More tests at the bottom (fast, deterministic), fewer at the top (slow, flaky). `make check` runs unit tests for real, integration/e2e as `--collect-only` (import/signature check), plus one real smoke test — see "Local Gate" below.
 
 ---
 
@@ -43,7 +39,7 @@ cd langchain_agent
 PYTHONPATH=. pytest tests/unit/
 ```
 
-Expected: ~919 tests in ~3 seconds, 0 failures.
+Expected: 863 tests in ~7 seconds, 0 failures.
 
 ### Markers
 
@@ -85,7 +81,7 @@ PYTHONPATH=. pytest tests/integration/ -m 'not slow'
 
 Expected: ~30–120 seconds, 0 failures.
 
-**Critical:** Don't skip integration tests for middleware changes. There is no pre-push hook that runs `make smoke-local` — run it manually; local verification is faster than finding out in CI.
+**Critical:** Don't skip integration tests for middleware changes. There is no pre-push hook that runs the smoke gate — run `make check` manually; local verification is faster than finding out later.
 
 ---
 
@@ -107,7 +103,7 @@ cd langchain_agent
 PYTHONPATH=. pytest tests/e2e/test_deployment_smoke.py -v -m "e2e and slow" --timeout=120 --asyncio-mode=auto
 ```
 
-Expected: ~3 minutes, 17 tests, 0 failures.
+Expected: 18 tests, well under a minute, 0 failures.
 
 **Against a remote backend** (if you ever need to point these somewhere other than local):
 ```bash
@@ -117,22 +113,21 @@ PYTHONPATH=. pytest tests/e2e/ -v -m "e2e and slow" --timeout=120
 
 ---
 
-## Smoke Tests (Pre-Push)
+## Smoke Test (Pre-Push)
 
-**When:** Manually before pushing — there is no pre-push hook in this repo, so run these by hand before opening a pull request.
+**When:** Manually before pushing — there is no pre-push hook in this repo, so run this by hand before pushing or merging.
 
-**What:** 20 regression tests covering the full pipeline (auth, search, refinement, citations, latency).
+**What:** A focused search-intent regression test against a running local backend (part of the broader 20+-test suite in `tests/e2e/`).
 
 **How:**
 ```bash
-# Quick (search intent only, ~13s)
-make smoke-local-quick
-
-# Full suite (~90s)
-make smoke-local
+make smoke    # ~13-20s, search intent only, needs Docker + backend
 ```
 
-Expected: All 20 tests pass.
+There's no dedicated Make target for the full regression suite — run it directly when you want the deeper check (e.g. after a WebSocket/service-wiring change):
+```bash
+bash scripts/smoke_local.sh   # ~90s, all e2e+slow scenarios (21 tests)
+```
 
 **What it catches:**
 - WebSocket connection failures
@@ -145,11 +140,12 @@ This is the most valuable gate before pushing. It catches regressions that unit 
 
 ---
 
-## Local CI Gate
+## Local Gate
 
-There is no GitHub Actions CI (issue #113) — **`make ci`** run locally is the
-only gate, and it runs:
+There is no GitHub Actions CI (issue #113) — **`make check`** run locally is
+the only gate. It's two layers:
 
+`make ci` (fast, no live services needed, ~40-45s — most of that is `ci-tools`' pip install and the frontend's `npm install`/build):
 1. **Backend lint** (black, isort, flake8, mypy) — ~5s
 2. **Unit tests** (pytest tests/unit/) — ~3s
 3. **Integration collect-only** (no execution; checks imports) — ~2s
@@ -159,9 +155,11 @@ only gate, and it runs:
 7. **Frontend type check** (tsc) — ~1s
 8. **Frontend build** (vite) — ~1s
 
-**Total:** ~20s locally, ~3 min on GitHub (parallel jobs).
+`make check` adds one more step on top of `ci`:
 
-If any step fails, the PR is blocked.
+9. **Smoke test** (`make smoke`, real round-trip against a running backend, needs Docker up) — ~13-20s
+
+If any step fails, `make check` exits non-zero and points at the failing step.
 
 ---
 
@@ -170,24 +168,15 @@ If any step fails, the PR is blocked.
 Follow this checklist before `git push`:
 
 ```bash
-# 1. Unit tests
 cd langchain_agent
-PYTHONPATH=. pytest tests/unit/
-
-# 2. Lint
-make format-fix    # Auto-fix formatting
-make lint          # Check lint (should pass after format-fix)
-
-# 3. Smoke tests (catches WebSocket, event, latency issues)
-make smoke-local-quick    # Fast: 13s (search intent only)
-# OR
-make smoke-local          # Full: 90s (all 20 tests)
-
-# 4. Git
-git push    # No pre-push hook — CI is the only remaining gate
+make check    # the one command: format check, lint, unit tests, frontend, smoke test
 ```
 
-A `.git/hooks/pre-commit` hook (installed by `scripts/setup.sh`) catches black/isort/flake8 violations at commit time. There is still no local pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only); run `make ci` / `make smoke-local-quick` manually before pushing. Nothing stops a push with failing smoke tests except CI.
+Use `make format-fix` first if `make check` fails on formatting. For fast
+iterative feedback while coding (no live services needed), run `make ci`
+alone instead of the full `check`.
+
+A `.git/hooks/pre-commit` hook (installed by `scripts/setup.sh`) catches black/isort/flake8 violations at commit time. There is still no local pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only); run `make check` manually before pushing. Nothing stops a push with failing tests except this local gate.
 
 ---
 

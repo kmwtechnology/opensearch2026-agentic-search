@@ -143,9 +143,6 @@ Long-running tests (marked `@pytest.mark.slow`):
 - `test_enrichment_service.py::TestRealReindexEndToEnd` — triggers a real
   ~20 s Lucille reindex over the full ESCI corpus
 
-(`test_performance_load.py` and `test_stress.py` are load/stress suites; they
-live in `tests/e2e/`, not here.)
-
 For rapid iteration, skip slow tests:
 ```bash
 PYTHONPATH=. pytest tests/integration/ -m "integration and not slow" -v

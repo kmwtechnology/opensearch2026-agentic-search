@@ -448,7 +448,7 @@ cp .env.example .env        # Fill in GOOGLE_API_KEY
 ESCI dataset plus Docker volumes. (Java 21+/Maven only needed for
 `LUCILLE_USE_DOCKER=false`.)
 
-There is no CI/CD pipeline and no deploy step (issue #110/#113) — `make ci`
+There is no CI/CD pipeline and no deploy step (issue #110/#113) — `make check`
 run locally is the only gate before merging to `main`.
 
 ### ESCI data ships in `data/`

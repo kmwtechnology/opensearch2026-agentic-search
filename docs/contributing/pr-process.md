@@ -61,9 +61,7 @@ Closes #42.
 
 - [ ] Create feature branch: `git checkout -b feat/issue-NNN-slug`
 - [ ] Make changes and test locally
-- [ ] Run `PYTHONPATH=. pytest tests/unit/` — all pass
-- [ ] Run `make smoke-local-quick` — all pass (or `make smoke-local` for confidence)
-- [ ] Run `make lint` — no violations (or `make format-fix` to auto-fix)
+- [ ] Run `make check` — all pass (the one gate: lint, unit tests, frontend, smoke test)
 - [ ] Read your own diff — spot any dead code, stale comments
 - [ ] Commit and push
 
@@ -86,7 +84,7 @@ Closes #42.
 
 ## Deployment
 - [ ] Ready to merge
-- [ ] `make smoke-local` passes if backend paths changed (no deploy step — local-only demo, issue #110/#113)
+- [ ] `make check` passes (no deploy step — local-only demo, issue #110/#113)
 
 ## Related
 Closes #42.
@@ -128,7 +126,7 @@ Example:
 ```
 
 **After addressing all feedback:**
-1. Re-run `make smoke-local-quick` locally
+1. Re-run `make check` locally
 2. Push the new commit
 3. **Re-request review** (GitHub button at the top of the PR)
 
