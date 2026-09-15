@@ -1,4 +1,4 @@
-.PHONY: help doctor setup reindex reindex-products seed-taxonomy demo-reset test lint format clean run stop teardown test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick
+.PHONY: help doctor setup reindex reindex-products seed-taxonomy demo-reset test lint format clean run stop teardown test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick precheck
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -34,7 +34,8 @@ help:
 	@echo "  make smoke-local-quick  - Focused search-intent smoke test (~13s, pre-commit gate)"
 	@echo ""
 	@echo "Pre-push CI gate (local only -- no GitHub Actions, issue #113):"
-	@echo "  make ci                 - Run all CI checks locally before push"
+	@echo "  make precheck           - Everything before a push in one command: ci + smoke-local-quick"
+	@echo "  make ci                 - Run all CI checks locally before push (format, lint, unit, frontend)"
 	@echo "  make ci-frontend        - Frontend tests, lint, and type-check only"
 	@echo "  make ci-docker          - Validate Dockerfile builds (no push)"
 	@echo "  make format-fix         - Auto-fix black + isort formatting"
@@ -166,6 +167,18 @@ ci-integration: ci-tools
 ci: ci-format ci-lint ci-test ci-frontend
 	@echo ""
 	@echo "✅ Local CI gate passed — safe to push."
+
+# Single pre-push command combining everything a developer should run before
+# opening/updating a PR: the full `ci` gate (format, lint, unit tests via
+# ci-test, frontend tests/lint/build) plus the live-backend smoke test. `ci`
+# already runs tests/unit/ once via ci-test, so this does not run unit tests
+# a second time -- it just adds the one check `ci` can't cover (a real
+# request/response round-trip against a running backend). Requires Docker
+# services up (`docker compose up -d` from repo root); smoke_local.sh starts
+# its own uvicorn if one isn't already running on :8000.
+precheck: ci smoke-local-quick
+	@echo ""
+	@echo "✅ Precheck passed — CI gate + smoke test, safe to push."
 
 # Run a focused smoke test against the local backend. Catches the search-intent
 # WebSocket regression class (deadlocks, agent_complete never emitted).

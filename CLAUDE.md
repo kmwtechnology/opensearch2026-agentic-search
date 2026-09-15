@@ -51,8 +51,8 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 | Layer | Tech |
 |-------|------|
-| LLM (generation) | Gemini 3 Flash (preview) |
-| LLM (classify/eval) | Gemini 3.1 Flash Lite (preview) |
+| LLM (generation) | Gemini 2.5 Flash (issue #126 — avoids Gemini 3's mandatory "thinking" tax; Flash-Lite variants tested but rejected for multi-turn latency blowup / prompt-instruction drops) |
+| LLM (classify/eval/judge) | Gemini 2.5 Flash-Lite (issue #126) |
 | Reranker | Local cross-encoder (`ms-marco-MiniLM-L-12-v2`), not an LLM call |
 | Embeddings | `models/gemini-embedding-001` (768-dim) |
 | Agent framework | LangGraph + LangChain |

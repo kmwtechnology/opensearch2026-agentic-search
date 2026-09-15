@@ -208,8 +208,18 @@ __all__ = [
 # Google API Key (required for Gemini models)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# LLM Model (Gemini)
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-flash-preview")
+# LLM Model (Gemini) -- gemini-2.5-flash, not a Gemini 3.x model (#126). Avoids
+# Gemini 3's mandatory "thinking" tax (minimum level is "low", never off) while
+# still following this app's long, instruction-heavy system prompt reliably.
+# gemini-3.5-flash-lite looked faster in a single-turn isolated benchmark but
+# real multi-turn pipeline testing (turn 2+, with accumulated conversation
+# history) showed it balloon to ~30s per call vs. ~6-11s here -- a live-app-only
+# regression an isolated benchmark can't catch. gemini-2.5-flash-lite is faster
+# still but drops required prompt instructions (e.g. the refinement intent's
+# "From the N products I showed you earlier" framing) in favor of generic
+# phrasing -- fine for classify/eval/judge (QUERY_EVAL_MODEL/JUDGE_MODEL below),
+# too lossy for generation.
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", 0))
 
 # Embeddings Model (Gemini)
@@ -373,10 +383,10 @@ ENABLE_QUERY_EVAL_CACHE = True
 QUERY_EVAL_CACHE_MAX_SIZE = 100
 
 # Query evaluator model settings (lightweight alpha estimator)
-QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", "gemini-3.1-flash-lite-preview")
+QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", "gemini-2.5-flash-lite")
 # LLM-as-judge for the Pipeline Quality Summary "Generation" stage. Distinct
 # from the agent's main LLM to reduce self-preference bias.
-JUDGE_MODEL = os.getenv("JUDGE_MODEL", "gemini-3.1-flash-lite-preview")
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "gemini-2.5-flash-lite")
 QUERY_EVAL_TEMPERATURE = float(os.getenv("QUERY_EVAL_TEMPERATURE", "0"))
 QUERY_EVAL_MAX_TOKENS = int(os.getenv("QUERY_EVAL_MAX_TOKENS", "1024"))
 

@@ -225,10 +225,13 @@ number is *real*, not that it's large.
 
 ## Q&A
 
-**What models?** Gemini 3 Flash for generation, Gemini 3.1 Flash Lite for
-classification and query evaluation, `models/gemini-embedding-001` (768-dim) for
-embeddings. Reranking is a **local cross-encoder** (`ms-marco-MiniLM-L-12-v2`),
-not an LLM call — baked into the image, no added API latency.
+**What models?** Gemini 2.5 Flash for generation, Gemini 2.5 Flash-Lite for
+classification/query evaluation/judging (#126 — avoids Gemini 3's mandatory
+"thinking" tax; Flash-Lite for generation was tested and rejected — it
+regressed badly on multi-turn conversations), `models/gemini-embedding-001`
+(768-dim) for embeddings. Reranking is a **local cross-encoder**
+(`ms-marco-MiniLM-L-12-v2`), not an LLM call — baked into the image, no added
+API latency.
 
 **How does RRF fusion work?** Per document,
 `score = 1/(rank_vector + 60) + 1/(rank_lexical + 60)`. Normalizes ranks from
