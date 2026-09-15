@@ -26,9 +26,11 @@ Load-bearing facts:
 
 ## Commands
 
-All backend commands run from `langchain_agent/`. Bare imports (`from config import ...`-style) require `PYTHONPATH=.` for every Python invocation (pytest, scripts).
+All backend commands run from `langchain_agent/` — there is no root-level `Makefile` or `scripts/` dir, only `langchain_agent/Makefile`, so `make ...` from the repo root fails with "No rule to make target". Bare imports (`from config import ...`-style) require `PYTHONPATH=.` for every Python invocation (pytest, scripts).
 
 ```bash
+cd langchain_agent   # required first — commands below assume this cwd
+
 # First-time setup / every-session startup (brings up Postgres + OpenSearch via
 # Docker, backend on :8000, frontend on :5173 — no manual `docker compose up` needed)
 ./scripts/setup.sh          # or: make setup   (10-20 min, first time only)
