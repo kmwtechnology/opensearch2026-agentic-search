@@ -958,7 +958,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             logger.info(
                 f"Agent: LLM disabled, returning {len(retrieved_documents)} raw search results"
             )
-            judgments = state.get("judgments")
             return {
                 "messages": [AIMessage(content=results_md)],
                 "citations": citations,
@@ -1093,8 +1092,6 @@ CITATION & STYLE:
         elapsed = time.time() - start_time
 
         logger.info(f"Agent: generated response ({response_length} chars) in {elapsed:.3f}s")
-
-        judgments = state.get("judgments")
 
         return {
             "messages": [response],
