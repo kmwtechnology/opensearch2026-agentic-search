@@ -113,41 +113,6 @@ Stop or clean up local services:
 Removes running services, the Docker volumes, `.venv`, `node_modules`, and
 log files. Keeps `.env` by default (prompted separately).
 
-**Optional: local-only Langfuse tracing.** `make langfuse-up` starts a self-hosted
-Langfuse v4 stack (`docker compose --profile observability`) so pipeline execution
-graphs are visible at `http://localhost:3000` (login `dev@example.com` / `localdev123`).
-Set `LANGFUSE_ENABLED=true` in `.env` and restart the agent — everything else
-(keys, host) has working defaults. This never touches the GCP deployment: the SDK
-lives only in `requirements-dev.txt` and the flag is never set in CI/deploy. `make langfuse-down` to stop.
-
-Every trace carries an `intent` score alongside the per-node `*_latency_ms` and
-`judge_*` scores, so a cost/latency-by-model/node/intent view is one filtered/grouped
-**Scores** view away in the Langfuse UI — no custom dashboard code needed.
-
-Requests for a query with existing ESCI ground truth also sync that query into a
-Langfuse Dataset (`esci-ground-truth`), score `eval_citation_precision` (are the
-cited products actually relevant per ESCI?) on the trace automatically, and queue
-low-precision results onto the `low-confidence-citations` Annotation Queue for
-human review. Run `make langfuse-eval` to run a proper Langfuse **Experiment**
-(`client.run_experiment()`) against the whole dataset — a real Dataset Run you can
-compare over time under Datasets > Runs, not just scattered live scores.
-`make analyze-quality-gate` reports whether the per-intent quality-gate thresholds
-actually separate high- from low-precision responses, based on that eval data —
-read-only, doesn't change anything.
-
-`make register-langfuse-evaluators` registers three real Langfuse Evaluators
-under `/evals`: a TypeScript Code Evaluator (`web/src/langfuse-evaluators/`,
-type-checked and tested via `npm test`, executed locally via the `insecure-local`
-dispatcher — no AWS needed) plus two of Langfuse's own built-in LLM-as-judge
-templates (`answer-groundedness`, `context-precision`), independent cross-checks
-on the same things `quality/judge.py` already measures app-side.
-
-To capture the current hardcoded prompts as versioned Langfuse text prompts for
-local authoring, run `make capture-langfuse-prompts`. This is a one-way capture:
-the agent does not fetch or use these prompts locally or in GCP. Copy any
-validated prompt changes back into the Python prompt builders through a normal
-issue and pull request.
-
 ### Path B: Deployment to GCP
 
 ```bash
@@ -774,8 +739,6 @@ langchain_agent/
 │   ├── gcp-init.sh        # Cloud SQL + product ingestion (one-time)
 │   ├── gcp-teardown.sh    # Remove GCP resources
 │   └── smoke_test.sh      # Post-deploy smoke test
-├── integrations/          # Optional external integrations (local dev only)
-│   └── langfuse_integration.py  # Langfuse tracing; gated by LANGFUSE_ENABLED, never in GCP
 ├── api/                   # FastAPI backend — see api/README.md
 │   ├── main.py            # FastAPI lifespan
 │   ├── routes/            # chat (WebSocket), conversations, health, suggest, admin, auth

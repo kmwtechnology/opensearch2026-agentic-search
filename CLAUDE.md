@@ -87,11 +87,6 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 - **Event sync** — `api/schemas/events.py` must stay in sync with `web/src/types/events.ts`. Each event's `node` field pins it to pipeline step. All return paths in `agent_node` must include `"citations"` key (empty list if no citations).
 
-- **Langfuse tracing (LOCAL DEV ONLY, issue #18 Phase 1; made mandatory in local dev by issue #99/#100)** — a self-hosted Langfuse v4 stack (`docker compose --profile observability`) is now started automatically and unconditionally by `scripts/setup.sh`/`start.sh` (and their Makefile equivalents `make setup`/`make dev`) alongside PostgreSQL/OpenSearch — no manual step, no opt-in flag. `LANGFUSE_ENABLED=true` is likewise the default in `.env.example`/generated `.env`, and attaches a `langfuse.langchain.CallbackHandler` to every graph invocation via `integrations.get_callbacks()` (wired in `cli.py` and `api/services/observable_agent.py`). Zero GCP footprint by construction: the flag is never set in `build-deploy.yml`, and the SDK (plus the `langchain` meta-package it imports) lives only in `requirements-dev.txt` with lazy imports, so the prod image can't even fail on import — `tests/unit/test_langfuse_integration.py` asserts both. UI at `http://localhost:3000` (login `dev@example.com` / `localdev123`); API keys are pre-provisioned via `LANGFUSE_INIT_*` in `docker-compose.yml` and match the `core/config.py` defaults. `make langfuse-up`/`langfuse-down` still exist for managing just the Langfuse containers in isolation. Note: `.git/hooks/pre-commit` only runs black/isort/flake8 (see above) — it does not run `make smoke-local-quick`, so run that by hand when touching backend pipeline logic.
-  - **Cost/latency dashboard (issue #56 Phase A)** — every trace now carries an `intent` CATEGORICAL score (`pipeline_nodes.intent_classifier_node`, alongside the existing `judge_verdict`/`*_latency_ms` scores). In the Langfuse UI, build a cost/latency-by-model/node/intent view under **Scores** (or **Traces → filter by score name**): filter/group by `intent`, cross-reference with the per-node `*_latency_ms` scores and the automatic per-generation cost/token columns (no custom code needed — these come free from the `CallbackHandler`). Save the filtered view for reuse.
-  - **Eval/annotation workflows (issue #56 Phase B)** — `integrations/langfuse_eval.py` links the app's existing ESCI ground-truth judgments (`agent_state.judgments`, from `VectorStore.lookup_judgments`) into Langfuse's own primitives, not ad-hoc score calls: `sync_dataset_item` idempotently upserts each query's judgments as a **Dataset** item (`esci-ground-truth`, keyed by lowercased query); `record_citation_eval` scores `eval_citation_precision` opportunistically on every live traced request with ground truth for its query, and pushes it to the `low-confidence-citations` **Annotation Queue** (`queue_for_human_review`) when precision is below `LOW_PRECISION_THRESHOLD`. `make langfuse-eval` (`scripts/run_langfuse_eval.py`) runs a proper **Experiment** via `client.run_experiment()`, populating Datasets > Runs with a real, comparable-over-time run.
-  - **Evaluators (`/evals`, issue #56 Phase B continued)** — `make register-langfuse-evaluators` (`scripts/register_langfuse_evaluator.py`) registers three real Langfuse Evaluators, each with an Evaluation Rule firing on both a standalone live trace (root span `LangGraph`) and an Experiment item (root span `experiment-item-run` — Langfuse only populates `experiment.itemExpectedOutput` on that top-level dataset-run-linked span, not on nested descendants, confirmed empirically): (1) `citation-precision-ts` — a genuine Code Evaluator, TypeScript source at `web/src/langfuse-evaluators/citationPrecision.ts` (type-checked + unit-tested via the web project's own `npm test`, then read verbatim and submitted as `source_code`), executed locally via the `insecure-local` dispatcher (`docker-compose.yml`'s `langfuse-worker` — local-only, no AWS Lambda, TypeScript/JavaScript only, "not a sandbox boundary for untrusted code" per Langfuse's own docs, acceptable here since every evaluator submitted is our own reviewed source, never third-party); (2)+(3) `answer-groundedness` and `context-precision` — Langfuse's own built-in LLM-as-judge templates (Retrieval category), prompt text captured verbatim from the template gallery UI (not reauthored), using the existing `google-ai-studio` LLM connection. These are independent, Langfuse-native cross-checks on exactly what `quality/judge.py` and `citation_precision()` already try to measure.
-  - **Quality-gate threshold calibration (issue #56 Phase C)** — `make analyze-quality-gate` (`scripts/analyze_quality_gate_thresholds.py`) joins `reranker_max_score`, `intent`, and `eval_citation_precision` scores from Langfuse by trace_id and reports, per intent, whether the current `intent_thresholds` in `quality_gate_node` actually separate high- from low-precision responses. Read-only/informational by design — local dev trace volume is too small to safely auto-retune production thresholds; use its output as evidence for a manual threshold change, not an automated one.
 - **Error hierarchy** — all custom exceptions inherit from `AgenticHybridSearchError`.
 
 ## Common Commands
@@ -99,27 +94,24 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 All backend commands run from `langchain_agent/`. Bare imports require `PYTHONPATH=.`.
 
 ```bash
-# LOCAL DEVELOPMENT STARTUP — Full Stack (Langchain + Langfuse) ⭐ STANDARD
-# Langfuse is a mandatory, non-optional part of the local stack (issue #99/#100)
-# — every entry point below (scripts/setup.sh, scripts/start.sh, make setup,
-# make dev) brings up PostgreSQL + OpenSearch + Dashboards + the full Langfuse
-# stack together automatically. There is no "minimal, Langfuse-off" variant
-# and no manual `docker compose ... up -d` step needed first.
+# LOCAL DEVELOPMENT STARTUP — Full Stack ⭐ STANDARD
+# Every entry point below (scripts/setup.sh, scripts/start.sh, make setup,
+# make dev) brings up PostgreSQL + OpenSearch + Dashboards + backend + frontend
+# automatically — no manual `docker compose ... up -d` step needed first.
 cd /path/to/opensearch2026-agentic-search/langchain_agent
-./scripts/setup.sh                                            # First time: Docker+Langfuse, venv, DB/index init, ESCI ingest
-./scripts/start.sh                                            # Every session: Docker+Langfuse (if not already up) + backend + frontend
+./scripts/setup.sh                                            # First time: Docker, venv, DB/index init, ESCI ingest
+./scripts/start.sh                                            # Every session: Docker (if not already up) + backend + frontend
 # Equivalent Makefile path: `make setup` (first time) / `make dev` (every session)
 
 # Access Points
 #   Web UI: http://localhost:5173 (backend API at http://localhost:8000)
-#   Langfuse: http://localhost:3000 (login: dev@example.com / localdev123)
 #   OpenSearch Dashboards: http://localhost:5601
 #   Backend API only: http://localhost:8000/api/*
 
-# Stop (processes + Docker/Langfuse containers persist for a fast restart)
+# Stop (processes + Docker containers persist for a fast restart)
 ./scripts/stop.sh                                             # or: make stop
 
-# Teardown (destructive — removes .venv, node_modules, ALL Docker volumes incl. Langfuse)
+# Teardown (destructive — removes .venv, node_modules, ALL Docker volumes)
 ./scripts/teardown.sh                                         # or: make teardown
 
 # ESCI ingestion via Lucille ETL

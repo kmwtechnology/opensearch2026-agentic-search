@@ -21,11 +21,6 @@ ipython>=8.0.0             # Enhanced Python shell
 ipdb>=0.13.0               # Debugger
 pre-commit>=3.0.0          # Pre-commit hooks
 
-# Observability (Local Dev Only)
-langfuse>=4.0.0,<5.0.0     # Langfuse SDK (langfuse.langchain.CallbackHandler); local dev only, never in the image
-langchain>=1.0.0,<2.0.0    # Required by langfuse.langchain (it imports the meta-package to branch on version);
-                           # the app itself only needs langchain-core. Local dev only, never in the image.
-
 # Documentation (optional)
 sphinx>=5.0.0              # Documentation generator
 sphinx-rtd-theme>=1.2.0    # ReadTheDocs theme

@@ -32,11 +32,10 @@ from core.config import (
     VECTOR_COLLECTION_NAME,
 )
 from core.exceptions import LLMError, SearchTimeoutError
-from integrations import record_citation_eval, record_metrics, sync_dataset_item
 from observability.llm_content import _flatten_llm_content
 from pipeline import enrichment_events
 from quality.enrichment_value_judge import EnrichmentValueJudge
-from quality.judge import RETRY_ELIGIBLE_CATEGORIES, JudgmentResult, LLMJudge
+from quality.judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
 from retrieval.attribute_discovery import (
     COLOR_CANONICALS,
     MATERIAL_CANONICALS,
@@ -201,8 +200,6 @@ class PipelineNodesMixin:
                     )
                     confidence = min(confidence, 0.65)
                     reasoning = f"{category_reasoning}. Need clarification on intent."
-
-        record_metrics(state.get("langfuse_trace_id"), intent=intent)
 
         return {
             "intent": intent,
@@ -958,10 +955,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 f"Agent: LLM disabled, returning {len(retrieved_documents)} raw search results"
             )
             judgments = state.get("judgments")
-            sync_dataset_item(user_query, judgments)
-            record_citation_eval(
-                state.get("langfuse_trace_id"), citations, retrieved_documents, judgments
-            )
             return {
                 "messages": [AIMessage(content=results_md)],
                 "citations": citations,
@@ -1098,10 +1091,6 @@ CITATION & STYLE:
         logger.info(f"Agent: generated response ({response_length} chars) in {elapsed:.3f}s")
 
         judgments = state.get("judgments")
-        sync_dataset_item(user_query, judgments)
-        record_citation_eval(
-            state.get("langfuse_trace_id"), citations, retrieved_documents, judgments
-        )
 
         return {
             "messages": [response],
@@ -2385,17 +2374,6 @@ Respond with JSON only. No other text."""
             elapsed_ms,
         )
 
-        def _record_judgment(judgment: "JudgmentResult") -> None:
-            record_metrics(
-                state.get("langfuse_trace_id"),
-                judge_verdict=judgment.verdict,
-                judge_faithfulness=judgment.faithfulness,
-                judge_answer_relevance=judgment.answer_relevance,
-                judge_citation_accuracy=judgment.citation_accuracy,
-                judge_context_utilization=judgment.context_utilization,
-                judge_hallucination_count=len(judgment.hallucinations),
-            )
-
         # Auto-retry path (Layer 3a). Triggered when at least one flagged
         # claim is fabrication / cross_product_bleed AND we haven't already
         # retried this turn. The faithfulness score is NOT checked here —
@@ -2417,7 +2395,6 @@ Respond with JSON only. No other text."""
                     "fabrication/cross_product_bleed (inference/overreach only).",
                     len(result.hallucinations),
                 )
-            _record_judgment(result)
             return {
                 "judgment": result.model_dump(),
                 "judge_latency_ms": elapsed_ms,
@@ -2436,7 +2413,6 @@ Respond with JSON only. No other text."""
             )
         except Exception as exc:
             logger.warning("Auto-retry regeneration failed: %s", exc, exc_info=True)
-            _record_judgment(result)
             return {
                 "judgment": result.model_dump(),
                 "judge_latency_ms": elapsed_ms,
@@ -2447,7 +2423,6 @@ Respond with JSON only. No other text."""
             new_result = self.judge.judge(query, documents, corrected, new_baseline)
         except Exception as exc:
             logger.warning("Auto-retry re-judge failed: %s", exc, exc_info=True)
-            _record_judgment(result)
             return {
                 "judgment": result.model_dump(),
                 "judge_latency_ms": elapsed_ms,
@@ -2461,7 +2436,6 @@ Respond with JSON only. No other text."""
             len(result.hallucinations),
             len(new_result.hallucinations),
         )
-        _record_judgment(new_result)
         return {
             "judgment": new_result.model_dump(),
             "original_judgment": result.model_dump(),
@@ -2932,13 +2906,6 @@ Original query: {query}
         else:  # search
             logger.info(f"Retriever (search): {result_summary}")
 
-        record_metrics(
-            state.get("langfuse_trace_id"),
-            bm25_latency_ms=bm25_latency_ms,
-            stock_bm25_latency_ms=stock_bm25_latency_ms,
-            retriever_latency_ms=retriever_latency_ms,
-        )
-
         return {
             "retrieved_documents": results,
             "pre_rerank_documents": list(results),
@@ -3125,12 +3092,6 @@ Original query: {query}
         for doc, score in all_scored:
             doc.metadata["reranker_score"] = score
         all_reranked_results = [doc for doc, _ in all_scored]
-
-        record_metrics(
-            state.get("langfuse_trace_id"),
-            reranker_latency_ms=rerank_elapsed * 1000.0,
-            reranker_max_score=max_score,
-        )
 
         return {
             "retrieved_documents": results,
