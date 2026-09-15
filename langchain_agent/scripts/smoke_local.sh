@@ -85,6 +85,7 @@ CLOUD_RUN_URL=http://127.0.0.1:$PORT \
   PYTHONUNBUFFERED=1 \
   "$VENV/pytest" \
     tests/e2e/test_deployment_smoke.py \
+    tests/e2e/test_demo_queries_smoke.py \
     -m "e2e and slow" \
     --timeout=240 \
     --asyncio-mode=auto \
