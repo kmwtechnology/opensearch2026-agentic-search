@@ -232,7 +232,7 @@ export function NarratorPanel() {
 
       <footer className="border-t-2 border-[var(--color-stage-border-soft)] px-7 py-4">
         <span className="font-semibold text-[var(--color-stage-ink-soft)] text-[length:var(--text-stage-label)]">
-          {steps.length} {steps.length === 1 ? 'step' : 'steps'}
+          {ordered.length} {ordered.length === 1 ? 'step' : 'steps'}
         </span>
       </footer>
     </section>
