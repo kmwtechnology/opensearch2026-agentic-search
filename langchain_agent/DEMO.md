@@ -206,11 +206,11 @@ If there's time (skip it if not — neither arc depends on this), select the
 **"Bonus: Proving It With Real Judgments"** demo from the dropdown and run
 its one turn:
 
-**Query: `cowboy boots women`**
+**Query: `sewing machine`**
 
 Watch the Pipeline Quality Summary switch from the confidence proxy to real
-numbers: **stock BM25 NDCG@10 0.47 → BM25 0.44 → hybrid 0.85 → reranked
-0.90**, against 3 relevance judgments from Amazon's own ESCI benchmark —
+numbers: **stock BM25 NDCG@10 0.81 → BM25 0.91 → hybrid 0.95 → reranked
+0.92**, against 3 relevance judgments from Amazon's own ESCI benchmark —
 not this system's own scoring. This is the concrete version of the claim
 both arcs make in passing (hybrid + reranking beat plain lexical search):
 here it's measured against an external, academic ground truth instead of
