@@ -224,7 +224,7 @@ gh run list --workflow CI \
 
 ```bash
 cd langchain_agent
-make dev            # Docker + Langfuse + backend + frontend
+make dev            # Docker + backend + frontend
 ```
 
 Try the feature in the live local web UI (`http://localhost:5173`) and confirm it works end-to-end — this is now the only "production" this project has.

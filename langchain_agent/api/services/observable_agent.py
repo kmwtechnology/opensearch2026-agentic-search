@@ -67,7 +67,6 @@ from core.config import (
     RERANKER_TYPE,
     RETRIEVER_FETCH_K,
 )
-from integrations import get_callbacks, new_trace_id
 from main import EcommerceSearchAgent
 from observability.relevancy_metrics import (
     compute_stage_metrics,
@@ -271,19 +270,16 @@ class ObservableAgentService:
                 # Reset per-query state while preserving conversation history via checkpoint
                 from core.config import DEFAULT_ALPHA
 
-                langfuse_trace_id = new_trace_id(seed=thread_id)
                 initial_state = {
                     "messages": [HumanMessage(content=message)],
                     "alpha": DEFAULT_ALPHA,
                     "query_analysis": "",
                     "quality_gate_retried": False,  # Reset for each new message
                     "optimizations": optimizations or {},
-                    "langfuse_trace_id": langfuse_trace_id,
                 }
 
                 config = {
                     "configurable": {"thread_id": thread_id},
-                    "callbacks": get_callbacks(langfuse_trace_id),
                 }
 
                 # Track metrics timing

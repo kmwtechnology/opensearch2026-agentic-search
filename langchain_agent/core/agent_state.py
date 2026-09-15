@@ -163,9 +163,6 @@ class CustomAgentState(TypedDict, total=False):
     retriever_latency_ms: float
     reranker_latency_ms: float
 
-    # Trace id for the current invocation's Langfuse trace, set once at invoke-time
-    # (see integrations.new_trace_id). None when Langfuse tracing is disabled/local-off.
-    langfuse_trace_id: Optional[str]
     # LLM-as-judge output (set by llm_judge_node when both ``llm:on`` and
     # ``llm_judge:on`` toggles are active). Stored as a plain dict so it
     # survives LangGraph checkpoint serialization without importing the

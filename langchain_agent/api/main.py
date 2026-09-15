@@ -45,7 +45,6 @@ from core.config import (
     SESSION_SECRET,
 )
 from core.logging_config import configure_logging, get_logger
-from integrations import shutdown_tracing
 from pipeline.reindex_trigger import build_reindex_trigger
 
 # Configure structured logging
@@ -132,7 +131,6 @@ async def lifespan(app: FastAPI):
         await chat.manager.shutdown()
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
-    shutdown_tracing()
     logger.info("api_shutdown_complete")
 
 
