@@ -1511,8 +1511,13 @@ Titles:
             )
             category = _flatten_llm_content(response).strip().lower()
 
-            # Validate response is a single word/category
-            if category and len(category) < 50 and " " not in category:
+            # Validate response looks like a short category name, not an
+            # explanation. Category names are legitimately multi-word
+            # ("running shoes", "trail running shoes") -- rejecting any
+            # space here silently discarded those and defaulted every such
+            # category to "", which forced _validate_category_continuity's
+            # score to the ambiguous band (0.5) for entire product lines.
+            if category and len(category) < 50 and category.count(" ") <= 2:
                 logger.debug(f"Extracted product category from documents: '{category}'")
                 return category
 
@@ -1572,7 +1577,10 @@ Query: "{query}" """
             )
             category = _flatten_llm_content(response).strip().lower()
 
-            if category and len(category) < 50 and " " not in category:
+            # Same relaxed short-multi-word allowance as
+            # _extract_product_category_from_documents -- see that
+            # function's comment.
+            if category and len(category) < 50 and category.count(" ") <= 2:
                 logger.debug(f"Detected product category from query via LLM: '{category}'")
                 return category
         except Exception as e:
