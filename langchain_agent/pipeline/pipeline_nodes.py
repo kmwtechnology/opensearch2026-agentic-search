@@ -177,7 +177,18 @@ class PipelineNodesMixin:
         )
 
         # NEW: Category continuity validation for refinement intents
-        if intent == "refinement":
+        #
+        # Skipped when the message disputes a prior turn's tag (e.g. "that's
+        # not tan, that's tagged yellow which is wrong") -- a correction is
+        # about that tag's accuracy, not a new product category, so it can
+        # never show "continuity" with the prior search in the sense this
+        # check means. Confirmed live: `_extract_product_category_from_query`'s
+        # LLM fallback, asked to name a category for a message that mentions
+        # none, doesn't reliably answer "" as instructed -- it guessed
+        # "clothing" for this exact dispute message, which then hard-mismatched
+        # against the prior turn's "boots" and downgraded intent to `search`,
+        # silently skipping the taxonomy-correction tool gate below (#126).
+        if intent == "refinement" and not self._detect_correction_signal(user_query):
             prior_docs = state.get("prior_search_documents", [])
             if prior_docs:
                 # Validate category continuity
@@ -1488,7 +1499,9 @@ Do not include any explanation.
 Titles:
 {chr(10).join(titles)}"""
 
-            response = self.query_eval_llm.invoke(prompt)
+            response = self._invoke_with_timeout(
+                self.alpha_estimator_llm, prompt, ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS
+            )
             category = _flatten_llm_content(response).strip().lower()
 
             # Validate response is a single word/category
@@ -1547,7 +1560,9 @@ Do not include any explanation.
 
 Query: "{query}" """
 
-            response = self.query_eval_llm.invoke(prompt)
+            response = self._invoke_with_timeout(
+                self.alpha_estimator_llm, prompt, ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS
+            )
             category = _flatten_llm_content(response).strip().lower()
 
             if category and len(category) < 50 and " " not in category:
@@ -1601,17 +1616,25 @@ Query: "{query}" """
             scores.append(0.5)
             reasons.append(f"Could not extract prior category, current: {current_category}")
 
-        # 2. Document ID overlap
+        # 2. Document ID overlap — only meaningful when the caller actually has
+        # this turn's retrieved documents to compare against. The only caller
+        # today (intent_classifier_node) runs before retriever_node, so it always
+        # passes an empty current_results; scoring that as "0% overlap" silently
+        # dragged the continuity score to ~0.0 for every refinement-classified
+        # turn whose category couldn't be keyword-matched (e.g. a shopper
+        # disputing a tag: "that's not tan, that's tagged yellow which is
+        # wrong" mentions no product category at all) -- downgrading it to
+        # "search" and skipping the taxonomy-correction tool entirely. Treat
+        # "no current results to compare" as "unknown", not "no overlap".
         prior_ids = {
             doc.metadata.get("product_id") for doc in prior_docs if doc.metadata.get("product_id")
         }
-        current_ids = {
-            doc.metadata.get("product_id")
-            for doc in current_results
-            if doc.metadata.get("product_id")
-        }
-
-        if prior_ids:
+        if prior_ids and current_results:
+            current_ids = {
+                doc.metadata.get("product_id")
+                for doc in current_results
+                if doc.metadata.get("product_id")
+            }
             overlap = len(prior_ids & current_ids) / len(prior_ids)
             scores.append(overlap)
             reasons.append(f"Document overlap: {overlap:.1%} of prior results")
