@@ -35,9 +35,9 @@ cp .env.example .env
 ./scripts/start.sh    # Start backend + frontend → http://localhost:5173
 ```
 
-`setup.sh` creates a local login password in `.env` and prints it during
-setup. The backend runs on `http://localhost:8000`; the Vite frontend runs
-on `http://localhost:5173`.
+There is no login gate — the UI opens straight to the chat. The backend
+runs on `http://localhost:8000`; the Vite frontend runs on
+`http://localhost:5173`.
 
 Useful follow-up commands:
 
@@ -72,8 +72,8 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   three-section UI (Did you mean? / Suggestions / Recent Searches)
 - **Admin diagnostics** — `GET /api/admin/health` reports index health and
   doc count; `GET /api/admin/diagnose` probes field-level hit counts.
-  Requires session auth (UI login) or `X-Admin-Token` header (automation).
-  Routine full re-indexing is triggered via `scripts/lucille_ingest.sh`;
+  Same-origin checking is the only auth layer (no login gate). Routine
+  full re-indexing is triggered via `scripts/lucille_ingest.sh`;
   `POST /api/admin/enrich` also triggers a real reindex directly, as part
   of the taxonomy growth & correction mechanism below
 - **Agentic taxonomy growth & correction** — the agent can grow *or fix*

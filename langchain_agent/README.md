@@ -400,7 +400,8 @@ presence per field. `POST /api/admin/enrich` grows or corrects the
 color/material taxonomy and triggers a real full Lucille reindex
 (~19-20s) — see "Agentic Taxonomy Growth & Correction" below and
 `docs/integration/rest-api.md` for the request/response shape. All three
-require session auth (UI login) or `X-Admin-Token` header (automation).
+rely on same-origin checking only (no login gate); `X-Admin-Token` support
+exists in `api/middleware/admin_auth.py` but isn't wired into these routes.
 
 Routine full re-ingestion (not tied to a specific taxonomy change) is done
 via `bash scripts/lucille_ingest.sh` rather than an HTTP endpoint — it
