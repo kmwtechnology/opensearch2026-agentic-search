@@ -9,7 +9,7 @@
  *      turns, rewrite vague follow-ups, and retry once when confidence is low.
  *      This is the part most agentic-search systems already do.
  *
- *   2. Taxonomy & Ingestion — the agent recognises that the CATALOG is wrong,
+ *   2. Classification & Ingestion — the agent recognises that the CATALOG is wrong,
  *      not the query, and fixes it: correcting a shipped mis-mapping and
  *      triggering a real Lucille re-index, live. The talk's centerpiece.
  *
@@ -138,36 +138,8 @@ export const DEMOS: Demo[] = [
     ],
   },
   {
-    id: 'taxonomy-ingestion',
-    title: 'Taxonomy & Ingestion',
-    needsArming: true,
-    subtitle:
-      'A different person: the developer who owns this catalog. They spot a tag that is wrong, say so, and the agent repairs the data itself — live, in about twenty seconds.',
-    turns: [
-      {
-        query: 'show me tan boots',
-        watchFor:
-          'The filter resolves tan to "yellow" — a real shipped bug affecting every product the catalog lists as Tan. It PASSES the quality gate, so no automated check can catch it. Ask the room: does this look right to you?',
-        note: 'Use this exact phrasing. Longer variants add a spurious material_or_feature filter.',
-      },
-      {
-        query: "that's not tan, that's tagged yellow which is wrong",
-        watchFor:
-          'Correction detected, a second model approves the change, then a real Lucille re-index of 9,618 products. Watch the elapsed counter — this is the ingest pipeline running, not a cached swap.',
-        note: 'Exact verified string. The phrase "that\'s not" is what trips the correction detector.',
-      },
-      {
-        query: 'show me tan boots',
-        watchFor:
-          'The filter now reads product_color_primary: "brown". That field changing IS the proof — the fix is permanent, for every future shopper.',
-        note: 'Must be a brand-new conversation — same-thread rewrites the query down a lexical path. Do not promise a reshuffled result list.',
-        requiresNewConversation: true,
-      },
-    ],
-  },
-  {
     id: 'ground-truth-proof',
-    title: 'Bonus: Proving It With Real Judgments',
+    title: 'Proving It With Real Judgments',
     subtitle: 'One query, scored against real academic relevance judgments — not this system\'s own confidence proxy.',
     /*
      * #114: the retrieval pipeline computes real ESCI ground-truth IR metrics
@@ -219,6 +191,34 @@ export const DEMOS: Demo[] = [
         watchFor:
           'has_ground_truth flips to true — the Pipeline Quality Summary switches from the self-referential confidence proxy to real ESCI NDCG@10 per stage: stock BM25 0.81, BM25 0.91, hybrid 0.95, reranked 0.92. This is the same progression the other six turns imply but never actually show: hybrid and reranking measurably beating plain BM25, graded by Amazon\'s own relevance judgments, not this system\'s own scoring.',
         note: 'Only 3 products are judged for this query (the sample corpus\' judgment sets are sparse, average ~1 per query) — do not oversell the sample size. The point is that the number is REAL, not that it is large.',
+      },
+    ],
+  },
+  {
+    id: 'taxonomy-ingestion',
+    title: 'Classification & Ingestion',
+    needsArming: true,
+    subtitle:
+      'A different person: the developer who owns this catalog. They spot a tag that is wrong, say so, and the agent repairs the data itself — live, in about twenty seconds.',
+    turns: [
+      {
+        query: 'show me tan boots',
+        watchFor:
+          'The filter resolves tan to "yellow" — a real shipped bug affecting every product the catalog lists as Tan. It PASSES the quality gate, so no automated check can catch it. Ask the room: does this look right to you?',
+        note: 'Use this exact phrasing. Longer variants add a spurious material_or_feature filter.',
+      },
+      {
+        query: "that's not tan, that's tagged yellow which is wrong",
+        watchFor:
+          'Correction detected, a second model approves the change, then a real Lucille re-index of 9,618 products. Watch the elapsed counter — this is the ingest pipeline running, not a cached swap.',
+        note: 'Exact verified string. The phrase "that\'s not" is what trips the correction detector.',
+      },
+      {
+        query: 'show me tan boots',
+        watchFor:
+          'The filter now reads product_color_primary: "brown". That field changing IS the proof — the fix is permanent, for every future shopper.',
+        note: 'Must be a brand-new conversation — same-thread rewrites the query down a lexical path. Do not promise a reshuffled result list.',
+        requiresNewConversation: true,
       },
     ],
   },
