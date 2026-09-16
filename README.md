@@ -5,7 +5,7 @@
 > [tests/e2e/README.md](langchain_agent/tests/e2e/README.md)
 
 A production-grade **LangGraph RAG agent** for Amazon ESCI e-commerce product search.
-Combines hybrid retrieval (vector + BM25 via RRF), LLM-based reranking, intent
+Combines hybrid retrieval (vector + BM25 via RRF), cross-encoder reranking, intent
 routing, and real-time WebSocket streaming. Runs **local-only** (Docker
 Compose) with Google Gemini — see issue #110/#113 for why the earlier GCP
 Cloud Run deploy path was removed.
@@ -60,7 +60,7 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   non-default alternative (~500ms/batch)
 - **Dynamic alpha** — query-aware lexical/semantic balance; fast-path alpha
   for comparison/attribute_filter/refinement, LLM path for search/follow_up
-- **Quality gate** — if max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45), adjusts alpha ±0.3 (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only) and retries once
+- **Quality gate** — if max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45), adjusts alpha ±0.3, widens the candidate pool 4x, and retries once (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only)
 - **Conversational query rewriting** — resolves pronouns, comparatives, and
   short attribute questions using conversation history
 - **Refinement with context validation** — "make them waterproof" narrows
@@ -75,7 +75,9 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   Same-origin checking is the only auth layer (no login gate). Routine
   full re-indexing is triggered via `scripts/lucille_ingest.sh`;
   `POST /api/admin/enrich` also triggers a real reindex directly, as part
-  of the taxonomy growth & correction mechanism below
+  of the taxonomy growth & correction mechanism below;
+  `POST /api/admin/demo-reset` re-arms the taxonomy demo by restoring the
+  tan→yellow mis-tag defect so it can be demonstrated again
 - **Agentic taxonomy growth & correction** — the agent can grow *or fix*
   its own catalog taxonomy via `trigger_enrichment`, gated by
   `ENABLE_ENRICHMENT_TOOL`: a genuine new color/material term gets added
@@ -116,8 +118,8 @@ flowchart TB
 
     subgraph Pipeline["LangGraph Pipeline"]
         IC["Intent Classifier<br/>(6 intents)"]
-        QE["Query Evaluator<br/>(set α + query expansion)"]
-        RET["Retriever<br/>(Hybrid Search)"]
+        QE["Query Evaluator<br/>(set α)"]
+        RET["Retriever<br/>(query expansion + hybrid search)"]
         RERANK["Reranker<br/>(cross-encoder; LLM fallback)"]
         QG["Quality Gate<br/>(retry on low score)"]
         SUM["Summary Node"]
@@ -137,8 +139,8 @@ flowchart TB
     end
 
     subgraph GoogleAI["Google Gemini"]
-        LLM["Gemini 3 Flash preview<br/>(generation)"]
-        CLASSIFIER["Gemini 3.1 Flash Lite preview<br/>(intent, eval, rerank fallback)"]
+        LLM["Gemini 2.5 Flash<br/>(generation)"]
+        CLASSIFIER["Gemini 2.5 Flash-Lite<br/>(intent, eval)"]
         EMB["models/gemini-embedding-001<br/>(768-dim)"]
     end
 
@@ -167,7 +169,6 @@ flowchart TB
     AGENT --> CHK
     IDX --> RET
     CLASSIFIER --> IC
-    CLASSIFIER --> LLMR
 ```
 
 ### Pipeline Flow (RAG Q&A Mode)
@@ -185,12 +186,14 @@ intent_classifier
 Key decision points:
 
 - **Query Evaluator** — classifies query type and sets optimal α (0.0–1.0)
-  with an e-commerce-tuned guide. Also expands vague queries (pronouns,
-  comparatives, short attribute questions) using conversation context.
+  with an e-commerce-tuned guide.
+- **Retriever** — resolves vague queries (pronouns, comparatives, short
+  attribute questions) against conversation history before executing search,
+  then runs hybrid retrieval.
 - **Quality Gate** — if `reranker_max_score` is below the intent-specific
   threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45)
-  and not yet retried, adjusts α ±0.3 and loops back to the retriever;
-  otherwise continues to the agent.
+  and not yet retried, adjusts α ±0.3, widens the candidate pool 4x, and
+  loops back to the retriever; otherwise continues to the agent.
 - **Reranker** — cross-encoder scoring of top-K documents on a 0.0–1.0
   scale; Gemini Flash Lite fallback with Pydantic-validated output.
 - **Citations** — Amazon search URLs derived from product title
@@ -226,8 +229,8 @@ adjustment.
 
 | Category | Technology | Purpose |
 | --- | --- | --- |
-| **LLM (generation)** | Gemini 3 Flash (preview) | Response generation |
-| **LLM (classify/eval)** | Gemini 3.1 Flash Lite (preview) | Intent classification, query evaluation, reranking fallback |
+| **LLM (generation)** | Gemini 2.5 Flash | Response generation |
+| **LLM (classify/eval)** | Gemini 2.5 Flash-Lite | Intent classification, query evaluation |
 | **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder) | Default reranker (~2s for a 40-doc batch, measured in production); Gemini Flash Lite fallback (~500ms) |
 | **Embeddings** | `models/gemini-embedding-001` | 768-dim vectors |
 | **Vector Database** | OpenSearch 3.8.0 | HNSW `knn_vector` + BM25 |
@@ -239,52 +242,40 @@ adjustment.
 | **Data** | Amazon ESCI (Shopping Queries Dataset) | 1.8M+ product listings |
 | **Deployment** | Local only (Docker Compose) | Conference demo |
 
-## Example Queries
+## The Three Demos
 
-**Product Search:**
+The app is projector-first and presenter-driven: pick a demo from the header
+dropdown and step through it with the **Next** button (turn-progress pips,
+a **Restart** button, a Details/Narration toggle on **F2**, plus Guide and
+API-reference links round out the header). The chat box still accepts free
+text if you want to go off-script, but nothing in the UI expects a query
+typed from scratch — the three demos in
+[`web/src/demos/registry.ts`](langchain_agent/web/src/demos/registry.ts)
+are the guided path. Full presenter script:
+[`langchain_agent/DEMO.md`](langchain_agent/DEMO.md) and the in-app `/guide`
+page.
 
-```text
-Find me wireless headphones under $100
-Show me blue running shoes for women
-What waterproof backpacks do you have?
-```
+**Adaptive Query Enhancements** — one conversation, three turns that narrow
+the way a real shopper actually shops: "Show me blue running shoes" →
+"only size 10" → "what about trail running?". Watch α move 0.25 → 0.35 →
+0.70 as the questions get less literal: turn 2 narrows within the prior
+turn's pinned results, and turn 3 gets rewritten into a full query that
+carries both earlier constraints forward into a fresh, more semantic
+search. (This catalog has no price field, so every turn stays on
+attributes that exist — color, size, material, brand, feature.)
 
-**Refinement — narrows prior results with context validation:**
+**Proving It With Real Judgments** — a standalone turn ("sewing machine")
+that happens to hit real Amazon ESCI ground truth, so the Pipeline Quality
+Summary switches from the self-referential confidence proxy to genuine
+graded NDCG@10 / MRR / Recall@20 / Precision@10 per stage.
 
-```text
-SAME CATEGORY (refinement):
-  "Find me boots"              → intent=search, retrieves 30 boots
-  "They should be waterproof"  → intent=refinement (continuity=1.0)
-                                 α=0.35, filters waterproof from the prior 30
-
-DIFFERENT CATEGORY (new search):
-  "Find me boots"              → intent=search
-  "Find me red dresses"        → intent=search (continuity=0.0)
-                                 context reset, retrieves dresses fresh
-```
-
-**Context Validation:** Continuity score combines category matching and
-document-ID overlap. `>0.7` proceeds as refinement; `0.3–0.7` requests
-clarification; `<0.3` downgrades to a new search and resets prior context.
-
-**Attribute Filter — standalone filtered search:**
-
-```text
-"Show me waterproof boots"        → intent=attribute_filter (α=0.25)
-"Blue running shoes size 10"      → intent=attribute_filter
-```
-
-**Comparison:**
-
-```text
-Compare Sony WH-1000XM5 vs Bose QuietComfort 45
-```
-
-**Summary:**
-
-```text
-Summarize what we've discussed so far
-```
+**Classification & Ingestion** — the centerpiece. The shipped catalog
+mis-tags "tan" as "yellow"; a shopper disputes it in chat; the agent
+corrects the taxonomy and triggers a real ~19–20s Lucille reindex of all
+9,618 products, live. Re-searching in a new conversation proves the fix
+stuck. This demo consumes its own bug to demonstrate the fix, so the UI
+re-arms it automatically each time it's selected
+(`POST /api/admin/demo-reset` does the same thing manually).
 
 ## Observability Panel
 
@@ -341,8 +332,8 @@ Pure-Python metric implementations live in
 | **Context-validated refinement** | Continuity scoring (category match + doc-ID overlap) distinguishes "make them waterproof" (refine prior boots) from "find me dresses" (reset) |
 | **Dynamic α** | Fast-path α for comparison/attribute_filter/refinement; LLM path for search/follow_up |
 | **RRF fusion** | `score = Σ 1/(rank + 60)` combining vector and BM25 rankings |
-| **LLM-based reranking** | Gemini Flash Lite scores query-product relevance, Pydantic-validated 0.0–1.0 |
-| **Quality gate with α adjustment** | Retries once with α ±0.3 if max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45) |
+| **LLM reranking (non-default fallback)** | Gemini Flash Lite scores query-product relevance, Pydantic-validated 0.0–1.0 |
+| **Quality gate with α adjustment** | Retries once with α ±0.3 and a 4x wider candidate pool if max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45) |
 | **Embedding cache** | Query embedding cache (60-min TTL) reduces API calls |
 | **Deterministic sampling** | ESCI products sampled with `random_state=42` for reproducibility |
 | **Idempotent ingestion** | Cached sample parquets (`esci_products_sample_{N}.parquet`) reused on re-runs |
@@ -359,6 +350,10 @@ opensearch2026-agentic-search/
 ├── data/                         # Precomputed ESCI parquets (see data/README.md)
 │   ├── esci_products_sample_10000.parquet
 │   └── esci_judgments_aggregated.parquet
+├── docs/                         # Docs for API consumers and contributors
+│   ├── integration/              # REST/WebSocket examples, auth patterns
+│   ├── contributing/             # Code patterns, testing, PR process
+│   └── presentation/             # Conference talk materials
 ├── langchain_agent/              # Main application (see langchain_agent/README.md)
 │   ├── main.py                   # EcommerceSearchAgent: setup, graph wiring, lifecycle (~600 lines)
 │   ├── cli.py                    # Interactive terminal REPL (dev only)
@@ -371,6 +366,7 @@ opensearch2026-agentic-search/
 │   ├── observability/            # relevancy_metrics, embedding_cache, llm_content
 │   ├── checkpoints/              # checkpoint_maintenance (GC), checkpoint_optimizer
 │   ├── benchmarks/               # benchmark_esci (relevancy), benchmark_search (latency)
+│   ├── tools/                    # enrichment_tool (agent-facing taxonomy growth/correction tool)
 │   ├── api/                      # FastAPI backend — see api/README.md
 │   ├── web/                      # React frontend — see web/README.md
 │   ├── scripts/                  # Lifecycle scripts — see scripts/README.md
@@ -410,7 +406,7 @@ opensearch2026-agentic-search/
 - **Lexical search** — BM25 via OpenSearch's Lucene analyzer (~100–300 ms)
 - **RRF fusion** — `score = Σ 1/(rank + 60)` normalizes across methods
 - **Dynamic α** — set per-query by the Query Evaluator
-- **Quality Gate** — automatic α ±0.3 retry when max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45)
+- **Quality Gate** — automatic α ±0.3 retry with a 4x wider candidate pool when max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45)
 
 ### Key Tunables
 

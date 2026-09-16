@@ -2,7 +2,8 @@
  * Layout — the presentation shell (#103).
  *
  * ┌───────────────────────────────────────────────────────────────┐
- * │  Demo selector · turn progress · New Demo · Details · Sign out │
+ * │  Demo selector · turn progress · Next · Restart · Details (F2) │
+ * │                                    · Guide · API reference     │
  * ├──────────────────────────┬────────────────────────────────────┤
  * │        Chat (45%)        │   Narrator / Details (55%)         │
  * └──────────────────────────┴────────────────────────────────────┘
