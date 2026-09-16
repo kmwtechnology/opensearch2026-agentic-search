@@ -154,6 +154,7 @@ flowchart TB
     IC --> SUM
     QE --> RET
     RET --> Search
+    EMB --> VS
     VS --> RRF
     BM25 --> RRF
     RRF --> RERANK
@@ -163,12 +164,14 @@ flowchart TB
     QG -->|retry| RET
     QG -->|pass| AGENT
     SUM --> AGENT
+    AGENT --> LLM
     AGENT --> JUDGE
-    JUDGE --> LLM
+    JUDGE --> CLASSIFIER
     AGENT --> UI
     AGENT --> CHK
     IDX --> RET
     CLASSIFIER --> IC
+    CLASSIFIER --> QE
 ```
 
 ### Pipeline Flow (RAG Q&A Mode)
