@@ -57,8 +57,7 @@ export const DEMOS: Demo[] = [
   {
     id: 'adaptive-query',
     title: 'Adaptive Query Enhancements',
-    subtitle:
-      'One shopper, one conversation. Each question is read differently from the last, and the agent carries what it already knows from turn to turn.',
+    subtitle: 'One conversation, context carried forward.',
     /*
      * ONE shopper, ONE conversation, three turns that narrow — the way a person
      * actually shops. No turn starts a new thread and no turn contradicts an
@@ -140,7 +139,7 @@ export const DEMOS: Demo[] = [
   {
     id: 'ground-truth-proof',
     title: 'Proving It With Real Judgments',
-    subtitle: 'One query, scored against real academic relevance judgments — not this system\'s own confidence proxy.',
+    subtitle: 'Scored against real academic judgments.',
     /*
      * #114: the retrieval pipeline computes real ESCI ground-truth IR metrics
      * (NDCG@10, MRR, Recall@20, Precision@10) on every turn via
@@ -198,8 +197,7 @@ export const DEMOS: Demo[] = [
     id: 'taxonomy-ingestion',
     title: 'Classification & Ingestion',
     needsArming: true,
-    subtitle:
-      'A different person: the developer who owns this catalog. They spot a tag that is wrong, say so, and the agent repairs the data itself — live, in about twenty seconds.',
+    subtitle: 'One bad tag, fixed live. Post re-ingestion search: "show me tan boots".',
     turns: [
       {
         query: 'show me tan boots',
