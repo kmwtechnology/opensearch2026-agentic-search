@@ -13,7 +13,13 @@ from fastapi.responses import JSONResponse
 
 # Add parent directory to path for config import (dynamic, not hardcoded)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from core.config import DATABASE_URL, GOOGLE_API_KEY, OPENSEARCH_INDEX_NAME, VECTOR_COLLECTION_NAME
+from core.config import (
+    API_VERSION,
+    DATABASE_URL,
+    GOOGLE_API_KEY,
+    OPENSEARCH_INDEX_NAME,
+    VECTOR_COLLECTION_NAME,
+)
 
 router = APIRouter()
 
@@ -29,7 +35,7 @@ def _health_check_sync() -> dict:
     """
     status = {
         "status": "ok",
-        "version": "1.1.0",
+        "version": API_VERSION,
         "postgres": False,
         "google_ai": False,
         "vector_store": False,
@@ -85,7 +91,7 @@ async def health_check():
         ```json
         {
             "status": "ok",
-            "version": "1.1.0",
+            "version": "1.0.0",
             "postgres": true,
             "google_ai": true,
             "vector_store": true,

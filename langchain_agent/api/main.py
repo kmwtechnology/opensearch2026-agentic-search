@@ -32,7 +32,7 @@ from slowapi.errors import RateLimitExceeded
 
 from api.middleware.client_ip import get_client_ip
 from api.routes import admin, chat, conversations, health, suggest
-from core.config import ENABLE_ENRICHMENT_TOOL, RATE_LIMIT_ENABLED
+from core.config import API_VERSION, ENABLE_ENRICHMENT_TOOL, RATE_LIMIT_ENABLED
 from core.logging_config import configure_logging, get_logger
 from pipeline.reindex_trigger import build_reindex_trigger
 
@@ -157,8 +157,9 @@ app = FastAPI(
         "- **Intent routing**: 7 classes (search, comparison, attribute_filter, refinement, "
         "follow_up, summary, clarify)\n"
         "- **Reranking + quality gate**: Cross-encoder (ms-marco-MiniLM-L-12-v2, ~2s for a "
-        "40-doc batch, default) or optional Gemini LLM (~500ms–1s), 0.0–1.0 scores, with "
-        "adaptive alpha ±0.3 retry\n"
+        "40-doc batch, default) or optional Gemini LLM (~500ms–1s), 0.0–1.0 scores; on a "
+        "low score the gate retries once with a widened retrieval pool (not just a "
+        "re-weighted alpha, which alone was measured to not move the reranker's score)\n"
         "- **Typeahead autocomplete**: `/api/suggest` edge-ngram prefix matching with "
         "spell correction and distance-1 fuzzy fallback\n"
         "- **BM25 optimizations**: synonyms, phrase boosting, field boosting, phonetic matching\n"
@@ -175,11 +176,9 @@ app = FastAPI(
         "tags each event so the observability panel can render an eye-icon viewer per query.\n"
         "- **Real-time streaming**: token-by-token output over WebSocket\n\n"
         "**Authentication:** Same-origin check (localhost dev ports + Cloud Run URL) "
-        "on every route.\n\n"
-        "See [openapi.yaml](https://github.com/kmwtechnology/opensearch2026-agentic-search/blob/main/"
-        "langchain_agent/openapi.yaml) for the full hand-authored spec."
+        "on every route."
     ),
-    version="1.0.0",
+    version=API_VERSION,
     docs_url=None,  # served by the custom route below (#103)
     redoc_url="/redoc",
     openapi_tags=tags_metadata,

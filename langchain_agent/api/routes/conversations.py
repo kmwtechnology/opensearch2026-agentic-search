@@ -75,7 +75,7 @@ class ConversationSummary(BaseModel):
         ```json
         {
             "thread_id": "conv_abc123",
-            "title": "Laptop Shopping Help",
+            "title": "Running Shoe Search",
             "created_at": "2026-04-16T10:30:00",
             "updated_at": "2026-04-16T11:45:00"
         }
@@ -120,13 +120,13 @@ class ConversationDetail(BaseModel):
         ```json
         {
             "thread_id": "conv_abc123",
-            "title": "Laptop Shopping Help",
+            "title": "Running Shoe Search",
             "created_at": "2026-04-16T10:30:00",
             "message_count": 5,
             "messages": [
                 {
                     "type": "human",
-                    "content": "What are good gaming laptops?"
+                    "content": "Show me blue running shoes"
                 },
                 {
                     "type": "ai",
@@ -183,13 +183,13 @@ async def list_conversations(
         [
             {
                 "thread_id": "conversation_abc123",
-                "title": "Wireless Earbuds Comparison",
+                "title": "Running Shoe Search",
                 "created_at": "2026-04-16T10:30:00",
                 "updated_at": "2026-04-16T11:45:00"
             },
             {
                 "thread_id": "conversation_def456",
-                "title": "Gaming Laptop Search",
+                "title": "Tan Boots Correction",
                 "created_at": "2026-04-15T14:20:00",
                 "updated_at": "2026-04-15T15:10:00"
             }
@@ -274,17 +274,17 @@ async def get_conversation(request: Request, thread_id: str):
         ```json
         {
             "thread_id": "conversation_abc123",
-            "title": "Wireless Earbuds Comparison",
+            "title": "Running Shoe Search",
             "created_at": "2026-04-16T10:30:00",
             "message_count": 4,
             "messages": [
                 {
                     "type": "human",
-                    "content": "What wireless earbuds have the best noise cancellation?"
+                    "content": "Show me blue running shoes"
                 },
                 {
                     "type": "ai",
-                    "content": "Here are some great options with ANC..."
+                    "content": "Here are some great options..."
                 }
             ]
         }

@@ -167,7 +167,7 @@ class ChatMessage(BaseModel):
         ```json
         {
             "type": "chat_message",
-            "message": "Show me wireless headphones with active noise cancellation under $200",
+            "message": "Show me blue running shoes",
             "thread_id": "conv_abc123"
         }
         ```
@@ -187,10 +187,10 @@ class ChatMessage(BaseModel):
     optimizations: Optional[Dict[str, bool]] = Field(
         None,
         description=(
-            "Per-feature search optimization toggles. Nine recognized keys: "
+            "Per-feature search optimization toggles. Ten recognized keys: "
             "hybrid, fuzzy, synonyms, phonetic, phrase_boost, field_boost, typeahead, "
-            "reranking, llm. Missing keys default to true (enabled). Skipped stages "
-            "are collapsed out of the observability panel and the Pipeline Quality "
+            "reranking, llm, llm_judge. Missing keys default to true (enabled). Skipped "
+            "stages are collapsed out of the observability panel and the Pipeline Quality "
             "Summary's per-stage metrics."
         ),
     )
@@ -229,8 +229,8 @@ async def websocket_chat(websocket: WebSocket):
     This is the primary endpoint for client-server communication. Supports:
     - Real-time message streaming with token-by-token output
     - Observability events showing pipeline execution (retrieval, reranking, etc.)
-    - Multiple parallel conversations via thread_id
-    - Conversation resumption by thread_id
+    - Conversation resumption by thread_id (backend capability; the current UI runs one
+      conversation at a time per the projector-demo revamp, #104)
 
     **Connection Flow:**
         1. Client connects via WebSocket (same-origin required)
@@ -250,7 +250,7 @@ async def websocket_chat(websocket: WebSocket):
         ```json
         {
             "type": "chat_message",
-            "message": "What wireless earbuds have the best noise cancellation?",
+            "message": "Show me tan boots",
             "thread_id": "conv_abc123"
         }
         ```
@@ -500,8 +500,8 @@ class Citation(BaseModel):
     Example:
         ```json
         {
-            "label": "Sony WH-1000XM5 Headphones",
-            "url": "https://www.amazon.com/s?k=Sony+WH-1000XM5+Headphones"
+            "label": "Sewing Machine",
+            "url": "https://www.amazon.com/s?k=Sewing+Machine"
         }
         ```
     """
@@ -520,12 +520,12 @@ class ChatResponse(BaseModel):
         ```json
         {
             "thread_id": "conversation_abc123",
-            "response": "Here are some great wireless earbuds...",
+            "response": "Here are some great running shoes...",
             "duration_ms": 2450.5,
             "citations": [
                 {
-                    "label": "Sony WH-1000XM5",
-                    "url": "https://www.amazon.com/s?k=Sony+WH-1000XM5"
+                    "label": "Blue Running Shoes",
+                    "url": "https://www.amazon.com/s?k=Blue+Running+Shoes"
                 }
             ]
         }
@@ -571,7 +571,7 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
     **Request:** `POST /api/chat`
         ```json
         {
-            "message": "What are the best gaming laptops under $1500?",
+            "message": "Show me tan boots",
             "thread_id": "conv_my_session"
         }
         ```
@@ -580,7 +580,7 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
         ```json
         {
             "thread_id": "conv_my_session",
-            "response": "Here are some excellent gaming laptops...",
+            "response": "Here are some tan boots...",
             "duration_ms": 2450.5,
             "citations": [...]
         }

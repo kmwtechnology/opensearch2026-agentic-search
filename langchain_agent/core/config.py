@@ -173,6 +173,7 @@ __all__ = [
     "RATE_LIMIT_ENABLED",
     # Server
     "PORT",
+    "API_VERSION",
     # Logging
     "LOG_LEVEL",
     "LOG_FORMAT",
@@ -240,6 +241,12 @@ else:
 
 # Server port (Cloud Run sets PORT env var)
 PORT = int(os.getenv("PORT", 8000))
+
+# API version -- single source of truth for both the FastAPI app's own
+# `version=` (api/main.py, shows up in the OpenAPI spec/Swagger UI) and the
+# /api/health response body (api/routes/health.py). Previously hardcoded
+# separately in both places and had drifted out of sync (1.0.0 vs 1.1.0).
+API_VERSION = "1.0.0"
 
 # Connection pool settings
 DB_CONNECTION_KWARGS = {

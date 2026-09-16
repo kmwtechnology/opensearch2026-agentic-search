@@ -38,10 +38,10 @@ class SuggestionItem(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
-                "title": "Sony WH-1000XM5 Wireless Headphones",
-                "brand": "Sony",
+                "title": "Blue Running Shoes",
+                "brand": None,
                 "score": 0.95,
-                "highlight": ["<mark data-th>Son</mark>y WH-1000XM5 Wireless Headphones"],
+                "highlight": ["<mark data-th>Blu</mark>e Running Shoes"],
             }
         }
     }
@@ -59,12 +59,10 @@ class SuggestResponse(BaseModel):
                 {
                     "suggestions": [
                         {
-                            "title": "Sony WH-1000XM5 Wireless Headphones",
-                            "brand": "Sony",
+                            "title": "Blue Running Shoes",
+                            "brand": None,
                             "score": 0.95,
-                            "highlight": [
-                                "<mark data-th>Son</mark>y WH-1000XM5 Wireless Headphones"
-                            ],
+                            "highlight": ["<mark data-th>Blu</mark>e Running Shoes"],
                         }
                     ],
                     "spell_correction": None,
@@ -72,8 +70,8 @@ class SuggestResponse(BaseModel):
                 {
                     "suggestions": [],
                     "spell_correction": {
-                        "title": "nike",
-                        "brand": "Nike",
+                        "title": "sewing",
+                        "brand": None,
                         "score": 0.889,
                         "highlight": None,
                     },
@@ -218,7 +216,7 @@ async def suggest(
         min_length=1,
         max_length=100,
         description="Query prefix for suggestions",
-        examples=["sony", "nikey", "wire"],
+        examples=["blue", "tan", "sew"],
     ),
     limit: int = Query(
         8,
