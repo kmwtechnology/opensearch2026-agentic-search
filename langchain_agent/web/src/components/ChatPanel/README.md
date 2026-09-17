@@ -17,7 +17,6 @@ Chat interface: message list, input field with typeahead, citation display, and 
 ## Store Dependencies
 
 - `chatStore` — messages, thread ID, streaming state, processing flag
-- `authStore` — login state (hide input if not authenticated)
 - `optimizationsStore` — UI display mode toggles
 
 ## Key Concepts

@@ -17,7 +17,6 @@ This directory contains all reusable React components organized by functional do
 
 | Component | Purpose |
 |-----------|---------|
-| `LoginScreen.tsx` | Authentication form (session password entry) |
 | `Layout.tsx` | Root layout wrapper with sidebar + main content grid |
 | `ConfirmDialog.tsx` | Reusable confirmation modal for destructive actions |
 | `ErrorNotification.tsx` | Toast-style error alerts with auto-dismiss |
@@ -33,7 +32,8 @@ Components communicate with Zustand stores:
 - `chatStore` — messages, thread state, streaming
 - `observabilityStore` — event stream, snapshots
 - `optimizationsStore` — UI toggles (show BM25, reranker, etc.)
-- `authStore` — login state, session management
+
+There is no login gate and no `authStore` — same-origin checking is the app's only auth layer (see the root `CLAUDE.md`'s "Auth model" section).
 
 See [`../stores/README.md`](../stores/) for detailed store exports.
 
