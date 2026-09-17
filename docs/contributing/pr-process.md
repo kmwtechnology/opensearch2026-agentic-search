@@ -1,10 +1,12 @@
 # PR Process
 
-Branch naming, commit conventions, PR template, and review checklist.
+Branch naming, commit conventions, PR template, and review checklist — for the **optional** branch+PR path.
 
 **Parent:** [Contributing Guide](README.md)
 
-> ⚠️ **For the authoritative workflow guide**, see [CLAUDE.md](../../CLAUDE.md) — it documents the current 14-step working session workflow, including the project-level workflow skills (`/workflow-start`, `/workflow-check`, `/workflow-deploy`). This page serves as a reference for branch/commit conventions and code review patterns.
+> ⚠️ **This is not the default workflow.** As of 2026-09-15 this repo runs in "cowboy mode": contributors commit directly to `main`, no branch or PR required, and `make check` run locally is the only gate (no CI exists — GitHub Actions were removed entirely, issue #113). See the [Contribution Flow](README.md#contribution-flow) in the Contributing Guide, or [CLAUDE.md](../../CLAUDE.md), for that default path.
+>
+> Everything below still applies if you *choose* to branch and open a PR — for architectural decisions, large refactors, or anytime you want a second opinion before something lands on `main`.
 
 ---
 
@@ -134,7 +136,7 @@ Example:
 
 ## Merge
 
-**Maintainer will squash to main** after CI passes and review is approved.
+**Maintainer will squash to main** once review is approved. There is no CI to pass — `make check`, run locally by the contributor, is the only test gate; the reviewer is trusting that it was run.
 
 All your commits become one:
 ```

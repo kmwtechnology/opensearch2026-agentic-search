@@ -49,9 +49,9 @@ PYTHONPATH=. pytest tests/integration/           # needs Postgres + OpenSearch r
 PYTHONPATH=. pytest tests/e2e/                   # full system
 PYTHONPATH=. pytest tests/ -m phase1             # by marker (see pytest.ini for the full marker list:
                                                   #  phase1, phase3, unit, integration, e2e, slow, websocket,
-                                                  #  performance, load, stress, profile, asyncio, agent,
-                                                  #  edge_cases, pipeline, quality_gate_retry, retriever_reranker,
-                                                  #  requires_real_api, evaluator, intent, quality_gate)
+                                                  #  asyncio, agent, edge_cases, pipeline, quality_gate_retry,
+                                                  #  retriever_reranker, requires_real_api, evaluator, intent,
+                                                  #  quality_gate)
 PYTHONPATH=. pytest tests/unit/test_foo.py::test_bar -v   # single test
 
 make check             # THE pre-push gate — run before every push/PR merge: ci + smoke

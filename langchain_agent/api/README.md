@@ -22,7 +22,7 @@ api/
 
 | File | Endpoints | Purpose |
 |------|-----------|---------|
-| `chat.py` | `POST /api/chat` (WebSocket) | LangGraph agent stream; emits typed Pydantic events |
+| `chat.py` | `WS /ws/chat` | LangGraph agent stream; emits typed Pydantic events |
 | `conversations.py` | `GET /api/conversations`, `GET/DELETE /api/conversations/{thread_id}`, `GET /api/conversations/{thread_id}/observability` | Checkpoint-backed conversation listing/detail/delete + observability snapshot (no REST create/send — that's WebSocket-only) |
 | `suggest.py` | `GET /api/suggest?q=...` | Typeahead autocomplete (edge-ngram + spell correction) |
 | `health.py` | `GET /api/health` | Index health + document count |

@@ -11,7 +11,7 @@ How to contribute code, tests, and documentation to Agentic Hybrid Search.
 | [Local Dev Setup](dev-setup.md) | Prerequisites, setup.sh walkthrough, daily workflow | New contributors |
 | [Code Patterns](code-patterns.md) | PYTHONPATH, state access, exceptions, event parity | Backend/Frontend devs |
 | [Testing](testing.md) | Test pyramid (unit → integration → e2e → smoke), commands | Test developers |
-| [PR Process](pr-process.md) | Branch naming, commit format, PR template, review checklist | All contributors |
+| [PR Process](pr-process.md) | Branch naming, commit format, PR template, review checklist — for the **optional** branch+PR path | Contributors who want pre-merge review |
 
 ---
 
@@ -44,17 +44,17 @@ make doctor    # Check prerequisites
 
 ## Contribution Flow
 
-1. **Create a feature branch:** `git checkout -b feat/issue-NNN-slug`
-2. **Make changes** — edit code, add tests
-3. **Run local tests:** `make check` (or `make ci` alone for fast iteration, no live services needed)
-4. **Commit with ticket prefix:** `git commit -m "TICKET-NNN: description"`
-5. **Push:** `git push origin feat/issue-NNN-slug`
-6. **Open PR:** GitHub Actions CI runs automatically
-7. **Self-review:** Read the diff, check for stale comments, dead code
-8. **Address feedback:** New commits (don't amend)
-9. **Merge:** Squash to `main`
+This repo runs in **"cowboy mode"** (as of 2026-09-15): the default flow commits directly to `main`, no feature branch or PR required. `main` has no branch protection (private repo, no GitHub Pro), there is no CI (GitHub Actions were removed entirely, issue #113), and there is no deploy step (issue #110). `make check` run locally, before you push, is the only gate that exists for anything in this repo.
 
-See [PR Process](pr-process.md) for detailed instructions.
+1. **Get issue context (optional):** use the `workflow-start` skill, or just read the issue yourself
+2. **Make changes — directly on `main`:** edit code, add tests
+3. **Run local tests:** `make check` (the full gate) or `make ci` alone for fast iteration
+4. **Commit:** `git commit -m "feat: description"` — include `Closes #N` to auto-close the issue on push
+5. **Self-review:** use the `workflow-check` skill, or read your own diff — check for stale comments, dead code
+6. **Push:** `git push origin main`
+7. **Verify and close out:** use the `workflow-deploy` skill, or run `make dev` locally to confirm the change works
+
+**Want pre-merge review instead?** Branching and opening a PR is still supported — it's opt-in, not the default. See [PR Process](pr-process.md) for that path. Never force-push `main`; fix a bad push with `git revert`.
 
 ---
 

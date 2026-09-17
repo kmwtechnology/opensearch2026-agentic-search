@@ -10,17 +10,13 @@ Real-time message streaming for responsive chat UIs.
 
 ### URL
 
-**Development:**
 ```
 ws://localhost:8000/ws/chat?thread_id={thread_id}
 ```
 
-**Production:**
-```
-wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id={thread_id}
-```
-
 The path is the fixed route `/ws/chat`; `thread_id` is an **optional** query parameter. If omitted, the server auto-generates one (`conversation_<8 hex chars>`) and reports it in the `connection_established` event.
+
+> This app is local-only — there is no production deployment target (issues #110/#113 removed the deploy mechanism and CI entirely). `ws://localhost:8000` is the only URL you'll ever connect to.
 
 ### Authentication
 
@@ -29,7 +25,7 @@ The path is the fixed route `/ws/chat`; `thread_id` is an **optional** query par
 **JavaScript (browser):**
 ```javascript
 const ws = new WebSocket(
-  `wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id=${threadId}`
+  `ws://localhost:8000/ws/chat?thread_id=${threadId}`
 );
 ```
 
@@ -43,7 +39,7 @@ async def connect():
         'Origin': 'http://localhost:8000'
     }
     async with websockets.connect(
-        f'wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id={thread_id}',
+        f'ws://localhost:8000/ws/chat?thread_id={thread_id}',
         additional_headers=headers
     ) as ws:
         # Connected
@@ -193,7 +189,7 @@ export function ChatComponent() {
 
   useEffect(() => {
     const threadId = 'conv_abc123def456'; // Or omit to let the server generate one
-    const url = `wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id=${threadId}`;
+    const url = `ws://localhost:8000/ws/chat?thread_id=${threadId}`;
 
     ws.current = new WebSocket(url);
     ws.current.onopen = () => setIsConnected(true);
@@ -269,7 +265,7 @@ import json
 import websockets
 
 async def chat_session(thread_id: str):
-    url = f"wss://agentic-hybrid-search-XXXX.run.app/ws/chat?thread_id={thread_id}"
+    url = f"ws://localhost:8000/ws/chat?thread_id={thread_id}"
     headers = {"Origin": "http://localhost:8000"}
 
     async with websockets.connect(url, additional_headers=headers) as ws:
