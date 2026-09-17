@@ -1,0 +1,4 @@
+# markdownlint config for repo docs. Line length is disabled: prose in
+# README/ARCHITECTURE/docs is not hard-wrapped, and tables/JSON can't be.
+default: true
+MD013: false

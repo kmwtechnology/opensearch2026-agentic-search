@@ -42,7 +42,7 @@ When you ask a question, the pipeline routes your intent (is this a search, a co
 ### Tech Stack
 
 | Layer | Technology |
-|---|---|
+| --- | --- |
 | **LLM (generation)** | Gemini 2.5 Flash |
 | **LLM (classify/eval)** | Gemini 2.5 Flash-Lite |
 | **Embeddings** | `models/gemini-embedding-001` (768-dim) |
@@ -59,6 +59,7 @@ When you ask a question, the pipeline routes your intent (is this a search, a co
 This app is a **local-only demo**, not a cloud service. You run it entirely on your machine via Docker and shell scripts.
 
 **Prerequisites:**
+
 - Google AI API key from <https://aistudio.google.com/apikey>
 - Docker Desktop
 - Python 3.14+
@@ -90,7 +91,6 @@ There is **no CI pipeline and no deploy mechanism** (GitHub Actions were removed
 
 The only gate before pushing code to `main` is running `make check` locally on your machine. Every developer commits directly to `main` in "cowboy mode" (no feature branches or pull requests required by default).
 
-
 ---
 
 ## Installation & Setup
@@ -102,7 +102,7 @@ This chapter walks you through getting Agentic Hybrid Search running on your mac
 You'll need several tools installed before setup begins. Here's what each does and how to verify you have it:
 
 | Tool | Min Version | Purpose | Verify |
-|------|-------------|---------|--------|
+| ------ | ------------- | --------- | -------- |
 | **Docker Desktop** | 4.x | Runs PostgreSQL + OpenSearch containers locally | `docker --version` |
 | **Python** | 3.14+ | Backend virtual environment | `python3 --version` |
 | **Node.js** | 24+ | React frontend and Vite dev server | `node --version` |
@@ -144,11 +144,11 @@ sudo apt-get install maven
 
 #### Installing Prerequisites on Windows
 
-- **Docker Desktop**: https://www.docker.com/products/docker-desktop
-- **Python 3.14+**: https://www.python.org/downloads/
-- **Node.js 24+**: https://nodejs.org/ (use LTS)
-- **Java 21+**: https://www.oracle.com/java/technologies/downloads/
-- **Maven**: https://maven.apache.org/download.cgi
+- **Docker Desktop**: <https://www.docker.com/products/docker-desktop>
+- **Python 3.14+**: <https://www.python.org/downloads/>
+- **Node.js 24+**: <https://nodejs.org/> (use LTS)
+- **Java 21+**: <https://www.oracle.com/java/technologies/downloads/>
+- **Maven**: <https://maven.apache.org/download.cgi>
 
 ### One-Time Setup (10–20 minutes)
 
@@ -188,7 +188,7 @@ From `langchain_agent/`:
 This script initializes everything in six phases:
 
 | Phase | What Happens | Time |
-|-------|--------------|------|
+| ------- | -------------- | ------ |
 | 1: Prereq Checks | Verifies Docker, Python, Node, Java, Maven are installed | instant |
 | 2: ESCI Clone | Downloads 10K product samples (1.5 GB, from GitHub) | 2–5 min |
 | 3: Python venv | Creates `.venv` and installs backend dependencies | 3–5 min |
@@ -219,7 +219,7 @@ This command blocks in the foreground (both backend and frontend run in the fore
 - **Backend ready**: `Uvicorn running on http://127.0.0.1:8000` (port is bound), then `Application startup complete` (LLM, embeddings, reranker, and vector store are initialized — this is the real "ready for requests" signal)
 - **Frontend ready**: `VITE vX ready in Yms`
 
-Once you see both signals, open http://localhost:5173 in your browser. Try a search like "Find wireless headphones under $100" — you'll go straight to the app with no login step.
+Once you see both signals, open <http://localhost:5173> in your browser. Try a search like "Find wireless headphones under $100" — you'll go straight to the app with no login step.
 
 ### The Every-Session Lifecycle
 
@@ -267,6 +267,7 @@ This kills the backend and frontend processes. Docker containers stay running, s
 ```
 
 ⚠️ **This is destructive and runs without prompting.** It removes:
+
 - Docker containers and all volumes (PostgreSQL database and OpenSearch index are permanently deleted)
 - `.venv` directory
 - `web/node_modules` directory
@@ -275,6 +276,7 @@ This kills the backend and frontend processes. Docker containers stay running, s
 Use this only if you want a completely clean slate. You'll need to run `./scripts/setup.sh` again (10–20 minutes) to rebuild everything.
 
 **Critical distinction:**
+
 - `stop.sh` = pause (kill processes only; data survives; resumable with `start.sh`)
 - `teardown.sh` = destroy (delete everything; requires full `setup.sh` to rebuild)
 
@@ -283,7 +285,7 @@ Use this only if you want a completely clean slate. You'll need to run `./script
 This table shows what's running at each point:
 
 | State | Services | Docker | PostgreSQL | OpenSearch | What to Do Next |
-|-------|----------|--------|------------|-----------|-----------------|
+| ------- | ---------- | -------- | ------------ | ----------- | ----------------- |
 | **Fresh clone** | None | Off | ❌ None | ❌ None | Run `./scripts/setup.sh` |
 | **Dev session running** | Backend + Frontend | On | ✅ Active | ✅ Active | Edit code, run tests |
 | **Paused** | None | On | ✅ Data kept | ✅ Index kept | Run `./scripts/start.sh` to resume |
@@ -454,7 +456,6 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 Then run `make dev` to start the servers.
 
-
 ---
 
 ## Using the App: Demo Walkthrough
@@ -466,6 +467,7 @@ The app runs as a scripted demo, not as a free-form search tool. Two story arcs 
 Open the app at `http://localhost:5173`. There is no login screen.
 
 Verify the three services are healthy:
+
 ```bash
 curl -sf localhost:9200 >/dev/null && echo "opensearch ok"
 curl -sf localhost:8000/api/config >/dev/null && echo "backend ok"
@@ -487,17 +489,17 @@ Wait for each turn to finish before clicking **Next**. Clicking ahead queues the
 
 One person, one conversation, narrowing the way people actually shop. Alpha moves from lexical-heavy (0.25) through balanced (0.35) to semantic-heavy (0.70) as the questions become less literal. Nothing contradicts an earlier turn.
 
-**Turn 1: Show me blue running shoes**
+#### Turn 1: Show me blue running shoes
 
 Two words are real indexed attributes. The filter line shows `color: blue, feature: running` and alpha sits left of center—there is something concrete to match, so exact words carry more weight. Score: 0.97 against a threshold of 0.45 (passes cleanly).
 
 Watch the query rewriter line: it pulls indexed field names directly from the question, not from fuzzy keyword matching. The result list pins to products with both attributes.
 
-**Turn 2: only size 10**
+#### Turn 2: only size 10
 
 A third filter appears (`+ feature: 10`) and the results stay pinned to the products from turn 1. The reply says so itself: *"From the 10 products I showed you earlier."* The system narrowed rather than searched again. Alpha is now 0.35—still concrete enough that exact words matter, but slightly more semantic weight than before. Score: 0.95.
 
-**Turn 3: what about trail running?**
+#### Turn 3: what about trail running?
 
 Four words with no subject, colour, or size. Watch the **Query Rewriter** line: it turns this vague question into *"Show me blue trail running shoes in size 10,"* carrying both earlier constraints forward automatically. Alpha jumps to 0.70 because this question is about purpose (trail running) rather than literal attributes—the system is now reading for intent, not keywords. Score: 0.998.
 
@@ -507,7 +509,7 @@ The question itself contains none of the earlier constraints. The conversation s
 
 A different person: the developer who owns this catalog. Arc 1 showed the agent improving how it *searches*. Arc 2 shows it repairing the *data*.
 
-**Turn 1: show me tan boots**
+#### Turn 1: show me tan boots
 
 The filter resolves `tan` to **`color: yellow`**. This is a real shipped mis-mapping affecting every product the catalog lists as Tan.
 
@@ -515,19 +517,20 @@ Pause here. The result *passes* the quality gate—0.56 against a bar of 0.45. N
 
 The agent flags it anyway in prose: *"listed as Tan but indexed as yellow, which looks like a tagging error."*
 
-**Turn 2: that's not tan, that's tagged yellow which is wrong**
+#### Turn 2: that's not tan, that's tagged yellow which is wrong
 
 Use this phrasing. `"that's not"` is what trips the correction detector.
 
 The system detects a correction, a second model approves the change, and a *real, full Lucille re-index of all 9,618 products* runs live. The elapsed counter ticks the whole way—this is the ingest pipeline running, not a cached swap. It takes about **20 seconds**. The system processes the entire catalog, not just the affected products.
 
 It ends on **"Correction applied"** with the proof:
-```
+
+```text
 ✗ WAS   tan → yellow
 ✓ NOW   tan → brown
 ```
 
-**Turn 3: show me tan boots (new conversation)**
+#### Turn 3: show me tan boots (new conversation)
 
 Same question. The filter now reads **`color: brown`**.
 
@@ -573,12 +576,11 @@ Typical latency: intent classification 10–500ms, query evaluation 10–500ms, 
 ### If Something Goes Wrong
 
 | Symptom | Fix |
-|---|---|
+| --- | --- |
 | Arc 2 turn 1 shows no mismatch | The index is already corrected. Click **Restart**, or run `make demo-reset` from `langchain_agent/`. |
 | Next is disabled, reads "Connecting…" | The socket is not open yet. It enables itself; do not click through. |
 | A reply looks attached to the wrong question | You clicked ahead. Click **Restart** and let each turn finish before clicking Next. |
 | Backend slow or timing out | The first query after a cold start pays model warm-up overhead. Send one throwaway query before the audience arrives. |
-
 
 ---
 
@@ -637,6 +639,7 @@ The six intents are:
 - **summary** — Retrospective or conversational recap ("what did we look at?")
 
 **Output state fields:**
+
 - `intent` — detected intent class
 - `intent_confidence` — 0.0–1.0 score
 - `user_query` — cleaned query text
@@ -649,6 +652,7 @@ The node also emits an `IntentClassificationEvent` for real-time UI visualizatio
 The Query Evaluator assigns an alpha (α) value that controls how much the retriever weights semantic (vector) versus lexical (BM25) search. α ranges from 0.0 (pure BM25) to 1.0 (pure vector).
 
 **Fast-path assignment** for intent-specific categories:
+
 - `comparison` → α = 0.60 (semantically heavy; needs conceptual matching like "best value" vs "premium sound")
 - `attribute_filter` → α = 0.25 (lexically heavy; exact attributes like "blue" need exact matching)
 - `refinement` → α = 0.35 (lexically heavy; constraining prior results favors exact term matching)
@@ -658,6 +662,7 @@ The Query Evaluator assigns an alpha (α) value that controls how much the retri
 **Query expansion** resolves pronouns ("does it fit?"), comparatives ("which is cheaper?"), and short questions ("how much?") using conversation history, but skips expansion for queries with specific brand or product names to avoid over-expansion.
 
 **Output state fields:**
+
 - `alpha` — 0.0–1.0 weighting for hybrid search
 - `query_analysis` — explanation of the choice
 
@@ -668,6 +673,7 @@ The node emits `QueryEvaluationEvent` with the assigned α and expanded query if
 The Retriever is the workhorse of retrieval. It fetches candidates using two parallel search methods and fuses them with Reciprocal Rank Fusion (RRF).
 
 **Attribute extraction and filtering** (for `attribute_filter` intent):
+
 - Extracts brand, color, material, and size constraints from the user query using an LLM
 - Classifies color and material terms against the OpenSearch-backed taxonomy
 - Applies exact-match filters on `product_color_primary`, `product_material_primary`, and `product_brand_normalized`
@@ -676,13 +682,15 @@ The Retriever is the workhorse of retrieval. It fetches candidates using two par
 - If results drop below 3 products, the retriever relaxes `multi_match` filters (material, size) but preserves exact-match filters for color and brand (the user named them explicitly)
 
 **Dual-path search:**
+
 1. **Vector Search (HNSW)**: Gemini 768-dimensional embeddings with cosine similarity, k=20 candidates
 2. **Lexical Search (BM25)**: Full-text analysis using:
    - Primary fields (`chunk_text`, `product_brand`, `product_color`) with `light_english_analyzer` (kstem, light stemming) for precision ("Beats" ≠ "beat")
    - Heavy sub-fields with `heavy_english_analyzer` (snowball, aggressive stemming) at 0.3 boost for morphological recall fallback (matching "running/runs/ran")
 
 **RRF Fusion** normalizes ranks from both methods without probability calibration:
-```
+
+```text
 score = Σ 1/(rank + 60)  [k=60 is the RRF constant]
 ```
 
@@ -693,6 +701,7 @@ The retriever fetches 40 candidates before deduplication and reranking, deduplic
 The Reranker re-scores all 40 candidates using a local cross-encoder model (`sentence-transformers/cross-encoder/ms-marco-MiniLM-L-12-v2`) in a single batch call. No API round-trip.
 
 **Process:**
+
 - Scores all candidates with raw logits
 - Maps logits to [0.0, 1.0] via sigmoid normalization
 - Sorts by score (highest first)
@@ -700,6 +709,7 @@ The Reranker re-scores all 40 candidates using a local cross-encoder model (`sen
 - Emits `RerankerProgressEvent` with per-document scores
 
 **Score interpretation:**
+
 - 0.0–0.2: Off-topic, unrelated
 - 0.2–0.5: Partial match, weak relevance
 - 0.5–0.7: Good match, clearly relevant
@@ -714,16 +724,19 @@ The reranker also sets `reranker_max_score` (the highest score across all candid
 If the reranker's maximum score falls below an intent-specific threshold, the Quality Gate may trigger a retry loop. This catches cases where the initial α was poorly calibrated.
 
 **Intent-specific thresholds:**
+
 - `comparison` → 0.55 (stricter; needs a clear winner)
 - `search` and `follow_up` → 0.50 (standard)
 - `attribute_filter` and `refinement` → 0.45 (looser; exact attribute matching is straightforward)
 
 **Retry logic:**
+
 1. If `max_score >= threshold` → **PASS**: Continue to the Agent
 2. If `max_score < threshold` and not yet retried → **RETRY**: Adjust α by ±0.3 (opposite direction from original), loop back to the Retriever, re-fetch with new α
 3. If already retried or other condition → **ACCEPT**: Continue to the Agent (avoid endless loops)
 
 **Alpha adjustment examples:**
+
 - Original α was 0.7 (semantic-heavy), results scored 0.35 → retry with α = 0.4 (favor lexical)
 - Original α was 0.2 (lexical-heavy), results scored 0.40 → retry with α = 0.5 (favor semantic)
 
@@ -738,6 +751,7 @@ The Agent formats the retrieved documents into a prompt context, calls the LLM t
 **LLM generation:** Gemini 2.5 Flash generates the conversational response. The prompt is carefully crafted to avoid hallucination and to ground all claims in the provided context.
 
 **Citation building:**
+
 - Extracts product titles from document metadata
 - Constructs Amazon search URLs: `https://www.amazon.com/s?k={title}` (search by title rather than ASIN, since ESCI products use title-based search for robustness)
 - Filters citations by minimum reranker score (0.10 threshold)
@@ -757,6 +771,7 @@ The LLM Judge is an optional layer that runs **after the Agent** to detect and a
 **Trigger:** Runs only when both `optimizations.llm` and `optimizations.llm_judge` are enabled in configuration.
 
 **Process:**
+
 - Blind A/B evaluation: A second LLM call (Gemini Flash Lite, a cheaper model) scores the response against the query and retrieved context, unaware of the original generation process (reduces bias)
 - Positional-bias randomization: Shuffles document order when presenting context to avoid ranking artifacts
 - Produces a `JudgmentResult` with:
@@ -775,6 +790,7 @@ The LLM Judge is an optional layer that runs **after the Agent** to detect and a
 **Auto-correction retry:** If any flag has `category in {fabrication, cross_product_bleed}` **and** this is the first retry this turn, the judge regenerates only the problematic claims. The new response replaces the original in the conversation history and UI (via `LLMResponseCorrectedEvent`). Inference and overreach flags surface in the observability panel but skip the retry cost (~20–30s for regeneration).
 
 **Critical behaviors:**
+
 - `hallucination_retry_used` flag is **reset to `False` at the start of every new user turn** in `intent_classifier_node` — without this reset, PostgreSQL checkpoint persistence would permanently disable retry for all subsequent turns after the first hallucination
 - All return paths in `agent_node` **must include a `"citations"` key** (populated list or empty list) — the observable_agent depends on consistent state shape for WebSocket emission
 - The faithfulness score is NOT the gate for retry — categorical classification (fabrication/cross_product_bleed) is authoritative
@@ -784,6 +800,7 @@ The LLM Judge is an optional layer that runs **after the Agent** to detect and a
 The pipeline shares state via a TypedDict named `CustomAgentState`. It is defined with `total=False`, meaning **only `messages` is guaranteed**. Every other field is optional and may not exist until its node populates it.
 
 **Safe access pattern:**
+
 ```python
 alpha = state.get("alpha", 0.25)  # ✓ Safe default if not set
 alpha = state["alpha"]             # ✗ KeyError if query_evaluator hasn't run yet
@@ -792,7 +809,7 @@ alpha = state["alpha"]             # ✗ KeyError if query_evaluator hasn't run 
 **Field lifetime table:**
 
 | Field | Source Node | Used By | Guaranteed |
-|-------|-------------|---------|-----------|
+| ------- | ------------- | --------- | ----------- |
 | `messages` | Built-in reducer | All nodes | ✓ Yes |
 | `intent` | Intent Classifier | Query Evaluator, Quality Gate, Agent | ✗ No |
 | `intent_confidence` | Intent Classifier | Query Evaluator | ✗ No |
@@ -842,6 +859,7 @@ The system can discover new product attributes (colors, materials) and correct m
 The taxonomy itself lives in OpenSearch (not a committed file) and can be grown dynamically.
 
 **Gap detection (new terms):** When a shopper searches for a color or material the system hasn't learned:
+
 - Color's fallback is a **hard exact-match filter** (e.g., "chrome"), reliably producing zero results
 - Material's fallback is a **soft lexical filter**, softer by design to avoid over-filtering legitimate feature words like "waterproof"
 
@@ -860,7 +878,8 @@ The enrichment tool is gated behind `ENABLE_ENRICHMENT_TOOL` (default off) and i
 Every pipeline stage emits typed events over WebSocket. The frontend subscribes and visualizes in real-time.
 
 **Event flow:**
-```
+
+```text
 Backend (main.py)
 ├─ Intent Classifier → IntentClassificationEvent
 ├─ Query Evaluator → QueryEvaluationEvent
@@ -881,11 +900,13 @@ Frontend (React)
 **Event schema synchronization (critical):** Event Pydantic models in `api/schemas/events.py` must stay in sync with TypeScript types in `web/src/types/events.ts`. If they diverge, WebSocket serialization fails or the frontend doesn't render the event. CI enforces this via `test_frontend_backend_event_parity.py`.
 
 **WebSocket handshake:**
+
 - Frontend initiates `GET /ws/<thread_id>`
 - Backend verifies the `Origin` header (`verify_websocket_origin`) — only allowed localhost ports
 - If disallowed, the connection closes; if allowed, the WebSocket upgrades and stays open for its lifetime
 
 **Inbound message contract** (frontend → backend):
+
 ```json
 {
   "type": "chat_message",
@@ -900,7 +921,7 @@ Frontend (React)
 
 The codebase is organized by concern, not by pipeline stage:
 
-```
+```text
 langchain_agent/
 ├── main.py                      # Agent class, graph builder
 ├── cli.py                       # Command-line interface
@@ -960,6 +981,7 @@ All custom exceptions inherit from a single base class, `AgenticHybridSearchErro
 - `recoverable` — boolean (can the user retry?)
 
 Subclass hierarchy:
+
 - `ConfigurationError` — invalid setup
 - `DatabaseError` — Postgres or checkpoint issues
 - `OpenSearchError` — index/query failures
@@ -979,7 +1001,7 @@ Catch `AgenticHybridSearchError` to handle any agent-related error uniformly; th
 ### Performance Characteristics
 
 | Component | Latency | Notes |
-|-----------|---------|-------|
+| ----------- | --------- | ------- |
 | Intent Classification | ~300–500ms | Single LLM call, no keyword fast-path |
 | Query Evaluation | 0–500ms | Fast-path instant, LLM-path ~300–500ms |
 | Vector Search (HNSW) | 200–500ms | 768-dim embeddings, k=20 |
@@ -1004,6 +1026,7 @@ Run `make check` before any push — that's the gate.
 ### Adding Custom Nodes and Extensions
 
 **Adding a new pipeline node:**
+
 1. Implement `async def my_node(state: CustomAgentState) -> Dict[str, Any]` in `pipeline/pipeline_nodes.py`
 2. Declare any new state fields in `CustomAgentState`
 3. Add to the graph: `graph.add_node("my_node", my_node)`
@@ -1014,6 +1037,7 @@ Run `make check` before any push — that's the gate.
 8. Test with integration suite
 
 **Adding a new attribute type** (beyond color/material):
+
 1. Add canonical seed vocabulary to `retrieval/attribute_discovery.py`
 2. Seed the OpenSearch taxonomy via `AttributeMappingStore.seed_from_discovery(...)`
 3. Add a filter block to `_extract_attributes()` in `pipeline/pipeline_nodes.py` (decide on hard vs. soft filter semantics upfront)
@@ -1021,11 +1045,11 @@ Run `make check` before any push — that's the gate.
 5. The `trigger_enrichment` tool and `/api/admin/enrich` already accept any `attribute_type` string — no changes needed
 
 **Swapping the LLM provider:**
+
 1. Replace `ChatGoogleGenerativeAI` with your provider (`ChatOpenAI`, `ChatAnthropic`, etc.) in `main.py`
 2. Update model names in `core/config.py`
 3. Ensure all models support structured output (required for intent classification and reranker)
 4. Validate with `PYTHONPATH=. python3 setup.py`
-
 
 ---
 
@@ -1042,6 +1066,7 @@ curl http://localhost:8000/api/health
 ```
 
 Response (200 OK):
+
 ```json
 {
   "status": "ok",
@@ -1065,10 +1090,12 @@ curl 'http://localhost:8000/api/suggest?q=wireless' \
 ```
 
 **Query parameters:**
+
 - `q` (required): search prefix, 1–100 characters
 - `limit` (optional, default 8, range 1–20): max suggestions to return
 
 Response (200 OK):
+
 ```json
 {
   "suggestions": [
@@ -1097,12 +1124,14 @@ There is no REST endpoint for sending or receiving chat messages. All conversati
 You can list, inspect, and delete conversation history via REST endpoints. These do not start or continue a conversation — they manage stored thread records from WebSocket sessions.
 
 **List all conversations:**
+
 ```bash
 curl http://localhost:8000/api/conversations \
   -H "Origin: http://localhost:8000"
 ```
 
 **Retrieve a single conversation:**
+
 ```bash
 curl http://localhost:8000/api/conversations/{thread_id} \
   -H "Origin: http://localhost:8000"
@@ -1111,6 +1140,7 @@ curl http://localhost:8000/api/conversations/{thread_id} \
 Returns the conversation summary (metadata and full message history).
 
 **Retrieve observability snapshot for a conversation:**
+
 ```bash
 curl http://localhost:8000/api/conversations/{thread_id}/observability \
   -H "Origin: http://localhost:8000"
@@ -1119,12 +1149,14 @@ curl http://localhost:8000/api/conversations/{thread_id}/observability \
 Returns per-turn metrics (NDCG, MRR, Recall, Precision) and latency breakdowns.
 
 **Delete a single conversation:**
+
 ```bash
 curl -X DELETE http://localhost:8000/api/conversations/{thread_id} \
   -H "Origin: http://localhost:8000"
 ```
 
 **Delete all conversations:**
+
 ```bash
 curl -X DELETE http://localhost:8000/api/conversations \
   -H "Origin: http://localhost:8000"
@@ -1144,6 +1176,7 @@ curl http://localhost:8000/api/admin/health \
 ```
 
 Response (200 OK):
+
 ```json
 {
   "status": "healthy",
@@ -1178,11 +1211,13 @@ curl -X POST http://localhost:8000/api/admin/enrich \
 ```
 
 **Request fields:**
+
 - `attribute_type` (required): `"color"` or `"material"`
 - `variant` (required): new term to add (non-empty string)
 - `canonical` (optional): the known material/color bucket it belongs to; if omitted, the system attempts dictionary-based classification
 
 Response (200 OK):
+
 ```json
 {
   "success": true,
@@ -1235,14 +1270,17 @@ The WebSocket endpoint streams real-time pipeline events for a chat session. Use
 Connect to the WebSocket endpoint with a `thread_id` query parameter. If you omit `thread_id`, the server generates one and reports it in the `connection_established` event.
 
 **Development URL:**
-```
+
+```text
 ws://localhost:8000/ws/chat?thread_id={thread_id}
 ```
 
 **Optional query parameter:**
+
 - `thread_id`: conversation identifier (UUID or custom string). If omitted, server generates one as `conversation_<8 hex chars>`.
 
 After connecting, the server immediately sends:
+
 ```json
 {
   "type": "connection_established",
@@ -1272,7 +1310,7 @@ The `thread_id` must match either the parameter you passed on connection or the 
 The server streams back a sequence of typed events. Every event has a `type` field identifying its kind and a `node` field indicating which pipeline stage emitted it.
 
 | Event Type | Node | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `connection_established` | — | Handshake complete; reports assigned `thread_id` if you didn't provide one |
 | `search_progress` | intent_classifier | Intent classification (type and confidence) |
 | `query_expansion` | query_evaluator | Query rewriting result (resolves pronouns, comparatives) |
@@ -1290,44 +1328,53 @@ The server streams back a sequence of typed events. Every event has a `type` fie
 #### Example Search Flow
 
 1. **Send message:**
-```json
-{"type": "chat_message", "message": "wireless headphones", "thread_id": "conv_abc123def456"}
-```
+
+   ```json
+   {"type": "chat_message", "message": "wireless headphones", "thread_id": "conv_abc123def456"}
+   ```
 
 2. **Receive events:**
 
 Intent classification begins:
+
 ```json
 {"type": "search_progress", "node": "intent_classifier", "status": "classifying"}
 ```
 
 Intent detected:
+
 ```json
 {"type": "search_progress", "node": "intent_classifier", "intent": "search", "confidence": 0.95}
 ```
 
 Query rewriting:
+
 ```json
 {"type": "query_expansion", "node": "query_evaluator", "expanded_query": "wireless headphones"}
 ```
 
 Reranking progress:
+
 ```json
 {"type": "reranker_progress", "node": "reranker", "documents_scored": 40, "max_score": 0.87}
 ```
 
 LLM generates response (streaming chunks):
+
 ```json
 {"type": "llm_response_chunk", "node": "agent", "chunk": "Here are the ", "complete": false}
 ```
+
 ```json
 {"type": "llm_response_chunk", "node": "agent", "chunk": "top wireless", "complete": false}
 ```
+
 ```json
 {"type": "llm_response_chunk", "node": "agent", "chunk": " headphones:\n", "complete": false}
 ```
 
 Response complete with citations:
+
 ```json
 {
   "type": "agent_complete",
@@ -1340,6 +1387,7 @@ Response complete with citations:
 ```
 
 Pipeline summary:
+
 ```json
 {
   "type": "pipeline_summary",
@@ -1357,7 +1405,7 @@ Pipeline summary:
 #### Close Codes
 
 | Code | Meaning | Action |
-|---|---|---|
+| --- | --- | --- |
 | 1000 | Normal close | Conversation ended cleanly |
 | 1001 | Going away | Server shutting down |
 | 4003 | Origin not allowed | Reconnect with an allow-listed Origin header |
@@ -1521,6 +1569,7 @@ For a complete and authoritative list, see `get_allowed_origins()` in `api/middl
 #### Making Requests
 
 **REST (curl example):**
+
 ```bash
 curl http://localhost:8000/api/suggest?q=wireless \
   -H "Origin: http://localhost:8000"
@@ -1529,12 +1578,14 @@ curl http://localhost:8000/api/suggest?q=wireless \
 Browsers set the `Origin` header automatically on all requests; no explicit header is required. Custom clients (curl, Python scripts) must include it.
 
 **WebSocket (JavaScript):**
+
 ```javascript
 const ws = new WebSocket('ws://localhost:8000/ws/chat?thread_id=conv_abc123');
 // Browsers set Origin automatically on the handshake.
 ```
 
 **WebSocket (Python):**
+
 ```python
 import websockets
 
@@ -1554,6 +1605,7 @@ The codebase contains `verify_admin_token` in `api/middleware/admin_auth.py`, wh
 **It is not currently wired into any route.** All endpoints, including `/api/admin/*`, rely on same-origin checking only. Supplying an `X-Admin-Token` header has no effect today. If you need to enable token-based access in the future, the infrastructure is in place but requires code changes to wire it into specific routes.
 
 To generate a token for future use:
+
 ```bash
 openssl rand -hex 32
 ```
@@ -1581,20 +1633,24 @@ Indicates malformed JSON or missing required fields.
 Returned for two distinct reasons:
 
 1. **Disallowed Origin:**
-```json
-{
-  "detail": "Origin header is not allowed"
-}
-```
-**Fix:** Verify your `Origin` header is in the allow-list (see [Allow-Listed Origins](#allow-listed-origins)).
+
+   ```json
+   {
+     "detail": "Origin header is not allowed"
+   }
+   ```
+
+   **Fix:** Verify your `Origin` header is in the allow-list (see [Allow-Listed Origins](#allow-listed-origins)).
 
 2. **Enrichment tool disabled:**
 The `POST /api/admin/enrich` endpoint returns 403 when `ENABLE_ENRICHMENT_TOOL` is not set or false.
+
 ```json
 {
   "detail": "Enrichment tool is not enabled"
 }
 ```
+
 **Fix:** Set `ENABLE_ENRICHMENT_TOOL=true` on the backend to enable this endpoint.
 
 #### 422 Unprocessable Entity
@@ -1638,7 +1694,7 @@ The server is temporarily unable to respond (e.g., database connection pool exha
 ### Status Codes and Retry Guidance
 
 | Code | Success | Retry? | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 200 | Yes | — | Request succeeded |
 | 400 | No | No | Fix the request; retrying won't help |
 | 403 | No | No | Check Origin header or enable the feature |
@@ -1658,14 +1714,13 @@ No rate limiting is currently enforced. Requests are processed sequentially by d
 
 ⚠️ **DRIFT:** Example code in `websocket.md` uses Cloud Run URLs (`wss://agentic-hybrid-search-XXXX.run.app`), but the only supported deployment target is localhost (`ws://localhost:8000/ws/chat`). Cloud Run is a dormant pattern with no active deployment (see issue #110/#113).
 
-
 ---
 
 ## Frontend / Web UI
 
 The frontend is a React 19 single-page application built with TypeScript, Tailwind CSS v4, Zustand for state management, and Vite as the bundler. It runs on port 5173 during development and proxies `/api` calls to the backend on port 8000. The frontend ships with the backend Docker image — there is no separate Node.js service.
 
-### Tech Stack
+### Frontend Tech Stack
 
 The frontend uses modern tooling to deliver a responsive, type-safe chat and observability interface:
 
@@ -1709,7 +1764,7 @@ The build step compiles TypeScript and bundles the application into `dist/`, whi
 
 The source tree follows a clear modular organization:
 
-```
+```text
 src/
 ├── App.tsx                          Root component and page routing
 ├── main.tsx                         React 19 entry point, Zustand init
@@ -1820,7 +1875,7 @@ Coverage spans Zustand stores (state mutations, persistence), WebSocket hooks (c
 Environment variables (Vite requires the `VITE_` prefix):
 
 | Variable | Purpose | Example |
-|----------|---------|---------|
+| ---------- | --------- | --------- |
 | `VITE_API_URL` | Backend API endpoint | `http://localhost:8000/api` |
 
 The `VITE_API_URL` is set in `.env.local` during local development (by `setup.sh`) and can be overridden via Docker build `--build-arg` for production deployments.
@@ -1866,7 +1921,6 @@ No separate Node.js service is needed at runtime; the frontend and backend run a
 
 All components use semantic HTML and follow WCAG 2.1 accessibility guidelines. Theme customization (colors, animations) is configured via `@theme` in `src/index.css` using Tailwind's CSS-based configuration. There is no separate `tailwind.config.js` file.
 
-
 ---
 
 ## Testing & Benchmarks
@@ -1875,7 +1929,7 @@ All components use semantic HTML and follow WCAG 2.1 accessibility guidelines. T
 
 The project uses a three-layer testing pyramid: fast unit tests with mocked services, integration tests against real databases and services, and end-to-end tests against a running backend. All test commands run from `langchain_agent/` and require `PYTHONPATH=.` to resolve bare imports.
 
-```
+```text
 tests/
 ├── unit/               # Fast, no external services (~0.5s total)
 ├── integration/        # Multi-component with live Postgres + OpenSearch
@@ -1930,7 +1984,7 @@ open htmlcov/index.html
 The following markers are available for organizing and filtering tests:
 
 | Marker | Purpose |
-|--------|---------|
+| -------- | --------- |
 | `unit` | Fast component tests with mocked services |
 | `integration` | Multi-component tests requiring live services |
 | `e2e` | End-to-end tests against a running backend |
@@ -1984,22 +2038,22 @@ Integration tests exercise real databases (Postgres, OpenSearch) and the HTTP/We
 
 1. Start Docker services from the repo root:
 
-```bash
-docker compose up -d    # PostgreSQL + OpenSearch
-```
+   ```bash
+   docker compose up -d    # PostgreSQL + OpenSearch
+   ```
 
 2. Verify services are up:
 
-```bash
-curl http://localhost:9200/_cluster/health
-PGPASSWORD=postgres psql -h localhost -U postgres -d langchain_agent -c 'SELECT 1;'
-```
+   ```bash
+   curl http://localhost:9200/_cluster/health
+   PGPASSWORD=postgres psql -h localhost -U postgres -d langchain_agent -c 'SELECT 1;'
+   ```
 
 3. Set your Gemini API key:
 
-```bash
-export GOOGLE_API_KEY="<your-key>"
-```
+   ```bash
+   export GOOGLE_API_KEY="<your-key>"
+   ```
 
 **Running integration tests:**
 
@@ -2028,27 +2082,27 @@ E2E tests drive a real running backend via HTTP and WebSocket to validate the co
 
 1. Start Docker services:
 
-```bash
-docker compose up -d
-```
+   ```bash
+   docker compose up -d
+   ```
 
 2. Start the backend:
 
-```bash
-cd langchain_agent
-make dev-api        # runs on :8000, stays in foreground
-```
+   ```bash
+   cd langchain_agent
+   make dev-api        # runs on :8000, stays in foreground
+   ```
 
 3. In another terminal, run E2E tests:
 
-```bash
-PYTHONPATH=. pytest tests/e2e/ -v
-```
+   ```bash
+   PYTHONPATH=. pytest tests/e2e/ -v
+   ```
 
 **Environment variables:**
 
 | Variable | Default | Purpose |
-|----------|---------|---------|
+| ---------- | --------- | --------- |
 | `CLOUD_RUN_URL` | `http://localhost:8000` | Backend URL under test |
 | `TIMEOUT` | 30 | Pytest timeout in seconds |
 
@@ -2107,38 +2161,38 @@ This runs:
 
 The project includes a benchmark suite that measures retrieval quality on the Amazon ESCI dataset (1.8M products, 97K judged US queries) against ground-truth relevance judgments. The benchmark compares three retrieval strategies on hard queries (bottom-quartile by standard-hybrid NDCG@10).
 
-#### Prerequisites
+#### Benchmark Prerequisites
 
 1. Clone the ESCI dataset to the repo root:
 
-```bash
-cd /path/to/opensearch2026-agentic-search
-git clone https://github.com/amazon-science/esci-data.git ../esci
-```
+   ```bash
+   cd /path/to/opensearch2026-agentic-search
+   git clone https://github.com/amazon-science/esci-data.git ../esci
+   ```
 
-Expected: ~1GB of parquet files.
+   Expected: ~1GB of parquet files.
 
 2. Start Docker services from repo root:
 
-```bash
-docker compose up -d    # PostgreSQL + OpenSearch
-```
+   ```bash
+   docker compose up -d    # PostgreSQL + OpenSearch
+   ```
 
 3. Verify OpenSearch is ready:
 
-```bash
-curl -s http://localhost:9200/_cluster/health | python -m json.tool
-# Should return "status": "yellow" or "green"
-```
+   ```bash
+   curl -s http://localhost:9200/_cluster/health | python -m json.tool
+   # Should return "status": "yellow" or "green"
+   ```
 
 4. Ingest products and judgments via Lucille ETL (one-time):
 
-```bash
-cd langchain_agent
-bash scripts/lucille_ingest.sh    # ~25 seconds
-```
+   ```bash
+   cd langchain_agent
+   bash scripts/lucille_ingest.sh    # ~25 seconds
+   ```
 
-Expected: ~9,618 products indexed to `agentic_hybrid_search_docs`, ~97K queries with judgments in `esci_judgments`.
+   Expected: ~9,618 products indexed to `agentic_hybrid_search_docs`, ~97K queries with judgments in `esci_judgments`.
 
 Verify:
 
@@ -2189,7 +2243,7 @@ PYTHONPATH=. python benchmarks/benchmark_esci.py --limit 5000 --hard-only --fast
 Hard queries: 1250 / 5000 (bottom-quartile NDCG@10 ≤ 0.2393)
 
 | System | NDCG@10 | MRR | Recall@20 | Notes |
-|--------|---------|-----|-----------|-------|
+| -------- | --------- | ----- | ----------- | ------- |
 | Lexical (BM25 only) | 0.1316 | 0.2139 | 0.1703 | Retrieval floor (α=0.0) |
 | Standard Hybrid | 0.1860 | 0.2938 | 0.2779 | Reference baseline (α=0.25, RRF, no reranking) |
 | Adaptive | 0.2107 | 0.3307 | 0.2978 | Full system (intent-driven α + reranker + quality gate) |
@@ -2201,7 +2255,7 @@ Hard queries: 1250 / 5000 (bottom-quartile NDCG@10 ≤ 0.2393)
 **Full-set results (all 5000 queries):**
 
 | System | NDCG@10 | MRR | Recall@20 |
-|--------|---------|-----|-----------|
+| -------- | --------- | ----- | ----------- |
 | Lexical | 0.3310 | 0.4910 | 0.3691 |
 | Standard Hybrid | 0.3802 | 0.5347 | 0.4160 |
 | Adaptive | 0.3897 | 0.5467 | 0.4243 |
@@ -2217,6 +2271,7 @@ Results are stable across 1K–5K scale with <0.3% variance.
 **Adaptive (production):** Intent → alpha mapping (deterministic fast-path table or LLM-based), hybrid search with intent-specific alpha, cross-encoder reranking (top-20), quality gate retry with α ± 0.3 if max score < 0.45.
 
 All three systems:
+
 - Use the same retrieval candidate pool (fetch_k=40)
 - Measure identical metrics (NDCG@10, MRR, Recall@20)
 - Evaluate on the same 5000 queries with ground truth
@@ -2240,10 +2295,10 @@ All three systems:
 - `--limit 5000`: ~5 minutes (Makefile default)
 - All 97K: ~90+ minutes
 
-#### Troubleshooting
+#### Benchmark Troubleshooting
 
 | Issue | Fix |
-|-------|-----|
+| ------- | ----- |
 | `ModuleNotFoundError: No module named 'config'` | Run with `PYTHONPATH=.` |
 | `ConnectionError: Error connecting to OpenSearch` | Run `docker compose up -d` from repo root |
 | `lookup_judgments returned None` | Normal—queries need exact matches in esci_judgments index |
@@ -2253,7 +2308,7 @@ All three systems:
 
 ### Common Test Issues
 
-**Tests hang or time out**
+#### Tests hang or time out
 
 Verify services are running:
 
@@ -2265,7 +2320,7 @@ PGPASSWORD=postgres psql -h localhost -U postgres -d langchain_agent -c 'SELECT 
 
 Pytest has a 30-second default timeout (`pytest.ini`). Mark longer tests with `@pytest.mark.slow` or raise it via `--timeout=N`.
 
-**`ModuleNotFoundError: No module named 'config'`**
+#### `ModuleNotFoundError: No module named 'config'`
 
 Set `PYTHONPATH=.`:
 
@@ -2273,7 +2328,7 @@ Set `PYTHONPATH=.`:
 PYTHONPATH=. pytest tests/
 ```
 
-**Integration tests skipped**
+#### Integration tests skipped
 
 Start Docker services and backend:
 
@@ -2282,7 +2337,7 @@ docker compose up -d
 ./scripts/start.sh
 ```
 
-**E2E tests failing with 403**
+#### E2E tests failing with 403
 
 Check your backend URL (defaults to `http://localhost:8000`) and verify the `Origin` header matches the allow-list in `api/middleware/origin_auth.py`. There's no login gate—same-origin checking is the only auth layer.
 
@@ -2320,7 +2375,6 @@ class TestMyFlow:
 
 Always mark new tests with the appropriate markers so scope-based runs pick them up correctly.
 
-
 ---
 
 ## Contributing & Dev Workflow
@@ -2349,6 +2403,7 @@ python main.py
 Modules use bare imports like `from config import ...` instead of relative imports. Setting `PYTHONPATH=.` allows Python to resolve `config` as a module in the current directory.
 
 **Set once per session:**
+
 ```bash
 export PYTHONPATH=.
 pytest tests/unit/
@@ -2464,19 +2519,22 @@ This repo follows a "cowboy mode" workflow as of 2026-09-15: commits go directly
 #### The Current Workflow: Code Directly to Main
 
 1. **Get issue context** — use `workflow-start` skill to retrieve the GitHub issue, understand scope, and plan
+
    ```bash
    /workflow-start
    ```
+
    This fetches issue details, helps you restate scope, and prepares you to code. It's optional for obvious fixes.
 
 2. **Make changes — directly on `main`** — edit existing files first; create new files only when the task explicitly requires it
+
    ```bash
    git status                    # Verify main is clean and up to date
    # Edit code...
    git add <file>
    git commit -m "feat: <description>"
    ```
-   
+
    **Commit message format:** `<TYPE>: <description>` where TYPE is one of:
    - `feat:` — new feature
    - `fix:` — bug fix
@@ -2485,7 +2543,8 @@ This repo follows a "cowboy mode" workflow as of 2026-09-15: commits go directly
    - `chore:` — maintenance
 
    Include `Closes #<N>` in the commit message to auto-close the issue when pushed:
-   ```
+
+   ```text
    feat: add refinement intent support
 
    - Detects "refinement" queries that narrow prior results
@@ -2496,12 +2555,14 @@ This repo follows a "cowboy mode" workflow as of 2026-09-15: commits go directly
    ```
 
 3. **Run local tests** — before pushing, verify everything passes locally
+
    ```bash
    cd langchain_agent
    make check     # Full gate: lint + format + unit tests + frontend + smoke
    ```
 
    For faster iteration while coding:
+
    ```bash
    make ci        # Faster: lint + format + unit tests (no Docker/smoke)
    ```
@@ -2509,6 +2570,7 @@ This repo follows a "cowboy mode" workflow as of 2026-09-15: commits go directly
    If tests fail, fix and repeat. There is no CI or reviewer to catch failures after push — you are responsible.
 
 4. **Self-review your diff** — run the pre-push checklist via `workflow-check` skill
+
    ```bash
    /workflow-check
    ```
@@ -2521,6 +2583,7 @@ This repo follows a "cowboy mode" workflow as of 2026-09-15: commits go directly
    - **Critical:** Step 6 (update docs/memory) is the most commonly skipped step and causes stale guidance. Do not cut this corner.
 
 5. **Push to `main`**
+
    ```bash
    git push origin main
    ```
@@ -2528,6 +2591,7 @@ This repo follows a "cowboy mode" workflow as of 2026-09-15: commits go directly
    No branch protection exists to gate the push. Your local `make check` and the checklist in step 4 are the only gates.
 
 6. **Verify locally and close the issue** — use `workflow-deploy` skill
+
    ```bash
    /workflow-deploy
    ```
@@ -2552,7 +2616,7 @@ A reviewer can then review your diff and suggest changes before you push to `mai
 If you do create a feature branch, use this format: `<type>/<issue-number>-<slug>`
 
 | Type | When | Example |
-|------|------|---------|
+| ------ | ------ | --------- |
 | `feat/` | New feature | `feat/issue-42-refinement-intent` |
 | `fix/` | Bug fix | `fix/issue-28-swagger-localhost` |
 | `docs/` | Documentation | `docs/contributing-guide` |
@@ -2561,7 +2625,7 @@ If you do create a feature branch, use this format: `<type>/<issue-number>-<slug
 
 Use kebab-case for the slug, keep the full name under 50 chars.
 
-### Testing Strategy
+### Testing Strategy for Contributions
 
 All code changes must pass tests locally before pushing. Run the test suite from `langchain_agent/`:
 
@@ -2617,9 +2681,7 @@ git push --force
 - **Tech stack, patterns, commands**: Refer to `CLAUDE.md` (source of truth for this project)
 - **Testing guidance**: See `tests/README.md` and `docs/contributing/testing.md`
 - **Code patterns**: See `docs/contributing/code-patterns.md` and `langchain_agent/CONTRIBUTING.md`
-- **Debugging**: Enable `LANGSMITH_API_KEY` for tracing at https://smith.langchain.com
-
-
+- **Debugging**: Enable `LANGSMITH_API_KEY` for tracing at <https://smith.langchain.com>
 
 ---
 
@@ -2640,7 +2702,7 @@ Both files are stored in Parquet format (a compressed columnar format) and commi
 
 Data files live in `langchain_agent/data/`:
 
-```
+```text
 langchain_agent/data/
 ├── esci_products_sample_10000.parquet
 │   └─ 9,618 product documents with title, brand, color, and 768-dim knn_vector
@@ -2669,7 +2731,7 @@ The lucille-esci directory is a Maven configuration package (not Lucille's sourc
 
 **Key directories:**
 
-```
+```text
 langchain_agent/lucille-esci/
 ├── conf/
 │   ├── products.generated.conf    # Generated (not committed) — see "Generated Configuration" below
@@ -2881,7 +2943,7 @@ bash scripts/lucille_ingest.sh
 While compiling this manual, each chapter was checked against the project's current, verified state (its root `CLAUDE.md`) rather than trusted blindly from source docs. The following discrepancies were found. None of them affect how the app actually works today — they're stale documentation, not stale code — but they're worth fixing at the source next time someone touches those files.
 
 | # | Where | What's stale | Current, correct fact |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | `langchain_agent/README.md` (overview/tech-stack section, ~line 36-37) | Claims generation/classification models are "Gemini 3 Flash" / "Gemini 3.1 Flash Lite" | Actual models (per the same file's own Configuration section, root `README.md`, and `CLAUDE.md`) are **Gemini 2.5 Flash** (generation) and **Gemini 2.5 Flash-Lite** (classify/eval/judge) |
 | 2 | `langchain_agent/api/README.md` (~line 25) | Lists the chat endpoint as `POST /api/chat (WebSocket)` | The actual route is `/ws/chat` — a WebSocket endpoint, not a POST route |
 | 3 | `docs/integration/websocket.md` (example code) | Uses Cloud Run URLs (`wss://agentic-hybrid-search-XXXX.run.app`) | The only supported target is `ws://localhost:8000/ws/chat` — Cloud Run is a dormant, unused pattern (no deploy mechanism exists; see issues #110 and #113) |
