@@ -50,7 +50,7 @@ def test_disallowed_origin_with_cloud_run_host_returns_403(client: TestClient) -
         "/protected",
         headers={
             "Origin": "https://evil.example.com",
-            "Host": "agentic-hybrid-search-375500751528.us-central1.run.app",
+            "Host": "agentic-hybrid-search-123456789012.us-central1.run.app",
         },
     )
     assert response.status_code == 403, (
@@ -88,8 +88,8 @@ def test_allowed_cloud_run_origin_returns_200(client: TestClient) -> None:
     response = client.get(
         "/protected",
         headers={
-            "Origin": "https://agentic-hybrid-search-375500751528.us-central1.run.app",
-            "Host": "agentic-hybrid-search-375500751528.us-central1.run.app",
+            "Origin": "https://agentic-hybrid-search-123456789012.us-central1.run.app",
+            "Host": "agentic-hybrid-search-123456789012.us-central1.run.app",
         },
     )
     assert response.status_code == 200

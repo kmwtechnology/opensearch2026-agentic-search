@@ -7,12 +7,12 @@ Much faster than serial API calls: ~1.2M products in 15-30 minutes vs ~4.5 hours
 
 Usage:
     PYTHONPATH=. python bigquery_batch_embeddings.py \\
-      --project gen-lang-client-0250737934 \\
+      --project YOUR_GCP_PROJECT_ID \\
       --bucket kmw-esci-embeddings-2026
 
     # Use text-embedding-005 instead of gemini-embedding-001:
     PYTHONPATH=. python bigquery_batch_embeddings.py \\
-      --project gen-lang-client-0250737934 \\
+      --project YOUR_GCP_PROJECT_ID \\
       --bucket kmw-esci-embeddings-2026 \\
       --model text-embedding-005
 """
@@ -499,12 +499,12 @@ def main():
         epilog="""
 Examples:
   PYTHONPATH=. python bigquery_batch_embeddings.py \\
-    --project gen-lang-client-0250737934 \\
+    --project YOUR_GCP_PROJECT_ID \\
     --bucket kmw-esci-embeddings-2026
 
   # Use text-embedding-005:
   PYTHONPATH=. python bigquery_batch_embeddings.py \\
-    --project gen-lang-client-0250737934 \\
+    --project YOUR_GCP_PROJECT_ID \\
     --bucket kmw-esci-embeddings-2026 \\
     --model text-embedding-005
         """,

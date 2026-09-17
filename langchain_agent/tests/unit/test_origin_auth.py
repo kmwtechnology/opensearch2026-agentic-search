@@ -57,7 +57,7 @@ def test_is_allowed_origin_accepts_dev_origins(origin):
     "origin",
     [
         "https://my-service-abc123.a.run.app",
-        "https://agentic-hybrid-search-375500751528.us-central1.run.app",
+        "https://agentic-hybrid-search-123456789012.us-central1.run.app",
         "https://anything.a.run.app",
     ],
 )
@@ -183,7 +183,7 @@ async def test_verify_same_origin_raises_403_no_headers():
 # Regression: Host fallback must NOT override an explicit disallowed Origin.
 #
 # On Cloud Run, `Host` is the destination domain (e.g.
-# "agentic-hybrid-search-375500751528.us-central1.run.app") and matches
+# "agentic-hybrid-search-123456789012.us-central1.run.app") and matches
 # *.run.app on every request regardless of who sent it. If verify_same_origin
 # treated Host as a same-origin signal whenever Origin was disallowed, the
 # entire origin allow-list would be defeated for the production deployment.
@@ -203,7 +203,7 @@ async def test_verify_same_origin_disallowed_origin_with_run_app_host_rejected()
     """The smoke-test regression: disallowed Origin + Cloud Run Host MUST 403."""
     request = _make_request(
         origin="https://evil.example.com",
-        host="agentic-hybrid-search-375500751528.us-central1.run.app",
+        host="agentic-hybrid-search-123456789012.us-central1.run.app",
     )
     with pytest.raises(HTTPException) as exc_info:
         await verify_same_origin(request)
