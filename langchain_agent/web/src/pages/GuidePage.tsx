@@ -1,5 +1,5 @@
 /**
- * Guide for the Agentic Hybrid Search demo — the 3 scripted demos, the UI,
+ * Guide for the Agentic Hybrid Search demo — the 4 scripted demos, the UI,
  * and how to read the pipeline output.
  */
 
