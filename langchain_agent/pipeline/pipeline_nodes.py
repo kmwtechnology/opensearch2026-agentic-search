@@ -1236,16 +1236,23 @@ so briefly."""
         # matches this term" (a gap) reads very differently from "this is
         # currently mapped to something else" (a correction), and #142
         # flagged that the UI was jumping straight to reingestion without
-        # saying which one this was. `enrich_attribute` itself may still land
-        # on "already mapped" (a no-op) if `canonical` turns out to equal
-        # `current_mapping` — a rare LLM-proposes-a-no-op edge case that
-        # predates this change and isn't worth special-casing here.
+        # saying which one this was.
+        #
+        # Only send it when it is a REAL correction, i.e. the proposed
+        # canonical differs from what is on file. When they match,
+        # enrich_attribute short-circuits on "already mapped" and does no
+        # write at all, so announcing `tan is currently mapped to tan —
+        # rewriting that` would narrate a rewrite that never happens (and
+        # reads as a tautology besides). Matches the terminal event, where
+        # EnrichmentResult.corrected_from is likewise only set on a genuine
+        # replacement.
+        started_corrected_from = current_mapping if current_mapping != canonical else None
         enrichment_events.publish(
             status="started",
             attribute_type=attribute_type,
             variant=variant,
             canonical=canonical,
-            corrected_from=current_mapping,
+            corrected_from=started_corrected_from,
         )
 
         enrichment_result = enrich_attribute(attribute_type, variant, explicit_canonical=canonical)
@@ -1819,8 +1826,27 @@ Return ONLY a JSON object (use null for missing attributes):
             def _coerce(val: Any) -> Optional[str]:
                 if val is None:
                     return None
+                # A JSON bool must never become a filter VALUE. str(False) is
+                # "False" -- non-empty, therefore truthy, therefore a hard
+                # `match` on product_<type>_primary that matches nothing and
+                # (being a `match`, not a `multi_match`) survives filter
+                # relaxation. That turns an answerable query into a
+                # zero-result one AND falsely trips zero_result_filter_gap,
+                # inviting the agent to "teach the catalog" a term from a
+                # query that was fine. Reachable because the `waterproof`
+                # field reads like a yes/no question, so the model can
+                # answer it with `false` instead of the template's `null`.
+                if isinstance(val, bool):
+                    return None
                 if isinstance(val, list):
-                    parts = [str(v).strip() for v in val if v not in (None, "")]
+                    # Same bool exclusion inside a list: `False not in (None, "")`
+                    # is True, so without the isinstance check a stray bool
+                    # element would still reach the filter as "False".
+                    parts = [
+                        str(v).strip()
+                        for v in val
+                        if v not in (None, "") and not isinstance(v, bool)
+                    ]
                     return " ".join(parts) if parts else None
                 s = str(val).strip()
                 return s or None
@@ -1855,7 +1881,14 @@ Return ONLY a JSON object (use null for missing attributes):
             # (_try_enrichment_tool) grow this attribute type from scratch.
             # Once trigger_enrichment writes the first mapping, this same
             # branch resolves and returns real, filtered results.
-            waterproof = _coerce(attributes.get("waterproof"))
+            # `waterproof` reads like a yes/no field, so the model answers it
+            # with a bool often enough to handle explicitly: `true` means the
+            # requirement is present (treat it as the term itself), `false`
+            # means absent and is dropped by _coerce along with null. Without
+            # the `is True` arm a genuine "waterproof boots" turn whose model
+            # replied `true` would silently lose its filter.
+            raw_waterproof = attributes.get("waterproof")
+            waterproof = "waterproof" if raw_waterproof is True else _coerce(raw_waterproof)
             if waterproof:
                 waterproof_canonical = self._classify_attribute("waterproof", waterproof)
                 filters.append(

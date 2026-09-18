@@ -108,6 +108,53 @@ class TestEnrichmentLifecycleEvents:
 
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     @patch("quality.enrichment_service.enrich_attribute")
+    def test_started_carries_the_current_mapping_on_a_real_correction(
+        self, mock_enrich, mock_store_cls
+    ):
+        """#142: the 'started' card has to say WHY the re-index is running
+        before it finishes, and "tan is currently mapped to yellow" is only
+        knowable from the pre-write lookup — EnrichmentResult.corrected_from
+        does not exist yet at that point."""
+        mock_store_cls.return_value.get_lookup_table.return_value = {"tan": "yellow"}
+        mock_enrich.return_value = EnrichmentResult(
+            success=True, attribute_type="color", variant="tan", canonical="brown"
+        )
+        agent = _agent_with_llm(_correction_tool_call())
+
+        with _Recorder() as recorder:
+            agent._try_enrichment_tool("that's not tan, it's tagged yellow")
+
+        assert recorder.of_status("started")[0]["corrected_from"] == "yellow"
+
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    @patch("quality.enrichment_service.enrich_attribute")
+    def test_started_omits_corrected_from_when_the_proposal_is_a_no_op(
+        self, mock_enrich, mock_store_cls
+    ):
+        """Regression (PR review, #142): when the model proposes the canonical
+        a variant is ALREADY mapped to, enrich_attribute short-circuits on
+        "already mapped" and writes nothing. Passing the current mapping
+        through regardless made the card announce `"brown" is currently
+        mapped to "brown" — rewriting that`: a rewrite that never happens,
+        and a tautology besides. Absent corrected_from, the card falls back
+        to the gap wording instead."""
+        mock_store_cls.return_value.get_lookup_table.return_value = {"tan": "brown"}
+        mock_enrich.return_value = EnrichmentResult(
+            success=False,
+            attribute_type="color",
+            variant="tan",
+            canonical="brown",
+            reason="already mapped",
+        )
+        agent = _agent_with_llm(_correction_tool_call())
+
+        with _Recorder() as recorder:
+            agent._try_enrichment_tool("that's not tan, it's tagged yellow")
+
+        assert recorder.of_status("started")[0]["corrected_from"] is None
+
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    @patch("quality.enrichment_service.enrich_attribute")
     def test_terminal_event_carries_corrected_from_and_real_numbers(
         self, mock_enrich, mock_store_cls
     ):

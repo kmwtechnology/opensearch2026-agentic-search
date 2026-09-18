@@ -70,7 +70,13 @@ def _build_prompt(
         "current mappings at all, mapping a term to itself is how the very "
         "first entry (and the filter dimension it enables) gets registered, "
         "not a redundant or trivial change."
-        if variant.strip().lower() == canonical.strip().lower()
+        # (x or "") because callers source these from call["args"].get(key, "")
+        # — the "" default only applies to a MISSING key, so a model that
+        # emits the key with a JSON null hands us None. Before this check
+        # existed both values only ever reached an f-string, where None was
+        # harmless; .strip() on None would raise inside agent_node and take
+        # down the whole turn.
+        if (variant or "").strip().lower() == (canonical or "").strip().lower()
         else ""
     )
     return f"""Proposed change:

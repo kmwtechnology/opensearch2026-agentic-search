@@ -341,9 +341,13 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
       // "waterproof" itself, not a synonym like "weatherproof"), "is now
       // understood as waterproof" reads as a tautology on a projector — say
       // it registered a new filterable attribute instead.
+      // Lowercased on both sides to match format_enrichment_message's own
+      // check (tools/enrichment_tool.py) and the 'started' branch above —
+      // a model echoing the query's casing ("Waterproof") would otherwise
+      // slip past this and print the tautology anyway.
       const what = e.corrected_from
         ? `“${e.variant}” was tagged ${e.corrected_from} — it now reads ${e.canonical}.`
-        : e.variant === e.canonical
+        : e.variant.toLowerCase() === (e.canonical ?? '').toLowerCase()
           ? `“${e.variant}” is now a filterable attribute.`
           : `“${e.variant}” is now understood as ${e.canonical}.`
       const scale =

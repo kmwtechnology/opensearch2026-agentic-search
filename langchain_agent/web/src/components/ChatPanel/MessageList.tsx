@@ -8,6 +8,43 @@ import { useObservabilityStore } from '../../stores/observabilityStore'
 import { nodeStyle } from '../NarratorPanel/nodeStyle'
 import { Message } from './Message'
 
+// Mirror of pipeline_nodes.py's _CORRECTION_SIGNAL_PHRASES. The backend runs
+// this same cheap keyword gate before it will even offer the correction tool,
+// so without it here EVERY refinement/follow_up turn claims a tag dispute is
+// being evaluated — e.g. arc 1 turn 2 ("only size 10") would show "Checking
+// whether a tag needs correcting" while the backend went straight to answer
+// generation. That is the #106 failure mode (a specific, confident, wrong
+// label on ordinary latency), so the status text has to respect the same gate.
+// Keep in sync with the backend list; a drift here costs a mislabelled status
+// card, never a wrong answer.
+const CORRECTION_SIGNAL_PHRASES = [
+  "that's not",
+  'thats not',
+  "that isn't",
+  'that is not',
+  "isn't really",
+  "isn't actually",
+  "doesn't look",
+  'does not look',
+  'not really',
+  'actually',
+  'mistag',
+  'miscategor',
+  'incorrectly tagged',
+  'wrong color',
+  'should be tagged',
+  'tagged wrong',
+  "that's wrong",
+  'thats wrong',
+  'not correct',
+]
+
+function looksLikeCorrection(userQuery: string | undefined): boolean {
+  if (!userQuery) return false
+  const q = userQuery.toLowerCase()
+  return CORRECTION_SIGNAL_PHRASES.some((phrase) => q.includes(phrase))
+}
+
 export function MessageList() {
   const { messages, streamingContent, isProcessing } = useChatStore()
   const { currentNode, steps } = useObservabilityStore()
@@ -50,7 +87,12 @@ export function MessageList() {
   type ToolCheckReason = 'correction' | 'zero-result-filter' | 'low-score-retry'
   const getToolCheckReason = (): ToolCheckReason | null => {
     const intent = intentClassification?.intent
-    if (intent === 'refinement' || intent === 'follow_up') return 'correction'
+    if (
+      (intent === 'refinement' || intent === 'follow_up') &&
+      looksLikeCorrection(intentClassification?.user_query)
+    ) {
+      return 'correction'
+    }
     if (intent === 'attribute_filter' && searchCandidates.length === 0) return 'zero-result-filter'
     if (qualityGate?.triggered && qualityGate.max_score < 0.1) return 'low-score-retry'
     return null

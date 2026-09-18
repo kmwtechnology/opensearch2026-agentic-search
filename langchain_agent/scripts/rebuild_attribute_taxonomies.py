@@ -124,6 +124,18 @@ def main() -> None:
 
     rebuild("color", COLOR_CANONICALS, texts, args.dry_run)
 
+    # One-time migration for clusters provisioned before "material" was
+    # retired (#142). Nothing else deletes these rows, and while they exist
+    # config_generator.get_all_attribute_types() keeps emitting a
+    # detectMaterial stage, so every reindex writes dead product_material*
+    # fields -- now via dynamic mapping, since INDEX_MAPPING no longer
+    # declares them. Harmless but it silently diverges an upgraded laptop
+    # from a fresh `make setup`. A no-op on a cluster that never had them.
+    if not args.dry_run:
+        retired = clear_attribute_type(store, "material")
+        if retired:
+            print(f"[material] Cleared {retired} retired mapping(s) (attribute type removed).")
+
 
 if __name__ == "__main__":
     main()

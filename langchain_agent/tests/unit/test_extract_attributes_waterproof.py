@@ -98,6 +98,59 @@ class TestWaterproofClassification:
         assert len(filters) == 3
 
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    def test_boolean_false_produces_no_filter_at_all(self, mock_store_cls) -> None:
+        """Regression (PR review, #142): the extraction field is named
+        "waterproof" and reads like a yes/no question, so the model answers
+        it with `false` instead of the template's `null` often enough to
+        matter. str(False) is "False" -- non-empty, therefore truthy,
+        therefore a hard match on product_waterproof_primary that matches
+        NOTHING and survives filter relaxation (it's a `match`, not a
+        `multi_match`). That silently zeroes out a perfectly answerable
+        query and then falsely trips the enrichment gap."""
+        mock_store_cls.return_value.get_lookup_table.return_value = {}
+        agent = _agent_returning_attributes(
+            {"color": "blue", "waterproof": False, "feature": "running"}
+        )
+
+        filters = agent._extract_attributes("Show me blue running shoes")
+
+        assert not any("product_waterproof_primary" in f.get("match", {}) for f in filters)
+        # ...and the rest of the query is untouched.
+        assert {"match": {"product_color_primary": {"query": "blue"}}} in filters
+
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    def test_boolean_true_is_honoured_as_the_term_itself(self, mock_store_cls) -> None:
+        """The other half of the same bug: dropping every bool would make a
+        genuine waterproof turn lose its filter whenever the model answered
+        `true` rather than echoing the string."""
+        mock_store_cls.return_value.get_lookup_table.return_value = {}
+        agent = _agent_returning_attributes({"waterproof": True})
+
+        filters = agent._extract_attributes("Show me waterproof boots")
+
+        assert filters == [{"match": {"product_waterproof_primary": {"query": "waterproof"}}}]
+
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
+    def test_boolean_in_another_field_cannot_become_a_filter_value(self, mock_store_cls) -> None:
+        """Same coercion hazard on the other hard-filtered field: a bool in
+        `color` would otherwise hard-filter on "False" and zero the query."""
+        mock_store_cls.return_value.get_lookup_table.return_value = {}
+        agent = _agent_returning_attributes({"color": False, "feature": ["running", True]})
+
+        filters = agent._extract_attributes("Show me running shoes")
+
+        assert not any("product_color_primary" in f.get("match", {}) for f in filters)
+        assert filters == [
+            {
+                "multi_match": {
+                    "query": "running",
+                    "fields": ["title", "chunk_text"],
+                    "type": "best_fields",
+                }
+            }
+        ]
+
+    @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_generic_feature_term_still_falls_back_to_lexical(self, mock_store_cls) -> None:
         """Everything that isn't a color or a waterproofing requirement
         (e.g. "breathable") has no taxonomy and stays a soft multi_match —
