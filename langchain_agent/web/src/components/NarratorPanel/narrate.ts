@@ -316,21 +316,36 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
 
   switch (e.status) {
     case 'started':
-      // corrected_from isn't known yet at "started" time (the backend only
-      // learns whether this is a correction vs. a fresh addition once
-      // enrich_attribute runs) — phrase this neutrally so it doesn't
-      // presume "correction" for what might be a brand-new attribute type.
+      // #142: name the reason BEFORE the reindex runs, not just the fact
+      // that one is running — "it just jumps to reingestion without
+      // telling the user why or what it's doing". corrected_from here is
+      // the CURRENT mapping (if any), threaded through from the same
+      // lookup the value judge already did — present means this variant is
+      // mapped to something else today (a correction in progress); absent
+      // means it isn't mapped at all yet (a genuine gap being filled).
       return {
         ...base,
         label: 'Catalog Update',
-        text: `Rebuilding the catalog so every product reflects the updated ${e.attribute_type} data.`,
+        text: e.corrected_from
+          ? `“${e.variant}” is currently mapped to “${e.corrected_from}” — rewriting that and re-indexing the catalog live.`
+          : // "tagged 'waterproof' as a waterproof" reads redundant when the
+            // term and the attribute type are the same word (registering the
+            // FIRST entry of a brand-new type) — drop the clause in that case.
+            e.variant.toLowerCase() === e.attribute_type.toLowerCase()
+            ? `No products are tagged “${e.variant}” yet — teaching the catalog this term and re-indexing live.`
+            : `No products are tagged “${e.variant}” as a ${e.attribute_type} yet — teaching the catalog this term and re-indexing live.`,
       }
     case 'complete': {
       // corrected_from is the whole point: it separates fixing a wrong tag
-      // from learning a new word.
+      // from learning a new word. When variant === canonical (e.g. teaching
+      // "waterproof" itself, not a synonym like "weatherproof"), "is now
+      // understood as waterproof" reads as a tautology on a projector — say
+      // it registered a new filterable attribute instead.
       const what = e.corrected_from
         ? `“${e.variant}” was tagged ${e.corrected_from} — it now reads ${e.canonical}.`
-        : `“${e.variant}” is now understood as ${e.canonical}.`
+        : e.variant === e.canonical
+          ? `“${e.variant}” is now a filterable attribute.`
+          : `“${e.variant}” is now understood as ${e.canonical}.`
       const scale =
         e.docs_processed && e.duration_seconds
           ? ` Rebuilt ${e.docs_processed.toLocaleString()} products in ${e.duration_seconds.toFixed(1)}s.`

@@ -88,9 +88,11 @@ WHAT THIS SCRIPT DOES:
     9. Initializes database and OpenSearch index
     10. Runs Lucille ETL to ingest precomputed 10K ESCI products + judgments into OpenSearch
         (reads from data/esci_products_sample_10000.parquet — no API calls needed),
-        including a mandatory color/material taxonomy discovery + reindex pass
+        including a mandatory color taxonomy discovery + reindex pass
         (a fresh cluster's taxonomy store is otherwise empty, so every
-        color/material attribute_filter query would return zero results)
+        color attribute_filter query would return zero results). The
+        "waterproof" type is deliberately NOT seeded here — it starts empty
+        and grows entirely from the live enrichment flywheel.
 
 SERVICES STARTED:
     - PostgreSQL (checkpoint storage) → localhost:5432

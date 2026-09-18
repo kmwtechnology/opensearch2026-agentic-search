@@ -1,8 +1,11 @@
 /**
  * The demo script, as data (#103).
  *
- * TWO demos, matching the two halves of the talk's thesis (see
- * docs/presentation/Agentic Search Presentation Outline.md §1):
+ * TWO main arcs, matching the two halves of the talk's thesis (see
+ * docs/presentation/Agentic Search Presentation Outline.md §1), plus two
+ * optional bonus scenes (ground-truth judgments, schema evolution — #114,
+ * #142) that don't fit either arc's pacing but are worth showing if there's
+ * time:
  *
  *   1. Adaptive Query Enhancements — the agent improves results on the fly:
  *      classify intent, weight hybrid retrieval per query, keep context across
@@ -12,6 +15,11 @@
  *   2. Classification & Ingestion — the agent recognises that the CATALOG is wrong,
  *      not the query, and fixes it: correcting a shipped mis-mapping and
  *      triggering a real Lucille re-index, live. The talk's centerpiece.
+ *
+ * The bonus "Schema Evolution" scene is this same taxonomy-growth machinery's
+ * OTHER shape: not correcting a wrong mapping, but growing a filter dimension
+ * that never existed at all — and unprompted, unlike arc 2's correction,
+ * which needs a shopper to dispute the tag first.
  *
  * This was six demos, one per capability, which is the wrong shape for a
  * 30-45 minute session: six dropdown entries invite six context switches, and
@@ -224,7 +232,7 @@ export const DEMOS: Demo[] = [
     id: 'schema-evolution',
     title: 'Data Enrichment: Schema Evolution',
     needsArming: true,
-    subtitle: 'A missing attribute, taught live — not a correction this time, a genuinely new filter dimension.',
+    subtitle: 'A new filter dimension, taught live — not corrected, grown.',
     /*
      * Issue #142. Arc 2 (above) shows the agent fixing a WRONG mapping —
      * this shows it growing a filter dimension that never existed at all.

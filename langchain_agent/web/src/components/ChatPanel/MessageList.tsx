@@ -29,11 +29,11 @@ export function MessageList() {
   const [elapsed, setElapsed] = useState(0)
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  // Mirrors the two gates in pipeline_nodes.py's agent_node that decide
-  // whether the agent's first model call is a genuine tool-offer/correction
-  // check, versus skipping straight to the real answer call: a correction
-  // check only runs on refinement/follow_up turns, and an enrichment check
-  // only runs when retrieval came back empty (attribute_filter with zero
+  // Mirrors the gates in pipeline_nodes.py's agent_node that decide whether
+  // the agent's first model call is a genuine tool-offer/correction check,
+  // versus skipping straight to the real answer call: a correction check
+  // only runs on refinement/follow_up turns, and an enrichment check only
+  // runs when retrieval came back empty (attribute_filter with zero
   // candidates) or the quality gate retried and still scored below the
   // relevance floor. Most turns hit neither gate, so unconditionally
   // labelling the pre-token wait "Checking whether a tool is needed" was
@@ -41,18 +41,37 @@ export function MessageList() {
   // ordinary answer-generation latency with no tool check in flight (#106).
   // This is a frontend-only approximation (no backend event marks gate
   // eligibility yet), not a byte-for-byte replay of the backend condition.
-  const isToolCheckEligible = (): boolean => {
+  //
+  // Returns WHICH gate is actually in flight (or null if none), so the
+  // status line can say WHY a tool check is happening instead of just THAT
+  // one is (#142 — "it just jumps to reingestion without telling the user
+  // why"). Order matters: mirrors the backend's own check order (correction
+  // signal first, then the two enrichment-gap conditions).
+  type ToolCheckReason = 'correction' | 'zero-result-filter' | 'low-score-retry'
+  const getToolCheckReason = (): ToolCheckReason | null => {
     const intent = intentClassification?.intent
-    if (intent === 'refinement' || intent === 'follow_up') return true
-    if (intent === 'attribute_filter' && searchCandidates.length === 0) return true
-    if (qualityGate?.triggered && qualityGate.max_score < 0.1) return true
-    return false
+    if (intent === 'refinement' || intent === 'follow_up') return 'correction'
+    if (intent === 'attribute_filter' && searchCandidates.length === 0) return 'zero-result-filter'
+    if (qualityGate?.triggered && qualityGate.max_score < 0.1) return 'low-score-retry'
+    return null
+  }
+
+  // Headline per tool-check reason (#142) — distinct from the generic
+  // "Checking whether a tool is needed" this replaces, so the SAME wait
+  // reads differently for "you disputed a tag" (color correction, Arc 2)
+  // vs. "nothing matched this filter" (a gap — waterproof or, in
+  // principle, an unmapped color) rather than one label covering both.
+  const TOOL_CHECK_HEADLINE: Record<ToolCheckReason, string> = {
+    correction: 'Checking whether a tag needs correcting',
+    'zero-result-filter': 'Checking whether the catalog is missing this attribute',
+    'low-score-retry': 'Checking whether the catalog is missing something',
   }
 
   // Map node IDs to user-friendly display names
   const getNodeDisplayName = (node: string): string => {
     // Same vocabulary as the narrator panel, so the chat and the right-hand
     // column describe the same step in the same words.
+    const toolCheckReason = getToolCheckReason()
     const names: Record<string, string> = {
       intent_classifier: 'Working out what you asked',
       query_evaluator: 'Deciding how literally to read it',
@@ -60,17 +79,32 @@ export function MessageList() {
       reranker: 'Re-reading the best candidates',
       quality_gate: 'Checking the results are good enough',
       // Split deliberately — see getCurrentStepSummary. The agent node makes
-      // a second, tool-offer model call only when isToolCheckEligible() is
-      // true; otherwise it skips straight to the answer call, so the label
-      // must reflect which case this turn is in (#106).
+      // a second, tool-offer model call only when getToolCheckReason() is
+      // non-null; otherwise it skips straight to the answer call, so the
+      // label must reflect which case this turn is in (#106).
       agent: streamingContent
         ? 'Writing the answer'
-        : isToolCheckEligible()
-          ? 'Checking whether a tool is needed'
+        : toolCheckReason
+          ? TOOL_CHECK_HEADLINE[toolCheckReason]
           : 'Thinking through the answer',
       llm_judge: 'Checking the answer against the sources',
     }
     return names[node] || 'Working'
+  }
+
+  // Most recent applied-filter summary the retriever reported (e.g. "color:
+  // yellow", "waterproof: waterproof") — used to name what came up empty or
+  // mis-mapped, instead of leaving the reader to guess.
+  const getLastFilterSummary = (): string | null => {
+    for (let i = steps.length - 1; i >= 0; i--) {
+      for (let j = steps[i].events.length - 1; j >= 0; j--) {
+        const event = steps[i].events[j]
+        if (event.type === 'opensearch_query' && event.filter_summary) {
+          return event.filter_summary
+        }
+      }
+    }
+    return null
   }
 
   // A second line of detail under the stage name, so something visibly moves
@@ -90,17 +124,30 @@ export function MessageList() {
     if (currentNode === 'query_evaluator' && intentClassification?.intent) {
       return `Read as "${intentClassification.intent}"`
     }
-    // The agent node's first model call only exists when isToolCheckEligible()
-    // is true \u2014 see getNodeDisplayName. When it does run, its tokens are
+    // The agent node's first model call only exists when getToolCheckReason()
+    // is non-null \u2014 see getNodeDisplayName. When it does run, its tokens are
     // suppressed on purpose (INTERNAL_LLM_TAG), because they are the model
     // reasoning out loud, not the reply, and only when that resolves does the
     // visible answer begin. When it's not eligible, the wait is ordinary
     // answer-generation latency (#106).
     if (currentNode === 'agent') {
       if (!streamingContent) {
-        return isToolCheckEligible()
-          ? 'Deciding if the catalog needs changing before answering'
-          : 'Composing a response from the retrieved matches'
+        const reason = getToolCheckReason()
+        if (!reason) return 'Composing a response from the retrieved matches'
+        // #142: name the actual condition instead of a generic "checking" \u2014
+        // this is the one place a shopper sees BEFORE the agent decides
+        // whether to write to the catalog, so it's the one place that has
+        // to say why, not just that.
+        if (reason === 'correction') {
+          return "You may be disputing a tag from an earlier answer \u2014 deciding whether to correct it."
+        }
+        if (reason === 'zero-result-filter') {
+          const filter = getLastFilterSummary()
+          return filter
+            ? `No products matched ${filter} \u2014 deciding whether to teach the catalog this term.`
+            : 'No products matched that filter \u2014 deciding whether the catalog is missing this term.'
+        }
+        return 'Nothing scored well even after retrying \u2014 deciding whether this is a catalog gap.'
       }
       if (queryEvaluation) {
         return `Using the top matches at \u03b1 ${queryEvaluation.alpha.toFixed(2)}`

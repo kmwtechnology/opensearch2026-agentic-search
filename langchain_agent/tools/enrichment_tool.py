@@ -51,11 +51,19 @@ def format_enrichment_message(result: EnrichmentResult) -> str:
     if not result.success:
         return f"Could not enrich '{result.variant}' as {result.attribute_type}: {result.reason}"
 
-    action = (
-        f"Corrected '{result.variant}' from '{result.corrected_from}' to '{result.canonical}'"
-        if result.corrected_from
-        else f"Added '{result.variant}' as a '{result.canonical}' {result.attribute_type}"
-    )
+    # variant == canonical happens when the term itself becomes the
+    # canonical bucket (e.g. registering "waterproof" as the first entry in
+    # a brand-new attribute type) -- "Added 'waterproof' as a 'waterproof'
+    # waterproof" is a tautology, so phrase that case as a registration
+    # instead of a variant->canonical mapping.
+    if result.corrected_from:
+        action = (
+            f"Corrected '{result.variant}' from '{result.corrected_from}' to '{result.canonical}'"
+        )
+    elif result.variant.lower() == (result.canonical or "").lower():
+        action = f"Added '{result.variant}' as a new {result.attribute_type} attribute"
+    else:
+        action = f"Added '{result.variant}' as a '{result.canonical}' {result.attribute_type}"
 
     if not result.reindex_success:
         detail = f" ({result.reindex_error})" if result.reindex_error else ""

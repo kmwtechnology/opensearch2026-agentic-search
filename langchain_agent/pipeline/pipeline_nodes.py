@@ -1230,11 +1230,22 @@ so briefly."""
         # something is underway — everything after this line is reporting on a
         # thing the audience has already spent 20 silent seconds waiting for
         # (#103). Safe on a worker thread; a no-op when nobody is observing.
+        # `current_mapping` (computed above for the value judge) is threaded
+        # through as `corrected_from` so the frontend can explain WHY this is
+        # happening before the reindex even starts — "nothing currently
+        # matches this term" (a gap) reads very differently from "this is
+        # currently mapped to something else" (a correction), and #142
+        # flagged that the UI was jumping straight to reingestion without
+        # saying which one this was. `enrich_attribute` itself may still land
+        # on "already mapped" (a no-op) if `canonical` turns out to equal
+        # `current_mapping` — a rare LLM-proposes-a-no-op edge case that
+        # predates this change and isn't worth special-casing here.
         enrichment_events.publish(
             status="started",
             attribute_type=attribute_type,
             variant=variant,
             canonical=canonical,
+            corrected_from=current_mapping,
         )
 
         enrichment_result = enrich_attribute(attribute_type, variant, explicit_canonical=canonical)

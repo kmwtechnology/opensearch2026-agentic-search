@@ -62,7 +62,7 @@ export function GuidePage() {
         <div className="space-y-4">
           <p className="text-gray-700">
             This is a production-grade AI-powered e-commerce product search agent — hybrid search (semantic + lexical),
-            intelligent reranking, and real-time observability — presented through three scripted, projector-friendly
+            intelligent reranking, and real-time observability — presented through four scripted, projector-friendly
             demos rather than freeform chat. Pick one from the header and follow along; the "Demos" section below
             walks through each one.
           </p>
@@ -111,11 +111,11 @@ export function GuidePage() {
     },
     {
       id: 'demos',
-      title: '🎬 The Three Demos',
+      title: '🎬 The Four Demos',
       content: (
         <div className="space-y-4">
           <p className="text-[1.375rem] text-gray-700">
-            The header's demo selector picks between three scripted demos, each proving a different part of the
+            The header's demo selector picks between four scripted demos, each proving a different part of the
             pipeline. Pick one, follow its turns in order, and watch the Details panel for the numbers
             called out below.
           </p>
@@ -202,6 +202,30 @@ export function GuidePage() {
                 re-testing the fix). The filter now reads{' '}
                 <code className="bg-gray-100 px-1">product_color_primary: "brown"</code> — that field changing is
                 the proof: the fix is permanent, for every shopper after this one.
+              </li>
+            </ol>
+          </div>
+
+          <div className="border-l-4 border-cyan-500 pl-4">
+            <h4 className="font-semibold text-gray-900">Data Enrichment: Schema Evolution</h4>
+            <p className="text-[1.375rem] text-gray-600">
+              This taxonomy-growth machinery's other shape: not correcting a wrong tag, but teaching the catalog a
+              filter dimension that never existed at all — unprompted, unlike the tag-correction demo above, which
+              needs a shopper to dispute it first. Also re-arms itself automatically on selection.
+            </p>
+            <ol className="list-decimal list-inside space-y-2 text-[1.375rem] text-gray-700 mt-2">
+              <li>
+                <code className="bg-gray-100 px-1">Show me waterproof boots</code> — zero results.{' '}
+                <code className="bg-gray-100 px-1">product_waterproof_primary</code> genuinely doesn't exist yet on
+                a freshly-armed cluster. Watch the agent notice the gap on its own and call its enrichment tool —
+                no shopper has to ask — then a real ~20-30s Lucille reindex of all 9,618 products.
+              </li>
+              <li>
+                <code className="bg-gray-100 px-1">Show me waterproof boots</code> — the same query, asked again in
+                a brand-new conversation. The filter now reads{' '}
+                <code className="bg-gray-100 px-1">product_waterproof_primary: "waterproof"</code> and real
+                results come back — a filter dimension that didn't exist two minutes ago, permanent for every
+                shopper after this one.
               </li>
             </ol>
           </div>

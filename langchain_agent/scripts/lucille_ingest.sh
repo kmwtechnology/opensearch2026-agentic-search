@@ -26,13 +26,15 @@
 #       in the OS-backed attribute mapping store; always fresh, never
 #       hand-edited (see langchain_agent/config_generator.py)
 #   5. Run Lucille products ingest (ParquetConnector → OpenSearch)
-#   5b. (--seed-taxonomy only) Rebuild the color/material attribute taxonomies
-#       in the OS-backed mapping store via discovery against the products
-#       just indexed (scripts/rebuild_attribute_taxonomies.py), regenerate
+#   5b. (--seed-taxonomy only) Rebuild the color attribute taxonomy in the
+#       OS-backed mapping store via discovery against the products just
+#       indexed (scripts/rebuild_attribute_taxonomies.py), regenerate
 #       products.generated.conf (now with one detect* stage per type), and
 #       run the products ingest a second time so every product gets its
 #       product_<type>_primary fields. This is how a fresh cluster (hosted or
-#       local) gets a taxonomy at all -- nothing else seeds the store (#71).
+#       local) gets a color taxonomy at all -- nothing else seeds the store
+#       (#71). "waterproof" is deliberately NOT part of this step; it starts
+#       empty and is grown entirely by the live enrichment flywheel.
 #   6. Run Lucille judgments ingest (ParquetConnector → OpenSearch)
 #
 # Required env vars (sourced from langchain_agent/.env):
@@ -54,11 +56,12 @@
 #   --reset-index     Delete the products index, then recreate the mapping via
 #                     setup.py before ingest. Use when mappings change.
 #   --skip-judgments  Skip Step 6 (judgments ingest)
-#   --seed-taxonomy   Run Step 5b. DESTRUCTIVE to the mapping store: wipes every
-#                     color/material mapping (including agent-learned ones) and
-#                     rediscovers from scratch. Use on a cluster whose store is
-#                     empty (Step 4b warns loudly when that is the case), or to
-#                     deliberately reset the taxonomy to its seed state.
+#   --seed-taxonomy   Run Step 5b. DESTRUCTIVE to the color mapping: wipes
+#                     every color mapping (including agent-learned ones) and
+#                     rediscovers from scratch. Does NOT touch "waterproof".
+#                     Use on a cluster whose store is empty (Step 4b warns
+#                     loudly when that is the case), or to deliberately reset
+#                     color to its seed state.
 
 set -euo pipefail
 
@@ -293,8 +296,9 @@ if ! generate_products_conf; then
   else
     warn "Attribute mapping store at $_DISPLAY_URL has NO registered attribute types."
     warn "No detect* stages will run: every product is indexed with no product_color_primary /"
-    warn "product_material_primary fields, so color/material filters and the enrichment flywheel"
-    warn "cannot work against this cluster. Re-run with --seed-taxonomy to seed it (see #71)."
+    warn "product_waterproof_primary fields, so color/waterproof filters and the enrichment"
+    warn "flywheel cannot work against this cluster. Re-run with --seed-taxonomy to seed color"
+    warn "(see #71) -- waterproof grows separately via the live flywheel, not this flag."
   fi
 fi
 
@@ -344,7 +348,7 @@ run_products_ingest
 # dev already uses (scripts/rebuild_attribute_taxonomies.py): same result on
 # the runner, a GCP workstation, or a laptop.
 if [[ "$SEED_TAXONOMY" == "true" ]]; then
-  info "Seeding color/material attribute taxonomies via discovery against $_DISPLAY_URL/$OPENSEARCH_INDEX..."
+  info "Seeding color attribute taxonomy via discovery against $_DISPLAY_URL/$OPENSEARCH_INDEX..."
   (cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" scripts/rebuild_attribute_taxonomies.py)
   if ! generate_products_conf; then
     error "Taxonomy seeding finished but the mapping store still has no attribute types -- refusing to re-run products without detect* stages."

@@ -64,11 +64,20 @@ def _build_prompt(
         if current_mapping
         else "Not currently in the taxonomy (this would be a new addition)"
     )
+    same_term_note = (
+        "\nNote: the term and the proposed category are the SAME WORD. That is "
+        "expected and NOT a reason to decline — for an attribute type with no "
+        "current mappings at all, mapping a term to itself is how the very "
+        "first entry (and the filter dimension it enables) gets registered, "
+        "not a redundant or trivial change."
+        if variant.strip().lower() == canonical.strip().lower()
+        else ""
+    )
     return f"""Proposed change:
   Attribute type: {attribute_type}
   Term: "{variant}"
   Proposed canonical category: "{canonical}"
-  {current_line}
+  {current_line}{same_term_note}
 
 Conversation context that led to this proposal:
 {context or "(none given)"}

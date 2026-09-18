@@ -129,6 +129,32 @@ class TestTriggerEnrichmentTool:
         assert "Added" in result
         assert "Corrected" not in result
 
+    @patch("tools.enrichment_tool.enrich_attribute")
+    def test_variant_equal_to_canonical_avoids_tautology(self, mock_enrich):
+        """Confirmed live (#142): registering "waterproof" as the FIRST entry
+        of a brand-new attribute type maps the term to itself. The naive
+        "Added 'waterproof' as a 'waterproof' waterproof" phrasing is a
+        tautology on a projector -- this must read as a registration
+        instead."""
+        mock_enrich.return_value = EnrichmentResult(
+            success=True,
+            attribute_type="waterproof",
+            variant="waterproof",
+            canonical="waterproof",
+            corrected_from=None,
+            reindex_triggered=True,
+            reindex_success=True,
+            docs_processed=9618,
+            duration_seconds=27.8,
+        )
+
+        result = trigger_enrichment.invoke(
+            {"attribute_type": "waterproof", "variant": "waterproof", "canonical": "waterproof"}
+        )
+
+        assert "as a new waterproof attribute" in result
+        assert "as a 'waterproof' waterproof" not in result
+
     def test_tool_has_expected_schema(self):
         schema = trigger_enrichment.args_schema.model_json_schema()
         assert set(schema["required"]) == {"attribute_type", "variant", "canonical"}
