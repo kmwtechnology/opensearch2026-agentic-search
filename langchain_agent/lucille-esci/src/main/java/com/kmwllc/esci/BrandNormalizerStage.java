@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Lucille stage for normalizing product brand names.
  *
- * <p>Unlike color/material (discovered variant->canonical taxonomies, sourced
+ * <p>Unlike color/waterproof (discovered variant->canonical taxonomies, sourced
  * from the OpenSearch-backed attribute mapping store via {@link
  * AttributeDetectorStage}), brand normalization is a fixed, deterministic
  * transform — lowercase plus generic-placeholder consolidation — with no

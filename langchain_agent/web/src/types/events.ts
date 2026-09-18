@@ -210,7 +210,7 @@ export interface ToolCallEvent extends BaseEvent {
 }
 
 // Agentic enrichment flywheel: fired when trigger_enrichment adds a new
-// color/material variant, or corrects an existing wrong one, and triggers a
+// color/waterproof variant, or corrects an existing wrong one, and triggers a
 // live catalog reindex.
 //
 // This arrives MORE THAN ONCE per enrichment (#103): a 'started' event fires

@@ -287,11 +287,39 @@ describe('narrate', () => {
 })
 
 describe('narrate — enrichment lifecycle', () => {
-  it('announces the re-index while it is underway', () => {
+  it('announces a GAP fill while the re-index is underway (#142: say why, not just that)', () => {
     const line = narrate(enrichment({ status: 'started', canonical: 'brown' }))
     expect(line?.enrichment).toBe('started')
     expect(line?.weight).toBe('moment')
-    expect(line?.text).toContain('Rebuilding')
+    expect(line?.text).toContain('No products are tagged')
+    expect(line?.text).toContain('tan')
+  })
+
+  it('drops the redundant "as a X" clause when the term and attribute type are the same word', () => {
+    const line = narrate(
+      enrichment({
+        status: 'started',
+        variant: 'waterproof',
+        attribute_type: 'waterproof',
+        canonical: 'waterproof',
+      })
+    )
+    expect(line?.text).toBe(
+      'No products are tagged “waterproof” yet — teaching the catalog this term and re-indexing live.'
+    )
+    expect(line?.text).not.toContain('as a waterproof')
+  })
+
+  it('announces a CORRECTION in progress while the re-index is underway, distinctly from a gap', () => {
+    // corrected_from at "started" time is the CURRENT mapping (threaded
+    // through from the value-judge lookup, before enrich_attribute even
+    // runs) — present means this is a correction, not a fresh addition.
+    const line = narrate(
+      enrichment({ status: 'started', canonical: 'brown', corrected_from: 'yellow' })
+    )
+    expect(line?.text).toContain('currently mapped to')
+    expect(line?.text).toContain('yellow')
+    expect(line?.text).not.toContain('No products are tagged')
   })
 
   it('distinguishes a CORRECTION from merely learning a new term', () => {
@@ -307,9 +335,9 @@ describe('narrate — enrichment lifecycle', () => {
     const learned = narrate(
       enrichment({
         status: 'complete',
-        variant: 'chrome',
-        attribute_type: 'material',
-        canonical: 'metal',
+        variant: 'weatherproof',
+        attribute_type: 'waterproof',
+        canonical: 'waterproof',
         docs_processed: 9618,
         duration_seconds: 19.4,
       })

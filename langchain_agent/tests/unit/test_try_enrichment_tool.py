@@ -44,7 +44,7 @@ def _agent_with_llm(bound_llm_response, final_response=None, enrichment_assessme
 
 class TestTryEnrichmentTool:
     def test_no_tool_call_returns_none(self):
-        response = AIMessage(content="I don't see a color or material gap here.")
+        response = AIMessage(content="I don't see a color or waterproof gap here.")
         response.tool_calls = []
         agent = _agent_with_llm(response)
 
@@ -57,7 +57,7 @@ class TestTryEnrichmentTool:
         response.tool_calls = []
         agent = _agent_with_llm(response)
 
-        agent._try_enrichment_tool("chrome bar table")
+        agent._try_enrichment_tool("weatherproof hiking boots")
 
         from tools.enrichment_tool import trigger_enrichment
 
@@ -69,9 +69,9 @@ class TestTryEnrichmentTool:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
             success=True,
-            attribute_type="material",
-            variant="chrome",
-            canonical="metal",
+            attribute_type="waterproof",
+            variant="weatherproof",
+            canonical="waterproof",
             reindex_triggered=True,
             reindex_success=True,
             docs_processed=9618,
@@ -82,25 +82,33 @@ class TestTryEnrichmentTool:
         tool_call_response.tool_calls = [
             {
                 "name": "trigger_enrichment",
-                "args": {"attribute_type": "material", "variant": "chrome", "canonical": "metal"},
+                "args": {
+                    "attribute_type": "waterproof",
+                    "variant": "weatherproof",
+                    "canonical": "waterproof",
+                },
                 "id": "call_1",
             }
         ]
-        final = AIMessage(content="I've added chrome as a metal and re-indexed the catalog.")
+        final = AIMessage(
+            content="I've added weatherproof as waterproof and re-indexed the catalog."
+        )
         agent = _agent_with_llm(tool_call_response, final_response=final)
 
-        result = agent._try_enrichment_tool("chrome bar table")
+        result = agent._try_enrichment_tool("weatherproof hiking boots")
 
         assert result is not None
         assert result["messages"] == [final]
         assert result["citations"] == []
         assert result["enrichment_triggered"] is True
-        assert result["enrichment_attribute_type"] == "material"
-        assert result["enrichment_variant"] == "chrome"
-        assert result["enrichment_canonical"] == "metal"
+        assert result["enrichment_attribute_type"] == "waterproof"
+        assert result["enrichment_variant"] == "weatherproof"
+        assert result["enrichment_canonical"] == "waterproof"
         assert result["enrichment_duration_seconds"] == 18.3
         assert result["enrichment_docs_processed"] == 9618
-        mock_enrich.assert_called_once_with("material", "chrome", explicit_canonical="metal")
+        mock_enrich.assert_called_once_with(
+            "waterproof", "weatherproof", explicit_canonical="waterproof"
+        )
 
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     @patch("quality.enrichment_service.enrich_attribute")
@@ -114,9 +122,9 @@ class TestTryEnrichmentTool:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
             success=True,
-            attribute_type="material",
-            variant="chrome",
-            canonical="metal",
+            attribute_type="waterproof",
+            variant="weatherproof",
+            canonical="waterproof",
             reindex_triggered=True,
             reindex_success=False,
             reindex_error="docker daemon not running",
@@ -128,14 +136,18 @@ class TestTryEnrichmentTool:
         tool_call_response.tool_calls = [
             {
                 "name": "trigger_enrichment",
-                "args": {"attribute_type": "material", "variant": "chrome", "canonical": "metal"},
+                "args": {
+                    "attribute_type": "waterproof",
+                    "variant": "weatherproof",
+                    "canonical": "waterproof",
+                },
                 "id": "call_1",
             }
         ]
         final = AIMessage(content="I tried to fix that, but the re-index failed.")
         agent = _agent_with_llm(tool_call_response, final_response=final)
 
-        result = agent._try_enrichment_tool("chrome bar table")
+        result = agent._try_enrichment_tool("weatherproof hiking boots")
 
         assert result["enrichment_triggered"] is True
         assert result["enrichment_duration_seconds"] is None
@@ -181,16 +193,20 @@ class TestTryEnrichmentTool:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
             success=False,
-            attribute_type="material",
+            attribute_type="waterproof",
             variant="xyz",
-            reason="could not classify to a known material bucket",
+            reason="could not classify to a known waterproof bucket",
         )
 
         tool_call_response = AIMessage(content="")
         tool_call_response.tool_calls = [
             {
                 "name": "trigger_enrichment",
-                "args": {"attribute_type": "material", "variant": "xyz", "canonical": "metal"},
+                "args": {
+                    "attribute_type": "waterproof",
+                    "variant": "xyz",
+                    "canonical": "waterproof",
+                },
                 "id": "call_1",
             }
         ]

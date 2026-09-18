@@ -331,7 +331,7 @@ PYTHONPATH=. python3 setup.py  # Validate API connection
 
 ---
 
-## Adding a New Attribute Type (beyond color/material)
+## Adding a New Attribute Type (beyond color/waterproof)
 
 **Scenario**: Add a third detected/filterable product attribute (e.g. `size`,
 `pattern`) to the taxonomy-driven attribute detection + enrichment flywheel.
@@ -345,24 +345,26 @@ Add a canonical seed vocabulary entry to `_CANONICAL_SEEDS_BY_TYPE` in
 `retrieval/attribute_discovery.py`, then seed it into OpenSearch — either
 `AttributeMappingStore.seed_from_discovery(...)` for a small hand-curated
 set, or `bulk_discover(...)` against real `chunk_text` for a from-scratch
-build (see `scripts/rebuild_attribute_taxonomies.py` for the pattern).
-For color and material specifically this is already wired end-to-end:
-`make seed-taxonomy` locally, or the `seed_taxonomy` input on the
-`Re-Index OpenSearch` workflow for the hosted cluster, runs discovery
-between two products passes (`lucille_ingest.sh --seed-taxonomy`).
-Extend `rebuild_attribute_taxonomies.py` with the new type's canonicals
-if it should be part of that seed.
+build (see `scripts/rebuild_attribute_taxonomies.py` for the pattern) — or
+leave the variant list empty, like `WATERPROOF_CANONICALS`, if the type
+should start with a genuine gap and grow entirely from the live flywheel
+instead. For color specifically, bulk seeding is already wired end-to-end:
+`make seed-taxonomy` locally runs discovery between two products passes
+(`lucille_ingest.sh --seed-taxonomy`). Extend
+`rebuild_attribute_taxonomies.py` with the new type's canonicals only if
+it should be part of that bulk-discovery seed.
 
 ### Step 2: Wire query-time filtering
 
 Add a filter block to `_extract_attributes()` in `pipeline/pipeline_nodes.py` for the new
 type. Decide up front whether it needs a **hard** exact-match fallback
-(like color — reliable, but excludes non-taxonomy terms outright) or a
-**soft** lexical `multi_match` fallback (like material — protects
-legitimate non-taxonomy words, but subject to filter relaxation and can't
-reliably drive a live-conversation enrichment trigger). This is a
-deliberate per-type design choice — see `ARCHITECTURE.md`'s "Enrichment
-Flywheel" section for why color and material differ here.
+(like color and waterproof — reliable, but excludes non-taxonomy terms
+outright) or a **soft** lexical `multi_match` fallback (like the generic
+`feature` field — protects legitimate non-taxonomy words, but subject to
+filter relaxation and can't reliably drive a live-conversation enrichment
+trigger). This is a deliberate per-type design choice — see
+`ARCHITECTURE.md`'s "Enrichment Flywheel" section for why color/waterproof
+and `feature` differ here.
 
 ### Step 3: Add BM25 scoring weight
 

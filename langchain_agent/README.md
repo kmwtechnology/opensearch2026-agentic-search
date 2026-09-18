@@ -182,11 +182,11 @@ Frontend UI (`web/src/components/ChatPanel/TypeaheadSuggestions.tsx`):
 #### Admin API — `/api/admin/*`
 
 ```bash
-# Grow/correct the live color/material taxonomy and trigger a real reindex
+# Grow/correct the live color/waterproof taxonomy and trigger a real reindex
 curl -X POST http://localhost:8000/api/admin/enrich \
   -H "Content-Type: application/json" \
   -H "X-Admin-Token: your_admin_token_here" \
-  -d '{"attribute_type": "material", "variant": "chrome", "canonical": "metal"}'
+  -d '{"attribute_type": "waterproof", "variant": "weatherproof", "canonical": "waterproof"}'
 
 # Inspect current index health + document count
 curl http://localhost:8000/api/admin/health \
@@ -397,7 +397,7 @@ Implementation:
 `GET /api/admin/health` returns index health and document count.
 `GET /api/admin/diagnose` probes field-level hit counts and mapping
 presence per field. `POST /api/admin/enrich` grows or corrects the
-color/material taxonomy and triggers a real full Lucille reindex
+color/waterproof taxonomy and triggers a real full Lucille reindex
 (~19-20s) — see "Agentic Taxonomy Growth & Correction" below and
 `docs/integration/rest-api.md` for the request/response shape. All three
 rely on same-origin checking only (no login gate); `X-Admin-Token` support
@@ -417,16 +417,18 @@ OpenSearch, regenerates the Lucille ingest config, and triggers a real
 full reindex — not a scoped patch, not a mock.
 
 **Gap** (a term the taxonomy has never seen): when `attribute_filter`
-intent extracts a color/material term the taxonomy doesn't recognize and
-the resulting search genuinely fails, `agent_node` offers the tool.
-Color's unresolved-term filter is a hard exact match (excluded from the
-retriever's filter-relaxation safety net), so it reliably produces a
-genuine zero-result query through live chat. Material's fallback is a
-deliberately soft lexical match (protecting legitimate non-material
-feature words like "waterproof"), and material/size filters *are*
-subject to relaxation, so no material term reliably triggers the gap
-signal through natural conversation — a material gap can still be added
-via `POST /api/admin/enrich` directly.
+intent extracts a color or waterproof term the taxonomy doesn't recognize
+and the resulting search genuinely fails, `agent_node` offers the tool.
+Both color's and waterproof's unresolved-term filter is a hard exact
+match (excluded from the retriever's filter-relaxation safety net, which
+only ever drops `multi_match` clauses), so either one reliably produces a
+genuine zero-result query through live chat. `WATERPROOF_CANONICALS`
+ships with zero seed variants on purpose (`retrieval/attribute_discovery.py`)
+so this gap is real and reproducible on a fresh cluster, not something
+that merely happens to be missing — the generic `feature` field (anything
+that isn't a color or a waterproofing requirement, e.g. "breathable",
+"insulated") is the one that stays a deliberately soft lexical match, and
+*that* is subject to relaxation.
 
 **Correction** (a term already mapped to the *wrong* bucket — the live
 demo's centerpiece, see `DEMO.md`): a separate detection branch in

@@ -177,7 +177,7 @@ INDEX_MAPPING = {
                     "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
                 },
             },
-            "product_material": {
+            "product_waterproof": {
                 "type": "text",
                 "analyzer": "light_english_analyzer",
                 "fields": {
@@ -186,12 +186,13 @@ INDEX_MAPPING = {
                 },
             },
             # Normalized attribute filter fields, populated at ingest time by
-            # the Lucille stages (AttributeNormalizerStage, MaterialNormalizerStage).
+            # the generic Lucille AttributeDetectorStage (one class,
+            # parameterized per attribute_type — see config_generator.py).
             # Declared explicitly here (unlike product_color_primary/
             # product_brand_normalized, which land via dynamic mapping today)
             # so a fresh index always has these as keyword from the start.
-            "product_material_primary": {"type": "keyword"},
-            "product_material_secondary": {"type": "keyword"},
+            "product_waterproof_primary": {"type": "keyword"},
+            "product_waterproof_secondary": {"type": "keyword"},
             "product_locale": {"type": "keyword"},
             "esci_labels": {"type": "keyword"},
             "collection": {"type": "keyword"},
@@ -509,7 +510,7 @@ class OpenSearchVectorStore:
             [
                 ("product_brand", 2.0),
                 ("product_color", 1.5),
-                ("product_material", 2.0),
+                ("product_waterproof", 2.0),
             ]
         )
         if phonetic:
@@ -525,7 +526,7 @@ class OpenSearchVectorStore:
                 ("chunk_text.heavy", 0.3),
                 ("product_brand.heavy", 0.3),
                 ("product_color.heavy", 0.3),
-                ("product_material.heavy", 0.3),
+                ("product_waterproof.heavy", 0.3),
             ]
         )
 

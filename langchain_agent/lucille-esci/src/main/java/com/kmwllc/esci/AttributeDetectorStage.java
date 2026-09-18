@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Generic Lucille stage for detecting and normalizing a discovered
- * variant->canonical attribute (color, material, or any future attribute
+ * variant->canonical attribute (color, waterproof, or any future attribute
  * type) from unstructured text — one parameterized class instead of a
  * dedicated Java class per attribute type.
  *
@@ -56,15 +56,15 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The generated products.conf emits one stage entry per attribute type
  * currently registered in the mapping store — e.g. a "detectColor" stage and
- * a "detectMaterial" stage, each an independent instance of this same class
+ * a "detectWaterproof" stage, each an independent instance of this same class
  * with a different {@code attributeType} parameter (see config_generator.py).
  *
  * <p>Configuration (in generated products.conf):
  * <pre>{@code
  * {
- *   name: "detectMaterial"
+ *   name: "detectWaterproof"
  *   class: "com.kmwllc.esci.AttributeDetectorStage"
- *   attributeType: "material"
+ *   attributeType: "waterproof"
  *   // Same client + TLS settings as the indexer's root `opensearch` block
  *   // (HOCON merge), pointed at the mapping store index.
  *   opensearch: ${opensearch} { index: "agentic_hybrid_search_attribute_mappings" }

@@ -67,11 +67,11 @@ class TestBuildMultiMatchDefaults:
             "title_phrase^2.5",
             "product_brand^2.0",
             "product_color^1.5",
-            "product_material^2.0",
+            "product_waterproof^2.0",
             "chunk_text.heavy^0.3",
             "product_brand.heavy^0.3",
             "product_color.heavy^0.3",
-            "product_material.heavy^0.3",
+            "product_waterproof.heavy^0.3",
         ]
 
 
@@ -116,11 +116,11 @@ class TestBuildMultiMatchIndividualFlags:
             "title_phrase",
             "product_brand",
             "product_color",
-            "product_material",
+            "product_waterproof",
             "chunk_text.heavy",
             "product_brand.heavy",
             "product_color.heavy",
-            "product_material.heavy",
+            "product_waterproof.heavy",
         }
 
     def test_hybrid_flag_does_not_affect_multi_match(self):
@@ -151,11 +151,11 @@ class TestBuildMultiMatchCombinations:
             "title",
             "product_brand",
             "product_color",
-            "product_material",
+            "product_waterproof",
             "chunk_text.heavy",
             "product_brand.heavy",
             "product_color.heavy",
-            "product_material.heavy",
+            "product_waterproof.heavy",
         ]
 
     def test_phonetic_and_phrase_off_keeps_field_boosts(self):
@@ -165,11 +165,11 @@ class TestBuildMultiMatchCombinations:
             "title^3.0",
             "product_brand^2.0",
             "product_color^1.5",
-            "product_material^2.0",
+            "product_waterproof^2.0",
             "chunk_text.heavy^0.3",
             "product_brand.heavy^0.3",
             "product_color.heavy^0.3",
-            "product_material.heavy^0.3",
+            "product_waterproof.heavy^0.3",
         ]
         assert clause["fuzziness"] == "AUTO"
 

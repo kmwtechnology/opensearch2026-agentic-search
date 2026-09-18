@@ -43,7 +43,7 @@ class EnrichmentValueAssessment(BaseModel):
 _EVALUATOR_SYSTEM = (
     "You are an impartial reviewer deciding whether a proposed change to an "
     "e-commerce search taxonomy is worth making. A separate assistant has "
-    "already decided a term should map to a given color/material category, "
+    "already decided a term should map to a given color/waterproof category, "
     "and chose that category correctly according to plain meaning. Your job "
     "is different: decide whether actually writing this mapping and "
     "re-indexing the whole product catalog (a real, non-trivial operation) "
@@ -64,11 +64,26 @@ def _build_prompt(
         if current_mapping
         else "Not currently in the taxonomy (this would be a new addition)"
     )
+    same_term_note = (
+        "\nNote: the term and the proposed category are the SAME WORD. That is "
+        "expected and NOT a reason to decline — for an attribute type with no "
+        "current mappings at all, mapping a term to itself is how the very "
+        "first entry (and the filter dimension it enables) gets registered, "
+        "not a redundant or trivial change."
+        # (x or "") because callers source these from call["args"].get(key, "")
+        # — the "" default only applies to a MISSING key, so a model that
+        # emits the key with a JSON null hands us None. Before this check
+        # existed both values only ever reached an f-string, where None was
+        # harmless; .strip() on None would raise inside agent_node and take
+        # down the whole turn.
+        if (variant or "").strip().lower() == (canonical or "").strip().lower()
+        else ""
+    )
     return f"""Proposed change:
   Attribute type: {attribute_type}
   Term: "{variant}"
   Proposed canonical category: "{canonical}"
-  {current_line}
+  {current_line}{same_term_note}
 
 Conversation context that led to this proposal:
 {context or "(none given)"}

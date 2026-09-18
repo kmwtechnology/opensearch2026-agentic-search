@@ -5,7 +5,7 @@ OpenSearch-backed attribute mapping store.
 
 Replaces the old static products.conf's dedicated normalizeAttributes/
 normalizeMaterial stage blocks with one generated AttributeDetectorStage
-entry per registered attribute type (color, material, and any future type
+entry per registered attribute type (color, waterproof, and any future type
 the live agent registers) — each a distinct, independently-named pipeline
 stage instance sharing the one generic Java class. A brand-new attribute
 type needs zero hand-edited config: the next call to generate_products_conf()
@@ -145,7 +145,7 @@ log {
 
 
 def _stage_name(attribute_type: str) -> str:
-    """'material' -> 'detectMaterial'; 'glass_ceramic' -> 'detectGlassCeramic'."""
+    """'waterproof' -> 'detectWaterproof'; 'glass_ceramic' -> 'detectGlassCeramic'."""
     parts = attribute_type.replace("-", "_").split("_")
     camel = "".join(p.capitalize() for p in parts)
     return f"detect{camel}"

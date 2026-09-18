@@ -47,18 +47,19 @@ def test_format_filter_summary_with_color_filter(agent):
     assert result == "color: black"
 
 
-def test_format_filter_summary_with_material_filter(agent):
-    """Test filter summary formatting for a resolved material match filter.
+def test_format_filter_summary_with_waterproof_filter(agent):
+    """Test filter summary formatting for a resolved waterproof match filter.
 
     Regression test: this branch didn't exist at all prior to 2026-09-14 --
-    a resolved material filter (product_material_primary) silently vanished
-    from the summary with no branch to catch it.
+    a resolved attribute filter on this field (product_material_primary at
+    the time; product_waterproof_primary since the material->waterproof
+    swap) silently vanished from the summary with no branch to catch it.
     """
-    filters = [{"match": {"product_material_primary": {"query": "leather"}}}]
+    filters = [{"match": {"product_waterproof_primary": {"query": "waterproof"}}}]
 
     result = agent._format_filter_summary(filters)
 
-    assert result == "material: leather"
+    assert result == "waterproof: waterproof"
 
 
 def test_format_filter_summary_with_price_range(agent):

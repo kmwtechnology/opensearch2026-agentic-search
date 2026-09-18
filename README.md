@@ -245,14 +245,14 @@ adjustment.
 | **Data** | Amazon ESCI (Shopping Queries Dataset) | 1.8M+ product listings |
 | **Deployment** | Local only (Docker Compose) | Conference demo |
 
-## The Three Demos
+## The Four Demos
 
 The app is projector-first and presenter-driven: pick a demo from the header
 dropdown and step through it with the **Next** button (turn-progress pips,
 a **Restart** button, a Details/Narration toggle on **F2**, plus Guide and
 API-reference links round out the header). The chat box still accepts free
 text if you want to go off-script, but nothing in the UI expects a query
-typed from scratch — the three demos in
+typed from scratch — the four demos in
 [`web/src/demos/registry.ts`](langchain_agent/web/src/demos/registry.ts)
 are the guided path. Full presenter script:
 [`langchain_agent/DEMO.md`](langchain_agent/DEMO.md) and the in-app `/guide`
@@ -265,7 +265,7 @@ the way a real shopper actually shops: "Show me blue running shoes" →
 turn's pinned results, and turn 3 gets rewritten into a full query that
 carries both earlier constraints forward into a fresh, more semantic
 search. (This catalog has no price field, so every turn stays on
-attributes that exist — color, size, material, brand, feature.)
+attributes that exist — color, size, brand, feature, waterproofing.)
 
 **Proving It With Real Judgments** — a standalone turn ("sewing machine")
 that happens to hit real Amazon ESCI ground truth, so the Pipeline Quality
@@ -279,6 +279,16 @@ corrects the taxonomy and triggers a real ~19–20s Lucille reindex of all
 stuck. This demo consumes its own bug to demonstrate the fix, so the UI
 re-arms it automatically each time it's selected
 (`POST /api/admin/demo-reset` does the same thing manually).
+
+**Data Enrichment: Schema Evolution** — the same machinery's other shape:
+not correcting a wrong tag, but growing a filter dimension that never
+existed. "Show me waterproof boots" returns nothing, because
+`product_waterproof_primary` genuinely isn't populated yet — the
+`waterproof` taxonomy ships with zero seed variants on purpose, so the gap
+is real and reproducible rather than staged. The agent notices and calls
+its enrichment tool *unprompted* (no shopper has to dispute anything,
+unlike the demo above), reindexes, and the same query in a fresh
+conversation comes back filtered. Also self-re-arming.
 
 ## Observability Panel
 

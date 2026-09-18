@@ -15,9 +15,9 @@ class TestTriggerEnrichmentTool:
     def test_successful_enrichment_reports_docs_and_duration(self, mock_enrich):
         mock_enrich.return_value = EnrichmentResult(
             success=True,
-            attribute_type="material",
-            variant="chrome",
-            canonical="metal",
+            attribute_type="waterproof",
+            variant="weatherproof",
+            canonical="waterproof",
             reindex_triggered=True,
             reindex_success=True,
             docs_processed=9618,
@@ -25,11 +25,11 @@ class TestTriggerEnrichmentTool:
         )
 
         result = trigger_enrichment.invoke(
-            {"attribute_type": "material", "variant": "chrome", "canonical": "metal"}
+            {"attribute_type": "waterproof", "variant": "weatherproof", "canonical": "waterproof"}
         )
 
-        assert "chrome" in result
-        assert "metal" in result
+        assert "weatherproof" in result
+        assert "waterproof" in result
         assert "9618" in result
         assert "18.3" in result
         assert "live" in result
@@ -50,13 +50,13 @@ class TestTriggerEnrichmentTool:
     def test_classification_failure_reports_reason(self, mock_enrich):
         mock_enrich.return_value = EnrichmentResult(
             success=False,
-            attribute_type="material",
+            attribute_type="waterproof",
             variant="unobtainium",
-            reason="could not classify to a known material bucket",
+            reason="could not classify to a known waterproof bucket",
         )
 
         result = trigger_enrichment.invoke(
-            {"attribute_type": "material", "variant": "unobtainium", "canonical": "metal"}
+            {"attribute_type": "waterproof", "variant": "unobtainium", "canonical": "waterproof"}
         )
 
         assert "Could not enrich" in result
@@ -67,15 +67,15 @@ class TestTriggerEnrichmentTool:
     def test_reindex_failure_reports_mapping_saved(self, mock_enrich):
         mock_enrich.return_value = EnrichmentResult(
             success=True,
-            attribute_type="material",
-            variant="chrome",
-            canonical="metal",
+            attribute_type="waterproof",
+            variant="weatherproof",
+            canonical="waterproof",
             reindex_triggered=True,
             reindex_success=False,
         )
 
         result = trigger_enrichment.invoke(
-            {"attribute_type": "material", "variant": "chrome", "canonical": "metal"}
+            {"attribute_type": "waterproof", "variant": "weatherproof", "canonical": "waterproof"}
         )
 
         assert "re-index failed" in result
@@ -112,9 +112,9 @@ class TestTriggerEnrichmentTool:
     def test_fresh_addition_still_says_added_not_corrected(self, mock_enrich):
         mock_enrich.return_value = EnrichmentResult(
             success=True,
-            attribute_type="material",
-            variant="chrome",
-            canonical="metal",
+            attribute_type="waterproof",
+            variant="weatherproof",
+            canonical="waterproof",
             corrected_from=None,
             reindex_triggered=True,
             reindex_success=True,
@@ -123,11 +123,37 @@ class TestTriggerEnrichmentTool:
         )
 
         result = trigger_enrichment.invoke(
-            {"attribute_type": "material", "variant": "chrome", "canonical": "metal"}
+            {"attribute_type": "waterproof", "variant": "weatherproof", "canonical": "waterproof"}
         )
 
         assert "Added" in result
         assert "Corrected" not in result
+
+    @patch("tools.enrichment_tool.enrich_attribute")
+    def test_variant_equal_to_canonical_avoids_tautology(self, mock_enrich):
+        """Confirmed live (#142): registering "waterproof" as the FIRST entry
+        of a brand-new attribute type maps the term to itself. The naive
+        "Added 'waterproof' as a 'waterproof' waterproof" phrasing is a
+        tautology on a projector -- this must read as a registration
+        instead."""
+        mock_enrich.return_value = EnrichmentResult(
+            success=True,
+            attribute_type="waterproof",
+            variant="waterproof",
+            canonical="waterproof",
+            corrected_from=None,
+            reindex_triggered=True,
+            reindex_success=True,
+            docs_processed=9618,
+            duration_seconds=27.8,
+        )
+
+        result = trigger_enrichment.invoke(
+            {"attribute_type": "waterproof", "variant": "waterproof", "canonical": "waterproof"}
+        )
+
+        assert "as a new waterproof attribute" in result
+        assert "as a 'waterproof' waterproof" not in result
 
     def test_tool_has_expected_schema(self):
         schema = trigger_enrichment.args_schema.model_json_schema()
@@ -136,7 +162,7 @@ class TestTriggerEnrichmentTool:
     def test_canonical_field_description_lists_valid_buckets(self):
         schema = trigger_enrichment.args_schema.model_json_schema()
         canonical_desc = schema["properties"]["canonical"]["description"]
-        assert "leather" in canonical_desc  # a material bucket
+        assert "waterproof" in canonical_desc  # the waterproof bucket
         assert "black" in canonical_desc  # a color bucket
 
     @patch("tools.enrichment_tool.enrich_attribute")
@@ -166,9 +192,9 @@ class TestTriggerEnrichmentTool:
     def test_reindex_failure_includes_error_detail(self, mock_enrich):
         mock_enrich.return_value = EnrichmentResult(
             success=True,
-            attribute_type="material",
-            variant="cowhide",
-            canonical="leather",
+            attribute_type="waterproof",
+            variant="splash proof",
+            canonical="waterproof",
             reindex_triggered=True,
             reindex_success=False,
             reindex_mode="github",
@@ -176,7 +202,7 @@ class TestTriggerEnrichmentTool:
         )
 
         result = trigger_enrichment.invoke(
-            {"attribute_type": "material", "variant": "cowhide", "canonical": "leather"}
+            {"attribute_type": "waterproof", "variant": "splash proof", "canonical": "waterproof"}
         )
 
         assert "failed to complete" in result

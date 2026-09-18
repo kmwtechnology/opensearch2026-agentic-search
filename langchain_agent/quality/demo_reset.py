@@ -1,14 +1,27 @@
 """
-Re-arm the taxonomy self-correction demo (#103).
+Re-arm the two self-consuming demos: taxonomy self-correction (#103) and
+schema-evolution growth (issue #142).
 
-The demo destroys its own preconditions. It works because the catalog mis-tags
-tan products as ``yellow``; succeeding rewrites the mapping to ``brown`` and
-re-indexes every product to match. Run it twice without resetting and turn 1
-looks perfectly normal — nothing to notice, nothing to dispute, nothing to
-correct. It does not error. It just stops demonstrating anything.
+Both demos destroy their own preconditions, in opposite ways:
 
-Two ways back, and the difference matters when a presenter is clicking about
-between rehearsals:
+* **Correction** (color): the catalog mis-tags tan products as ``yellow``;
+  succeeding rewrites the mapping to ``brown`` and re-indexes every product
+  to match. Run it twice without resetting and turn 1 looks perfectly
+  normal — nothing to notice, nothing to dispute, nothing to correct.
+* **Growth** (waterproof): the taxonomy starts with a genuine gap (zero
+  seed variants — see attribute_discovery.py's WATERPROOF_CANONICALS);
+  succeeding teaches it a real variant->canonical mapping and tags matching
+  products. Run it twice without resetting and turn 1 finds the gap already
+  filled — nothing missing to notice.
+
+Neither failure errors. Both just quietly stop demonstrating anything, which
+is the worst way to find out mid-talk. reset_demo_taxonomy() restores BOTH
+to their "before" state unconditionally on every call — it's cheap and
+idempotent, so there's no need for the caller to know which demo is
+currently selected; see web/src/components/Layout.tsx's armCatalog.
+
+Two ways back for the color demo, and the difference matters when a
+presenter is clicking about between rehearsals:
 
 * **fast** (default) — flip the mapping row and re-tag only the handful of
   products whose listed color is "tan", with one ``_update_by_query``.
@@ -17,9 +30,15 @@ between rehearsals:
   9,618 products, exactly as the demo itself does. ~20s. Use it when the index
   may have drifted for reasons beyond this demo.
 
-The fast path is deliberately narrow: it only knows how to undo THIS demo's
-one mapping. It is not a general-purpose taxonomy repair, and it does not
-pretend to be — anything broader belongs in a re-ingest.
+The waterproof demo only has a fast path: delete its mapping row(s) and
+strip the field back off any products it tagged, both scoped ``_by_query``
+operations. There's no "full" mode for it because, unlike color, there's no
+correct steady-state mapping to restore — the taxonomy is supposed to be
+empty until the live flywheel (re-)grows it.
+
+Both fast paths are deliberately narrow: each only knows how to undo its own
+demo's state. Neither is a general-purpose taxonomy repair, and neither
+pretends to be — anything broader belongs in a re-ingest / re-seed.
 """
 
 import logging
@@ -27,18 +46,32 @@ from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
-# The mis-tagging the demo exists to catch and fix.
+# The mis-tagging the correction demo exists to catch and fix.
 DEMO_ATTRIBUTE_TYPE = "color"
 DEMO_VARIANT = "tan"
 DEMO_BROKEN_CANONICAL = "yellow"
 
+# The attribute type the growth demo teaches the catalog from scratch.
+WATERPROOF_ATTRIBUTE_TYPE = "waterproof"
+_WATERPROOF_FIELDS = (
+    "product_waterproof",
+    "product_waterproof_primary",
+    "product_waterproof_secondary",
+)
+
 
 def reset_demo_taxonomy(full_reindex: bool = False) -> Dict[str, Any]:
     """
-    Put the mapping and the products back to the demo's "before" state.
+    Put both self-consuming demos back to their "before" state.
 
     Returns a summary describing what changed, suitable for an API response.
     """
+    color = _reset_color_demo(full_reindex=full_reindex)
+    waterproof = _reset_waterproof_demo()
+    return {**color, "waterproof": waterproof}
+
+
+def _reset_color_demo(full_reindex: bool) -> Dict[str, Any]:
     from core.config import OPENSEARCH_INDEX_NAME
     from retrieval.attribute_mapping_store import AttributeMappingStore
     from retrieval.vector_store import get_shared_opensearch_client
@@ -103,4 +136,61 @@ def reset_demo_taxonomy(full_reindex: bool = False) -> Dict[str, Any]:
         "products_retagged": updated,
         "reindex_success": True,
         "error": None,
+    }
+
+
+def _reset_waterproof_demo() -> Dict[str, Any]:
+    """
+    Delete any "waterproof" taxonomy rows the live flywheel has grown and
+    strip the fields it tagged onto products — restores the schema-evolution
+    demo's "before" state (a genuine gap), not a wrong-but-present mapping
+    to revert like the color demo.
+
+    Both operations are scoped ``_by_query`` calls (delete on the mapping
+    store, update on the products index), not a full reindex — milliseconds,
+    safe to call on every restart/demo-select regardless of which demo is
+    currently selected.
+    """
+    from core.config import OPENSEARCH_INDEX_NAME
+    from retrieval.attribute_mapping_store import INDEX_NAME as MAPPING_INDEX_NAME
+    from retrieval.attribute_mapping_store import AttributeMappingStore, _clear_lookup_cache
+    from retrieval.vector_store import get_shared_opensearch_client
+
+    store = AttributeMappingStore()
+    store.ensure_index_exists()
+    delete_response = store.client.delete_by_query(
+        index=MAPPING_INDEX_NAME,
+        refresh=True,
+        body={"query": {"term": {"attribute_type": WATERPROOF_ATTRIBUTE_TYPE}}},
+    )
+    mappings_deleted = delete_response.get("deleted", 0)
+    # A raw delete_by_query bypasses add_mapping's own cache invalidation, so
+    # the in-process lookup cache would otherwise keep serving the deleted
+    # rows until its TTL expires.
+    _clear_lookup_cache()
+
+    client = get_shared_opensearch_client()
+    update_response = client.update_by_query(
+        index=OPENSEARCH_INDEX_NAME,
+        refresh=True,
+        body={
+            "query": {"exists": {"field": "product_waterproof_primary"}},
+            "script": {
+                "source": " ".join(
+                    f"if (ctx._source.containsKey('{field}')) {{ ctx._source.remove('{field}'); }}"
+                    for field in _WATERPROOF_FIELDS
+                ),
+            },
+        },
+    )
+    products_untagged = update_response.get("updated", 0)
+    logger.info(
+        "Demo reset: cleared %s waterproof mapping(s), untagged %s product(s)",
+        mappings_deleted,
+        products_untagged,
+    )
+
+    return {
+        "mappings_deleted": mappings_deleted,
+        "products_untagged": products_untagged,
     }

@@ -1,27 +1,35 @@
 """
-Rebuild the color and material attribute taxonomies from scratch via
-discovery against real chunk_text — not migrated from color_mappings.json,
-not hand-authored. This is the "mapping-building is part of enrichment, not
-hand-authored" principle applied to both attribute types.
+Rebuild the color attribute taxonomy from scratch via discovery against real
+chunk_text — not migrated from color_mappings.json, not hand-authored. This
+is the "mapping-building is part of enrichment, not hand-authored" principle.
 
-Wipes any existing color/material docs from the OS-backed mapping store,
-then runs attribute_discovery.bulk_discover against the real product
-catalog's chunk_text (title + description + bullet_point, as already
-indexed) seeded by COLOR_CANONICALS/MATERIAL_CANONICALS.
+Wipes any existing color docs from the OS-backed mapping store, then runs
+attribute_discovery.bulk_discover against the real product catalog's
+chunk_text (title + description + bullet_point, as already indexed) seeded
+by COLOR_CANONICALS.
+
+Deliberately does NOT touch the "waterproof" attribute type. Its seed dict
+(WATERPROOF_CANONICALS in attribute_discovery.py) ships with zero variants
+on purpose — it's grown entirely by the live enrichment flywheel
+(trigger_enrichment / POST /api/admin/enrich), not bootstrapped here. Adding
+a rebuild("waterproof", ...) call would call clear_attribute_type() first,
+which would silently wipe out whatever the live demo has already taught the
+catalog every time this script runs — the opposite of what a "seed" step
+should do for an attribute type that's supposed to start empty and grow.
 
 Used to validate discovery quality ahead of the live demo, and to rehearse
-the two-act flow end-to-end before the conference.
+the color-correction arc end-to-end before the conference.
 
 Also the seeding step behind `scripts/lucille_ingest.sh --seed-taxonomy`
 (`make seed-taxonomy`; the `seed_taxonomy` input on the Re-Index OpenSearch
 workflow), which runs it between two products passes so a cluster whose
 mapping store is empty -- the hosted one was, see #71 -- ends up with
-product_color_primary / product_material_primary populated. Targets
-whatever cluster config.py's OPENSEARCH_* point at, so it needs nothing
-beyond requirements-setup.txt (no torch/pandas).
+product_color_primary populated. Targets whatever cluster config.py's
+OPENSEARCH_* point at, so it needs nothing beyond requirements-setup.txt (no
+torch/pandas).
 
-DESTRUCTIVE: every existing color/material mapping is deleted first,
-including agent-learned ones from the enrichment flywheel.
+DESTRUCTIVE: every existing color mapping is deleted first, including
+agent-learned ones from the enrichment flywheel.
 
 Usage:
     PYTHONPATH=. python3 scripts/rebuild_attribute_taxonomies.py [--dry-run]
@@ -35,7 +43,7 @@ from typing import List
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.config import OPENSEARCH_INDEX_NAME
-from retrieval.attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS, bulk_discover
+from retrieval.attribute_discovery import COLOR_CANONICALS, bulk_discover
 from retrieval.attribute_mapping_store import INDEX_NAME, AttributeMappingStore
 
 
@@ -115,7 +123,18 @@ def main() -> None:
     print(f"Fetched {len(texts)} chunk_text values.\n")
 
     rebuild("color", COLOR_CANONICALS, texts, args.dry_run)
-    rebuild("material", MATERIAL_CANONICALS, texts, args.dry_run)
+
+    # One-time migration for clusters provisioned before "material" was
+    # retired (#142). Nothing else deletes these rows, and while they exist
+    # config_generator.get_all_attribute_types() keeps emitting a
+    # detectMaterial stage, so every reindex writes dead product_material*
+    # fields -- now via dynamic mapping, since INDEX_MAPPING no longer
+    # declares them. Harmless but it silently diverges an upgraded laptop
+    # from a fresh `make setup`. A no-op on a cluster that never had them.
+    if not args.dry_run:
+        retired = clear_attribute_type(store, "material")
+        if retired:
+            print(f"[material] Cleared {retired} retired mapping(s) (attribute type removed).")
 
 
 if __name__ == "__main__":

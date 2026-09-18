@@ -28,7 +28,7 @@ JUDGMENTS_CONF = CONF_DIR / "judgments.conf"
 
 # Representative attribute types — the contract being tested here is about
 # the fixed prelude/epilogue stages, not the per-type detector blocks.
-_SAMPLE_ATTRIBUTE_TYPES = ["color", "material"]
+_SAMPLE_ATTRIBUTE_TYPES = ["color", "waterproof"]
 
 
 def _read(path: Path) -> str:

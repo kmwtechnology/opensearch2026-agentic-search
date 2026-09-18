@@ -1,6 +1,6 @@
 """
 Admin routes for operational tasks: health checks, index diagnostics, and
-the live material enrichment flywheel.
+the live taxonomy enrichment flywheel.
 
 Re-indexing is handled externally by ``lucille_ingest.sh``. There is no
 in-container ingest path.
@@ -165,7 +165,7 @@ def _admin_health_sync() -> dict:
 )
 async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentResponse:
     """
-    Enrich a color or material taxonomy with a new variant term: write the
+    Enrich a color or waterproof taxonomy with a new variant term: write the
     mapping, ensure the index has the right fields, regenerate the Lucille
     config, and trigger a real full reindex. This is the same
     discover -> write -> reindex mechanism the live agent enrichment tool
@@ -224,27 +224,38 @@ def _enrich_sync(attribute_type: str, variant: str, canonical: Optional[str]):
     return enrich_attribute(attribute_type, variant, explicit_canonical=canonical)
 
 
-@router.post("/demo-reset", summary="Re-arm the taxonomy demo (mutates the index)")
+@router.post("/demo-reset", summary="Re-arm both self-consuming demos (mutates the index)")
 async def demo_reset(request: Request) -> dict:
     """
-    Re-arm the taxonomy self-correction demo (#103).
+    Re-arm BOTH self-consuming demos, unconditionally: taxonomy
+    self-correction (#103) and schema-evolution growth (#142).
 
     **Authentication:** Same-origin only (see module docstring).
 
-    The demo destroys its own preconditions: it works because the catalog
-    mis-tags tan boots as ``yellow``, and succeeding rewrites that mapping to
-    ``brown`` and re-indexes every product to match. A second run then shows
-    nothing wrong — no mismatch to spot, nothing for the shopper to dispute.
-    It does not fail, it just silently stops demonstrating anything, which is
-    the worst way to find out mid-talk.
+    Each demo destroys its own preconditions, in opposite ways. The color
+    demo works because the catalog mis-tags tan boots as ``yellow``, and
+    succeeding rewrites that mapping to ``brown`` and re-indexes every
+    product to match. The waterproof demo works because the taxonomy starts
+    with a genuine gap (zero seed variants), and succeeding teaches it a
+    real mapping and tags matching products. Either way, a second run then
+    shows nothing to demonstrate — no mismatch to spot for color, no gap to
+    find for waterproof. Neither fails, both just silently stop
+    demonstrating anything, which is the worst way to find out mid-talk.
 
-    This restores ``tan -> yellow`` and re-tags the affected products. It uses
-    the fast path — one mapping row plus an ``_update_by_query`` over the ~35
-    products actually listed as tan — because this runs on a button click
-    between rehearsals and a full 20s re-ingest per click is unusable.
-    Deliberately surgical: it undoes this demo and nothing else, unlike
-    seeding, which rediscovers the whole taxonomy and discards everything the
-    agent has learned.
+    The frontend calls this on every demo-select/restart regardless of which
+    demo is currently selected (see web/src/components/Layout.tsx's
+    armCatalog) rather than threading a demo id through, since both resets
+    are cheap, idempotent, and safe to run even when the other demo doesn't
+    need it.
+
+    This restores ``tan -> yellow`` and re-tags the affected products (fast
+    path — one mapping row plus an ``_update_by_query`` over the ~35
+    products actually listed as tan, not a full 20s re-ingest), and deletes
+    any ``waterproof`` mapping rows plus strips the fields they tagged onto
+    products (also ``_by_query``, no reindex). Deliberately surgical: each
+    undoes its own demo and nothing else, unlike seeding, which rediscovers
+    the color taxonomy from scratch and discards everything the agent has
+    learned.
 
     Gated on ENABLE_ENRICHMENT_TOOL — same switch as the rest of the demo
     machinery, so a deployment that cannot run the demo cannot reset it either.

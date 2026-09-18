@@ -62,7 +62,7 @@ Armed looks like `yellow: 35`. Already-run looks like `brown: 29`.
 | **Next** | Fills and sends the next scripted turn. Click it and talk. |
 | **Restart** | Clears the transcript, resets the narration, rewinds to turn 1, **and re-arms the index**. |
 | **F2** | Full pipeline detail — raw DSL, per-node timings. For Q&A, not for the walkthrough. |
-| Demo dropdown | Switches arcs (and the optional bonus scene — see below). Selecting arc 2 re-arms it. |
+| Demo dropdown | Switches arcs (and the two optional bonus scenes — see below). Selecting arc 2 or the schema-evolution bonus re-arms it. |
 
 The header reads **"Next up · Turn N of M"** — it names the query the button
 will send, which during a running turn is one ahead of what is on screen.
@@ -223,6 +223,48 @@ number is *real*, not that it's large.
 
 ---
 
+## Bonus 2 — schema evolution (optional, ~1 min)
+
+Arc 2 shows the agent *correcting* a wrong tag — a shopper has to notice
+and dispute it first. This shows the same taxonomy-growth machinery's other
+shape: teaching the catalog a genuinely new filter dimension, unprompted.
+`ENABLE_ENRICHMENT_TOOL` is already `true` in this repo's local `.env`, so
+nothing extra to flip.
+
+If there's time, select **"Data Enrichment: Schema Evolution"** from the
+dropdown (this re-arms it — see below) and run both turns:
+
+**Turn 1 — `Show me waterproof boots`**
+
+Zero results. `product_waterproof_primary` genuinely doesn't exist yet on a
+freshly-armed cluster (`WATERPROOF_CANONICALS` ships with zero seed
+variants on purpose — see `retrieval/attribute_discovery.py`). Watch for
+the agent to notice the gap **on its own** and call `trigger_enrichment` —
+no shopper has to ask, unlike Arc 2. A real ~20-30s Lucille reindex of all
+9,618 products follows, same elapsed-counter card as Arc 2's correction.
+
+> **If the model declines to call the tool this run:** it's a genuine
+> per-turn LLM decision, not a scripted certainty — the turn just shows the
+> gap and stops there. Re-running the turn (or re-selecting the demo, which
+> re-arms it) is the recovery. Confirmed live across multiple consecutive
+> runs, it calls the tool every time — but don't promise 100% on stage.
+
+**Turn 2 — `Show me waterproof boots` (new conversation, automatically)**
+
+Same query. The filter now reads `product_waterproof_primary: "waterproof"`
+and real results come back (HI-TEC, OAKI, Columbia hiking/rain boots in the
+live run that validated this). That's the proof — a filter dimension that
+did not exist two minutes ago, permanent for every future shopper.
+
+**Arming.** Like Arc 2, this demo consumes its own precondition — teaching
+it "waterproof" once means the gap is gone on a second run. The shared
+Restart/re-arm mechanism (`/api/admin/demo-reset`) now resets **both** Arc
+2's color mapping and this demo's waterproof taxonomy unconditionally on
+every call, so selecting either demo or hitting Restart re-arms whichever
+one you're about to run — nothing presenter-facing changes.
+
+---
+
 ## Q&A
 
 **What models?** Gemini 2.5 Flash for generation, Gemini 2.5 Flash-Lite for
@@ -256,8 +298,9 @@ mention rewrites nothing; and the whole tool is behind `ENABLE_ENRICHMENT_TOOL`,
 off by default.
 
 **Beyond colour?** Yes — the same store, detection stage, and
-`trigger_enrichment` tool cover material too, and the correction path is generic
-over `attribute_type`. This script only walks colour end to end.
+`trigger_enrichment` tool cover waterproof too (see "Bonus 2 — schema
+evolution" above, which walks it end to end as a growth story), and the
+correction path is generic over `attribute_type`.
 
 **Non-e-commerce domains?** Yes. Swap ESCI products for your own documents; the
 pipeline is domain-agnostic.

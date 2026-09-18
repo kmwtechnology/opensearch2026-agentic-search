@@ -4,7 +4,7 @@ import pytest
 
 from retrieval.attribute_discovery import (
     COLOR_CANONICALS,
-    MATERIAL_CANONICALS,
+    WATERPROOF_CANONICALS,
     bulk_discover,
     single_term_classify,
 )
@@ -121,18 +121,22 @@ class TestSingleTermClassify:
         assert result is None
 
 
-class TestMaterialCanonicals:
-    def test_seed_dict_has_expected_shape(self):
-        assert isinstance(MATERIAL_CANONICALS, dict)
-        assert len(MATERIAL_CANONICALS) > 0
-        for canonical, variants in MATERIAL_CANONICALS.items():
-            assert isinstance(canonical, str)
-            assert isinstance(variants, list)
-            assert len(variants) > 0
+class TestWaterproofCanonicals:
+    def test_seed_dict_has_the_registered_bucket(self):
+        assert isinstance(WATERPROOF_CANONICALS, dict)
+        assert "waterproof" in WATERPROOF_CANONICALS
 
-    def test_known_canonical_buckets_present(self):
-        for expected in ["leather", "cotton", "wool", "metal"]:
-            assert expected in MATERIAL_CANONICALS
+    def test_seed_variants_are_deliberately_empty(self):
+        """Unlike color, WATERPROOF_CANONICALS ships with zero seed variants
+        by design (see the module docstring) — this is what makes a fresh
+        cluster's first "waterproof hiking boots" query a genuine,
+        reproducible gap rather than a coincidence. The canonical KEY still
+        has to exist so trigger_enrichment has a known, bounded bucket to
+        write into."""
+        assert WATERPROOF_CANONICALS["waterproof"] == []
+
+    def test_unresolvable_until_the_live_flywheel_grows_it(self):
+        assert single_term_classify("waterproof", WATERPROOF_CANONICALS) is None
 
 
 class TestColorCanonicals:

@@ -22,7 +22,9 @@ class TestBuildPrompt:
         assert "correction" in prompt
 
     def test_notes_new_addition_when_no_current_mapping(self):
-        prompt = _build_prompt("material", "chrome", "metal", None, "chrome bar table")
+        prompt = _build_prompt(
+            "waterproof", "weatherproof", "waterproof", None, "weatherproof jacket"
+        )
 
         assert "Not currently in the taxonomy" in prompt
         assert "new addition" in prompt

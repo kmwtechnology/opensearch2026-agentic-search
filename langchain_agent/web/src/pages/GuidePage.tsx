@@ -1,5 +1,5 @@
 /**
- * Guide for the Agentic Hybrid Search demo — the 3 scripted demos, the UI,
+ * Guide for the Agentic Hybrid Search demo — the 4 scripted demos, the UI,
  * and how to read the pipeline output.
  */
 
@@ -62,7 +62,7 @@ export function GuidePage() {
         <div className="space-y-4">
           <p className="text-gray-700">
             This is a production-grade AI-powered e-commerce product search agent — hybrid search (semantic + lexical),
-            intelligent reranking, and real-time observability — presented through three scripted, projector-friendly
+            intelligent reranking, and real-time observability — presented through four scripted, projector-friendly
             demos rather than freeform chat. Pick one from the header and follow along; the "Demos" section below
             walks through each one.
           </p>
@@ -111,11 +111,11 @@ export function GuidePage() {
     },
     {
       id: 'demos',
-      title: '🎬 The Three Demos',
+      title: '🎬 The Four Demos',
       content: (
         <div className="space-y-4">
           <p className="text-[1.375rem] text-gray-700">
-            The header's demo selector picks between three scripted demos, each proving a different part of the
+            The header's demo selector picks between four scripted demos, each proving a different part of the
             pipeline. Pick one, follow its turns in order, and watch the Details panel for the numbers
             called out below.
           </p>
@@ -150,7 +150,7 @@ export function GuidePage() {
             </ol>
             <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-2">
               This catalog has no price field at all — every turn stays on attributes that actually exist (color,
-              size, material, brand, feature).
+              size, brand, feature, waterproofing).
             </p>
           </div>
 
@@ -205,6 +205,30 @@ export function GuidePage() {
               </li>
             </ol>
           </div>
+
+          <div className="border-l-4 border-cyan-500 pl-4">
+            <h4 className="font-semibold text-gray-900">Data Enrichment: Schema Evolution</h4>
+            <p className="text-[1.375rem] text-gray-600">
+              This taxonomy-growth machinery's other shape: not correcting a wrong tag, but teaching the catalog a
+              filter dimension that never existed at all — unprompted, unlike the tag-correction demo above, which
+              needs a shopper to dispute it first. Also re-arms itself automatically on selection.
+            </p>
+            <ol className="list-decimal list-inside space-y-2 text-[1.375rem] text-gray-700 mt-2">
+              <li>
+                <code className="bg-gray-100 px-1">Show me waterproof boots</code> — zero results.{' '}
+                <code className="bg-gray-100 px-1">product_waterproof_primary</code> genuinely doesn't exist yet on
+                a freshly-armed cluster. Watch the agent notice the gap on its own and call its enrichment tool —
+                no shopper has to ask — then a real ~20-30s Lucille reindex of all 9,618 products.
+              </li>
+              <li>
+                <code className="bg-gray-100 px-1">Show me waterproof boots</code> — the same query, asked again in
+                a brand-new conversation. The filter now reads{' '}
+                <code className="bg-gray-100 px-1">product_waterproof_primary: "waterproof"</code> and real
+                results come back — a filter dimension that didn't exist two minutes ago, permanent for every
+                shopper after this one.
+              </li>
+            </ol>
+          </div>
         </div>
       ),
     },
@@ -232,7 +256,7 @@ export function GuidePage() {
             <h4 className="font-semibold text-gray-900 mt-4">Tips for Best Results</h4>
             <ul className="space-y-1 text-[1.375rem] text-gray-700">
               <li className="flex gap-2"><span>💡</span> Use exact query strings in demo turns — several are crafted for specific behaviors (e.g., "show me tan boots" for the taxonomy demo, "sewing machine" for ground-truth metrics)</li>
-              <li className="flex gap-2"><span>🎯</span> Avoid asking about price — there is no price field in this catalog. Focus on attributes like color, size, material, brand, and feature</li>
+              <li className="flex gap-2"><span>🎯</span> Avoid asking about price — there is no price field in this catalog. Focus on attributes like color, size, brand, feature, and waterproofing</li>
               <li className="flex gap-2"><span>🔄</span> The taxonomy demo re-arms itself automatically on selection, restoring the original tan→yellow mis-tag so the turn-1 failure is fresh every time</li>
               <li className="flex gap-2"><span>📋</span> Click citations to see full product details on Amazon</li>
               <li className="flex gap-2"><span>⚙️</span> Watch the Narrator/Details panel to understand why results were ranked this way and what the Pipeline Quality Summary shows</li>
