@@ -50,7 +50,9 @@ describe('LLMAgentDetails', () => {
   it('shows in-progress copy while the step is still running', () => {
     const step = makeStep({
       status: 'running',
-      events: [makeEnrichmentEvent({ attribute_type: 'material', variant: 'chrome', canonical: 'metal' })],
+      events: [
+        makeEnrichmentEvent({ attribute_type: 'waterproof', variant: 'weatherproof', canonical: 'waterproof' }),
+      ],
     })
     render(<LLMAgentDetails step={step} />)
 

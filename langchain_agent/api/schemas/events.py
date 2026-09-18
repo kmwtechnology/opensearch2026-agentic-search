@@ -574,7 +574,7 @@ class DocumentReplacementEvent(BaseEvent):
 
 class EnrichmentTriggeredEvent(BaseEvent):
     """Emitted when the agent's trigger_enrichment tool fires — a color or
-    material taxonomy gap was detected and a real Lucille reindex was
+    waterproof taxonomy gap was detected and a real Lucille reindex was
     triggered live. Richer than the generic ToolCallEvent (which this
     doesn't fire, since the enrichment tool loop is a manual two-call
     binding inside agent_node, not a ToolNode-executed call the standard
@@ -582,9 +582,9 @@ class EnrichmentTriggeredEvent(BaseEvent):
 
     type: Literal["enrichment_triggered"] = "enrichment_triggered"
     node: Literal["agent"] = "agent"
-    attribute_type: str  # "color" or "material"
+    attribute_type: str  # "color" or "waterproof"
     variant: str  # the raw term the agent recognized, e.g. "chrome"
-    canonical: Optional[str] = None  # the canonical bucket it resolved to, e.g. "metal"
+    canonical: Optional[str] = None  # the canonical bucket it resolved to, e.g. "brown"
     # Lifecycle phase (#103). This event is emitted MORE THAN ONCE per
     # enrichment: "started" immediately before the reindex is kicked off, then
     # exactly one terminal event ("complete" / "failed" / "declined"). Before

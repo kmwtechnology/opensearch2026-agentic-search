@@ -37,7 +37,7 @@ When you ask a question, the pipeline routes your intent (is this a search, a co
 
 4. **Real-time streaming** — your response appears token-by-token over WebSocket, not all at once.
 
-5. **Agentic taxonomy self-correction** — the agent can learn new product attributes (colors, materials) on the fly when shoppers teach it. If the taxonomy has the wrong mapping (e.g., "tan" incorrectly tagged as "yellow"), a shopper can dispute it in chat and trigger a live fix.
+5. **Agentic taxonomy self-correction** — the agent can learn new product attributes (colors, waterproofing requirements) on the fly when shoppers teach it. If the taxonomy has the wrong mapping (e.g., "tan" incorrectly tagged as "yellow"), a shopper can dispute it in chat and trigger a live fix.
 
 ### Tech Stack
 
@@ -331,7 +331,7 @@ If you need to refresh the product index (after downloading a new data sample, o
 bash scripts/lucille_ingest.sh
 ```
 
-To rebuild the color/material attribute taxonomy from scratch (one-time per fresh cluster, or to reset to seed state):
+To rebuild the color attribute taxonomy from scratch (one-time per fresh cluster, or to reset color to seed state) — this deliberately does NOT touch "waterproof", which starts with zero seed variants and is grown entirely by the live enrichment flywheel:
 
 ```bash
 make seed-taxonomy
@@ -674,12 +674,12 @@ The Retriever is the workhorse of retrieval. It fetches candidates using two par
 
 **Attribute extraction and filtering** (for `attribute_filter` intent):
 
-- Extracts brand, color, material, and size constraints from the user query using an LLM
-- Classifies color and material terms against the OpenSearch-backed taxonomy
-- Applies exact-match filters on `product_color_primary`, `product_material_primary`, and `product_brand_normalized`
-- Color's fallback for unresolved terms is a **hard exact-match filter**, reliably producing zero-result scenarios that trigger the taxonomy growth path
-- Material's fallback is a **soft lexical filter**, intentionally loose to avoid over-filtering legitimate feature words like "waterproof" or "noise canceling"
-- If results drop below 3 products, the retriever relaxes `multi_match` filters (material, size) but preserves exact-match filters for color and brand (the user named them explicitly)
+- Extracts brand, color, waterproof, a generic feature term, and size constraints from the user query using an LLM — waterproof gets its own dedicated extraction field rather than being folded into the generic feature bucket
+- Classifies color and waterproof terms against the OpenSearch-backed taxonomy
+- Applies exact-match filters on `product_color_primary`, `product_waterproof_primary`, and `product_brand_normalized`
+- Both color's and waterproof's fallback for unresolved terms is a **hard exact-match filter**, reliably producing zero-result scenarios that trigger the taxonomy growth path
+- The generic feature field (anything that isn't a color or a waterproofing requirement, e.g. "breathable", "noise canceling") is a **soft lexical filter**, intentionally loose to avoid over-filtering legitimate feature words
+- If results drop below 3 products, the retriever relaxes `multi_match` filters (feature, size) but preserves exact-match filters for color, waterproof, and brand (the user named them explicitly)
 
 **Dual-path search:**
 
@@ -850,18 +850,17 @@ The Quality Gate can adjust α if the initial choice is poor, up to one retry pe
 
 ### Taxonomy Growth and Self-Correction
 
-The system can discover new product attributes (colors, materials) and correct misclassified ones at runtime, without code deployment.
+The system can discover new product attributes (colors, waterproofing requirements) and correct misclassified ones at runtime, without code deployment.
 
-**The problem:** A shopper searches for "chrome headphones" but the system has never seen "chrome" as a material. Or they discover that "tan" is indexed as "yellow" instead of "brown" — a real mis-mapping that produces technically correct results (tan products) but under the wrong color bucket.
+**The problem:** A shopper searches for "weatherproof jacket" but the system has never seen "weatherproof" as a waterproof synonym. Or they discover that "tan" is indexed as "yellow" instead of "brown" — a real mis-mapping that produces technically correct results (tan products) but under the wrong color bucket.
 
-**Detection at ingest time:** During Lucille ETL, an `AttributeDetectorStage` (a generic, parameterized Java stage) scans product text for known color/material variants using a longest-match-first regex built from the OpenSearch-backed taxonomy. It writes canonical values to keyword fields (`product_color_primary`, `product_material_primary`), which the retriever uses for exact-match filtering.
+**Detection at ingest time:** During Lucille ETL, an `AttributeDetectorStage` (a generic, parameterized Java stage) scans product text for known color/waterproof variants using a longest-match-first regex built from the OpenSearch-backed taxonomy. It writes canonical values to keyword fields (`product_color_primary`, `product_waterproof_primary`), which the retriever uses for exact-match filtering.
 
 The taxonomy itself lives in OpenSearch (not a committed file) and can be grown dynamically.
 
-**Gap detection (new terms):** When a shopper searches for a color or material the system hasn't learned:
+**Gap detection (new terms):** When a shopper searches for a color or waterproofing term the system hasn't learned:
 
-- Color's fallback is a **hard exact-match filter** (e.g., "chrome"), reliably producing zero results
-- Material's fallback is a **soft lexical filter**, softer by design to avoid over-filtering legitimate feature words like "waterproof"
+- Both color's and waterproof's fallback is a **hard exact-match filter** (e.g., "chrome" for color, "weatherproof" for waterproof), reliably producing zero results — deliberately unlike the generic feature field (everything that isn't a color or a waterproofing requirement, e.g. "breathable", "noise canceling"), which stays a **soft lexical filter** to avoid over-filtering legitimate feature words
 
 If the retriever returns nothing (color case) or very poor scores after a quality-gate retry (either attribute type), the `agent_node` offers the LLM a `trigger_enrichment(attribute_type, variant, canonical)` tool. The LLM decides whether to map the new term to an existing canonical bucket or create a new one. If it calls the tool, the mapping is written to OpenSearch and a real Lucille reindex triggers (~19-20 seconds for 9,618 products).
 
@@ -1036,7 +1035,7 @@ Run `make check` before any push — that's the gate.
 7. Add UI rendering in `ObservabilityPanel` components
 8. Test with integration suite
 
-**Adding a new attribute type** (beyond color/material):
+**Adding a new attribute type** (beyond color/waterproof):
 
 1. Add canonical seed vocabulary to `retrieval/attribute_discovery.py`
 2. Seed the OpenSearch taxonomy via `AttributeMappingStore.seed_from_discovery(...)`
@@ -1201,29 +1200,29 @@ Query parameter `q` defaults to "sony" and is used to probe the suggest fields. 
 
 **Enrich attribute taxonomy:**
 
-Adds a new variant-to-canonical mapping for colors or materials and triggers a full Lucille reindex (~15–20 seconds). This is the same mechanism the agent's `trigger_enrichment` tool uses when it encounters an unmapped attribute during a chat turn.
+Adds a new variant-to-canonical mapping for colors or waterproofing terms and triggers a full Lucille reindex (~15–20 seconds). This is the same mechanism the agent's `trigger_enrichment` tool uses when it encounters an unmapped attribute during a chat turn.
 
 ```bash
 curl -X POST http://localhost:8000/api/admin/enrich \
   -H "Origin: http://localhost:8000" \
   -H "Content-Type: application/json" \
-  -d '{"attribute_type": "material", "variant": "chrome", "canonical": "metal"}'
+  -d '{"attribute_type": "waterproof", "variant": "weatherproof", "canonical": "waterproof"}'
 ```
 
 **Request fields:**
 
-- `attribute_type` (required): `"color"` or `"material"`
+- `attribute_type` (required): `"color"` or `"waterproof"`
 - `variant` (required): new term to add (non-empty string)
-- `canonical` (optional): the known material/color bucket it belongs to; if omitted, the system attempts dictionary-based classification
+- `canonical` (optional): the known waterproof/color bucket it belongs to; if omitted, the system attempts dictionary-based classification
 
 Response (200 OK):
 
 ```json
 {
   "success": true,
-  "attribute_type": "material",
-  "variant": "chrome",
-  "canonical": "metal",
+  "attribute_type": "waterproof",
+  "variant": "weatherproof",
+  "canonical": "waterproof",
   "reason": null,
   "reindex_triggered": true,
   "reindex_success": true,
@@ -1237,10 +1236,10 @@ When enrichment succeeds, a real Lucille reindex runs asynchronously. `success: 
 ```json
 {
   "success": false,
-  "attribute_type": "material",
+  "attribute_type": "waterproof",
   "variant": "unobtainium",
   "canonical": null,
-  "reason": "could not classify to a known material bucket",
+  "reason": "could not classify to a known waterproof bucket",
   "reindex_triggered": false,
   "reindex_success": false,
   "docs_processed": 0,
@@ -2751,7 +2750,7 @@ langchain_agent/lucille-esci/
 The file `conf/products.generated.conf` is **generated by Python** before every ingest run — it's not committed to git. The script `langchain_agent/config_generator.py` creates it dynamically, based on:
 
 - A fixed prelude/epilogue that configures the index name, analyzers, and field definitions
-- One `AttributeDetectorStage` block for each attribute type (color, material) currently registered in your OpenSearch cluster
+- One `AttributeDetectorStage` block for each attribute type (color, waterproof) currently registered in your OpenSearch cluster
 
 This dynamic generation allows the ingest pipeline to adapt to new attribute types as they're discovered and added to OpenSearch at runtime.
 
@@ -2769,7 +2768,7 @@ OpenSearch expects specific field types. The mapping template in `mapping/opense
 - `knn_vector` — 768-dimensional HNSW vector index for semantic search
 - `product_title`, `product_brand`, `product_color` — both text (full-text search) and keyword (faceting) mappings
 - `title_suggest`, `brand_suggest` — edge-ngram fields for autocomplete typeahead
-- `product_color_primary`, `product_color_secondary`, `product_material_primary`, `product_material_secondary` — added during ingest by attribute detection (see below)
+- `product_color_primary`, `product_color_secondary`, `product_waterproof_primary`, `product_waterproof_secondary` — added during ingest by attribute detection (see below)
 - `product_brand_normalized` — lowercased brand names added during ingest
 
 ### Running the Ingestion
@@ -2804,7 +2803,7 @@ The ingestion is **idempotent** — running it multiple times is safe and won't 
 
 During ingestion, Lucille runs two custom Java stages to enrich product documents:
 
-**Attribute Detection** — The `AttributeDetectorStage` scans the `chunk_text` (a concatenation of title, brand, and color) for known color and material variants. If it finds a match, it writes canonical values to `product_color_primary`, `product_color_secondary`, `product_material_primary`, and `product_material_secondary`. This normalization improves filter recall — queries for "blue headphones" match all shades of blue (Navy, Cyan, Teal) using the canonical mapping.
+**Attribute Detection** — The `AttributeDetectorStage` scans the `chunk_text` (a concatenation of title, brand, and color) for known color and waterproof variants. If it finds a match, it writes canonical values to `product_color_primary`, `product_color_secondary`, `product_waterproof_primary`, and `product_waterproof_secondary`. This normalization improves filter recall — queries for "blue headphones" match all shades of blue (Navy, Cyan, Teal) using the canonical mapping.
 
 **Brand Normalization** — The `BrandNormalizerStage` lowercases brand names and writes them to `product_brand_normalized`, ensuring case-insensitive brand filtering.
 
@@ -2812,7 +2811,7 @@ Both stages run during ingest, in a single pass through the pipeline — no sepa
 
 #### The Taxonomy Store
 
-The color and material mappings (variant → canonical value, e.g., "grey" → "gray") live in OpenSearch itself, in a separate index called `agentic_hybrid_search_attribute_mappings`. They are **not** committed to git — the taxonomy is a runtime artifact that your system grows and refines as it learns from search interactions.
+The color and waterproof mappings (variant → canonical value, e.g., "grey" → "gray") live in OpenSearch itself, in a separate index called `agentic_hybrid_search_attribute_mappings`. They are **not** committed to git — the taxonomy is a runtime artifact that your system grows and refines as it learns from search interactions.
 
 On a **fresh cluster**, the taxonomy store is empty. The attribute-detection stages will fail to ingest if they can't load the taxonomy (hard failure by design — silent degradation is not an option). To populate the initial taxonomy, run:
 

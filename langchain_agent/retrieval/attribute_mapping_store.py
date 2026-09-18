@@ -75,7 +75,7 @@ class AttributeMappingStore:
 
         Cached for _LOOKUP_CACHE_TTL_SECONDS (see module docstring) --
         previously every call (including _classify_attribute's query-time
-        read path, hit once for color and once for material on every
+        read path, hit once for color and once for waterproof on every
         attribute_filter/refinement query, doubling on a quality-gate
         retry) ran a fresh, unfiltered 10k-doc scan. add_mapping()
         invalidates this entry synchronously on write, so the live
@@ -83,7 +83,7 @@ class AttributeMappingStore:
         this process (see #25, #26).
 
         Args:
-            attribute_type: e.g. "color", "material"
+            attribute_type: e.g. "color", "waterproof"
 
         Returns:
             Dict mapping variant (lowercase) to canonical value
@@ -119,12 +119,12 @@ class AttributeMappingStore:
         """List every distinct attribute_type registered in the store.
 
         Used by config_generator.py to discover which text-detected
-        attribute types (material, and any future ones) need a Lucille
+        attribute types (waterproof, and any future ones) need a Lucille
         stage generated for the next full reindex — including types the
         live agent has registered that no static config ever mentioned.
 
         Returns:
-            Sorted list of attribute_type values, e.g. ["color", "material"]
+            Sorted list of attribute_type values, e.g. ["color", "waterproof"]
         """
         try:
             response = self.client.search(
@@ -151,7 +151,7 @@ class AttributeMappingStore:
         """Add or update a variant→canonical mapping.
 
         Args:
-            attribute_type: e.g. "color", "material"
+            attribute_type: e.g. "color", "waterproof"
             variant: the variant term (e.g. "vegan leather")
             canonical: the canonical value it maps to (e.g. "leather")
             source: origin of the mapping ("seed", "migrated", "agent")
@@ -204,7 +204,7 @@ class AttributeMappingStore:
         """Look up a single variant's canonical value.
 
         Args:
-            attribute_type: e.g. "color", "material"
+            attribute_type: e.g. "color", "waterproof"
             variant: the variant term
 
         Returns:
@@ -241,7 +241,7 @@ class AttributeMappingStore:
         """Bulk-add discovered mappings (e.g., from attribute_discovery.bulk_discover).
 
         Args:
-            attribute_type: e.g. "material"
+            attribute_type: e.g. "waterproof"
             discovered_mappings: dict mapping variant → canonical
 
         Returns:

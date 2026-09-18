@@ -92,7 +92,7 @@ export const DEMOS: Demo[] = [
         query: 'Show me blue running shoes',
         watchFor:
           'Alpha 0.25 — lexical-heavy, BM25 dominant. "blue" and "running" are real indexed attributes, so there is something concrete to filter on: watch the filter line read color: blue, feature: running.',
-        note: 'Never ask this catalog about price, here or off-script. There is no price field in any form, so every turn stays on attributes that exist: color, size, material, brand, feature.',
+        note: 'Never ask this catalog about price, here or off-script. There is no price field in any form, so every turn stays on attributes that exist: color, size, brand, feature, waterproofing.',
       },
       {
         query: 'only size 10',
@@ -203,7 +203,7 @@ export const DEMOS: Demo[] = [
         query: 'show me tan boots',
         watchFor:
           'The filter resolves tan to "yellow" — a real shipped bug affecting every product the catalog lists as Tan. It PASSES the quality gate, so no automated check can catch it. Ask the room: does this look right to you?',
-        note: 'Use this exact phrasing. Longer variants add a spurious material_or_feature filter.',
+        note: 'Use this exact phrasing. Longer variants add a spurious feature filter.',
       },
       {
         query: "that's not tan, that's tagged yellow which is wrong",
@@ -216,6 +216,58 @@ export const DEMOS: Demo[] = [
         watchFor:
           'The filter now reads product_color_primary: "brown". That field changing IS the proof — the fix is permanent, for every future shopper.',
         note: 'Must be a brand-new conversation — same-thread rewrites the query down a lexical path. Do not promise a reshuffled result list.',
+        requiresNewConversation: true,
+      },
+    ],
+  },
+  {
+    id: 'schema-evolution',
+    title: 'Data Enrichment: Schema Evolution',
+    needsArming: true,
+    subtitle: 'A missing attribute, taught live — not a correction this time, a genuinely new filter dimension.',
+    /*
+     * Issue #142. Arc 2 (above) shows the agent fixing a WRONG mapping —
+     * this shows it growing a filter dimension that never existed at all.
+     * "waterproof" is a real, generic attribute type end-to-end (Java
+     * AttributeDetectorStage, config_generator.py, AttributeMappingStore),
+     * not staged data: WATERPROOF_CANONICALS (attribute_discovery.py) ships
+     * with a registered "waterproof" bucket but ZERO seed variants, on
+     * purpose, so a freshly-armed cluster's first turn below is a genuine
+     * zero-result gap every time, not a coincidence.
+     *
+     * Unlike the color correction above, there is no separate "dispute"
+     * turn here — the gap-fill offer fires automatically, same-turn, the
+     * instant an attribute_filter query's hard filter excludes everything
+     * (see pipeline_nodes.py's zero_result_filter_gap). That means turn 1
+     * below can plausibly notice AND fix the gap in one response: the
+     * agent proposes trigger_enrichment on its own initiative, a second
+     * model approves it, and the real ~20s reindex happens right there —
+     * no shopper has to ask for the fix, which is the point this demo
+     * makes that Arc 2 doesn't (Arc 2 needs a human to dispute the tag;
+     * this needs nobody). If the model declines to call the tool on a
+     * given run, turn 1 just shows the gap and stays disappointingly
+     * quiet about it — re-running the query (or the whole demo) is the
+     * recovery, same as any other single-shot LLM decision.
+     *
+     * Query phrasing: "Show me waterproof boots" is not an arbitrary
+     * choice — it is the literal worked example already baked into
+     * agent_node's own intent-classification prompt (pipeline_nodes.py,
+     * "CONTRAST with ATTRIBUTE_FILTER: 'Show me waterproof boots' with NO
+     * prior search → attribute_filter"), so this is about as reliably
+     * attribute_filter as a query can get.
+     */
+    turns: [
+      {
+        query: 'Show me waterproof boots',
+        watchFor:
+          'Zero results — "waterproof" hard-filters against product_waterproof_primary, which is empty on a freshly-armed cluster: the feature is genuinely unindexed, not merely absent from this one query. Watch for the agent to notice the gap and grow the taxonomy itself, unprompted: trigger_enrichment fires, a second model approves it, then a real ~20s Lucille reindex of all 9,618 products — same elapsed-counter card as Arc 2, but nobody asked for this fix.',
+        note: 'Requires ENABLE_ENRICHMENT_TOOL=true (already set in .env for local dev). If the model declines to call the tool this run, the turn just shows the gap — re-run it.',
+      },
+      {
+        query: 'Show me waterproof boots',
+        watchFor:
+          'Same query, new session — the filter now reads product_waterproof_primary: "waterproof" across the full catalog. That field existing at all is the proof: a filter dimension that did not exist two minutes ago, permanent for every future shopper.',
+        note: 'Must be a brand-new conversation — same-thread rewrites the query down a lexical path, same as Arc 2 turn 3.',
         requiresNewConversation: true,
       },
     ],

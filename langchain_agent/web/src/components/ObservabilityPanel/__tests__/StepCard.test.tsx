@@ -55,9 +55,9 @@ function makeEnrichmentEvent(overrides: Partial<EnrichmentTriggeredEvent> = {}):
     type: 'enrichment_triggered',
     timestamp: new Date().toISOString(),
     node: 'agent',
-    attribute_type: 'material',
-    variant: 'chrome',
-    canonical: 'metal',
+    attribute_type: 'waterproof',
+    variant: 'weatherproof',
+    canonical: 'waterproof',
     ...overrides,
   }
 }
@@ -73,8 +73,8 @@ describe('StepCard', () => {
     const { container } = render(<StepCard step={step} index={5} />)
 
     expect(screen.getByText(/Enrichment:/)).toBeInTheDocument()
-    expect(container.textContent).toContain('chrome')
-    expect(container.textContent).toContain('metal')
+    expect(container.textContent).toContain('weatherproof')
+    expect(container.textContent).toContain('waterproof')
     // The generic summary is replaced, not duplicated, when enrichment fires.
     expect(screen.queryByText('Response generated (240 chars)')).not.toBeInTheDocument()
   })

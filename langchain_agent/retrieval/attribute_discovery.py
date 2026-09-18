@@ -5,14 +5,14 @@ classification for building/growing OS-backed attribute taxonomies
 
 Two modes:
   - bulk_discover: scan raw text samples for known variant terms, used once
-    to bootstrap a new attribute's taxonomy (e.g. product_material) from the
+    to bootstrap a new attribute's taxonomy (e.g. product_color) from the
     real dataset.
   - single_term_classify: classify one unmapped term to its best-fit
     canonical bucket, dictionary match first with an optional LLM fallback
     for novel terms. Used live by the agent enrichment tool when a query
     mentions an attribute value that isn't in the taxonomy yet.
 
-The canonical seed dictionaries here (e.g. MATERIAL_CANONICALS) are a
+The canonical seed dictionaries here (e.g. WATERPROOF_CANONICALS) are a
 bootstrapping starting point for the discovery algorithm, not the taxonomy
 itself — the OpenSearch-backed mapping store is the actual source of truth
 once bulk_discover's output has been written there via
@@ -22,30 +22,26 @@ AttributeMappingStore.seed_from_discovery().
 import re
 from typing import Callable, Dict, List, Optional
 
-# Seed vocabulary for material discovery. Derived from regex analysis of the
-# real ESCI product dataset (data/esci_products_sample_10000.parquet) — see
-# memory/opensearchcon_material_discovery.md for the frequency counts behind
-# this list. Deliberately not exhaustive: gaps in this list are exactly what
-# the live agent flywheel discovers and grows via single_term_classify.
-MATERIAL_CANONICALS: Dict[str, List[str]] = {
-    "leather": ["leather", "genuine leather", "cowhide", "suede", "faux leather"],
-    "cotton": ["cotton", "100% cotton", "cotton blend"],
-    "wool": ["wool", "woolen", "cashmere"],
-    "synthetic": ["polyester", "nylon", "acrylic", "spandex"],
-    "denim": ["denim", "jean"],
-    "canvas": ["canvas"],
-    "wood": ["wood", "wooden", "timber"],
-    "metal": ["metal", "stainless steel", "aluminum", "brass", "steel", "iron"],
-    "glass_ceramic": ["glass", "ceramic", "porcelain", "stoneware"],
-    "rubber": ["rubber", "silicone", "latex"],
+# Seed vocabulary for the waterproof attribute type. Deliberately a single
+# bucket with NO seed variants (unlike COLOR_CANONICALS below) — this is the
+# schema-growth demo's attribute type, and it needs single_term_classify("
+# waterproof", WATERPROOF_CANONICALS) to genuinely return None until the live
+# enrichment flywheel writes a real mapping to the OS-backed store. A
+# pre-seeded variant list would make "waterproof hiking boots" resolve on day
+# one, with no gap left to demonstrate. The canonical key itself ("waterproof")
+# still has to exist so trigger_enrichment has a known, bounded bucket to
+# write into (see enrichment_service.enrich_attribute's explicit_canonical
+# check) — only its variants start empty.
+WATERPROOF_CANONICALS: Dict[str, List[str]] = {
+    "waterproof": [],
 }
 
 # Seed vocabulary for color discovery. Carried over from the retired
 # color_mappings.json (used, until this rework, as the migrated taxonomy
 # source of record for the old AttributeNormalizerStage) — here it's
-# downgraded to exactly what MATERIAL_CANONICALS already is: a bootstrap
+# downgraded to exactly what WATERPROOF_CANONICALS already is: a bootstrap
 # seed for bulk_discover, not the taxonomy itself. Color's real taxonomy is
-# rebuilt from scratch by discovery against chunk_text, same as material.
+# rebuilt from scratch by discovery against chunk_text.
 COLOR_CANONICALS: Dict[str, List[str]] = {
     "black": ["black", "jet", "charcoal", "ebony", "onyx"],
     "white": ["white", "ivory", "cream", "off-white", "ecru", "beige", "bone"],

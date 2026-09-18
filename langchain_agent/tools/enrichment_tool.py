@@ -1,8 +1,8 @@
 """
 trigger_enrichment — the real LangChain tool the agent uses to grow the
-color or material taxonomy live, on stage. The calling LLM decides the
+color or waterproof taxonomy live, on stage. The calling LLM decides the
 attribute_type, the raw variant term, and its canonical bucket itself (the
-model already understands materials/colors semantically); the tool just
+model already understands colors/waterproofing semantically); the tool just
 executes: write the mapping, ensure index fields, regenerate config, trigger
 a real Lucille reindex.
 
@@ -14,18 +14,18 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from quality.enrichment_service import EnrichmentResult, enrich_attribute
-from retrieval.attribute_discovery import COLOR_CANONICALS, MATERIAL_CANONICALS
+from retrieval.attribute_discovery import COLOR_CANONICALS, WATERPROOF_CANONICALS
 
 _CANONICAL_BUCKETS_DESCRIPTION = (
     f"Valid canonical buckets by attribute_type: "
     f"color: {sorted(COLOR_CANONICALS.keys())}; "
-    f"material: {sorted(MATERIAL_CANONICALS.keys())}."
+    f"waterproof: {sorted(WATERPROOF_CANONICALS.keys())}."
 )
 
 
 class TriggerEnrichmentInput(BaseModel):
     attribute_type: str = Field(
-        description='Which taxonomy the gap belongs to: "color" or "material".'
+        description='Which taxonomy the gap belongs to: "color" or "waterproof".'
     )
     variant: str = Field(
         description="The raw, unrecognized term from the user's query, e.g. 'chrome'."
@@ -80,14 +80,14 @@ def format_enrichment_message(result: EnrichmentResult) -> str:
 @tool("trigger_enrichment", args_schema=TriggerEnrichmentInput)
 def trigger_enrichment(attribute_type: str, variant: str, canonical: str) -> str:
     """
-    Add a new color or material variant to the product search taxonomy, OR
+    Add a new color or waterproof variant to the product search taxonomy, OR
     correct one that's already mapped to the wrong canonical bucket, and
     re-index the catalog so the fix takes effect immediately.
 
     Two distinct situations call this the same way:
-    1. GAP: a shopper's query mentions a color/material term not yet
-       recognized by the current search filters (search quality gate
-       failed, term isn't in the taxonomy at all).
+    1. GAP: a shopper's query mentions a color term, or a waterproofing
+       requirement, not yet recognized by the current search filters
+       (search quality gate failed, term isn't in the taxonomy at all).
     2. CORRECTION: a shopper points out that a term IS in the taxonomy but
        mapped to the wrong bucket (e.g. "that's not tan, it's yellow" —
        the catalog currently thinks tan means yellow). Pass the variant
@@ -96,7 +96,7 @@ def trigger_enrichment(attribute_type: str, variant: str, canonical: str) -> str
     This performs a REAL, live catalog re-index (about 15-25 seconds when
     run locally; on the hosted deployment it is dispatched to a CI workflow
     that finishes in about 8 minutes) — only call it when you're confident the term is a genuine
-    color or material and you know what the correct bucket should be, not
+    color or waterproofing requirement and you know what the correct bucket should be, not
     for typos or unrelated query terms.
     """
     result = enrich_attribute(attribute_type, variant, explicit_canonical=canonical)

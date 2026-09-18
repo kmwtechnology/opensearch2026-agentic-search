@@ -40,7 +40,7 @@ from quality.enrichment_value_judge import EnrichmentValueJudge
 from quality.judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
 from retrieval.attribute_discovery import (
     COLOR_CANONICALS,
-    MATERIAL_CANONICALS,
+    WATERPROOF_CANONICALS,
     single_term_classify,
 )
 
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 # when a new attribute type gets a discovery seed dict in attribute_discovery.py.
 _CANONICAL_SEEDS_BY_TYPE = {
     "color": COLOR_CANONICALS,
-    "material": MATERIAL_CANONICALS,
+    "waterproof": WATERPROOF_CANONICALS,
 }
 
 # Import event types for observability
@@ -850,7 +850,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         #      exact-match filter that's excluding everything; see
         #      quality_gate_node's "No documents to evaluate" branch), so
         #      quality_gate_retried never becomes True. This is exactly the
-        #      scenario an unrecognized color/material term produces —
+        #      scenario an unrecognized color/waterproof term produces —
         #      without this branch, the enrichment tool would never be
         #      offered for the case it exists to fix. Confirmed via a live
         #      rehearsal: "show me camel colored coats" hit this path
@@ -879,7 +879,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 "match in the catalog. A few things that usually help:\n\n"
                 '- Try a more specific phrase — a brand ("Sony"), a use case '
                 '("wireless earbuds for running"), or a feature ("noise cancelling")\n'
-                "- Add a color, a material, or a size\n"
+                "- Add a color, a feature (like waterproof), or a size\n"
                 "- Or describe who it's for and what they'd use it for, and I'll suggest "
                 "categories worth exploring\n\n"
                 "Want to try one of those?"
@@ -1038,7 +1038,7 @@ INTENT: {intent.upper()}
 
 GROUNDING RULES (override creativity preferences — non-negotiable):
 1. Every factual claim about a specific product (origin / "Made in X", material, certifications like "FDA-approved" or "BPA-free", size, manufacturer claims) MUST be supported by THAT product's FACTS block above.
-1a. NEVER mention price, cost, budget, "cheaper", "affordable", "value for money", or any currency amount — not for a product, not as a comparison, not as a follow-up question, and not as a suggestion for how to narrow the search. This catalog carries NO price data in any field, so anything you say about price is invented, and a made-up dollar figure is the single most damaging thing you can put on screen. If the user asks about price or asks for something cheaper, say plainly that you do not have pricing information, then help them on an attribute you DO have (color, size, material, brand, feature).
+1a. NEVER mention price, cost, budget, "cheaper", "affordable", "value for money", or any currency amount — not for a product, not as a comparison, not as a follow-up question, and not as a suggestion for how to narrow the search. This catalog carries NO price data in any field, so anything you say about price is invented, and a made-up dollar figure is the single most damaging thing you can put on screen. If the user asks about price or asks for something cheaper, say plainly that you do not have pricing information, then help them on an attribute you DO have (color, size, brand, feature, waterproofing).
 2. Facts are PER-PRODUCT. If "Made in USA" appears in Product 3's FACTS but not in Product 1's FACTS, you MUST NOT attribute "Made in USA" to Product 1, even if it's the same brand or category.
 3. If a fact is not in any FACTS block, OMIT it. Do not infer from brand reputation, product category, prior knowledge, or implication.
 4. Comparison tables/summaries: every cell or claim must trace to a specific product's FACTS block. Leave cells blank rather than fabricating.
@@ -1138,13 +1138,15 @@ CITATION & STYLE:
             prompt or f"""A shopper searched for "{user_query or 'their query'}" and the catalog \
 search returned no strong matches, even after retrying with adjusted search weighting.
 
-If the query plausibly mentions a COLOR or MATERIAL term that a product catalog should \
-recognize but might not have in its current taxonomy (e.g. an unusual color name, a \
-material synonym), you may call trigger_enrichment to add it and re-index the catalog live.
+If the query plausibly mentions a COLOR term or a WATERPROOF/water-resistance requirement that \
+a product catalog should recognize but might not have in its current taxonomy (e.g. an unusual \
+color name, or "waterproof"/"water-resistant"/"weatherproof" as a feature the shopper needs), \
+you may call trigger_enrichment to add it and re-index the catalog live.
 
-Only call the tool if you're genuinely confident the query contains a real color or \
-material term worth adding — not for typos, brand names, or unrelated words. If nothing in \
-the query looks like a color/material gap, don't call the tool; just say so briefly."""
+Only call the tool if you're genuinely confident the query contains a real color term or a \
+genuine waterproofing requirement worth adding — not for typos, brand names, or unrelated \
+words. If nothing in the query looks like a color/waterproof gap, don't call the tool; just say \
+so briefly."""
         )
 
         llm_with_tools = self.llm.bind_tools([trigger_enrichment])
@@ -1152,7 +1154,7 @@ the query looks like a color/material gap, don't call the tool; just say so brie
         # Tagged as deliberation so observable_agent does not stream it to the
         # chat window. This call decides WHETHER to offer a taxonomy fix; when
         # it declines it explains itself in prose ("nothing here looks like a
-        # color or material term"), and that prose was reaching users as the
+        # color or waterproof term"), and that prose was reaching users as the
         # answer to whatever they actually asked.
         response = llm_with_tools.invoke(tool_messages, config={"tags": [INTERNAL_LLM_TAG]})
 
@@ -1303,7 +1305,6 @@ the query looks like a color/material gap, don't call the tool; just say so brie
         "miscategor",
         "incorrectly tagged",
         "wrong color",
-        "wrong material",
         "should be tagged",
         "tagged wrong",
         "that's wrong",
@@ -1314,7 +1315,7 @@ the query looks like a color/material gap, don't call the tool; just say so brie
     def _detect_correction_signal(self, user_query: Optional[str]) -> bool:
         """
         Cheap keyword gate: does the latest message plausibly dispute a
-        color/material tag from a prior turn? Runs before any LLM call so
+        color/waterproof tag from a prior turn? Runs before any LLM call so
         ordinary follow-ups ("show me cheaper ones") never pay for the
         extra correction-offer prompt.
         """
@@ -1328,7 +1329,7 @@ the query looks like a color/material gap, don't call the tool; just say so brie
     ) -> Optional[Dict[str, Any]]:
         """
         Offer trigger_enrichment for a taxonomy CORRECTION rather than a
-        gap-fill: the shopper is disputing a color/material tag the catalog
+        gap-fill: the shopper is disputing a color/waterproof tag the catalog
         assigned to a product shown in a prior turn (e.g. "that's not tan,
         it's clearly yellow" after a mistagged product surfaced). Unlike
         the zero-result gap path, this fires regardless of this turn's own
@@ -1343,7 +1344,7 @@ the query looks like a color/material gap, don't call the tool; just say so brie
         history = self._build_recent_context(messages, limit=8)
 
         correction_prompt = f"""A shopper is following up on a previous product search. Their \
-latest message may be disputing or correcting a color or material tag the catalog assigned to \
+latest message may be disputing or correcting a color or waterproof tag the catalog assigned to \
 a product you showed them earlier in this conversation.
 
 Recent conversation:
@@ -1351,12 +1352,12 @@ Recent conversation:
 
 Latest message: "{user_query}"
 
-If the shopper is disputing a color or material tag as WRONG (they may name the wrong tag \
+If the shopper is disputing a color or waterproof tag as WRONG (they may name the wrong tag \
 explicitly, e.g. "that's not tan, that's tagged yellow which is wrong" -- here the shopper is \
 telling you "yellow" is the INCORRECT tag, not proposing it as the fix), and you can tell from \
 the conversation which term is mistagged and what the correct canonical bucket should be, call \
 trigger_enrichment with:
-- attribute_type: "color" or "material"
+- attribute_type: "color" or "waterproof"
 - variant: the term that's currently mistagged (e.g. "tan")
 - canonical: the CORRECT canonical bucket it should map to instead
 
@@ -1689,13 +1690,13 @@ Query: "{query}" """
     @staticmethod
     def _classify_attribute(attribute_type: str, term: str) -> Optional[str]:
         """
-        Classify an LLM-extracted color or material_or_feature term against
-        the corresponding taxonomy (OS-backed, grown by the live enrichment
-        flywheel). Returns None for terms that don't resolve — for material
-        this includes non-material features like "waterproof", so the caller
-        falls back to the prior lexical multi_match instead of an
-        always-empty exact filter; for color the caller falls back to using
-        the raw term directly (matching pre-existing behavior).
+        Classify an LLM-extracted color or waterproof term against the
+        corresponding taxonomy (OS-backed, grown by the live enrichment
+        flywheel). Returns None for terms that don't resolve — both callers
+        (color, waterproof) fall back to a hard filter on the raw term
+        rather than an always-empty exact filter, since a genuinely novel
+        color or waterproof mention is exactly the gap the enrichment
+        flywheel exists to grow (see the caller in _extract_attributes).
 
         No LLM fallback here — this is the query-time read path, called on
         every attribute_filter query; the LLM-assisted classification (for a
@@ -1761,15 +1762,18 @@ QUERY: "{query}"
 Extract these attributes if present:
 - brand: Product brand/manufacturer (e.g., "Sony", "Apple", "Nike")
 - color: Product color (e.g., "blue", "black", "red", "white", "silver")
-- material_or_feature: Physical feature or material keyword users add as constraints
-  (e.g., "waterproof", "breathable", "insulated", "vegan leather", "leather", "mesh",
-   "wireless", "noise canceling", "anti-slip", "slip-resistant", "Gore-Tex")
+- waterproof: "waterproof" if the query expresses a waterproofing / water-resistance
+  requirement (e.g., "waterproof", "water resistant", "water-resistant", "weatherproof",
+  "water repellent"), else null
+- feature: Any OTHER physical feature or material keyword users add as constraints,
+  EXCLUDING waterproofing (e.g., "breathable", "insulated", "vegan leather", "leather",
+  "mesh", "wireless", "noise canceling", "anti-slip", "slip-resistant", "Gore-Tex")
 - size: Size specification (e.g., "size 10", "XL", "large", "medium", "10.5")
 - price_max: Maximum price as a number only if "under $X" or "less than $X" present (e.g., 100)
 - price_min: Minimum price as a number only if "over $X" or "more than $X" present (e.g., 50)
 
 Return ONLY a JSON object (use null for missing attributes):
-{{"brand": "...", "color": "...", "material_or_feature": "...", "size": "...", "price_max": null, "price_min": null}}"""
+{{"brand": "...", "color": "...", "waterproof": null, "feature": "...", "size": "...", "price_max": null, "price_min": null}}"""
 
         try:
             try:
@@ -1797,7 +1801,7 @@ Return ONLY a JSON object (use null for missing attributes):
             filters = []
 
             # Coerce LLM-extracted attribute values to strings. Gemini sometimes
-            # returns array values (e.g. material_or_feature=["noise canceling"])
+            # returns array values (e.g. feature=["noise canceling"])
             # even when the prompt asks for a single string. Passing a list to
             # an OpenSearch ``query`` field fails with
             #   [multi_match] unknown token [START_ARRAY] after [query]
@@ -1819,8 +1823,8 @@ Return ONLY a JSON object (use null for missing attributes):
             # variant spellings like "grey" not matching an index that
             # normalized to "gray"); an unresolved term falls back to using
             # the raw LLM-extracted value directly, matching pre-existing
-            # behavior — colors don't need the lexical-fallback semantics
-            # material does, since a color term is rarely a red herring.
+            # behavior — a color term is rarely a red herring, so it always
+            # gets a hard filter, resolved or not.
             color = _coerce(attributes.get("color"))
             if color:
                 color_canonical = self._classify_attribute("color", color)
@@ -1828,31 +1832,48 @@ Return ONLY a JSON object (use null for missing attributes):
                     {"match": {"product_color_primary": {"query": color_canonical or color}}}
                 )
 
-            # material_or_feature covers both actual materials ("leather",
-            # "vegan leather") and non-material features ("waterproof",
-            # "noise canceling") — only the former has a normalized field to
-            # filter on. Classify against the material taxonomy first; a
-            # resolved term gets an exact filter against
-            # product_material_primary (like brand/color above), an
-            # unresolved one (a feature, or a material outside the taxonomy)
-            # falls back to the prior lexical multi_match unchanged.
-            material = _coerce(attributes.get("material_or_feature"))
-            if material:
-                material_canonical = self._classify_attribute("material", material)
-                if material_canonical:
-                    filters.append(
-                        {"match": {"product_material_primary": {"query": material_canonical}}}
-                    )
-                else:
-                    filters.append(
-                        {
-                            "multi_match": {
-                                "query": material,
-                                "fields": ["title", "chunk_text"],
-                                "type": "best_fields",
+            # waterproof gets its own dedicated extraction (rather than folding
+            # into the generic "feature" bucket below) because, like color,
+            # it's narrow and well-defined enough to always warrant a hard
+            # filter — resolved or not. WATERPROOF_CANONICALS ships with zero
+            # seed variants (attribute_discovery.py) *by design*: on a fresh
+            # cluster this branch resolves to nothing, so "waterproof hiking
+            # boots" hard-filters against an as-yet-empty
+            # product_waterproof_primary and gets a genuine zero-result gap —
+            # exactly the signal that lets the live enrichment flywheel
+            # (_try_enrichment_tool) grow this attribute type from scratch.
+            # Once trigger_enrichment writes the first mapping, this same
+            # branch resolves and returns real, filtered results.
+            waterproof = _coerce(attributes.get("waterproof"))
+            if waterproof:
+                waterproof_canonical = self._classify_attribute("waterproof", waterproof)
+                filters.append(
+                    {
+                        "match": {
+                            "product_waterproof_primary": {
+                                "query": waterproof_canonical or waterproof
                             }
                         }
-                    )
+                    }
+                )
+
+            # feature covers everything else shoppers add as a constraint that
+            # isn't a color or a waterproofing requirement ("breathable",
+            # "insulated", "vegan leather", "noise canceling", ...). There's no
+            # taxonomy for these — always a soft multi_match, so an
+            # unrecognized feature word narrows results without ever excluding
+            # everything the way a hard filter on an untaxonomized term would.
+            feature = _coerce(attributes.get("feature"))
+            if feature:
+                filters.append(
+                    {
+                        "multi_match": {
+                            "query": feature,
+                            "fields": ["title", "chunk_text"],
+                            "type": "best_fields",
+                        }
+                    }
+                )
 
             # size → multi_match against title + content
             size = _coerce(attributes.get("size"))
@@ -1945,12 +1966,12 @@ Return ONLY a JSON object (use null for missing attributes):
                         # the "Filters Applied" line never showed it.
                         query = match_obj["product_color_primary"].get("query", "")
                         parts.append(f"color: {query}")
-                    elif "product_material_primary" in match_obj:
-                        # Same class of bug: a resolved material filter (see
+                    elif "product_waterproof_primary" in match_obj:
+                        # Same class of bug: a resolved waterproof filter (see
                         # _extract_attribute_filters) had no branch here at
                         # all, so it silently vanished from the summary too.
-                        query = match_obj["product_material_primary"].get("query", "")
-                        parts.append(f"material: {query}")
+                        query = match_obj["product_waterproof_primary"].get("query", "")
+                        parts.append(f"waterproof: {query}")
                 elif "multi_match" in f:
                     mm = f["multi_match"]
                     query_text = mm.get("query", "")
@@ -2733,10 +2754,11 @@ Original query: {query}
         k = RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K
         if is_gate_retry:
             k *= RETRY_FETCH_MULTIPLIER
-            # Soft multi_match filters (material_or_feature / size) are hints
-            # that often over-constrain; the same relaxation already runs when
-            # a filtered search returns too little. Colour and brand `match`
-            # filters stay — the user asked for those explicitly.
+            # Soft multi_match filters (feature / size) are hints that often
+            # over-constrain; the same relaxation already runs when a
+            # filtered search returns too little. Colour, waterproof, and
+            # brand `match` filters stay — the user asked for those
+            # explicitly.
             if attribute_filters:
                 attribute_filters = [f for f in attribute_filters if "multi_match" not in f]
             logger.info(
@@ -2829,9 +2851,9 @@ Original query: {query}
         )
 
         # Filter relaxation: if attribute filters returned very few results, drop
-        # multi_match (material_or_feature / size) filters and retry the hybrid
-        # query. Color and brand filters use `match` and are kept — the user
-        # explicitly asked for those. Multi_match filters are style/material hints
+        # multi_match (feature / size) filters and retry the hybrid query.
+        # Color, waterproof, and brand filters use `match` and are kept — the
+        # user explicitly asked for those. Multi_match filters are style hints
         # that can over-constrain (e.g. "athletic" in "red shoes athletic").
         MIN_ATTR_FILTER_RESULTS = 3
         if (
@@ -2843,7 +2865,7 @@ Original query: {query}
             if len(hard_filters) < len(attribute_filters):
                 logger.info(
                     "Retriever: filter relaxation — %d doc(s) with full filters, "
-                    "retrying without material/size constraints (%d → %d filter(s))",
+                    "retrying without feature/size constraints (%d → %d filter(s))",
                     len(results),
                     len(attribute_filters),
                     len(hard_filters),

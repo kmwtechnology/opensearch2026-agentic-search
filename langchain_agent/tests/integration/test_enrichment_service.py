@@ -1,6 +1,6 @@
 """
 Integration tests for enrichment_service.enrich_attribute — the generic
-(color/material/any future type) synchronous flow the live agent enrichment
+(color/waterproof/any future type) synchronous flow the live agent enrichment
 tool calls: classify -> write mapping -> ensure index fields -> trigger a
 real Lucille reindex (which regenerates products.generated.conf itself).
 
@@ -9,8 +9,8 @@ fast and don't require a full ~20s Lucille run for every assertion — the
 classification/mapping/mapping-field logic is what's under test there. One
 test (TestRealReindexEndToEnd) exercises the actual subprocess trigger
 end-to-end and is slow (~20s) by nature; it uses a disposable test attribute
-type/variant, cleaned up after, so it never touches real color/material data
-or the demo's reserved gap terms.
+type/variant, cleaned up after, so it never touches real color/waterproof
+data or the demo's reserved gap terms.
 
 Uses a dedicated test index for the attribute mapping store so these tests
 never touch real taxonomy data.
@@ -65,10 +65,13 @@ class TestEnrichAttributeClassification:
     def test_dictionary_match_succeeds_without_llm(self, mock_run, store):
         mock_run.return_value = _mock_successful_subprocess()
 
-        result = enrichment_service.enrich_attribute("material", "cowhide", store=store)
+        # "chrome" is a real COLOR_CANONICALS variant (under the "gray"
+        # bucket) — proves static dictionary matching without needing
+        # llm_classify_fn or explicit_canonical.
+        result = enrichment_service.enrich_attribute("color", "chrome", store=store)
 
         assert result.success is True
-        assert result.canonical == "leather"
+        assert result.canonical == "gray"
         assert result.reindex_success is True
         assert result.docs_processed == 9618
 
@@ -85,16 +88,21 @@ class TestEnrichAttributeClassification:
     def test_llm_fallback_invoked_for_novel_term(self, mock_run, store):
         mock_run.return_value = _mock_successful_subprocess()
 
+        # WATERPROOF_CANONICALS ships with zero seed variants by design (see
+        # attribute_discovery.py), so ANY term -- even "weatherproof" itself
+        # -- structurally cannot dictionary-match and must go through the
+        # LLM fallback. That's a stronger guarantee than material's old
+        # sparse-dictionary version of this test ever gave.
         def fake_llm(term, canonicals):
-            assert term == "unobtainium"
-            return "metal"
+            assert term == "weatherproof"
+            return "waterproof"
 
         result = enrichment_service.enrich_attribute(
-            "material", "unobtainium", llm_classify_fn=fake_llm, store=store
+            "waterproof", "weatherproof", llm_classify_fn=fake_llm, store=store
         )
 
         assert result.success is True
-        assert result.canonical == "metal"
+        assert result.canonical == "waterproof"
 
     def test_unknown_attribute_type_fails_without_touching_reindex(self, store):
         result = enrichment_service.enrich_attribute("pattern", "polka-dot", store=store)
@@ -105,16 +113,16 @@ class TestEnrichAttributeClassification:
 
     def test_unclassifiable_term_fails_gracefully_without_reindex(self, store):
         result = enrichment_service.enrich_attribute(
-            "material", "xyznonsense", llm_classify_fn=lambda t, c: None, store=store
+            "waterproof", "xyznonsense", llm_classify_fn=lambda t, c: None, store=store
         )
 
         assert result.success is False
         assert result.reindex_triggered is False
 
     def test_already_mapped_term_is_idempotent(self, store):
-        store.add_mapping("material", "cowhide", "leather", source="seed")
+        store.add_mapping("waterproof", "weatherproof", "waterproof", source="seed")
 
-        result = enrichment_service.enrich_attribute("material", "cowhide", store=store)
+        result = enrichment_service.enrich_attribute("waterproof", "weatherproof", store=store)
 
         assert result.success is False
         assert result.reason == "already mapped"
@@ -164,14 +172,14 @@ class TestEnrichAttributeClassification:
         mock_run.return_value = _mock_successful_subprocess()
 
         result = enrichment_service.enrich_attribute(
-            "material", "chrome", store=store, explicit_canonical="metal"
+            "waterproof", "weatherproof", store=store, explicit_canonical="waterproof"
         )
 
         assert result.success is True
         assert result.corrected_from is None
 
     def test_empty_term_fails_gracefully(self, store):
-        result = enrichment_service.enrich_attribute("material", "", store=store)
+        result = enrichment_service.enrich_attribute("waterproof", "", store=store)
         assert result.success is False
         assert result.reason == "empty term"
 
@@ -183,19 +191,19 @@ class TestEnrichAttributeClassification:
             raise AssertionError("classification should be skipped when explicit_canonical is set")
 
         result = enrichment_service.enrich_attribute(
-            "material",
-            "chrome",
+            "waterproof",
+            "weatherproof",
             llm_classify_fn=failing_classify,
             store=store,
-            explicit_canonical="metal",
+            explicit_canonical="waterproof",
         )
 
         assert result.success is True
-        assert result.canonical == "metal"
+        assert result.canonical == "waterproof"
 
     def test_explicit_canonical_rejects_unknown_bucket(self, store):
         result = enrichment_service.enrich_attribute(
-            "material", "chrome", store=store, explicit_canonical="unobtainium_bucket"
+            "waterproof", "weatherproof", store=store, explicit_canonical="unobtainium_bucket"
         )
 
         assert result.success is False
@@ -205,10 +213,12 @@ class TestEnrichAttributeClassification:
     def test_writes_mapping_before_triggering_reindex(self, mock_run, store):
         mock_run.return_value = _mock_successful_subprocess()
 
-        enrichment_service.enrich_attribute("material", "cowhide", store=store)
+        enrichment_service.enrich_attribute(
+            "waterproof", "weatherproof", store=store, explicit_canonical="waterproof"
+        )
 
-        lookup = store.get_lookup_table("material")
-        assert lookup.get("cowhide") == "leather"
+        lookup = store.get_lookup_table("waterproof")
+        assert lookup.get("weatherproof") == "waterproof"
         mock_run.assert_called_once()
 
 
@@ -223,7 +233,9 @@ class TestReindexFailureHandling:
         result.stderr = "some lucille error"
         mock_run.return_value = result
 
-        outcome = enrichment_service.enrich_attribute("material", "cowhide", store=store)
+        outcome = enrichment_service.enrich_attribute(
+            "waterproof", "weatherproof", store=store, explicit_canonical="waterproof"
+        )
 
         assert outcome.success is True  # mapping write succeeded
         assert outcome.reindex_triggered is True
@@ -231,13 +243,15 @@ class TestReindexFailureHandling:
         assert outcome.docs_processed == 0
 
         # Mapping was still persisted despite the reindex failure
-        assert store.get_lookup_table("material").get("cowhide") == "leather"
+        assert store.get_lookup_table("waterproof").get("weatherproof") == "waterproof"
 
     @patch("subprocess.run")
     def test_timeout_reports_reindex_failure(self, mock_run, store):
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="lucille_ingest.sh", timeout=180)
 
-        outcome = enrichment_service.enrich_attribute("material", "cowhide", store=store)
+        outcome = enrichment_service.enrich_attribute(
+            "waterproof", "weatherproof", store=store, explicit_canonical="waterproof"
+        )
 
         assert outcome.success is True
         assert outcome.reindex_success is False
@@ -280,12 +294,12 @@ class TestEnsureAttributeFieldsMapped:
         store.client.indices.delete(index=test_docs_index, ignore=[404])
         store.client.indices.create(
             index=test_docs_index,
-            body={"mappings": {"properties": {"product_material_primary": {"type": "keyword"}}}},
+            body={"mappings": {"properties": {"product_waterproof_primary": {"type": "keyword"}}}},
         )
 
         with patch("core.config.OPENSEARCH_INDEX_NAME", test_docs_index):
             # Should not raise, should not error on an existing field
-            enrichment_service._ensure_attribute_fields_mapped(store, "material")
+            enrichment_service._ensure_attribute_fields_mapped(store, "waterproof")
 
         store.client.indices.delete(index=test_docs_index, ignore=[404])
 
@@ -304,7 +318,7 @@ class TestParseDocsSucceeded:
 class TestRealReindexEndToEnd:
     """The one test that triggers an actual Lucille reindex (~20s). Uses a
     disposable attribute type + variant so it never touches real color/
-    material taxonomy or the demo's reserved live-gap term.
+    waterproof taxonomy or the demo's reserved live-gap term.
 
     Note: the reindex subprocess is a separate Python process — it doesn't
     see the store fixture's monkeypatched test index, so it regenerates

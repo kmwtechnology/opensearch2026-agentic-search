@@ -43,7 +43,7 @@ class EnrichmentValueAssessment(BaseModel):
 _EVALUATOR_SYSTEM = (
     "You are an impartial reviewer deciding whether a proposed change to an "
     "e-commerce search taxonomy is worth making. A separate assistant has "
-    "already decided a term should map to a given color/material category, "
+    "already decided a term should map to a given color/waterproof category, "
     "and chose that category correctly according to plain meaning. Your job "
     "is different: decide whether actually writing this mapping and "
     "re-indexing the whole product catalog (a real, non-trivial operation) "

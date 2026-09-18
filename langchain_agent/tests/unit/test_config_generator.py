@@ -11,7 +11,7 @@ from config_generator import _stage_name, generate_products_conf
 
 class TestStageNaming:
     def test_simple_type(self):
-        assert _stage_name("material") == "detectMaterial"
+        assert _stage_name("waterproof") == "detectWaterproof"
 
     def test_another_simple_type(self):
         assert _stage_name("color") == "detectColor"
@@ -25,20 +25,20 @@ class TestStageNaming:
 
 class TestGenerateProductsConf:
     def test_one_stage_block_per_attribute_type(self):
-        conf = generate_products_conf(["color", "material"])
+        conf = generate_products_conf(["color", "waterproof"])
 
         assert conf.count('class: "com.kmwllc.esci.AttributeDetectorStage"') == 2
 
     def test_stage_names_are_distinct_and_correct(self):
-        conf = generate_products_conf(["color", "material"])
+        conf = generate_products_conf(["color", "waterproof"])
 
         assert 'name: "detectColor"' in conf
-        assert 'name: "detectMaterial"' in conf
+        assert 'name: "detectWaterproof"' in conf
 
     def test_attribute_type_parameter_interpolated_correctly(self):
-        conf = generate_products_conf(["material"])
+        conf = generate_products_conf(["waterproof"])
 
-        assert 'attributeType: "material"' in conf
+        assert 'attributeType: "waterproof"' in conf
 
     def test_stage_reuses_indexer_opensearch_block_pointed_at_mapping_index(self):
         """The detector stage shares the indexer's `opensearch` block via HOCON
@@ -46,7 +46,7 @@ class TestGenerateProductsConf:
         overrides `index` to the mapping store -- so the stage cannot silently
         diverge from the indexer's TLS/auth behaviour on the hosted cluster
         (#71, #72). Pins the exact rendered line."""
-        conf = generate_products_conf(["material"])
+        conf = generate_products_conf(["waterproof"])
 
         assert (
             'opensearch: ${opensearch} { index: "agentic_hybrid_search_attribute_mappings" }'
@@ -56,16 +56,16 @@ class TestGenerateProductsConf:
     def test_legacy_opensearchurl_key_is_gone(self):
         """AttributeDetectorStage's Spec rejects unknown keys, so emitting the
         old `openSearchUrl` would fail Lucille's pre-run validation."""
-        conf = generate_products_conf(["color", "material"])
+        conf = generate_products_conf(["color", "waterproof"])
 
         assert "openSearchUrl" not in conf
 
     def test_output_field_names_documented_per_type(self):
-        conf = generate_products_conf(["material"])
+        conf = generate_products_conf(["waterproof"])
 
-        assert "product_material" in conf
-        assert "product_material_primary" in conf
-        assert "product_material_secondary" in conf
+        assert "product_waterproof" in conf
+        assert "product_waterproof_primary" in conf
+        assert "product_waterproof_secondary" in conf
 
     def test_empty_attribute_types_produces_no_detector_stages(self):
         conf = generate_products_conf([])
@@ -79,13 +79,13 @@ class TestGenerateProductsConf:
         assert "buildChunkText" in conf
 
     def test_three_attribute_types_yields_three_stages(self):
-        conf = generate_products_conf(["color", "material", "pattern"])
+        conf = generate_products_conf(["color", "waterproof", "pattern"])
 
         assert conf.count('class: "com.kmwllc.esci.AttributeDetectorStage"') == 3
         assert 'name: "detectPattern"' in conf
 
     def test_fixed_prelude_stages_always_present(self):
-        conf = generate_products_conf(["material"])
+        conf = generate_products_conf(["waterproof"])
 
         for stage_class in [
             "com.kmwllc.lucille.stage.Concatenate",
@@ -96,7 +96,7 @@ class TestGenerateProductsConf:
             assert stage_class in conf
 
     def test_fixed_epilogue_present(self):
-        conf = generate_products_conf(["material"])
+        conf = generate_products_conf(["waterproof"])
 
         assert "setCollectionId" in conf
         assert "removeEmptyFields" in conf
@@ -104,8 +104,11 @@ class TestGenerateProductsConf:
 
     def test_no_normalizeattributes_or_normalizematerial_stage_names_remain(self):
         """Regression: the retired dedicated stage names must not leak into
-        generated output — only the generic detect<Type> naming."""
-        conf = generate_products_conf(["color", "material"])
+        generated output — only the generic detect<Type> naming. Deliberately
+        pins the historical "material"-named stages that actually existed
+        pre-rewrite, not the current "waterproof" attribute type — renaming
+        these to match today's types would weaken the regression."""
+        conf = generate_products_conf(["color", "waterproof"])
 
         assert '"normalizeAttributes"' not in conf
         assert '"normalizeMaterial"' not in conf
@@ -115,14 +118,14 @@ class TestGenerateProductsConf:
     def test_output_is_syntactically_balanced_braces(self):
         """Cheap sanity check on generated HOCON — not a full parser, but
         catches an unbalanced brace from a template bug."""
-        conf = generate_products_conf(["color", "material"])
+        conf = generate_products_conf(["color", "waterproof"])
         assert conf.count("{") == conf.count("}")
 
     def test_stage_order_prelude_then_attributes_then_epilogue(self):
-        conf = generate_products_conf(["material"])
+        conf = generate_products_conf(["waterproof"])
 
         brand_pos = conf.index('class: "com.kmwllc.esci.BrandNormalizerStage"')
-        material_pos = conf.index('class: "com.kmwllc.esci.AttributeDetectorStage"')
+        waterproof_pos = conf.index('class: "com.kmwllc.esci.AttributeDetectorStage"')
         collection_pos = conf.index('name: "setCollectionId"')
 
-        assert brand_pos < material_pos < collection_pos
+        assert brand_pos < waterproof_pos < collection_pos

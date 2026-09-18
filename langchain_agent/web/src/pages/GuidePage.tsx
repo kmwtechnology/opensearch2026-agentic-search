@@ -150,7 +150,7 @@ export function GuidePage() {
             </ol>
             <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-2">
               This catalog has no price field at all — every turn stays on attributes that actually exist (color,
-              size, material, brand, feature).
+              size, brand, feature, waterproofing).
             </p>
           </div>
 
@@ -232,7 +232,7 @@ export function GuidePage() {
             <h4 className="font-semibold text-gray-900 mt-4">Tips for Best Results</h4>
             <ul className="space-y-1 text-[1.375rem] text-gray-700">
               <li className="flex gap-2"><span>💡</span> Use exact query strings in demo turns — several are crafted for specific behaviors (e.g., "show me tan boots" for the taxonomy demo, "sewing machine" for ground-truth metrics)</li>
-              <li className="flex gap-2"><span>🎯</span> Avoid asking about price — there is no price field in this catalog. Focus on attributes like color, size, material, brand, and feature</li>
+              <li className="flex gap-2"><span>🎯</span> Avoid asking about price — there is no price field in this catalog. Focus on attributes like color, size, brand, feature, and waterproofing</li>
               <li className="flex gap-2"><span>🔄</span> The taxonomy demo re-arms itself automatically on selection, restoring the original tan→yellow mis-tag so the turn-1 failure is fresh every time</li>
               <li className="flex gap-2"><span>📋</span> Click citations to see full product details on Amazon</li>
               <li className="flex gap-2"><span>⚙️</span> Watch the Narrator/Details panel to understand why results were ranked this way and what the Pipeline Quality Summary shows</li>

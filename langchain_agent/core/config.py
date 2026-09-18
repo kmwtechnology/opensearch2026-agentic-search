@@ -312,7 +312,7 @@ RETRIEVER_SEARCH_TYPE = "hybrid"
 
 # Max wait (seconds) for the pipeline's three hidden alpha_estimator_llm /
 # structured-alpha-estimator calls: Retriever._extract_attributes
-# (brand/color/material/price parsing for attribute_filter/refinement
+# (brand/color/waterproof/price parsing for attribute_filter/refinement
 # queries), Retriever._expand_vague_query (follow-up query expansion), and
 # query_evaluator_node's alpha-estimation call. None of these calls has a
 # timeout of its own -- one was measured hanging ~18.7s in one

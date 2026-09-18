@@ -4,8 +4,9 @@ a term that resolves against the product_color taxonomy gets an exact
 filter using the CANONICAL value (fixing variant spellings like "grey" not
 matching an index normalized to "gray"); a term that doesn't resolve falls
 back to using the raw LLM-extracted value directly, matching pre-existing
-behavior (color, unlike material_or_feature, has no lexical multi_match
-fallback path — it never did before this change either).
+behavior (color, like waterproof but unlike the generic feature field, has
+no lexical multi_match fallback path — it never did before this change
+either).
 
 AttributeMappingStore is mocked so these tests never depend on live
 OpenSearch state — the static COLOR_CANONICALS dictionary alone is enough
@@ -61,7 +62,7 @@ class TestColorClassification:
 
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_unresolved_color_falls_back_to_raw_term(self, mock_store_cls) -> None:
-        """Unlike material_or_feature, color has no lexical multi_match
+        """Unlike the generic feature field, color has no lexical multi_match
         fallback — an unclassified term is used as-is, matching the
         pre-existing (pre-classification) behavior exactly."""
         mock_store_cls.return_value.get_lookup_table.return_value = {}
@@ -95,15 +96,17 @@ class TestColorClassification:
         assert filters == [{"match": {"product_color_primary": {"query": "black"}}}]
 
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
-    def test_mixed_query_classifies_color_and_material_independently(self, mock_store_cls) -> None:
+    def test_mixed_query_classifies_color_and_waterproof_independently(
+        self, mock_store_cls
+    ) -> None:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         agent = _agent_returning_attributes(
-            {"brand": "Sony", "color": "grey", "material_or_feature": "leather"}
+            {"brand": "Sony", "color": "grey", "waterproof": "waterproof"}
         )
 
-        filters = agent._extract_attributes("grey leather Sony headphones")
+        filters = agent._extract_attributes("grey waterproof Sony headphones")
 
         assert {"match": {"product_brand_normalized": {"query": "Sony"}}} in filters
         assert {"match": {"product_color_primary": {"query": "gray"}}} in filters
-        assert {"match": {"product_material_primary": {"query": "leather"}}} in filters
+        assert {"match": {"product_waterproof_primary": {"query": "waterproof"}}} in filters
         assert len(filters) == 3

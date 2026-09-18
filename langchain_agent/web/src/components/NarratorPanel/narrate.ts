@@ -316,10 +316,14 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
 
   switch (e.status) {
     case 'started':
+      // corrected_from isn't known yet at "started" time (the backend only
+      // learns whether this is a correction vs. a fresh addition once
+      // enrich_attribute runs) — phrase this neutrally so it doesn't
+      // presume "correction" for what might be a brand-new attribute type.
       return {
         ...base,
         label: 'Catalog Update',
-        text: `Rebuilding the catalog so every product picks up the corrected ${e.attribute_type}.`,
+        text: `Rebuilding the catalog so every product reflects the updated ${e.attribute_type} data.`,
       }
     case 'complete': {
       // corrected_from is the whole point: it separates fixing a wrong tag

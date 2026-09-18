@@ -3,7 +3,7 @@
 Production incident reproduced 2026-05-06 via the demo scenario "wireless
 headphones" → "only noise cancelling ones" (DEMO_QUERIES.md scenario 2).
 Turn 2 routes to ``refinement`` intent, which calls ``_extract_attributes``;
-Gemini occasionally returns ``material_or_feature`` (or ``size``) as a JSON
+Gemini occasionally returns ``feature`` (or ``size``) as a JSON
 **array** rather than a string — e.g. ``["noise canceling"]``. That array
 gets put into a ``multi_match`` filter as the ``query`` field, and OpenSearch
 rejects it with::
@@ -47,12 +47,13 @@ def _agent_returning_attributes(payload: dict) -> EcommerceSearchAgent:
 
 @pytest.fixture(autouse=True)
 def _no_live_opensearch():
-    """_extract_attributes' color/material paths call _classify_attribute,
+    """_extract_attributes' color/waterproof paths call _classify_attribute,
     which queries AttributeMappingStore — mock it so this file (tests/unit/,
     zero service dependency by convention) never depends on live OpenSearch.
     An empty lookup still exercises real classification via the static
-    COLOR_CANONICALS/MATERIAL_CANONICALS seed dicts, which is all these
-    coercion-focused tests need."""
+    COLOR_CANONICALS seed dict, which is all these coercion-focused tests
+    need (WATERPROOF_CANONICALS ships with no seed variants by design, so
+    an empty lookup is also its normal unresolved state)."""
     with patch("retrieval.attribute_mapping_store.AttributeMappingStore") as mock_store_cls:
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         yield
@@ -89,7 +90,7 @@ class TestExtractAttributesCoercion:
             {
                 "brand": "Sony",
                 "color": "black",
-                "material_or_feature": "noise canceling",
+                "feature": "noise canceling",
                 "size": "large",
             }
         )
@@ -98,10 +99,10 @@ class TestExtractAttributesCoercion:
         # Every supplied attribute should have produced a clause.
         assert len(filters) == 4
 
-    def test_array_material_collapsed_to_string(self) -> None:
-        # The exact shape that crashed prod: material_or_feature as a
+    def test_array_feature_collapsed_to_string(self) -> None:
+        # The exact shape that crashed prod: feature as a
         # single-element JSON array.
-        agent = _agent_returning_attributes({"material_or_feature": ["noise canceling"]})
+        agent = _agent_returning_attributes({"feature": ["noise canceling"]})
         filters = agent._extract_attributes("only noise cancelling ones please")
         _all_query_fields_are_strings(filters)
         # Verify the value made it through — not just dropped silently.
@@ -109,9 +110,7 @@ class TestExtractAttributesCoercion:
         assert mm["query"] == "noise canceling"
 
     def test_multi_element_array_joined_with_space(self) -> None:
-        agent = _agent_returning_attributes(
-            {"material_or_feature": ["noise canceling", "wireless"]}
-        )
+        agent = _agent_returning_attributes({"feature": ["noise canceling", "wireless"]})
         filters = agent._extract_attributes("wireless noise cancelling")
         _all_query_fields_are_strings(filters)
         mm = filters[0]["multi_match"]
@@ -142,13 +141,13 @@ class TestExtractAttributesCoercion:
     def test_empty_array_dropped(self) -> None:
         # An empty array shouldn't produce a clause at all — that would
         # send {"query": ""} which OpenSearch will reject differently.
-        agent = _agent_returning_attributes({"material_or_feature": [], "brand": None, "color": ""})
+        agent = _agent_returning_attributes({"feature": [], "brand": None, "color": ""})
         filters = agent._extract_attributes("vague refinement query here")
         assert filters == []
 
     def test_array_with_nulls_filtered(self) -> None:
         # Defensive: if the LLM emits [null, "noise canceling"], drop the null.
-        agent = _agent_returning_attributes({"material_or_feature": [None, "noise canceling", ""]})
+        agent = _agent_returning_attributes({"feature": [None, "noise canceling", ""]})
         filters = agent._extract_attributes("only noise cancelling ones")
         _all_query_fields_are_strings(filters)
         assert filters[0]["multi_match"]["query"] == "noise canceling"

@@ -278,7 +278,7 @@ def main():
             print(
                 "      Runs via Docker by default (no local Java/Maven needed). Embeddings are precomputed — no API calls needed."
             )
-            print("      Seeding color/material taxonomy (discovery pass, then a products pass)...")
+            print("      Seeding color taxonomy (discovery pass, then a products pass)...")
             try:
                 import subprocess
 
@@ -290,8 +290,12 @@ def main():
                 # fresh cluster with an empty taxonomy store (see CLAUDE.md: "A
                 # fresh cluster's taxonomy store is empty and nothing seeds it
                 # implicitly"). Mandatory, not optional: without it, every
-                # color/material attribute_filter query returns zero results
-                # until someone happens to run `make seed-taxonomy` by hand.
+                # color attribute_filter query returns zero results until
+                # someone happens to run `make seed-taxonomy` by hand. The
+                # "waterproof" attribute type is deliberately NOT seeded here —
+                # it starts empty and is grown entirely by the live enrichment
+                # flywheel (see attribute_discovery.py's WATERPROOF_CANONICALS
+                # comment).
                 lucille_args.append("--seed-taxonomy")
                 result = subprocess.run(
                     lucille_args,

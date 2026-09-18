@@ -1,8 +1,8 @@
 """
 Attribute enrichment service — the mechanism the live agent enrichment tool
-calls when a query mentions a color or material term that isn't in its
-taxonomy yet. Generic over attribute_type (color, material, or any future
-type), not material-specific.
+calls when a query mentions a color or waterproof term that isn't in its
+taxonomy yet. Generic over attribute_type (color, waterproof, or any future
+type), not waterproof-specific.
 
 Flow (real, not mocked — measured ~17-20s locally, fast enough for a live
 on-stage trigger):
@@ -34,7 +34,7 @@ from typing import Callable, Dict, Optional
 from pipeline.reindex_trigger import ReindexTrigger, build_reindex_trigger
 from retrieval.attribute_discovery import (
     COLOR_CANONICALS,
-    MATERIAL_CANONICALS,
+    WATERPROOF_CANONICALS,
     single_term_classify,
 )
 from retrieval.attribute_mapping_store import AttributeMappingStore
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # new attribute type gets a discovery seed dict in attribute_discovery.py.
 _CANONICAL_SEEDS_BY_TYPE: Dict[str, Dict[str, list]] = {
     "color": COLOR_CANONICALS,
-    "material": MATERIAL_CANONICALS,
+    "waterproof": WATERPROOF_CANONICALS,
 }
 
 
@@ -85,7 +85,7 @@ def enrich_attribute(
     the index mapping supports it, and trigger a real Lucille reindex.
 
     Args:
-        attribute_type: "color", "material", or any future registered type
+        attribute_type: "color", "waterproof", or any future registered type
         variant: the unmapped term (e.g. "chrome")
         llm_classify_fn: optional callable(term, canonical_names) -> canonical
             or None, used only when dictionary matching can't classify the
@@ -203,7 +203,7 @@ def _ensure_attribute_fields_mapped(store: AttributeMappingStore, attribute_type
     """
     Additively PUT the OpenSearch index mapping fields for a new attribute
     type (product_<type> dual-mapped text + product_<type>_primary/_secondary
-    keyword), mirroring product_material's mapping. No-op if already present
+    keyword), mirroring product_waterproof's mapping. No-op if already present
     — safe to call every time.
     """
     from core.config import OPENSEARCH_INDEX_NAME

@@ -12,10 +12,10 @@ from pydantic import BaseModel, Field
 
 
 class EnrichmentRequest(BaseModel):
-    """Request to enrich a color or material taxonomy with a new variant."""
+    """Request to enrich a color or waterproof taxonomy with a new variant."""
 
     attribute_type: str = Field(
-        ..., description="Which taxonomy the variant belongs to: 'color' or 'material'"
+        ..., description="Which taxonomy the variant belongs to: 'color' or 'waterproof'"
     )
     variant: str = Field(
         ..., min_length=1, max_length=100, description="The unmapped term, e.g. 'chrome'"
@@ -24,8 +24,9 @@ class EnrichmentRequest(BaseModel):
         None,
         description=(
             "Skip dictionary classification and use this canonical bucket directly "
-            "(e.g. 'metal'), the same way the live agent tool supplies its own "
-            "LLM-classified canonical. Required for terms the dictionary can't match."
+            "(e.g. 'brown' for color, 'waterproof' for waterproof), the same way the "
+            "live agent tool supplies its own LLM-classified canonical. Required for "
+            "terms the dictionary can't match."
         ),
     )
 

@@ -49,9 +49,9 @@ class TestBasicReadWrite:
         assert lookup.get("jet black") == "black"
 
     def test_get_mapping_single_lookup(self, store):
-        store.add_mapping("material", "vegan leather", "leather", source="test")
-        assert store.get_mapping("material", "vegan leather") == "leather"
-        assert store.get_mapping("material", "nonexistent") is None
+        store.add_mapping("waterproof", "weatherproof", "waterproof", source="test")
+        assert store.get_mapping("waterproof", "weatherproof") == "waterproof"
+        assert store.get_mapping("waterproof", "nonexistent") is None
 
     def test_variant_lookup_is_case_insensitive(self, store):
         store.add_mapping("color", "Jet Black", "black", source="test")
@@ -86,17 +86,17 @@ class TestIdempotency:
 
 
 class TestAttributeTypeIsolation:
-    def test_color_and_material_do_not_leak(self, store):
+    def test_color_and_waterproof_do_not_leak(self, store):
         store.add_mapping("color", "jet black", "black", source="test")
-        store.add_mapping("material", "vegan leather", "leather", source="test")
+        store.add_mapping("waterproof", "weatherproof", "waterproof", source="test")
 
         color_lookup = store.get_lookup_table("color")
-        material_lookup = store.get_lookup_table("material")
+        waterproof_lookup = store.get_lookup_table("waterproof")
 
-        assert "vegan leather" not in color_lookup
-        assert "jet black" not in material_lookup
+        assert "weatherproof" not in color_lookup
+        assert "jet black" not in waterproof_lookup
         assert color_lookup == {"jet black": "black"}
-        assert material_lookup == {"vegan leather": "leather"}
+        assert waterproof_lookup == {"weatherproof": "waterproof"}
 
 
 class TestBulkOperations:
@@ -121,13 +121,17 @@ class TestBulkOperations:
         assert second_count == 0
 
     def test_seed_from_discovery_adds_variant_canonical_pairs(self, store):
-        discovered = {"vegan leather": "leather", "cowhide": "leather", "cotton blend": "cotton"}
-        count = store.seed_from_discovery("material", discovered)
+        discovered = {
+            "weatherproof": "waterproof",
+            "splash proof": "waterproof",
+            "water resistant": "water-resistant",
+        }
+        count = store.seed_from_discovery("waterproof", discovered)
         assert count == 3
 
-        lookup = store.get_lookup_table("material")
-        assert lookup["cowhide"] == "leather"
-        assert lookup["cotton blend"] == "cotton"
+        lookup = store.get_lookup_table("waterproof")
+        assert lookup["splash proof"] == "waterproof"
+        assert lookup["water resistant"] == "water-resistant"
 
 
 class TestLiveFlywheelScenario:
@@ -137,16 +141,15 @@ class TestLiveFlywheelScenario:
 
     def test_write_then_immediate_lookup_supports_synchronous_flywheel(self, store):
         # Seed the initial taxonomy (bulk, as if from Phase A bootstrap)
-        store.seed_from_discovery("material", {"leather": "leather", "cotton": "cotton"})
+        store.seed_from_discovery("waterproof", {"waterproof": "waterproof"})
 
         # Live agent turn: a gap term appears, agent classifies + writes it
-        store.add_mapping("material", "vegan leather", "leather", source="agent")
+        store.add_mapping("waterproof", "weatherproof", "waterproof", source="agent")
 
         # Immediately-next step in the same turn must see it (no refresh call needed)
-        lookup = store.get_lookup_table("material")
-        assert lookup["vegan leather"] == "leather"
-        assert lookup["leather"] == "leather"
-        assert lookup["cotton"] == "cotton"
+        lookup = store.get_lookup_table("waterproof")
+        assert lookup["weatherproof"] == "waterproof"
+        assert lookup["waterproof"] == "waterproof"
 
     def test_write_invalidates_an_already_populated_cache(self, store):
         """Regression coverage for #25's get_lookup_table() cache: a lookup
@@ -155,15 +158,15 @@ class TestLiveFlywheelScenario:
         get_lookup_table() call happens after every write, so the cache is
         never populated with stale data to invalidate in the first place.)
         """
-        store.add_mapping("material", "leather", "leather", source="test")
+        store.add_mapping("waterproof", "waterproof", "waterproof", source="test")
 
         # Populate the cache with the pre-write state.
-        first_lookup = store.get_lookup_table("material")
-        assert "vegan leather" not in first_lookup
+        first_lookup = store.get_lookup_table("waterproof")
+        assert "weatherproof" not in first_lookup
 
         # Live agent turn: a new gap term is classified and written.
-        store.add_mapping("material", "vegan leather", "leather", source="agent")
+        store.add_mapping("waterproof", "weatherproof", "waterproof", source="agent")
 
         # The next lookup must reflect the write, not the cached pre-write table.
-        second_lookup = store.get_lookup_table("material")
-        assert second_lookup.get("vegan leather") == "leather"
+        second_lookup = store.get_lookup_table("waterproof")
+        assert second_lookup.get("weatherproof") == "waterproof"

@@ -93,8 +93,8 @@ Field definitions for the product index:
 - `knn_vector` — HNSW index, 768-dim
 - `product_title`, `product_brand`, `product_color` — text + keyword dual mapping (faceting)
 - `title_suggest`, `brand_suggest` — edge-ngram analyzers for prefix matching
-- `product_color_primary`, `product_color_secondary`, `product_material_primary`,
-  `product_material_secondary` — detected attribute fields (keyword, added during ingest by
+- `product_color_primary`, `product_color_secondary`, `product_waterproof_primary`,
+  `product_waterproof_secondary` — detected attribute fields (keyword, added during ingest by
   `AttributeDetectorStage`)
 - `product_brand_normalized` — normalized brand field (keyword, added during ingest by
   `BrandNormalizerStage`)
@@ -129,7 +129,7 @@ bash scripts/lucille_ingest.sh
 2. Regenerates `conf/products.generated.conf` via `config_generator.py` (fixed prelude/epilogue + one detection stage per attribute type currently registered in OpenSearch)
 3. Runs Lucille products ingest via `docker compose run --rm lucille`: `data/esci_products_sample_10000.parquet` → OpenSearch
    - Applies `conf/products.generated.conf` transformations: title/brand copy, chunk_text build, collection_id set
-   - Runs the generated `detectColor`/`detectMaterial` stages (both instances of `AttributeDetectorStage`) and `normalizeBrand` (`BrandNormalizerStage`) during ingest — no separate post-processing pass
+   - Runs the generated `detectColor`/`detectWaterproof` stages (both instances of `AttributeDetectorStage`) and `normalizeBrand` (`BrandNormalizerStage`) during ingest — no separate post-processing pass
    - ~10 s
 4. Runs Lucille judgments ingest: `data/esci_judgments_aggregated.parquet` → OpenSearch
    - ~5 s
@@ -213,23 +213,25 @@ Check `conf/products.generated.conf` (regenerate via `python config_generator.py
 missing or stale) — every product doc must have `collection_id=esci_products` set
 in `defaultFields`. If products are indexed without it, retrieval queries won't find them.
 
-## Attribute Detection (Color, Material) & Brand Normalization
+## Attribute Detection (Color, Waterproof) & Brand Normalization
 
 **What:** Attribute detection happens during Lucille ingest via `AttributeDetectorStage`, one
 generic Java stage parameterized by `attributeType`. It scans `chunk_text` for known
-color/material variants, improving filter recall without a separate post-processing step.
+color/waterproof variants, improving filter recall without a separate post-processing step.
 Brand normalization is a separate, smaller stage (`BrandNormalizerStage`) — a fixed transform,
 not a discovered taxonomy.
 
 **Fields added:**
 
-- `product_color_primary`/`_secondary`, `product_material_primary`/`_secondary` — canonical
+- `product_color_primary`/`_secondary`, `product_waterproof_primary`/`_secondary` — canonical
   values (keyword), one pair per registered attribute type
 - `product_brand_normalized` — case-folded brand (e.g., "Sony" → "sony")
 
-**Why:** Raw color/material text has high variance ("grey" vs "gray", "chrome" as an
-unmapped material). Filter queries like "blue wireless headphones" match all blue variants
-including "Navy", "Cyan", "Teal", etc.
+**Why:** Raw color text has high variance ("grey" vs "gray", "tan" filed under the wrong
+bucket). Filter queries like "blue wireless headphones" match all blue variants including
+"Navy", "Cyan", "Teal", etc. Waterproof starts with an empty taxonomy by design — see
+`attribute_discovery.py`'s `WATERPROOF_CANONICALS` — so it's grown entirely by the live
+enrichment flywheel rather than seeded here.
 
 **How it works:**
 
@@ -237,7 +239,7 @@ including "Navy", "Cyan", "Teal", etc.
    image via `docker/lucille/Dockerfile`
 2. `config_generator.py` (invoked by `lucille_ingest.sh` before every run) emits one
    `AttributeDetectorStage` instance per attribute type currently registered in
-   OpenSearch — e.g. `detectColor` and `detectMaterial` — into the generated
+   OpenSearch — e.g. `detectColor` and `detectWaterproof` — into the generated
    `conf/products.generated.conf`
 3. At `start()`, each stage instance queries OpenSearch
    (`agentic_hybrid_search_attribute_mappings` index, via `AttributeMappingStore` on the
@@ -282,4 +284,4 @@ including "Navy", "Cyan", "Teal", etc.
 - [Lucille Framework](https://github.com/kmwtechnology/lucille)
 - [OpenSearch field mappings](https://opensearch.org/docs/latest/im-plugin/index-templates/)
 - [HNSW KNN](https://opensearch.org/docs/latest/search-plugins/knn/knn-index/)
-- [Attribute Detection & Enrichment Flywheel (ARCHITECTURE.md)](../ARCHITECTURE.md#attribute-detection-color--material-and-brand-normalization)
+- [Attribute Detection & Enrichment Flywheel (ARCHITECTURE.md)](../ARCHITECTURE.md#attribute-detection-color--waterproof-and-brand-normalization)

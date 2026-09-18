@@ -307,9 +307,9 @@ describe('narrate — enrichment lifecycle', () => {
     const learned = narrate(
       enrichment({
         status: 'complete',
-        variant: 'chrome',
-        attribute_type: 'material',
-        canonical: 'metal',
+        variant: 'weatherproof',
+        attribute_type: 'waterproof',
+        canonical: 'waterproof',
         docs_processed: 9618,
         duration_seconds: 19.4,
       })

@@ -256,7 +256,7 @@ mention rewrites nothing; and the whole tool is behind `ENABLE_ENRICHMENT_TOOL`,
 off by default.
 
 **Beyond colour?** Yes — the same store, detection stage, and
-`trigger_enrichment` tool cover material too, and the correction path is generic
+`trigger_enrichment` tool cover waterproof too, and the correction path is generic
 over `attribute_type`. This script only walks colour end to end.
 
 **Non-e-commerce domains?** Yes. Swap ESCI products for your own documents; the
