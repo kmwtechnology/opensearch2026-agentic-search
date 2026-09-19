@@ -11,6 +11,7 @@ pandoc "$SRC" \
   -f gfm -t epub3 --syntax-highlighting=none \
   --toc --toc-depth=3 --split-level=2 \
   --css "$HERE/epub-eink.css" \
+  --lua-filter "$HERE/eink.lua" \
   --metadata title="Agentic Hybrid Search — Application Manual" \
   --metadata author="KMW Technology" \
   --metadata lang=en \
