@@ -460,7 +460,7 @@ Then run `make dev` to start the servers.
 
 ## Using the App: Demo Walkthrough
 
-The app runs as a scripted demo, not as a free-form search tool. Two story arcs walk you through the agent's core capabilities: first, how it refines search based on conversation; second, how it detects and fixes data errors in the catalog. Everything is driven by the **Next** button in the header—you never type a query by hand.
+The app runs as a scripted demo, not as a free-form search tool. Four demos (selectable from a dropdown) walk you through the agent's core capabilities: two main story arcs (search refinement, then data-error correction), plus two optional bonus scenes (real relevance judgments, and schema evolution — growing an attribute that never existed rather than fixing a wrong one). Everything is driven by the **Next** button in the header—you never type a query by hand. ⚠️ **DRIFT NOTE**: an earlier revision of this chapter covered only three of the four demos and omitted "Schema Evolution" entirely; see that new section below.
 
 ### Before You Start
 
@@ -548,9 +548,19 @@ This query exists in Amazon's ESCI benchmark with actual human relevance judgmen
 
 This is the concrete version of the claim both arcs make in passing: hybrid retrieval plus reranking beat plain lexical search. Here it is measured against external, academic ground truth instead of the system grading its own homework. Note that only 3 products are judged for this query—the demo corpus has sparse judgments (~1 judged product per query on average). The point is that the number is real, not that it is large.
 
+### Bonus — Data Enrichment: Schema Evolution (Optional)
+
+Select **"Data Enrichment: Schema Evolution"** from the demo dropdown to see the taxonomy-growth machinery's other shape: not correcting a wrong mapping (that's Arc 2), but growing a filter dimension — `waterproof` — that doesn't exist in the catalog at all yet. Unlike Arc 2, no shopper has to dispute anything; the fix fires automatically the moment a hard attribute filter returns zero results.
+
+**Turn 1: `Show me waterproof boots`** — On a freshly-armed cluster this returns zero results: `product_waterproof_primary` is genuinely unindexed (the `WATERPROOF_CANONICALS` taxonomy ships with a registered bucket but zero seed variants, on purpose). Watch the agent notice the gap and propose growing the taxonomy itself, unprompted — `trigger_enrichment` fires, a second model approves it, and a real ~20-second Lucille reindex of all 9,618 products runs live, the same elapsed-counter card as Arc 2's correction.
+
+**Turn 2: `Show me waterproof boots` (new conversation)** — Same query, new session. The filter now reads `product_waterproof_primary: "waterproof"` across the full catalog — that field existing at all is the proof, permanent for every future shopper.
+
+This demo needs re-arming before it can run again (like Arc 2, it consumes a data gap) — the UI re-arms it automatically when selected. It also requires `ENABLE_ENRICHMENT_TOOL=true`, which is already set in this repo's local `.env`.
+
 ### What the System Is Doing
 
-These six turns (or one bonus turn) are fully scripted and reproducible. The agent is not exploring novel queries; it is demonstrating its internal mechanics:
+These turns across all four demos (nine total: three + one + three + two) are fully scripted and reproducible. The agent is not exploring novel queries; it is demonstrating its internal mechanics:
 
 - **Intent classification** (one LLM call) picks between six classes: `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, or `summary`.
 - **Dynamic alpha** adjusts the hybrid retrieval balance between keyword (BM25) and semantic (vector) based on intent—lexical when the question names specific attributes, semantic when it names purposes or abstract qualities.
@@ -559,6 +569,7 @@ These six turns (or one bonus turn) are fully scripted and reproducible. The age
 - **Cross-encoder reranking** rescores the top 40 candidates; a local model, not an LLM call.
 - **Quality gate** checks if the best result exceeds a threshold; if not, the system adjusts alpha wider and retrieves 4x more candidates, then retries reranking.
 - **Correction detection** catches phrases like `"that's not"` and routes them to a model-approved enrichment tool that rewrites the taxonomy and triggers a real re-ingest.
+- **Taxonomy growth** (unprompted, unlike correction) fires automatically when a hard attribute filter returns zero results — the agent proposes growing the taxonomy itself via the same `trigger_enrichment` tool, a second model approves it, and a real re-ingest runs live.
 
 ### Models and Performance
 
@@ -578,6 +589,8 @@ Typical latency: intent classification 10–500ms, query evaluation 10–500ms, 
 | Symptom | Fix |
 | --- | --- |
 | Arc 2 turn 1 shows no mismatch | The index is already corrected. Click **Restart**, or run `make demo-reset` from `langchain_agent/`. |
+| Schema Evolution turn 1 already shows results | The taxonomy is already grown from a prior run. Re-arm it (the UI does this automatically on selecting the demo) or run `make demo-reset`. |
+| Schema Evolution turn 1 doesn't call `trigger_enrichment` | The model declined the tool call this run (a single-shot LLM decision). Re-run the turn or the whole demo. |
 | Next is disabled, reads "Connecting…" | The socket is not open yet. It enables itself; do not click through. |
 | A reply looks attached to the wrong question | You clicked ahead. Click **Restart** and let each turn finish before clicking Next. |
 | Backend slow or timing out | The first query after a cold start pays model warm-up overhead. Send one throwaway query before the audience arrives. |
@@ -586,41 +599,45 @@ Typical latency: intent classification 10–500ms, query evaluation 10–500ms, 
 
 ## Architecture Deep Dive
 
-The Agentic Hybrid Search system is built as a LangGraph state machine that orchestrates a seven-stage retrieval and generation pipeline. This chapter walks you through how the agent classifies queries, retrieves products, detects hallucinations, and even grows its own taxonomy at runtime.
+The Agentic Hybrid Search system is built as a LangGraph state machine that orchestrates an eight-node retrieval and generation pipeline. This chapter walks you through how the agent classifies queries, retrieves products, detects hallucinations, and even grows its own taxonomy at runtime.
 
 ### The Pipeline Graph
 
-The core logic runs as a `StateGraph(CustomAgentState)` — a directed acyclic graph (DAG) of nodes and edges that processes one user query through seven stages. Each node is an async function that reads state, performs its task, and returns updated state fields.
+The core logic runs as a `StateGraph(CustomAgentState)` — a directed acyclic graph (DAG) of nodes and edges that processes one user query through eight nodes: `intent_classifier`, `query_evaluator`, `summary`, `retriever`, `reranker`, `quality_gate`, `agent`, and `llm_judge`. Each node is an async function that reads state, performs its task, and returns updated state fields. ⚠️ **DRIFT NOTE**: an earlier revision of this diagram omitted the `summary` node's branch entirely and miscounted the pipeline as seven stages — corrected below.
+
+Routing out of the Intent Classifier is by **intent class**, not a raw confidence cutoff: a `summary` intent routes to the dedicated `summary` node; a low-confidence classification of any other intent routes to the Agent for clarification; everything else proceeds to the Query Evaluator.
 
 ```text
-Intent Classifier ──┬──(low confidence)──► Agent (clarify)
-                    └──(high confidence)──► Query Evaluator
-                                                    │
-                                                    ▼
-                                            Retriever (Hybrid)
-                                                    │
-                                    ┌───────────────┼───────────────┐
-                                    ▼               ▼               ▼
-                            Vector Search    BM25 Lexical    RRF Fusion
-                                    │               │               │
-                                    └───────────────┼───────────────┘
-                                                    ▼
-                                            Reranker (Cross-Encoder)
-                                                    │
-                                                    ▼
-                                            Quality Gate
-                                            /           \
-                                    (pass/accept)   (retry)
-                                        │               │
-                                        └────────┬──────┘
-                                                 ▼
-                                            Agent (Generate Response)
-                                                 │
-                                                 ▼
-                                            LLM Judge (optional)
-                                                 │
-                                                 ▼
-                                            Checkpoint & Emit
+Intent Classifier ──┬──(summary)───► Summary ──┬──(done)─────► Agent (Generate Response)
+                    │                          └──(continue)─► Retriever (Hybrid)
+                    ├──(clarify, low confidence)──────────────► Agent (clarify)
+                    └──(other)───────────────────────────────► Query Evaluator
+                                                                        │
+                                                                        ▼
+                                                                Retriever (Hybrid)
+                                                                        │
+                                                    ┌───────────────────┼───────────────────┐
+                                                    ▼                   ▼                   ▼
+                                            Vector Search        BM25 Lexical         RRF Fusion
+                                                    │                   │                   │
+                                                    └───────────────────┼───────────────────┘
+                                                                        ▼
+                                                                Reranker (Cross-Encoder)
+                                                                        │
+                                                                        ▼
+                                                                Quality Gate
+                                                                /               \
+                                                        (continue)          (retry)
+                                                            │                   │
+                                                            │                   └──► back to Retriever
+                                                            ▼
+                                                    Agent (Generate Response)
+                                                            │
+                                                            ▼
+                                                    LLM Judge (optional)
+                                                            │
+                                                            ▼
+                                                    Checkpoint & Emit
 ```
 
 Each stage is independent and testable. The graph reads from PostgreSQL checkpoints to resume long conversations, and writes back after every turn.
@@ -646,6 +663,10 @@ The six intents are:
 - `reasoning` — brief explanation of the classification
 
 The node also emits an `IntentClassificationEvent` for real-time UI visualization.
+
+### Summary Node: Conversation Recaps
+
+When intent is `summary`, the graph routes straight here, skipping the Query Evaluator entirely. The node generates a plain-language recap of the conversation so far (`summary_text`) and short-circuits to the Agent — no retrieval runs for a summary turn, since there's nothing new to search for. For any other intent this node is a pass-through the graph never actually reaches (routing sends non-summary intents to the Query Evaluator instead).
 
 ### Query Evaluator: Tuning the Retrieval Alpha
 
@@ -1114,9 +1135,33 @@ Response (200 OK):
 
 Single-character typos are corrected via spell-checking; longer queries fall back to exact prefix matching.
 
-#### Chat (WebSocket Only)
+#### Chat
 
-There is no REST endpoint for sending or receiving chat messages. All conversational interaction happens over WebSocket (see [WebSocket Protocol](#websocket-protocol) below). The `/ws/chat` endpoint streams messages and pipeline events in real-time.
+Real-time conversational interaction happens over WebSocket at `/ws/chat` (see [WebSocket Protocol](#websocket-protocol) below) — use it for anything that needs to show pipeline progress or stream tokens. ⚠️ **DRIFT NOTE**: an earlier revision of this section said there was no REST chat endpoint at all; that's no longer accurate.
+
+There is also a **non-streaming REST fallback** at `POST /api/chat`, for callers that just want the final answer without a WebSocket connection:
+
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Origin: http://localhost:8000" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Find wireless headphones", "thread_id": "conv_abc123"}'
+```
+
+Response (200 OK):
+
+```json
+{
+  "thread_id": "conversation_abc123",
+  "response": "Here are some great running shoes...",
+  "duration_ms": 2450.5,
+  "citations": [
+    {"label": "Blue Running Shoes", "url": "https://www.amazon.com/s?k=Blue+Running+Shoes"}
+  ]
+}
+```
+
+It runs the same LangGraph pipeline and returns only after the full response is generated — no intermediate pipeline events, no streaming. Both this endpoint and the WebSocket endpoint share the same `RATE_LIMIT_CHAT` limit (see [Rate Limiting](#rate-limiting)).
 
 #### Conversation Management (REST)
 
@@ -1251,7 +1296,7 @@ The enrich endpoint requires `ENABLE_ENRICHMENT_TOOL=true` to be set on the back
 
 **Demo reset:**
 
-Re-arms the taxonomy demo by clearing learned mappings (admin demonstration only).
+Re-arms both self-consuming demos (the taxonomy-correction Arc 2 and the Schema Evolution bonus) by clearing their learned mappings so they can run again from a clean state (admin demonstration only).
 
 ```bash
 curl -X POST http://localhost:8000/api/admin/demo-reset \
@@ -1555,15 +1600,16 @@ This is appropriate for a local demo running on `localhost`. All endpoints — p
 
 #### Allow-Listed Origins
 
-The following origins are allow-listed by default:
+The following origins are allow-listed by default (⚠️ **DRIFT NOTE**: an earlier revision of this list was stale — corrected below):
 
-- `http://localhost:8000` (backend)
-- `http://localhost:8001` (example alternate port)
-- `http://127.0.0.1:8000` (loopback)
-- `http://127.0.0.1:5173` (Vite frontend dev server)
-- `https://*.run.app` (Cloud Run pattern; dormant, no active deployment target)
+- `http://localhost:5173` / `http://127.0.0.1:5173` (Vite dev, default port)
+- `http://localhost:5174` / `http://127.0.0.1:5174` (Vite dev, fallback port)
+- `http://localhost:3000` / `http://127.0.0.1:3000` (alt dev)
+- `http://localhost:8000` / `http://127.0.0.1:8000` (backend, local e2e tests)
+- `http://localhost:8080` / `http://127.0.0.1:8080` (dev server)
+- `https://*.a.run.app` (Cloud Run pattern, matched via regex, not an exact-match list entry; dormant, no active deployment target)
 
-For a complete and authoritative list, see `get_allowed_origins()` in `api/middleware/origin_auth.py`.
+For a complete and authoritative list, see `get_allowed_origins()` and `is_allowed_origin()` in `api/middleware/origin_auth.py`.
 
 #### Making Requests
 
@@ -1664,6 +1710,18 @@ Validation error (e.g., missing `attribute_type` or empty `variant` in an enrich
 
 **Fix:** Check that all required fields are provided and conform to type expectations.
 
+#### 429 Too Many Requests
+
+Returned when a client exceeds the per-endpoint rate limit (see [Rate Limiting](#rate-limiting)).
+
+```json
+{
+  "detail": "Rate limit exceeded: 20 per 1 minute"
+}
+```
+
+**Fix:** Slow down requests from that client IP; retry after the limit window resets.
+
 #### 500 Internal Server Error
 
 An unexpected error occurred on the server.
@@ -1698,6 +1756,7 @@ The server is temporarily unable to respond (e.g., database connection pool exha
 | 400 | No | No | Fix the request; retrying won't help |
 | 403 | No | No | Check Origin header or enable the feature |
 | 422 | No | No | Validation error; fix the request |
+| 429 | No | Yes | Rate limit exceeded; retry after the limit window resets |
 | 500 | No | Yes | Server error; retry with exponential backoff |
 | 503 | No | Yes | Service unavailable; retry after a delay |
 
@@ -1705,7 +1764,14 @@ The server is temporarily unable to respond (e.g., database connection pool exha
 
 ### Rate Limiting
 
-No rate limiting is currently enforced. Requests are processed sequentially by design (stateful WebSocket sessions monopolize agent processing). If you send many rapid requests, they will be queued and processed in order.
+⚠️ **DRIFT NOTE**: an earlier revision of this section claimed no rate limiting was enforced. That's no longer true — `slowapi`-based per-client-IP rate limiting is enabled by default (`RATE_LIMIT_ENABLED=True` in `core/config.py`):
+
+| Endpoint(s) | Limit |
+| --- | --- |
+| `POST /api/chat`, `/ws/chat` | 20/minute |
+| `/api/conversations` (list, get, delete, observability) | 10/minute |
+
+Exceeding a limit returns `429 Too Many Requests` (handled by slowapi's default `RateLimitExceeded` handler). Health, suggest, and admin endpoints are not currently rate-limited.
 
 ---
 
@@ -1728,7 +1794,7 @@ The frontend uses modern tooling to deliver a responsive, type-safe chat and obs
 - **Tailwind CSS v4** — Utility-first styling with semantic HTML and WCAG 2.1 accessibility
 - **Zustand** — Global state management for messages, events, and UI toggles
 - **Vite** — Build tool with fast dev server and hot module reloading
-- **Vitest** — Unit testing framework with 101 tests
+- **Vitest** — Unit testing framework with 290 tests
 - **WebSocket** — Real-time event streaming from the backend
 
 ### Running and Developing
@@ -1746,7 +1812,7 @@ For linting and testing, use:
 
 ```bash
 npm run lint          # ESLint with --max-warnings 0
-npm run test          # Vitest runner; all 101 tests
+npm run test          # Vitest runner; all 290 tests
 npm run test -- --watch       # Watch mode for iterative testing
 npm run test -- --coverage    # HTML coverage report
 ```
@@ -1770,10 +1836,15 @@ src/
 ├── components/
 │   ├── ChatPanel/                   Chat UI, message history
 │   ├── ObservabilityPanel/          Real-time pipeline visualization
-│   ├── ConversationsSidebar/        Conversation list and logout
-│   ├── LoginScreen.tsx              Authentication form
+│   ├── NarratorPanel/               Per-turn pipeline narration for the scripted demo
+│   ├── DemoSelector.tsx             Dropdown to pick one of the four scripted demos
 │   ├── Layout.tsx                   Root layout wrapper
+│   ├── ConfirmDialog.tsx            Reusable confirmation modal
+│   ├── ErrorNotification.tsx        Toast-style error display
+│   ├── SkeletonLoader.tsx           Loading placeholder
 │   └── ...                          Other shared components
+├── demos/
+│   └── registry.ts                  The four scripted demos, as data (queries, watch-for text, arming rules)
 ├── hooks/
 │   ├── useWebSocket.ts              WebSocket lifecycle and event routing
 │   ├── useRecentSearches.ts         localStorage-backed search history
@@ -1786,10 +1857,12 @@ src/
 ├── types/
 │   ├── events.ts                    TypeScript event types (sync with api/schemas/events.py)
 │   └── ...
-├── pages/                           Page-level components
+├── pages/                           Page-level components (GuidePage, SwaggerPage)
 ├── utils/                           Formatting and helper utilities
 └── tests/                           Vitest tests alongside source
 ```
+
+⚠️ **DRIFT NOTE**: an earlier revision of this listing showed a `LoginScreen.tsx` component and a `ConversationsSidebar/` with logout — neither exists in the current tree. There is no login gate anywhere in this app (removed entirely, issue #135); same-origin checking is the sole auth layer (see [Authentication & Authorization](#authentication--authorization)).
 
 ### Chat Panel
 
@@ -1861,7 +1934,7 @@ If you add a new event type:
 Tests live alongside source in `**/__tests__/` directories and are run with Vitest:
 
 ```bash
-npm run test                         # Run all 101 tests once
+npm run test                         # Run all 290 tests once
 npm run test -- --watch             # Watch mode
 npm run test -- --coverage          # HTML coverage report
 npm run test -- --grep "PatternName" # Filter by test name
@@ -2005,7 +2078,7 @@ The following markers are available for organizing and filtering tests:
 
 Unit tests are fast, isolated component tests with all external services mocked. They're the first gate—run them constantly during development.
 
-**Coverage:** 863 tests across intent classification, evaluator, quality gate, config validation, link verification, reranking, caching, embedding, and more. See `tests/unit/` for the full list.
+**Coverage:** 880 tests across intent classification, evaluator, quality gate, config validation, link verification, reranking, caching, embedding, and more. See `tests/unit/` for the full list.
 
 **Runtime:** ~7 seconds total.
 
@@ -2136,7 +2209,7 @@ React component and hook tests run via Vitest and cover Zustand stores, WebSocke
 
 ```bash
 cd langchain_agent/web
-npm run test            # 278 tests
+npm run test            # 290 tests
 npm run test -- --watch
 npm run test -- --coverage
 ```
@@ -2630,10 +2703,10 @@ All code changes must pass tests locally before pushing. Run the test suite from
 
 ```bash
 # Full gate (required before pushing)
-make check              # lint + format + unit + integration + e2e + smoke
+make check              # lint + format + unit tests + frontend + smoke (integration/e2e only get --collect-only)
 
 # For iterative development
-make ci                 # Fast check: lint + format + unit (no Docker)
+make ci                 # Fast check: lint + format + unit + frontend (no Docker, no smoke)
 
 # By tier
 PYTHONPATH=. pytest tests/unit/                   # ~0.5s, no services
@@ -2699,10 +2772,10 @@ Both files are stored in Parquet format (a compressed columnar format) and commi
 
 ### Data Directory Layout
 
-Data files live in `langchain_agent/data/`:
+⚠️ **DRIFT NOTE**: an earlier revision of this section put the data directory under `langchain_agent/data/` — it's actually at the **repo root**, `data/` (sibling to `langchain_agent/`, not inside it), per `DATA_DIR="$REPO_DIR/data"` in `scripts/lucille_ingest.sh`:
 
 ```text
-langchain_agent/data/
+data/                                  # repo root, NOT langchain_agent/data/
 ├── esci_products_sample_10000.parquet
 │   └─ 9,618 product documents with title, brand, color, and 768-dim knn_vector
 ├── esci_judgments_aggregated.parquet
@@ -2835,7 +2908,7 @@ docker compose build lucille --no-cache
 **Lucille ingest fails with "file not found":**
 
 ```bash
-ls -lh data/esci_*.parquet
+ls -lh ../data/esci_*.parquet     # repo-root data/, not langchain_agent/data/
 # If missing, pull them via Git LFS:
 git lfs pull
 ```
@@ -2907,7 +2980,7 @@ cd langchain_agent
 PYTHONPATH=. python scripts/bigquery_batch_embeddings.py \
   --project YOUR_GCP_PROJECT \
   --parquet-input ../esci/products.parquet \
-  --parquet-output data/esci_products_sample_100000.parquet
+  --parquet-output ../data/esci_products_sample_100000.parquet
 ```
 
 Then update `scripts/lucille_ingest.sh` to reference your new parquet file, and run the ingest.
@@ -2949,6 +3022,20 @@ While compiling this manual, each chapter was checked against the project's curr
 | 4 | `CLAUDE.md`'s pytest marker list | Includes obsolete markers (`performance`, `load`, `stress`, `profile`) | Those markers belong to test files removed 2026-09-15; the current active marker set is the one listed in the [Testing & Benchmarks](#testing--benchmarks) chapter, sourced from `tests/README.md` |
 | 5 | `docs/contributing/README.md` and `docs/contributing/pr-process.md` | Describe an older PR-based workflow (feature branch, draft PR, required reviewer, CI checks gating merge) | The repo switched to **"cowboy mode"** on 2026-09-15: commits go directly to `main`, no branch protection exists, there's no CI, and `make check` run locally is the only gate. A branch + PR is still allowed but is opt-in, not the default. See the [Contributing & Dev Workflow](#contributing--dev-workflow) chapter for the current process. |
 | 6 | `langchain_agent/web/src/components/README.md` (project structure listing) | Lists a `LoginScreen.tsx` component and describes `ConversationsSidebar` as including "logout" | There is **no login gate** in this app — it was removed entirely (issue #135); same-origin checking is the sole auth layer (see [Authentication & Authorization](#authentication--authorization) in the API chapter, and the "no login screen" notes in the Setup and Demo chapters). `LoginScreen.tsx` and any logout affordance are most likely vestigial/dead code left over from before that removal — worth confirming and deleting if so, rather than treating as a working feature. |
-| 7 | `langchain_agent/DEMO_QUERIES.md` | Describes example queries in a format the Demo-chapter source agent flagged as superseded | `langchain_agent/DEMO.md` (dated 2026-09-15) is the current, authoritative demo script — a two-arc, six-turn scripted walkthrough driven by a **Next** button, not free-form querying. `DEMO_QUERIES.md` should be treated as historical/reference only. |
+| 7 | `langchain_agent/DEMO_QUERIES.md` | Describes example queries in a format the Demo-chapter source agent flagged as superseded | `langchain_agent/DEMO.md` (dated 2026-09-15) is the current, authoritative demo script — a **four-demo, nine-turn** scripted walkthrough (two main arcs plus two bonus scenes; see `web/src/demos/registry.ts`) driven by a **Next** button, not free-form querying. `DEMO_QUERIES.md` should be treated as historical/reference only. |
 
 **How to use this table:** if you're the one who fixes stale docs, each row names the exact file and section to edit. None of these represent architecture or code that needs to change — only prose that hasn't caught up to it yet.
+
+### Appendix A-2: Drift Found and Fixed in This Manual Itself (2026-09-19)
+
+A follow-up pass checked this manual's *own* body text against the live codebase (not just other files), since the table above only ever audited outside sources. These were confirmed against source and corrected in place; listed here for the audit trail rather than left as open items:
+
+| # | Chapter | What was stale | Fix landed |
+| --- | --- | --- | --- |
+| 8 | Using the App: Demo Walkthrough | Described only two story arcs plus one bonus (six or seven turns); the "Data Enrichment: Schema Evolution" (waterproof) demo from `web/src/demos/registry.ts` was missing entirely | Added the missing bonus section, corrected turn counts to four demos / nine turns throughout |
+| 9 | Architecture Deep Dive | Pipeline diagram and "seven-stage" framing omitted the `summary` node and its routing entirely | Corrected to eight nodes; diagram and a new "Summary Node" subsection now show the `summary` branch |
+| 10 | API & WebSocket Reference | Claimed no REST chat endpoint exists; claimed no rate limiting is enforced; allow-listed-origins list was stale | Documented the real `POST /api/chat` fallback, documented the actual `slowapi`-based rate limits (20/min chat, 10/min conversations) and added a 429 error section, corrected the origin allow-list |
+| 11 | Frontend / Web UI | Project structure listed a `LoginScreen.tsx` and `ConversationsSidebar` with logout, neither of which exist; Vitest test count said 101/278, actual is 290 | Replaced the component listing with the real tree (`DemoSelector`, `NarratorPanel`, `demos/registry.ts`, etc.); corrected all test-count mentions |
+| 12 | Testing & Benchmarks | Unit test count said 863; actual collected count is 880 | Corrected the count |
+| 13 | Contributing & Dev Workflow | "Full gate" description implied `make check` runs the full integration/e2e suites | Corrected to note integration/e2e only get `--collect-only` under `make check`/`make ci` |
+| 14 | Data & ESCI Ingestion | Said data files live in `langchain_agent/data/`; actual location is repo-root `data/` (a sibling directory) | Corrected the path everywhere it appeared, including two commands that would have failed as originally written |
