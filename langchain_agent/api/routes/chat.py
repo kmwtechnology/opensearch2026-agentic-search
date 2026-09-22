@@ -508,6 +508,11 @@ class Citation(BaseModel):
 
     label: str = Field(description="Product name or title")
     url: str = Field(description="Product URL (Amazon search by title for ESCI products)")
+    asin: Optional[str] = Field(
+        default=None,
+        description="Amazon ASIN, when the cited document is an ESCI product. "
+        "Used by the UI to look up a bundled product image (#144).",
+    )
 
 
 class ChatResponse(BaseModel):
@@ -627,7 +632,11 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
         for event in events:
             if isinstance(event, AgentCompleteEvent) and event.citations:
                 citations = [
-                    Citation(label=c.get("label", ""), url=c.get("url", ""))
+                    Citation(
+                        label=c.get("label", ""),
+                        url=c.get("url", ""),
+                        asin=c.get("asin") or None,
+                    )
                     for c in event.citations
                     if c.get("url")  # Only include citations with URLs
                 ]

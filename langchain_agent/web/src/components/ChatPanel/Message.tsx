@@ -8,6 +8,7 @@ import rehypeRaw from 'rehype-raw'
 import { useState, useMemo } from 'react'
 import { User, Bot, BookOpen, ChevronDown, Copy, Check } from 'lucide-react'
 import type { ChatMessage } from '../../stores/chatStore'
+import { ProductStrip } from './ProductStrip'
 import clsx from 'clsx'
 
 /**
@@ -297,6 +298,14 @@ export function Message({ message }: MessageProps) {
               </div>
             )}
           </div>
+        )}
+
+        {/* Product photos for the items this answer names. Sits above the
+            citation footer because it *is* part of the answer — the audience
+            should see the products while reading about them (#144). Renders
+            nothing when no named product has a bundled image. */}
+        {!isUser && !message.isStreaming && (
+          <ProductStrip content={processedContent} citations={message.citations} />
         )}
 
         {citationsCount > 0 && (

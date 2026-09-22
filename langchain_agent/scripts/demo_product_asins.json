@@ -1,0 +1,306 @@
+[
+  {
+    "asin": "B08PC22TYB",
+    "title": "Brother LB7000 Computerized Embroidery and Sewing Machine",
+    "named": true,
+    "demos": [
+      "ground-truth-proof"
+    ]
+  },
+  {
+    "asin": "B07LF2JFCY",
+    "title": "Clarks Women's Addiy Sharilyn Fashion Boot, Dark Tan Leather, 80 M US",
+    "named": true,
+    "demos": [
+      "taxonomy-ingestion"
+    ]
+  },
+  {
+    "asin": "B073WFY9GK",
+    "title": "Columbia womens Newton Ridge Plus Waterproof Hiking Boot, Black/Poppy Red, 6.5 US",
+    "named": true,
+    "demos": [
+      "schema-evolution"
+    ]
+  },
+  {
+    "asin": "B07P91QX2F",
+    "title": "HI-TEC Ravus Vent Lux Mid WP Chocolate/Dull Gold 9",
+    "named": true,
+    "demos": [
+      "schema-evolution"
+    ]
+  },
+  {
+    "asin": "B087BXLDGQ",
+    "title": "Joomra Mens Road Running Shoes for Man Gym Fitness Blue Size 8.5 Walking Exercise Walk Cushion Jogging Casual Lightweight Fashion Runner Male Knit Sports Tennis Sneakers 42",
+    "named": true,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B00E24XR96",
+    "title": "Maelstrom Men's TAC FORCE 8 Inch Military Tactical Duty Work Boot with Zipper, Tan, 10 M US",
+    "named": true,
+    "demos": [
+      "taxonomy-ingestion"
+    ]
+  },
+  {
+    "asin": "B076YLXDHF",
+    "title": "Mizuno Men's Wave Sky 2 Running Shoe, Directoire Blue/Cherry Tomato, 10 D US",
+    "named": true,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B07LBMBH32",
+    "title": "Nike Air Zoom Pegasus 36 Men's Running Shoe Racer Blue/Black-White Size 11.0",
+    "named": true,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B0115YY1AO",
+    "title": "OAKI Kids Waterproof Rain Boots with Easy-On Handles, Fiery Red, 12T US Toddler",
+    "named": true,
+    "demos": [
+      "schema-evolution"
+    ]
+  },
+  {
+    "asin": "B07NQ236M8",
+    "title": "Saucony Men's Cohesion 10 Grey/Blue Running Shoe 10 M US",
+    "named": true,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B0085SRIC2",
+    "title": "Singer 3221 Simple Sewing Machine with Automatic Needle Threader, 21 Stitches",
+    "named": true,
+    "demos": [
+      "ground-truth-proof"
+    ]
+  },
+  {
+    "asin": "B07BJLMTQ4",
+    "title": "Sperry mens Cold Bay Boots, Tan/Brown, 10.5 US",
+    "named": true,
+    "demos": [
+      "taxonomy-ingestion"
+    ]
+  },
+  {
+    "asin": "B089Y4R415",
+    "title": "Suteck Mini Sewing Machine for Beginners Portable Electric Sewing Machines with Extension Table Lamp and Thread Cutter with Shared 10 Thread Spools",
+    "named": true,
+    "demos": [
+      "ground-truth-proof"
+    ]
+  },
+  {
+    "asin": "B07FBKWMBY",
+    "title": "adidas Men's BB6622 Supernova Trail Shoe, Hi-Res Blue/Hi-Res Orange/Black - 10 M",
+    "named": true,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B07G63K611",
+    "title": "ALTRA Women's AFW1953G Superior 4 Trail Running Shoes Sneakers, Black/Purple",
+    "named": false,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B07JHD1PZT",
+    "title": "ASICS Men's Gel-Venture 7 Running Shoes, 10.5, Metropolis/Black",
+    "named": false,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B073HCFDRM",
+    "title": "ASICS Women's Gel-Venture 6 Black/Island Blue/Pink Glow Running Shoe 7.5 M US",
+    "named": false,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B009MOK5E6",
+    "title": "Artyea Vintage Mini Sewing Machine Style Plastic Music Box Table Desk Decoration Toy Gift for Kid Children, brown",
+    "named": false,
+    "demos": [
+      "ground-truth-proof"
+    ]
+  },
+  {
+    "asin": "B07R4522WY",
+    "title": "BEAMNOVA Leather Cobbler Sewing Machine Industrial Hand Heavy Duty Shoe Repair Equipment with Needles for Canvas Cotton Linen Sewing Craft Tools",
+    "named": false,
+    "demos": [
+      "ground-truth-proof"
+    ]
+  },
+  {
+    "asin": "B07QFVDLM2",
+    "title": "Boys Sandals Closed Toe Toddler Sport Sandals Little Kid Summer Shoes for Big Kid Walking Hiking Outdoor Blue toddler 10",
+    "named": false,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B07L7BLGS8",
+    "title": "Brooks Womens Launch 6 Running Shoe - Black/Primer/Bel Air Blue - B - 6.5",
+    "named": false,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B08BZ1NR11",
+    "title": "Brother LX3817A 17-Stitch Full-Size Aqua Sewing Machine",
+    "named": false,
+    "demos": [
+      "ground-truth-proof"
+    ]
+  },
+  {
+    "asin": "B01L2U5EMA",
+    "title": "Carhartt Men's 6 Inch Waterproof Wedge Steel Toe Work Boot, Tan, 9",
+    "named": false,
+    "demos": [
+      "taxonomy-ingestion"
+    ]
+  },
+  {
+    "asin": "B07QFCQYK7",
+    "title": "Cole Haan Women's Zerogrand XC Hiker Waterproof Hiking Boot, Black Wp Suede, 7 B US",
+    "named": false,
+    "demos": [
+      "schema-evolution"
+    ]
+  },
+  {
+    "asin": "B073V83WWP",
+    "title": "Columbia Men's Crestwood Waterproof Hiking Shoe, mud, Squash, 9 Wide",
+    "named": false,
+    "demos": [
+      "schema-evolution"
+    ]
+  },
+  {
+    "asin": "B0794412LK",
+    "title": "Hey Dude Men\u2019s Wally Washed Steel Blue Size 12 | Men\u2019s Shoes | Men\u2019s Lace Up | Comfortable & Light-Weight",
+    "named": false,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B07MGHC9KN",
+    "title": "JSPOYOU Men's Casual Slip-On Sport Shoes Sneaker Comfortable Loafers Shoes Blue",
+    "named": false,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B004KKZ5NS",
+    "title": "KEEN Men's Brixen Lo Waterproof Insulated Shoe,Slate Black/Madder Brown,10.5 M US",
+    "named": false,
+    "demos": [
+      "schema-evolution"
+    ]
+  },
+  {
+    "asin": "B07MZD62Z5",
+    "title": "Nautica Men's Flip Flop, Rustic Style Fabric Lined, Beach Sandal-Adain-Tan-7",
+    "named": false,
+    "demos": [
+      "taxonomy-ingestion"
+    ]
+  },
+  {
+    "asin": "B07VB24DGY",
+    "title": "New brothread 144pcs Type L (SA155) Size White Prewound Bobbin Thread Plastic Side for Particular Embroidery and Sewing Machines - 90 Weight",
+    "named": false,
+    "demos": [
+      "ground-truth-proof"
+    ]
+  },
+  {
+    "asin": "B07SZ9YL69",
+    "title": "Reebok Men's FLASHFILM 2.0 GR Running Shoe, Black/White/Humble Blue, 10 M US",
+    "named": false,
+    "demos": [
+      "adaptive-query"
+    ]
+  },
+  {
+    "asin": "B08FD1YQVQ",
+    "title": "Sew Tech Embroidery Hat Hoop Insert for Janome Memory Craft MC 500E 400E 350E 300E 550E 9500 9700 10000 Elna 820 830 8200 8300 8600 etc, Sewing and Embroidery Machine Hoops",
+    "named": false,
+    "demos": [
+      "ground-truth-proof"
+    ]
+  },
+  {
+    "asin": "B0886951JF",
+    "title": "TUFFIOM 46-Inch Sewing Craft Table, Specialized Sewing Machine Shelf, Enlarged Cutting Space, Sturdy Multifunctional Computer Desk with Storage, Adjustable Height, Ideal for Home Indoor Use",
+    "named": false,
+    "demos": [
+      "ground-truth-proof"
+    ]
+  },
+  {
+    "asin": "B0032TWSUG",
+    "title": "TimberlanD Women's White LeDge MiD Ankle Boot,Dark Brown,6.5 M US",
+    "named": false,
+    "demos": [
+      "schema-evolution"
+    ]
+  },
+  {
+    "asin": "B005F1868C",
+    "title": "Tingley 31151 Economy SZ11 Kneed Boot for Agriculture, 15-Inch, Black",
+    "named": false,
+    "demos": [
+      "schema-evolution"
+    ]
+  },
+  {
+    "asin": "B07DMNJKT2",
+    "title": "Vasque Women's St. Elias FG GTX Full-Grain Leather Gore-Tex Waterproof Hiking Boot, Cognac, 9",
+    "named": false,
+    "demos": [
+      "schema-evolution"
+    ]
+  },
+  {
+    "asin": "B01LXHI1HR",
+    "title": "Western Chief Waterproof Printed Wide Calf Rain Boot Raindrop Dot 10 M",
+    "named": false,
+    "demos": [
+      "schema-evolution"
+    ]
+  },
+  {
+    "asin": "B01N2IDGQR",
+    "title": "Yamata FY5318 Walking Foot Lockstitch Uphostery Leather Sewing Machine Servo Motor,Table.Assembly Required",
+    "named": false,
+    "demos": [
+      "ground-truth-proof"
+    ]
+  }
+]
