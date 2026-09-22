@@ -146,6 +146,10 @@ The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns
 
 **An answer must render exactly once.** Because the cards are keyed off the citations, and the citations arrive on `agent_complete` — one WebSocket frame *after* `llm_response_chunk(is_complete)` delivers the last token — committing the text on that earlier frame renders the list as plain bullets and then re-renders it as cards. Two things prevent that: `chatStore.completeTurn()` writes the content and the citations in a single `set`, and `MessageList` withholds a still-streaming assistant bubble entirely, leaving the pipeline status card up for the whole turn instead. Don't reintroduce a `finalizeStreaming()` call in the `llm_response_chunk` handler; `agent_error` is the escape hatch for the failure path.
 
+### LLM observability (Oodle)
+
+`observability/otel.py::setup_tracing()` installs an OTLP `TracerProvider` plus Traceloop's `LangchainInstrumentor`, called first thing in the `api/main.py` lifespan and in `cli.py::main()` (`shutdown_tracing()` flushes on exit). It's a **no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set** — tests and `make ci` never touch the network. The exporter reads the standard `OTEL_EXPORTER_OTLP_*` vars from `os.environ`, which works only because `core/config.py` calls `load_dotenv()`. One chat turn becomes one `LangGraph.workflow` trace with a span per node and a `ChatGoogleGenerativeAI.chat` span per Gemini call carrying `gen_ai.request.model`, token usage, and full prompt/response text (`TRACELOOP_TRACE_CONTENT=false` drops the text). The local `.env` exports direct to Oodle; the `.env.example` block has placeholders. To query traces from the CLI, tag filters need Oodle's `span::` prefix: `oodle traces list --start -15m --end now --tags '{"span::gen_ai.request.model":"gemini-2.5-flash"}'`. `traces list` omits span attributes, so use `traces get <id> --start … --end …` to see them.
+
 ## Tech stack
 
 | Layer | Tech |
@@ -160,6 +164,7 @@ The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns
 | API | FastAPI + WebSocket |
 | Frontend | React 19 + TypeScript + Vite + Zustand, Vitest + ESLint |
 | Deployment | Local only (Docker Compose) |
+| LLM tracing | OpenTelemetry → Oodle (OTLP direct), opt-in — see "LLM observability (Oodle)" above |
 
 ## Deploy & CI reality
 

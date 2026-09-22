@@ -34,6 +34,7 @@ from api.middleware.client_ip import get_client_ip
 from api.routes import admin, chat, conversations, health, suggest
 from core.config import API_VERSION, ENABLE_ENRICHMENT_TOOL, RATE_LIMIT_ENABLED
 from core.logging_config import configure_logging, get_logger
+from observability.otel import setup_tracing, shutdown_tracing
 from pipeline.reindex_trigger import build_reindex_trigger
 
 # Configure structured logging
@@ -71,6 +72,10 @@ async def lifespan(app: FastAPI):
     decorators with a modern async context manager pattern.
     """
     # Startup
+    # Before the agent's first LLM call, so every call is traced (no-op
+    # unless OTEL_EXPORTER_OTLP_ENDPOINT is set).
+    setup_tracing()
+
     if ENABLE_ENRICHMENT_TOOL:
         # Fail fast on REINDEX_TRIGGER misconfiguration (e.g. github mode with no
         # token) instead of discovering it on the first live enrichment.
@@ -107,6 +112,7 @@ async def lifespan(app: FastAPI):
         await chat.manager.shutdown()
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
+    shutdown_tracing()
     logger.info("api_shutdown_complete")
 
 
