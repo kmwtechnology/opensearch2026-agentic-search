@@ -134,6 +134,16 @@ Beyond ingest-time detection, the agent can grow *or fix* the live taxonomy at r
 
 `api/schemas/events.py` must stay in sync with `web/src/types/events.ts` — each event's `node` field pins it to a pipeline step. Every return path in `agent_node` must include a `"citations"` key (empty list if none). ESCI products cite via `https://www.amazon.com/s?k={title}` (robust against delisted ASINs).
 
+### Product images (issue #144)
+
+Each citation also carries an `asin` (the OpenSearch `_id`, already in `metadata["product_id"]`). `citations` is typed `List[Dict[str, str]]`, so adding it needed no event-schema change — but the strict REST `Citation` model in `api/routes/chat.py` and both frontend types did change.
+
+Images are **committed**, not fetched at runtime: `web/src/assets/products/<ASIN>.jpg`, resolved by `import.meta.glob` in that directory's `index.ts`. They must live under `src/assets/` rather than `web/public/` — `api/main.py` mounts only `/assets`, so anything in `public/` lands at the `dist/` root where the SPA catch-all returns `index.html` instead of the file. (`public/kmw-logo.svg` already has this bug on :8000.) Going through `src/` gets Vite content-hashing into `dist/assets/`, which works on both :5173 and :8000.
+
+Regenerate with `PYTHONPATH=. python scripts/fetch_product_images.py` (`--report` for coverage only). Inputs are two committed files: `scripts/demo_product_asins.json` (the 38 products the demos surface, `named: true` = spoken on screen) and `scripts/demo_product_image_substitutes.json` (hand-curated map for ASINs Amazon no longer serves a photo for). Amazon answers a miss with a 43-byte 1x1 GIF at HTTP 200, so the script size-checks rather than trusting the status code.
+
+`ProductStrip` shows only the products an answer *names* — bold spans in the body prefix-match citation labels — because the LLM names ~3 while citations carry up to 10. A product with no bundled image is omitted, never placeholdered.
+
 ## Tech stack
 
 | Layer | Tech |
