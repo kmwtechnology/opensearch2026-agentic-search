@@ -5,9 +5,14 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Children, isValidElement } from 'react'
+import type { ReactNode } from 'react'
+import type { Element, RootContent } from 'hast'
 import { User, Bot, BookOpen, ChevronDown, Copy, Check } from 'lucide-react'
 import type { ChatMessage } from '../../stores/chatStore'
+import { ProductCard } from './ProductCard'
+import { indexProducts } from './productIndex'
+import type { ProductLookup } from './productIndex'
 import clsx from 'clsx'
 
 /**
@@ -47,6 +52,78 @@ function preprocessMarkdown(content: string | unknown): string {
     .replace(/\n{3,}/g, '\n\n')
 }
 
+/** Concatenated text of a hast node, however deeply it is nested. */
+function nodeText(node: RootContent): string {
+  if (node.type === 'text') return node.value
+  if (node.type === 'element') return node.children.map(nodeText).join('')
+  return ''
+}
+
+/**
+ * The first bold run inside a node — the product name, when there is one.
+ *
+ * Read from the hast tree rather than the rendered children so it works the
+ * same for a tight list (`li > strong`) and a loose one (`li > p > strong`),
+ * and survives any emphasis nested inside the name.
+ */
+function firstStrongText(node: Element): string {
+  for (const child of node.children) {
+    if (child.type !== 'element') continue
+    if (child.tagName === 'strong') return nodeText(child)
+    const nested = firstStrongText(child)
+    if (nested) return nested
+  }
+  return ''
+}
+
+/** Does this list item name a product we can illustrate? */
+function itemProduct(node: RootContent | undefined, lookup: ProductLookup) {
+  if (!node || node.type !== 'element' || node.tagName !== 'li') return undefined
+  return lookup(firstStrongText(node))
+}
+
+/**
+ * Classes for a list wrapper.
+ *
+ * A list whose items name products becomes a stack of cards, so it drops its
+ * markers and indent and lets the cards span the bubble (#144).
+ */
+function listClasses(
+  node: Element | undefined,
+  lookup: ProductLookup,
+  marker: 'list-disc' | 'list-decimal'
+): string {
+  const hasCards = node?.children.some((child) => itemProduct(child, lookup))
+  return clsx(
+    'my-2',
+    hasCards ? 'list-none gap-3 pl-0 ml-0' : `${marker} list-inside space-y-1 ml-2`
+  )
+}
+
+/**
+ * A list item's body, prepared for a card.
+ *
+ * Two fixes: a loose list wraps the item in a `<p>`, which would add its own
+ * margin inside the card; and the LLM writes "**Name** — blurb", where the
+ * dash dangles once the name becomes its own line.
+ */
+function cardBody(children: ReactNode): ReactNode {
+  let items = Children.toArray(children)
+
+  const only = items.length === 1 ? items[0] : undefined
+  if (isValidElement(only) && only.type === 'p') {
+    items = Children.toArray((only.props as { children?: ReactNode }).children)
+  }
+
+  const strongAt = items.findIndex((item) => isValidElement(item) && item.type === 'strong')
+  const afterName = strongAt === -1 ? undefined : items[strongAt + 1]
+  if (typeof afterName === 'string') {
+    items[strongAt + 1] = afterName.replace(/^\s*[—–-]\s*/, '')
+  }
+
+  return items
+}
+
 interface MessageProps {
   message: ChatMessage
 }
@@ -62,6 +139,15 @@ export function Message({ message }: MessageProps) {
   const processedContent = useMemo(() => {
     return preprocessMarkdown(message.content || '...')
   }, [message.content])
+
+  // Citations only arrive with `agent_complete`, so while the answer streams
+  // there is nothing to match against. Gating on it keeps the list from
+  // snapping into cards on the final frame — it becomes one deliberate
+  // reflow, at the same moment the photos used to appear (#144).
+  const findProduct = useMemo<ProductLookup>(
+    () => (message.isStreaming ? () => undefined : indexProducts(message.citations)),
+    [message.citations, message.isStreaming]
+  )
 
   // Copy message content to clipboard
   const handleCopy = async () => {
@@ -202,21 +288,27 @@ export function Message({ message }: MessageProps) {
                   </a>
                 ),
                 // Lists
-                ul: ({ children }) => (
-                  <ul className="list-disc list-inside my-2 space-y-1 ml-2">
+                ul: ({ children, node }) => (
+                  <ul className={listClasses(node, findProduct, 'list-disc')}>
                     {children}
                   </ul>
                 ),
-                ol: ({ children }) => (
-                  <ol className="list-decimal list-inside my-2 space-y-1 ml-2">
+                ol: ({ children, node }) => (
+                  <ol className={listClasses(node, findProduct, 'list-decimal')}>
                     {children}
                   </ol>
                 ),
-                li: ({ children }) => (
-                  <li className="text-[var(--color-stage-ink)]">
-                    {children}
-                  </li>
-                ),
+                li: ({ children, node }) => {
+                  const product = itemProduct(node, findProduct)
+                  if (!product) {
+                    return <li className="text-[var(--color-stage-ink)]">{children}</li>
+                  }
+                  return (
+                    <li className="list-none pl-0">
+                      <ProductCard product={product}>{cardBody(children)}</ProductCard>
+                    </li>
+                  )
+                },
                 // Tables
                 table: ({ children }) => (
                   <div className="overflow-x-auto my-3">

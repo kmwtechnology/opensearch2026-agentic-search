@@ -894,7 +894,10 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         # Build citation list from retrieved documents' URLs (deduplicated)
         # Only include citations if documents have meaningful relevance scores
-        citations_dict: Dict[str, Tuple[str, List[int]]] = {}  # Map URL to (label, doc_indices)
+        # Map URL to (label, doc_indices, asin). The ASIN rides along so the UI can
+        # look up a bundled product image (#144) — citations dedup by title-derived
+        # URL, so we keep the first ASIN seen for a URL.
+        citations_dict: Dict[str, Tuple[str, List[int], str]] = {}
 
         # Check max relevance score - suppress citations if all docs are irrelevant.
         # When the user has disabled reranking, no doc has a `reranker_score`
@@ -948,7 +951,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                             label = parts[-2].replace("_", " ").replace("-", " ").title()
                 if not label:
                     label = "Documentation"
-                citations_dict[url] = (label, [i])
+                citations_dict[url] = (label, [i], doc.metadata.get("product_id", "") or "")
         else:
             logger.info(
                 f"Suppressing citations: max_relevance={max_relevance:.3f} < {MIN_CITATION_RELEVANCE}"
@@ -956,9 +959,12 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         # Convert to list format with document index prefixes
         citations = []
-        for url, (label, indices) in citations_dict.items():
+        for url, (label, indices, asin) in citations_dict.items():
             index_prefix = ",".join(str(idx) for idx in indices)
-            citations.append({"label": f"[{index_prefix}] {label}", "url": url})
+            citation: Dict[str, str] = {"label": f"[{index_prefix}] {label}", "url": url}
+            if asin:
+                citation["asin"] = asin
+            citations.append(citation)
 
         # LLM-off short-circuit: render a plain search-results list (no Gemini call).
         # Document order respects the reranker toggle — if reranking is off the

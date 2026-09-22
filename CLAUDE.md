@@ -134,6 +134,16 @@ Beyond ingest-time detection, the agent can grow *or fix* the live taxonomy at r
 
 `api/schemas/events.py` must stay in sync with `web/src/types/events.ts` — each event's `node` field pins it to a pipeline step. Every return path in `agent_node` must include a `"citations"` key (empty list if none). ESCI products cite via `https://www.amazon.com/s?k={title}` (robust against delisted ASINs).
 
+### Product images (issue #144)
+
+Each citation also carries an `asin` (the OpenSearch `_id`, already in `metadata["product_id"]`). `citations` is typed `List[Dict[str, str]]`, so adding it needed no event-schema change — but the strict REST `Citation` model in `api/routes/chat.py` and both frontend types did change.
+
+Images are **committed**, not fetched at runtime: `web/src/assets/products/<ASIN>.jpg`, resolved by `import.meta.glob` in that directory's `index.ts`. They must live under `src/assets/` rather than `web/public/` — `api/main.py` mounts only `/assets`, so anything in `public/` lands at the `dist/` root where the SPA catch-all returns `index.html` instead of the file. (`public/kmw-logo.svg` already has this bug on :8000.) Going through `src/` gets Vite content-hashing into `dist/assets/`, which works on both :5173 and :8000.
+
+Regenerate with `PYTHONPATH=. python scripts/fetch_product_images.py` (`--report` for coverage only). Inputs are two committed files: `scripts/demo_product_asins.json` (the 38 products the demos surface, `named: true` = spoken on screen) and `scripts/demo_product_image_substitutes.json` (hand-curated map for ASINs Amazon no longer serves a photo for). Amazon answers a miss with a 43-byte 1x1 GIF at HTTP 200, so the script size-checks rather than trusting the status code.
+
+The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns each bullet the answer writes into a `ProductCard` — photo left, name and the model's own blurb right — so the answer reads as a shopping result list. The bullet's first `<strong>` (read from the hast `node`, which makes tight and loose lists behave alike) prefix-matches a citation label via `indexProducts`; the LLM bolds a shortened name while the citation carries the full catalog title, so the match runs in both directions. A bullet that matches nothing, or whose ASIN has no bundled image, stays a plain bullet — never a placeholder. Cards are suppressed while `isStreaming`, because citations only arrive with `agent_complete`.
+
 ## Tech stack
 
 | Layer | Tech |
