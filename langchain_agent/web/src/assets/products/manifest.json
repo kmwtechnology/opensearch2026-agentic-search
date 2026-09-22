@@ -107,6 +107,12 @@
     "source": "substitute",
     "source_url": "https://m.media-amazon.com/images/P/B01HSM5RU0.01._SCLZZZZZZZ_.jpg"
   },
+  "B07P91QX2F": {
+    "title": "HI-TEC Ravus Vent Lux Mid WP Chocolate/Dull Gold 9",
+    "named": true,
+    "source": "substitute",
+    "source_url": "https://m.media-amazon.com/images/P/B00H4YC0GC.01._SCLZZZZZZZ_.jpg"
+  },
   "B07QFCQYK7": {
     "title": "Cole Haan Women's Zerogrand XC Hiker Waterproof Hiking Boot, Black Wp Suede, 7 B US",
     "named": false,
@@ -118,6 +124,18 @@
     "named": false,
     "source": "exact",
     "source_url": "https://m.media-amazon.com/images/P/B07SZ9YL69.01._SCLZZZZZZZ_.jpg"
+  },
+  "B087BXLDGQ": {
+    "title": "Joomra Mens Road Running Shoes for Man Gym Fitness Blue Size 8.5 Walking Exercise Walk Cushion Jogging Casual Lightweight Fashion Runner Male Knit Sports Tennis Sneakers 42",
+    "named": true,
+    "source": "substitute",
+    "source_url": "https://m.media-amazon.com/images/P/B0788TTMLW.01._SCLZZZZZZZ_.jpg"
+  },
+  "B089Y4R415": {
+    "title": "Suteck Mini Sewing Machine for Beginners Portable Electric Sewing Machines with Extension Table Lamp and Thread Cutter with Shared 10 Thread Spools",
+    "named": true,
+    "source": "substitute",
+    "source_url": "https://m.media-amazon.com/images/P/B09HCB6N4L.01._SCLZZZZZZZ_.jpg"
   },
   "B08PC22TYB": {
     "title": "Brother LB7000 Computerized Embroidery and Sewing Machine",

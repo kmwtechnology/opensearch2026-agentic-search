@@ -124,9 +124,10 @@ def main() -> int:
 
     if not args.report:
         # Drop images for products no longer in the seed list, so the asset
-        # directory never accumulates orphans.
-        keep = {f"{p['asin']}.jpg" for p in products} | {"manifest.json"}
-        for stale in OUT_DIR.iterdir():
+        # directory never accumulates orphans. Scoped to *.jpg on purpose --
+        # index.ts and manifest.json live here too and are not ours to delete.
+        keep = {f"{p['asin']}.jpg" for p in products}
+        for stale in OUT_DIR.glob("*.jpg"):
             if stale.name not in keep:
                 stale.unlink()
                 print(f"  removed stale {stale.name}")
