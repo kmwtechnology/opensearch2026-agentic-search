@@ -83,6 +83,24 @@ function itemProduct(node: RootContent | undefined, lookup: ProductLookup) {
 }
 
 /**
+ * Classes for a list wrapper.
+ *
+ * A list whose items name products becomes a stack of cards, so it drops its
+ * markers and indent and lets the cards span the bubble (#144).
+ */
+function listClasses(
+  node: Element | undefined,
+  lookup: ProductLookup,
+  marker: 'list-disc' | 'list-decimal'
+): string {
+  const hasCards = node?.children.some((child) => itemProduct(child, lookup))
+  return clsx(
+    'my-2',
+    hasCards ? 'list-none gap-3 pl-0 ml-0' : `${marker} list-inside space-y-1 ml-2`
+  )
+}
+
+/**
  * A list item's body, prepared for a card.
  *
  * Two fixes: a loose list wraps the item in a `<p>`, which would add its own
@@ -269,28 +287,14 @@ export function Message({ message }: MessageProps) {
                     {children}
                   </a>
                 ),
-                // Lists. A list whose items name products becomes a stack of
-                // product cards instead of bullets, so drop the markers and
-                // the indent and let the cards span the bubble (#144).
-                ul: ({ children, node }) => {
-                  const hasCards = node?.children.some((child) =>
-                    itemProduct(child, findProduct)
-                  )
-                  return (
-                    <ul
-                      className={clsx(
-                        'my-2',
-                        hasCards
-                          ? 'list-none gap-3 pl-0 ml-0'
-                          : 'list-disc list-inside space-y-1 ml-2'
-                      )}
-                    >
-                      {children}
-                    </ul>
-                  )
-                },
-                ol: ({ children }) => (
-                  <ol className="list-decimal list-inside my-2 space-y-1 ml-2">
+                // Lists
+                ul: ({ children, node }) => (
+                  <ul className={listClasses(node, findProduct, 'list-disc')}>
+                    {children}
+                  </ul>
+                ),
+                ol: ({ children, node }) => (
+                  <ol className={listClasses(node, findProduct, 'list-decimal')}>
                     {children}
                   </ol>
                 ),

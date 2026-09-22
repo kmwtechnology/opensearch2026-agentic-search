@@ -1,0 +1,69 @@
+[
+ {
+  "query": "show me tan boots",
+  "answer": "Here are three tan boots: all of these are listed as Tan but indexed as yellow, which looks like a tagging error.\n\n*   **Clarks Women's Addiy Sharilyn Fashion Boot** \u2014 This is a dark tan leather ankle boot with an inside zipper entry and Ortholite footbed.\n*   **Maelstrom Men's TAC FORCE 8 Inch Military Tactical Duty Work Boot with Zipper** \u2014 This tan military tactical duty work boot features a YKK heavy duty side zipper and a polishable full grain leather and nylon upper.\n*   **Sperry mens Cold Bay Boots** \u2014 These tan/brown boots are fleece-lined with 200g Thinsulate insulation and have waterproof construction.",
+  "citations": [
+   {
+    "label": "[1] Clarks Women's Addiy Sharilyn Fashion Boot, Dark Tan Leather, 80 M US",
+    "url": "https://www.amazon.com/s?k=Clarks+Women%27s+Addiy+Sharilyn+Fashion+Boot%2C+Dark+Tan+Leather%2C+80+M+US",
+    "asin": "B07LF2JFCY"
+   },
+   {
+    "label": "[2] Maelstrom Men's TAC FORCE 8 Inch Military Tactical Duty Work Boot with Zipper, Tan, 10 M US",
+    "url": "https://www.amazon.com/s?k=Maelstrom+Men%27s+TAC+FORCE+8+Inch+Military+Tactical+Duty+Work+Boot+with+Zipper%2C+Tan%2C+10+M+US",
+    "asin": "B00E24XR96"
+   },
+   {
+    "label": "[3] Sperry mens Cold Bay Boots, Tan/Brown, 10.5 US",
+    "url": "https://www.amazon.com/s?k=Sperry+mens+Cold+Bay+Boots%2C+Tan%2FBrown%2C+10.5+US",
+    "asin": "B07BJLMTQ4"
+   },
+   {
+    "label": "[4] Carhartt Men's 6 Inch Waterproof Wedge Steel Toe Work Boot, Tan, 9",
+    "url": "https://www.amazon.com/s?k=Carhartt+Men%27s+6+Inch+Waterproof+Wedge+Steel+Toe+Work+Boot%2C+Tan%2C+9",
+    "asin": "B01L2U5EMA"
+   },
+   {
+    "label": "[5] Nautica Men's Flip Flop, Rustic Style Fabric Lined, Beach Sandal-Adain-Tan-7",
+    "url": "https://www.amazon.com/s?k=Nautica+Men%27s+Flip+Flop%2C+Rustic+Style+Fabric+Lined%2C+Beach+Sandal-Adain-Tan-7",
+    "asin": "B07MZD62Z5"
+   }
+  ]
+ },
+ {
+  "query": "that's not tan, that's tagged yellow which is wrong",
+  "answer": "Okay, I've corrected the tagging for 'tan' from 'yellow' to 'brown'. This change is now live.\n\nIs there anything else I can help you with regarding boots or other products?",
+  "citations": []
+ },
+ {
+  "query": "show me tan boots",
+  "answer": "Here are three tan boots:\n\n*   **Clarks Women's Addiy Sharilyn Fashion Boot** \u2014 This is a fashion boot listed in Dark Tan Leather.\n*   **Maelstrom Men's TAC FORCE 8 Inch Military Tactical Duty Work Boot with Zipper** \u2014 This is a military tactical duty work boot available in Tan.\n*   **Sperry mens Cold Bay Boots** \u2014 These are boots listed in Tan/Brown.",
+  "citations": [
+   {
+    "label": "[1] Clarks Women's Addiy Sharilyn Fashion Boot, Dark Tan Leather, 80 M US",
+    "url": "https://www.amazon.com/s?k=Clarks+Women%27s+Addiy+Sharilyn+Fashion+Boot%2C+Dark+Tan+Leather%2C+80+M+US",
+    "asin": "B07LF2JFCY"
+   },
+   {
+    "label": "[2] Maelstrom Men's TAC FORCE 8 Inch Military Tactical Duty Work Boot with Zipper, Tan, 10 M US",
+    "url": "https://www.amazon.com/s?k=Maelstrom+Men%27s+TAC+FORCE+8+Inch+Military+Tactical+Duty+Work+Boot+with+Zipper%2C+Tan%2C+10+M+US",
+    "asin": "B00E24XR96"
+   },
+   {
+    "label": "[3] Sperry mens Cold Bay Boots, Tan/Brown, 10.5 US",
+    "url": "https://www.amazon.com/s?k=Sperry+mens+Cold+Bay+Boots%2C+Tan%2FBrown%2C+10.5+US",
+    "asin": "B07BJLMTQ4"
+   },
+   {
+    "label": "[4] Carhartt Men's 6 Inch Waterproof Wedge Steel Toe Work Boot, Tan, 9",
+    "url": "https://www.amazon.com/s?k=Carhartt+Men%27s+6+Inch+Waterproof+Wedge+Steel+Toe+Work+Boot%2C+Tan%2C+9",
+    "asin": "B01L2U5EMA"
+   },
+   {
+    "label": "[5] Nautica Men's Flip Flop, Rustic Style Fabric Lined, Beach Sandal-Adain-Tan-7",
+    "url": "https://www.amazon.com/s?k=Nautica+Men%27s+Flip+Flop%2C+Rustic+Style+Fabric+Lined%2C+Beach+Sandal-Adain-Tan-7",
+    "asin": "B07MZD62Z5"
+   }
+  ]
+ }
+]
