@@ -140,13 +140,12 @@ export function Message({ message }: MessageProps) {
     return preprocessMarkdown(message.content || '...')
   }, [message.content])
 
-  // Citations only arrive with `agent_complete`, so while the answer streams
-  // there is nothing to match against. Gating on it keeps the list from
-  // snapping into cards on the final frame — it becomes one deliberate
-  // reflow, at the same moment the photos used to appear (#144).
+  // Citations arrive with the finished answer in one store write, and the
+  // list isn't rendered before that (see completeTurn / MessageList), so by
+  // the time this runs the lookup is either complete or legitimately empty.
   const findProduct = useMemo<ProductLookup>(
-    () => (message.isStreaming ? () => undefined : indexProducts(message.citations)),
-    [message.citations, message.isStreaming]
+    () => indexProducts(message.citations),
+    [message.citations]
   )
 
   // Copy message content to clipboard

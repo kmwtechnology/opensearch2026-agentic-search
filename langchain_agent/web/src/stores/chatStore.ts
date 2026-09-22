@@ -73,6 +73,7 @@ interface ChatState {
   updateLastMessage: (content: string) => void
   updateMessageStatus: (id: string, status?: 'queued') => void
   setLastMessageCitations: (citations: Citation[]) => void
+  completeTurn: (finalResponse: string | undefined, citations: Citation[]) => void
   correctLastAssistantMessage: (correctedContent: string, originalFaithfulness: number, correctedFaithfulness: number) => void
   setIsProcessing: (isProcessing: boolean) => void
   setStreamingContent: (content: string) => void
@@ -137,6 +138,44 @@ export const useChatStore = create<ChatState>((set, get) => ({
         : message
     )),
   })),
+
+  /**
+   * Land the finished answer and its citations in a SINGLE update (#144).
+   *
+   * These used to arrive as two store writes on two different WebSocket
+   * frames — `llm_response_chunk(is_complete)` finalized the text, then
+   * `agent_complete` attached the citations. That is two render batches, and
+   * since the product cards are keyed off the citations the answer visibly
+   * rendered twice: once as a plain bullet list, then again as cards. One
+   * `set` makes it one render, no reflow.
+   */
+  completeTurn: (finalResponse, citations) => set((state) => {
+    const messages = [...state.messages]
+    const lastIndex = messages.length - 1
+    const last = messages[lastIndex]
+    // Prefer the authoritative final response; fall back to what streamed.
+    const content = finalResponse || state.streamingContent
+
+    if (last && last.role === 'assistant' && last.isStreaming) {
+      messages[lastIndex] = {
+        ...last,
+        content: content || last.content,
+        isStreaming: false,
+        citations,
+      }
+    } else if (content) {
+      // No placeholder to fill — keep the answer rather than dropping it.
+      messages.push({
+        id: `msg-${Date.now()}`,
+        role: 'assistant',
+        content,
+        timestamp: new Date(),
+        citations,
+      })
+    }
+
+    return { messages, streamingContent: '', isProcessing: false }
+  }),
 
   setLastMessageCitations: (citations) => set((state) => {
     const messages = [...state.messages]

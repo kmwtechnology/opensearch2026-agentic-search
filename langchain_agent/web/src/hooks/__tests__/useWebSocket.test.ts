@@ -180,9 +180,11 @@ describe('useWebSocket', () => {
       expect(useChatStore.getState().streamingContent).toBe('Hello world')
     })
 
-    it('with is_complete finalizes streaming', () => {
+    it('with is_complete does NOT commit the message yet', () => {
+      // The last token lands one frame before agent_complete brings the
+      // citations. Committing here would render the answer without them and
+      // then again with them — the double render #144 removed.
       setupConnected()
-      // Add a streaming assistant message first
       act(() => {
         useChatStore.getState().addMessage({
           id: 'a1', role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
@@ -190,8 +192,8 @@ describe('useWebSocket', () => {
       })
       sendEvent({ type: 'llm_response_chunk', timestamp: 't', content: 'Done', is_complete: true })
       const state = useChatStore.getState()
-      // streamingContent should be cleared after finalize
-      expect(state.streamingContent).toBe('')
+      expect(state.streamingContent).toBe('Done')
+      expect(state.messages.at(-1)?.isStreaming).toBe(true)
     })
   })
 
@@ -234,6 +236,50 @@ describe('useWebSocket', () => {
       })
       const lastMsg = useChatStore.getState().messages.at(-1)
       expect(lastMsg?.citations).toEqual(citations)
+    })
+
+    it('commits the streamed text and its citations together', () => {
+      // One store write, so the answer renders exactly once — with its
+      // product cards already in place rather than snapping in after (#144).
+      setupConnected()
+      act(() => {
+        useChatStore.getState().addMessage({
+          id: 'a1', role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
+        })
+      })
+      sendEvent({ type: 'llm_response_chunk', timestamp: 't', content: 'Partial', is_complete: true })
+      expect(useChatStore.getState().messages.at(-1)?.content).toBe('')
+
+      const citations = [{ url: 'https://example.com', label: '[1] Example' }]
+      sendEvent({
+        type: 'agent_complete',
+        timestamp: 't',
+        final_response: 'The full answer.',
+        citations,
+        thread_id: 'thread-1',
+        title: 'Test',
+      })
+
+      const last = useChatStore.getState().messages.at(-1)
+      expect(last?.content).toBe('The full answer.')
+      expect(last?.citations).toEqual(citations)
+      expect(last?.isStreaming).toBe(false)
+      expect(useChatStore.getState().isProcessing).toBe(false)
+    })
+
+    it('falls back to the streamed text when no final_response is sent', () => {
+      setupConnected()
+      act(() => {
+        useChatStore.getState().addMessage({
+          id: 'a1', role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
+        })
+      })
+      sendEvent({ type: 'llm_response_chunk', timestamp: 't', content: 'Streamed only', is_complete: true })
+      sendEvent({
+        type: 'agent_complete', timestamp: 't', citations: [], thread_id: 't1', title: 'T',
+      })
+
+      expect(useChatStore.getState().messages.at(-1)?.content).toBe('Streamed only')
     })
   })
 

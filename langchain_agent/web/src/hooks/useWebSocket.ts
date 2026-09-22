@@ -125,25 +125,18 @@ export function useWebSocket(): UseWebSocketReturn {
         if (data.content) {
           chatStore.appendStreamingContent(data.content)
         }
-        if (data.is_complete) {
-          chatStore.finalizeStreaming()
-          chatStore.triggerInputFocus()
-        }
+        // Deliberately NOT finalized here (#144). The last token arrives one
+        // frame before `agent_complete` brings the citations, so finalizing
+        // now would commit the answer without them — and the product cards
+        // are keyed off the citations, so the audience would watch the list
+        // render as plain bullets and then re-render as cards. `agent_complete`
+        // commits both together; `agent_error` is the escape hatch.
         break
 
       case 'agent_complete': {
-        // Finalize streaming - only set content if not already streamed
-        // (streaming populates streamingContent incrementally, so skip if already present)
-        const { messages, streamingContent } = useChatStore.getState()
-        const lastMessage = messages[messages.length - 1]
-        const hasStreamingMessage = Boolean(
-          lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming
-        )
-        if (data.final_response && (streamingContent || hasStreamingMessage)) {
-          chatStore.setStreamingContent(data.final_response)
-        }
-        chatStore.finalizeStreaming()
-        chatStore.setLastMessageCitations(data.citations || [])
+        // Commit the answer and its citations in one store write, so the
+        // message renders exactly once — see completeTurn in chatStore (#144).
+        chatStore.completeTurn(data.final_response, data.citations || [])
         chatStore.triggerInputFocus()
         obsStore.endExecution()
 

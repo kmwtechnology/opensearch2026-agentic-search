@@ -163,18 +163,17 @@ describe('Message — product cards', () => {
     expect(screen.getByText(/not in the catalog/)).toBeInTheDocument()
   })
 
-  it('shows no cards while the answer is still streaming', () => {
-    // Citations only arrive with agent_complete; cards appearing mid-stream
-    // would reflow the list under the audience's eyes.
+  it('renders cards as soon as it has citations, without waiting', () => {
+    // Holding the answer back until the citations land is MessageList's job
+    // (#144) — by the time a Message renders, the turn is committed. Message
+    // itself must not second-guess that, or the cards would never appear.
     render(
       <Message
-        message={answer('*   **Singer 3221 Simple Sewing Machine** — a good starter.', {
-          isStreaming: true,
-        })}
+        message={answer('*   **Singer 3221 Simple Sewing Machine** — a good starter.')}
       />
     )
 
-    expect(screen.queryByTestId('product-card')).not.toBeInTheDocument()
+    expect(screen.getByTestId('product-card')).toBeInTheDocument()
   })
 
   it('renders a plain list when no product has a bundled image', () => {

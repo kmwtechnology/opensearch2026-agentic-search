@@ -261,15 +261,20 @@ export function MessageList() {
       }
       return msg
     })
-    // Drop a trailing assistant bubble that has nothing in it yet.
+    // Hold back the answer bubble until the turn is committed.
     //
-    // One is created the moment generation starts, but the first token can be
-    // seconds away — and an empty bubble also SUPPRESSED the status line
-    // below, so the whole retrieval-and-rerank phase showed as a blank box
-    // with a blinking cursor and no explanation (#103). Now the status stays
-    // up until there is actually something to show.
+    // It used to appear the moment the first token landed — but the citations
+    // only arrive on the following frame, and the product cards are keyed off
+    // them, so the audience watched the answer render as a plain bullet list
+    // and then re-render as cards (#144). The status card below stays up for
+    // the whole turn instead, narrating the live pipeline stage; the answer
+    // then appears once, complete.
+    //
+    // This also preserves the #103 fix: an empty bubble with a blinking
+    // cursor used to suppress that status line through the whole
+    // retrieval-and-rerank phase, showing a blank box with no explanation.
     const last = withStreaming[withStreaming.length - 1]
-    if (last && last.role === 'assistant' && last.isStreaming && !last.content) {
+    if (last && last.role === 'assistant' && last.isStreaming) {
       return withStreaming.slice(0, -1)
     }
     return withStreaming
@@ -296,8 +301,10 @@ export function MessageList() {
         <Message key={message.id} message={message} />
       ))}
 
-      {/* Show typing indicator when processing but no streaming content yet */}
-      {isProcessing && !streamingContent && (() => {
+      {/* The status card now covers the WHOLE turn, generation included —
+          the answer bubble is held back until citations land (#144), so
+          without this the panel would go blank while the model writes. */}
+      {isProcessing && (() => {
         /* The pipeline runs intent -> evaluate -> search -> rerank -> gate
            BEFORE a single token is generated, which is most of the wait. Show
            the stage, a live detail line, and the SAME icon and color the

@@ -185,3 +185,53 @@ describe('MessageList — pre-token agent status label (#106)', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('MessageList — one render per answer (#144)', () => {
+  it('holds the answer back while it is still streaming', () => {
+    // The citations arrive a frame after the last token, and the product
+    // cards are keyed off them. Showing the partial answer here is what made
+    // the list render as plain bullets and then re-render as cards.
+    useChatStore.setState({
+      messages: [
+        makeUserMessage(),
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: '',
+          timestamp: new Date('2026-01-01'),
+          isStreaming: true,
+        },
+      ],
+      streamingContent: 'Here are some boots:\n\n*   **Sperry mens Cold Bay Boots** — tan.',
+      isProcessing: true,
+    })
+
+    render(<MessageList />)
+
+    expect(screen.queryByText(/Sperry mens Cold Bay Boots/)).not.toBeInTheDocument()
+    // ...and the pipeline status card covers the gap, so nothing goes blank.
+    expect(screen.getByLabelText('Agent processing')).toBeInTheDocument()
+  })
+
+  it('renders the answer once the turn is committed', () => {
+    useChatStore.setState({
+      messages: [
+        makeUserMessage(),
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: 'Here are some boots:\n\n*   **Sperry mens Cold Bay Boots** — tan.',
+          timestamp: new Date('2026-01-01'),
+          citations: [],
+        },
+      ],
+      streamingContent: '',
+      isProcessing: false,
+    })
+
+    render(<MessageList />)
+
+    expect(screen.getByText(/Sperry mens Cold Bay Boots/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Agent processing')).not.toBeInTheDocument()
+  })
+})
