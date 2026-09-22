@@ -142,7 +142,7 @@ Images are **committed**, not fetched at runtime: `web/src/assets/products/<ASIN
 
 Regenerate with `PYTHONPATH=. python scripts/fetch_product_images.py` (`--report` for coverage only). Inputs are two committed files: `scripts/demo_product_asins.json` (the 38 products the demos surface, `named: true` = spoken on screen) and `scripts/demo_product_image_substitutes.json` (hand-curated map for ASINs Amazon no longer serves a photo for). Amazon answers a miss with a 43-byte 1x1 GIF at HTTP 200, so the script size-checks rather than trusting the status code.
 
-`ProductStrip` shows only the products an answer *names* — bold spans in the body prefix-match citation labels — because the LLM names ~3 while citations carry up to 10. A product with no bundled image is omitted, never placeholdered.
+The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns each bullet the answer writes into a `ProductCard` — photo left, name and the model's own blurb right — so the answer reads as a shopping result list. The bullet's first `<strong>` (read from the hast `node`, which makes tight and loose lists behave alike) prefix-matches a citation label via `indexProducts`; the LLM bolds a shortened name while the citation carries the full catalog title, so the match runs in both directions. A bullet that matches nothing, or whose ASIN has no bundled image, stays a plain bullet — never a placeholder. Cards are suppressed while `isStreaming`, because citations only arrive with `agent_complete`.
 
 ## Tech stack
 
