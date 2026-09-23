@@ -131,7 +131,7 @@ export function EnrichmentMoment({ line, startedAt }: Props) {
             </span>
           </div>
           <p className="text-[length:var(--text-stage-body)] font-medium text-[var(--color-stage-ink-muted)]">
-            Rebuilding all 9,618 products. This usually takes about 20 seconds.
+            Rebuilding all 9,618 products. This usually takes about 30 seconds.
           </p>
         </div>
       )}
