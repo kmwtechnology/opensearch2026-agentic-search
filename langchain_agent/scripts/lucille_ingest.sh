@@ -113,6 +113,14 @@ if [[ -f "$ENV_FILE" ]]; then
   done < <(grep -v '^#' "$ENV_FILE" | grep -v '^$' | grep '=')
 fi
 
+# Nothing in this script is traced, but the Docker CLI honors the standard
+# OTEL_EXPORTER_OTLP_* vars for its OWN telemetry: with them set (from .env,
+# or inherited from the backend when the enrichment flywheel runs this), every
+# `docker compose` call blocks ~10s at exit flushing spans to the collector.
+# That put a ~10s dead gap before the Lucille container even appeared on
+# stage, and another after it finished. Keep them away from docker entirely.
+unset "${!OTEL_@}"
+
 # ── Defaults ─────────────────────────────────────────────────────────────────
 OPENSEARCH_HOST="${OPENSEARCH_HOST:-localhost}"
 OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
