@@ -64,6 +64,10 @@
 #   --reset-index     Delete the products index, then recreate the mapping via
 #                     setup.py before ingest. Use when mappings change.
 #   --skip-judgments  Skip Step 6 (judgments ingest)
+#   --skip-products   Skip Steps 4b-5b (products ingest) and only refresh the
+#                     judgments -- e.g. after the products index changed, since
+#                     the judgments filter keeps only products present in it.
+#                     Not combinable with --reset-index or --seed-taxonomy.
 #   --seed-taxonomy   Run Step 5b. DESTRUCTIVE to the color mapping: wipes
 #                     every color mapping (including agent-learned ones) and
 #                     rediscovers from scratch. Does NOT touch "waterproof".
@@ -75,17 +79,24 @@ set -euo pipefail
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 SKIP_JUDGMENTS=false
+SKIP_PRODUCTS=false
 RESET_INDEX=false
 SEED_TAXONOMY=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-judgments) SKIP_JUDGMENTS=true; shift ;;
+    --skip-products)  SKIP_PRODUCTS=true;  shift ;;
     --reset-index)    RESET_INDEX=true;    shift ;;
     --seed-taxonomy)  SEED_TAXONOMY=true;  shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
+
+if [[ "$SKIP_PRODUCTS" == "true" && ( "$RESET_INDEX" == "true" || "$SEED_TAXONOMY" == "true" || "$SKIP_JUDGMENTS" == "true" ) ]]; then
+  echo "--skip-products only refreshes judgments; it can't be combined with --reset-index, --seed-taxonomy or --skip-judgments" >&2
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -313,6 +324,10 @@ generate_products_conf() {
   [[ "$summary" != *"stages for: []"* ]]
 }
 
+if [[ "$SKIP_PRODUCTS" == "true" ]]; then
+  info "Skipping products ingest (--skip-products)."
+else
+
 # The --seed-taxonomy first pass only feeds discovery, so it skips embedding
 # (see Step 5b); every other run embeds.
 FIRST_PASS_ARGS=()
@@ -400,6 +415,8 @@ if [[ "$SEED_TAXONOMY" == "true" ]]; then
   info "Re-running products ingest with the seeded taxonomy..."
   run_products_ingest
 fi
+
+fi  # SKIP_PRODUCTS
 
 # ── Step 6: Run judgments ingest ──────────────────────────────────────────────
 if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
