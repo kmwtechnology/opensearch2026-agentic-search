@@ -1,6 +1,7 @@
 # Plan: fully local models (Ollama) + full SQID image corpus
 
-Status: **in progress** on branch `feat/issue-147-local-ollama-sqid-corpus` (resumed 2026-09-25). Tracks issue #147 plus a
+Status: **paused 2026-09-25**, on branch `feat/issue-147-local-ollama-sqid-corpus` (not pushed).
+Steps 0–3 are done and committed (820e2fb, 6b2330e, dbf5689, 35d5109). **Resume at "Resume here" below.** Tracks issue #147 plus a
 new scope expansion (the Ollama swap) that has no issue yet.
 
 ## Goal
@@ -168,3 +169,47 @@ Note: `DEMO.md` records demo 1 turn 1 ("Show me blue running shoes") as
   Could add a generated (not curated) local cache later.
 - **Memory:** two Qwen models (~30 GB) + OpenSearch (2–4 GB heap) + Postgres + the
   cross-encoder on 64 GB works, but check this under demo load.
+
+
+## Resume here (paused 2026-09-25)
+
+**Done and committed on the branch:** Step 0 (decisions + smoke test), Step 1 (Lucille
+`OllamaEmbedStage`, text-only `data/esci_products.parquet`, 158,637 products),
+Step 2 (all LLM calls go through `core/llm.py` ChatOllama, query embeddings through
+`retrieval/embeddings.py`, Gemini removed), and Step 3 (scoped re-tag is the default
+`REINDEX_TRIGGER`; `scripts/check_retag_parity.py` passes on the smoke index).
+Unit tests: 861 pass. Frontend: 311 pass.
+
+**Local state, not in git:**
+- The full ingest into index **`agentic_hybrid_search_docs_v2`** was left running in the
+  background, at ~92K of 158K products at 18:02, ~60 docs/s. Log:
+  `$TMPDIR/.../scratchpad/full_ingest.log` (session scratchpad). Check the doc count with
+  `curl -s localhost:9200/agentic_hybrid_search_docs_v2/_count`. If it died, re-run:
+  `OPENSEARCH_INDEX_NAME=agentic_hybrid_search_docs_v2 bash scripts/lucille_ingest.sh --reset-index --skip-judgments`
+  (from `langchain_agent/`).
+- **v2 was created before `chunk_text.words` existed.** Once the ingest finishes, add
+  the subfield in place (no re-embed): close the index, add `ascii_word_tokenizer` +
+  `ascii_words_analyzer` to its settings, reopen, `put_mapping` chunk_text from
+  `vector_store.INDEX_MAPPING`, then `_update_by_query` over all docs. The session
+  used a one-off script for this, `add_words_subfield.py`, in the scratchpad; it's
+  about 20 lines and easy to recreate. Then run
+  `OPENSEARCH_INDEX_NAME=agentic_hybrid_search_docs_v2 PYTHONPATH=. python scripts/check_retag_parity.py`,
+  which must PASS. A fresh `make setup` doesn't need any of this, because `setup.py`
+  creates the index with the subfield.
+- The old demo index `agentic_hybrid_search_docs` (9,618 products, Gemini vectors) is
+  untouched. Its query-side embeddings no longer match (nomic vs Gemini), so the app
+  must point at v2: set `OPENSEARCH_INDEX_NAME` in `.env`, or re-ingest into the default name.
+- Local `.env` model lines were switched to Ollama. The pre-change backup is in the
+  session scratchpad as `env.backup-pre-ollama`. `GOOGLE_API_KEY` and `RERANKER_MODEL`
+  lines are still in `.env`; both are harmless and unused.
+- OpenSearch now runs with a 2g heap (the container was recreated).
+- `data/esci_products_smoke.parquet` (1,921 products) and the `ollama_smoke_docs`
+  index are throwaway smoke artifacts. Delete both when done.
+- Judgments were **not** re-ingested for the new corpus (`--skip-judgments`). Do that
+  at cutover, and re-seed the color taxonomy on the new corpus (`--seed-taxonomy`),
+  both of which rewrite shared indexes.
+
+**Remaining:** Step 4 (images: `product_image_url` into the mapping, metadata and
+citations, and remove the old image workaround), Step 5 (re-validate all 4 demos
+live, benchmarks, docs), then `make check`, push, and open a PR. The user asked
+for a branch and PR this session, not a direct push to main.
