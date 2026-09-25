@@ -607,7 +607,11 @@ class EnrichmentTriggeredEvent(BaseEvent):
     # non-"complete" status, and on a "complete" from a github-mode dispatch
     # which never learns them (#80).
     duration_seconds: Optional[float] = None
+    # Products whose tags changed. With the default scoped re-tag (#147) only
+    # products whose text mentions the variant are re-detected at all --
+    # docs_scanned of them -- so docs_processed <= docs_scanned.
     docs_processed: Optional[int] = None
+    docs_scanned: Optional[int] = None
 
 
 # ============================================================================

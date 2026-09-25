@@ -614,8 +614,10 @@ INTERNAL_LLM_TAG = "internal_deliberation"
 # reliably, which is why it was moved onto the bridge in the first place.
 ANSWER_STREAM_TAG = "answer_stream"
 
-# How enrich_attribute triggers the catalog reindex after writing a mapping:
-# runs scripts/lucille_ingest.sh as a subprocess (Docker on this host, ~20s,
-# synchronous). Only "local" is supported.
-REINDEX_TRIGGER = os.getenv("REINDEX_TRIGGER", "local").strip().lower()
-REINDEX_LOCAL_TIMEOUT_SECONDS = int(os.getenv("REINDEX_LOCAL_TIMEOUT_SECONDS", "180"))
+# How enrich_attribute applies a new mapping to the catalog (see
+# pipeline/reindex_trigger.py): "scoped" (default) re-tags only the products
+# whose text mentions the changed variant -- seconds; "local" re-runs the
+# full Lucille ingest, which re-embeds all ~158K products (30+ min).
+REINDEX_TRIGGER = os.getenv("REINDEX_TRIGGER", "scoped").strip().lower()
+# Only the "local" (full Lucille) mode uses this; sized for a full re-embed.
+REINDEX_LOCAL_TIMEOUT_SECONDS = int(os.getenv("REINDEX_LOCAL_TIMEOUT_SECONDS", "5400"))

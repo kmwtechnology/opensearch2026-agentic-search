@@ -60,9 +60,10 @@ class EnrichmentResult:
     reason: Optional[str] = None  # set when success=False
     reindex_triggered: bool = False
     reindex_success: bool = False
-    docs_processed: int = 0
+    docs_processed: int = 0  # products whose tags the reindex changed
+    docs_scanned: int = 0  # scoped mode: products re-detected (text mentions the variant)
     duration_seconds: float = 0.0
-    reindex_mode: str = "local"
+    reindex_mode: str = "scoped"
     reindex_run_url: Optional[str] = None  # unused by the local trigger; kept for schema compat
     reindex_error: Optional[str] = None  # short detail when reindex_success is False
     # Set when this replaced an existing (wrong) mapping rather than adding a
@@ -181,7 +182,7 @@ def enrich_attribute(
 
     _ensure_attribute_fields_mapped(store, attribute_type)
 
-    outcome = (trigger or build_reindex_trigger()).trigger()
+    outcome = (trigger or build_reindex_trigger()).trigger(attribute_type, [variant_lower])
 
     return EnrichmentResult(
         success=True,
@@ -191,6 +192,7 @@ def enrich_attribute(
         reindex_triggered=outcome.triggered,
         reindex_success=outcome.success,
         docs_processed=outcome.docs_processed,
+        docs_scanned=outcome.docs_scanned,
         duration_seconds=outcome.duration_seconds,
         reindex_mode=outcome.mode,
         reindex_run_url=outcome.run_url,

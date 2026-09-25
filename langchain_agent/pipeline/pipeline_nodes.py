@@ -1281,6 +1281,9 @@ so briefly."""
             docs_processed=(
                 enrichment_result.docs_processed if enrichment_result.reindex_success else None
             ),
+            docs_scanned=(
+                enrichment_result.docs_scanned if enrichment_result.reindex_success else None
+            ),
         )
 
         tool_result = format_enrichment_message(enrichment_result)

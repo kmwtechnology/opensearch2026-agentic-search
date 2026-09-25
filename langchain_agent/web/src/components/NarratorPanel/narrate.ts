@@ -350,8 +350,12 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
         : e.variant.toLowerCase() === (e.canonical ?? '').toLowerCase()
           ? `“${e.variant}” is now a filterable attribute.`
           : `“${e.variant}” is now understood as ${e.canonical}.`
+      // Scoped re-tag (the default, #147): only products that mention the
+      // term are re-checked, so say how many were checked and how many moved.
       const scale =
-        e.docs_processed && e.duration_seconds
+        e.docs_scanned != null && e.docs_processed != null && e.duration_seconds
+          ? ` Re-checked the ${e.docs_scanned.toLocaleString()} products that mention it; re-tagged ${e.docs_processed.toLocaleString()} in ${e.duration_seconds.toFixed(1)}s.`
+          : e.docs_processed && e.duration_seconds
           ? ` Rebuilt ${e.docs_processed.toLocaleString()} products in ${e.duration_seconds.toFixed(1)}s.`
           : e.reindex_run_url
             ? ' Handed off to the cloud build — it finishes out of band.'
@@ -366,7 +370,7 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
       return {
         ...base,
         label: 'Catalog Update Failed',
-        text: `The catalog rebuild did not finish${e.error ? ` — ${e.error}` : ''}. The tag is unchanged.`,
+        text: `The catalog update did not finish${e.error ? ` — ${e.error}` : ''}. The tag is unchanged.`,
       }
     case 'declined':
       return {

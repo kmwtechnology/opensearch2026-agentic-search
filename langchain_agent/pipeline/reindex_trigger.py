@@ -1,8 +1,15 @@
 """
-Reindex trigger — how the enrichment flywheel gets the catalog re-indexed
-after writing a new attribute mapping: runs scripts/lucille_ingest.sh as a
-subprocess and waits for it (Docker on this host, ~20s, synchronous, reports
-doc count).
+Reindex trigger — how the enrichment flywheel applies a new attribute mapping
+to the catalog. Two modes (REINDEX_TRIGGER):
+
+* ``scoped`` (default): re-detect the changed attribute on only the products
+  whose text mentions the changed variant(s), and write back what changed
+  (pipeline/scoped_retag.py). Seconds, synchronous, no re-embedding -- the
+  only viable live path since the corpus grew to ~158K products embedded by
+  Lucille through Ollama (#147/#148).
+* ``local``: re-run the full products ingest (scripts/lucille_ingest.sh) as a
+  subprocess and wait for it. Re-embeds every product: 30+ minutes now, so
+  only for an explicit full rebuild, never mid-conversation.
 """
 
 import logging
@@ -12,7 +19,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Optional, Protocol, Sequence
 
 from core.config import REINDEX_LOCAL_TIMEOUT_SECONDS, REINDEX_TRIGGER
 from core.exceptions import ConfigurationError
@@ -30,8 +37,9 @@ class ReindexConfigurationError(ConfigurationError):
 class ReindexOutcome:
     triggered: bool
     success: bool
-    mode: str  # "local"
-    docs_processed: int = 0
+    mode: str  # "scoped" or "local"
+    docs_processed: int = 0  # products whose tags changed (scoped) / ingested (local)
+    docs_scanned: int = 0  # scoped only: candidate products re-detected
     duration_seconds: float = 0.0
     run_url: Optional[str] = None  # unused by the local trigger; kept for schema compat
     error: Optional[str] = None  # short, user-safe detail when success is False
@@ -40,11 +48,73 @@ class ReindexOutcome:
 class ReindexTrigger(Protocol):
     mode: str
 
-    def trigger(self) -> ReindexOutcome: ...
+    def trigger(
+        self, attribute_type: Optional[str] = None, variants: Sequence[str] = ()
+    ) -> ReindexOutcome: ...
 
 
-# Guards the local Lucille subprocess. Module-level: one index, one ingest.
+# Guards every write that re-tags the products index -- a Lucille run and a
+# scoped re-tag must never interleave. Module-level: one index, one writer.
 _LOCAL_REINDEX_LOCK = threading.Lock()
+
+
+class ScopedRetagTrigger:
+    """Re-tag only the products a mapping change can affect (the default)."""
+
+    mode = "scoped"
+
+    def trigger(
+        self, attribute_type: Optional[str] = None, variants: Sequence[str] = ()
+    ) -> ReindexOutcome:
+        if not attribute_type or not variants:
+            return ReindexOutcome(
+                triggered=False,
+                success=False,
+                mode=self.mode,
+                error="scoped re-tag needs an attribute type and variant",
+            )
+        if not _LOCAL_REINDEX_LOCK.acquire(blocking=False):
+            logger.warning("Reindex (scoped): refused — another re-index is already running")
+            return ReindexOutcome(
+                triggered=False,
+                success=False,
+                mode=self.mode,
+                error="a re-index is already running",
+            )
+        start = time.monotonic()
+        try:
+            from core.config import OPENSEARCH_INDEX_NAME
+            from pipeline.scoped_retag import retag
+            from retrieval.attribute_mapping_store import AttributeMappingStore
+            from retrieval.vector_store import get_shared_opensearch_client
+
+            lookup = AttributeMappingStore().get_lookup_table(attribute_type)
+            result = retag(
+                get_shared_opensearch_client(),
+                OPENSEARCH_INDEX_NAME,
+                attribute_type,
+                variants,
+                lookup,
+            )
+        except Exception as e:  # noqa: BLE001 -- report, don't crash the chat turn
+            logger.exception("Reindex (scoped): failed")
+            return ReindexOutcome(
+                triggered=True,
+                success=False,
+                mode=self.mode,
+                duration_seconds=time.monotonic() - start,
+                error=f"scoped re-tag failed: {type(e).__name__}",
+            )
+        finally:
+            _LOCAL_REINDEX_LOCK.release()
+        return ReindexOutcome(
+            triggered=True,
+            success=True,
+            mode=self.mode,
+            docs_processed=result.updated,
+            docs_scanned=result.candidates,
+            duration_seconds=time.monotonic() - start,
+        )
 
 
 class LocalReindexTrigger:
@@ -60,7 +130,11 @@ class LocalReindexTrigger:
         self.timeout_seconds = timeout_seconds
         self.cwd = cwd
 
-    def trigger(self) -> ReindexOutcome:
+    def trigger(
+        self, attribute_type: Optional[str] = None, variants: Sequence[str] = ()
+    ) -> ReindexOutcome:
+        # A full ingest re-detects every attribute on every product, so the
+        # scope arguments are accepted (protocol) and deliberately ignored.
         # Until #103 the agent node ran on the event loop thread, which meant
         # a second concurrent request physically could not start a second
         # re-index — the loop was blocked. Now that the node runs in a worker
@@ -136,6 +210,10 @@ def _parse_docs_succeeded(lucille_output: str) -> int:
 def build_reindex_trigger(mode: Optional[str] = None) -> ReindexTrigger:
     """Construct the configured trigger. Raises ReindexConfigurationError on bad config."""
     mode = (mode or REINDEX_TRIGGER).strip().lower()
+    if mode == "scoped":
+        return ScopedRetagTrigger()
     if mode == "local":
         return LocalReindexTrigger()
-    raise ReindexConfigurationError(f"Unknown REINDEX_TRIGGER '{mode}' -- expected 'local'.")
+    raise ReindexConfigurationError(
+        f"Unknown REINDEX_TRIGGER '{mode}' -- expected 'scoped' or 'local'."
+    )

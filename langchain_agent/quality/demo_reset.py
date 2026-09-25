@@ -90,7 +90,10 @@ def _reset_color_demo(full_reindex: bool) -> Dict[str, Any]:
     if full_reindex:
         from pipeline.reindex_trigger import build_reindex_trigger
 
-        outcome = build_reindex_trigger().trigger()
+        # "Full" means a real re-detection of the demo's variant against the
+        # restored mapping, not the fast path's surgical flip. A literal full
+        # Lucille run re-embeds ~158K products (30+ min) -- see #147.
+        outcome = build_reindex_trigger("scoped").trigger(DEMO_ATTRIBUTE_TYPE, [DEMO_VARIANT])
         logger.info(
             "Demo reset (full): reindex success=%s docs=%s", outcome.success, outcome.docs_processed
         )

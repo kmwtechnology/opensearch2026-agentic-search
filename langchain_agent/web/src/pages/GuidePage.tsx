@@ -192,9 +192,9 @@ export function GuidePage() {
               </li>
               <li>
                 <code className="bg-gray-100 px-1">that's not tan, that's tagged yellow which is wrong</code> —
-                the correction is detected, a second model approves the change, and a real Lucille re-index of
-                9,618 products kicks off. Watch the elapsed-time counter — this is the actual ingest pipeline
-                running, not a cached swap.
+                the correction is detected, a second model approves the change, and every product whose text
+                mentions &ldquo;tan&rdquo; is re-detected against the corrected taxonomy, live in the index — the
+                same detection logic the Lucille ingest runs, scoped to the products the change can affect.
               </li>
               <li>
                 <code className="bg-gray-100 px-1">show me tan boots</code> — the same query, asked again in a
@@ -218,7 +218,7 @@ export function GuidePage() {
                 <code className="bg-gray-100 px-1">Show me waterproof boots</code> — zero results.{' '}
                 <code className="bg-gray-100 px-1">product_waterproof_primary</code> genuinely doesn't exist yet on
                 a freshly-armed cluster. Watch the agent notice the gap on its own and call its enrichment tool —
-                no shopper has to ask — then a real ~20-30s Lucille reindex of all 9,618 products.
+                no shopper has to ask — then every product that mentions the term is re-tagged live.
               </li>
               <li>
                 <code className="bg-gray-100 px-1">Show me waterproof boots</code> — the same query, asked again in

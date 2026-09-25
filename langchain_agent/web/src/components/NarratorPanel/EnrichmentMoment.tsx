@@ -2,12 +2,13 @@
  * The taxonomy correction sequence, rendered as one advancing card (#103).
  *
  * This is the demo's centrepiece and the reason the whole panel exists: a
- * shopper disputes a wrong tag, the catalog rebuilds itself, and the audience
+ * shopper disputes a wrong tag, the catalog re-tags itself, and the audience
  * watches it happen. Four phases, each visually distinct from the back of the
  * room:
  *
- *   started  → a live elapsed counter, because the ~20s re-index used to be a
- *              completely silent freeze and silence reads as a crash
+ *   started  → a live elapsed counter, because the re-index used to be a
+ *              completely silent ~20s freeze and silence reads as a crash (now a
+ *              scoped re-tag of the matching products, #147 -- usually seconds)
  *   complete → what changed, plus the real doc count
  *   failed   → says plainly that the tag is unchanged
  *   declined → the guardrail firing, which is a feature worth showing
@@ -131,7 +132,7 @@ export function EnrichmentMoment({ line, startedAt }: Props) {
             </span>
           </div>
           <p className="text-[length:var(--text-stage-body)] font-medium text-[var(--color-stage-ink-muted)]">
-            Rebuilding all 9,618 products. This usually takes about ~20 seconds.
+            Re-checking every product that mentions this term, live in the index.
           </p>
         </div>
       )}

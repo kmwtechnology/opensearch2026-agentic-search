@@ -238,9 +238,12 @@ export interface EnrichmentTriggeredEvent extends BaseEvent {
   // (fire-and-forget dispatch — no completion signal, run URL only).
   reindex_mode?: string
   reindex_run_url?: string
-  // Real measured numbers; present only on a 'complete' from local mode.
+  // Real measured numbers; present only on a 'complete'. docs_processed is
+  // how many products' tags changed; docs_scanned (scoped mode, the default)
+  // is how many products mention the term and were re-detected at all.
   duration_seconds?: number
   docs_processed?: number
+  docs_scanned?: number
 }
 
 // Completion events

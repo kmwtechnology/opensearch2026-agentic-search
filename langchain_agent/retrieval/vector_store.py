@@ -77,6 +77,15 @@ INDEX_MAPPING = {
             "knn.algo_param.ef_search": 100,
         },
         "analysis": {
+            # Splits on every non-[A-Za-z0-9] character -- the same word
+            # boundaries as Java 21's ASCII \b in AttributeDetectorStage. The
+            # standard tokenizer keeps "Color:black" / "Brown.All" as ONE token
+            # (Unicode MidLetter rules), so a phrase query on chunk_text misses
+            # text the detector regex matches; chunk_text.words doesn't. Used
+            # only to find scoped re-tag candidates (pipeline/scoped_retag.py).
+            "tokenizer": {
+                "ascii_word_tokenizer": {"type": "pattern", "pattern": "[^A-Za-z0-9]+"},
+            },
             "filter": {
                 "edge_ngram_filter": {
                     "type": "edge_ngram",
@@ -129,6 +138,10 @@ INDEX_MAPPING = {
                     "tokenizer": "standard",
                     "filter": ["lowercase"],
                 },
+                "ascii_words_analyzer": {
+                    "tokenizer": "ascii_word_tokenizer",
+                    "filter": ["lowercase"],
+                },
             },
         },
     },
@@ -147,7 +160,10 @@ INDEX_MAPPING = {
             "chunk_text": {
                 "type": "text",
                 "analyzer": "light_english_analyzer",
-                "fields": {"heavy": {"type": "text", "analyzer": "heavy_english_analyzer"}},
+                "fields": {
+                    "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
+                    "words": {"type": "text", "analyzer": "ascii_words_analyzer"},
+                },
             },
             "document_id": {"type": "keyword"},
             "chunk_index": {"type": "integer"},
