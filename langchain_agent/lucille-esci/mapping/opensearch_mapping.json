@@ -198,6 +198,10 @@
       "title_phrase": {
         "type": "text",
         "analyzer": "english_shingle_analyzer"
+      },
+      "product_image_url": {
+        "type": "keyword",
+        "index": false
       }
     }
   }

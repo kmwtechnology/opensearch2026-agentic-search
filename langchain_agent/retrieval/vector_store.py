@@ -210,6 +210,9 @@ INDEX_MAPPING = {
             "product_waterproof_primary": {"type": "keyword"},
             "product_waterproof_secondary": {"type": "keyword"},
             "product_locale": {"type": "keyword"},
+            # SQID image URL (#147): displayed, never searched -- keep it out of
+            # the inverted index entirely.
+            "product_image_url": {"type": "keyword", "index": False},
             "esci_labels": {"type": "keyword"},
             "collection": {"type": "keyword"},
             # Autocomplete suggest fields
@@ -1081,6 +1084,8 @@ class OpenSearchVectorStore:
             "product_brand": src.get("product_brand", ""),
             "product_color": src.get("product_color", ""),
             "product_color_primary": src.get("product_color_primary", ""),
+            # ~95% of products carry one (SQID); "" when Amazon has no photo.
+            "image_url": src.get("product_image_url", "") or "",
         }
         if score is not None:
             metadata["retrieval_score"] = float(score)

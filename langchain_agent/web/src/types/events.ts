@@ -256,7 +256,7 @@ export interface AgentCompleteEvent extends BaseEvent {
   response_retries: number
   documents_used: number
   title?: string
-  citations?: { label: string; url: string; asin?: string }[]
+  citations?: { label: string; url: string; asin?: string; image_url?: string }[]
 }
 
 export interface AgentErrorEvent extends BaseEvent {

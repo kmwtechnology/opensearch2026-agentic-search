@@ -759,3 +759,13 @@ class TestRetrieverForwarding:
         store = _make_store()
         retriever = store.as_retriever(search_type="hybrid")
         assert retriever.optimizations is None
+
+
+class TestCitationModel:
+    def test_rest_citation_carries_image_url(self):
+        """#147: the REST fallback exposes the same image_url the WS event does."""
+        from api.routes.chat import Citation
+
+        c = Citation(label="[1] Boot", url="https://x", asin="B01", image_url="https://img/1.jpg")
+        assert c.image_url == "https://img/1.jpg"
+        assert Citation(label="[1] Boot", url="https://x").image_url is None
