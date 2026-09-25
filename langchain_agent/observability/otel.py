@@ -7,7 +7,7 @@ OTEL_EXPORTER_OTLP_* variables, which core.config's load_dotenv() pulls in
 from .env.
 
 LangchainInstrumentor hooks the LangChain callback system, so every graph
-node and every ChatGoogleGenerativeAI call becomes a span carrying the
+node and every ChatOllama call becomes a span carrying the
 gen_ai.* attributes (model, token usage, prompt and response content).
 Set TRACELOOP_TRACE_CONTENT=false to drop the prompt/response text.
 

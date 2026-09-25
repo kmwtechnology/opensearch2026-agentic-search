@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import urllib3
 from langchain_core.documents import Document
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_core.embeddings import Embeddings
 from opensearchpy import OpenSearch, RequestsHttpConnection
 
 from core.config import (
@@ -299,7 +299,7 @@ class OpenSearchVectorStore:
     if the hybrid query type is not available.
 
     Attributes:
-        embeddings: GoogleGenerativeAIEmbeddings instance for generating query embeddings
+        embeddings: query-side embeddings (retrieval/embeddings.py's PrefixedOllamaEmbeddings)
         collection_id: Collection ID for document filtering
         client: OpenSearch client instance
         index_name: Name of the OpenSearch index
@@ -339,7 +339,7 @@ class OpenSearchVectorStore:
 
     def __init__(
         self,
-        embeddings: GoogleGenerativeAIEmbeddings,
+        embeddings: Embeddings,
         collection_id: str,
         client: Optional[OpenSearch] = None,
     ) -> None:

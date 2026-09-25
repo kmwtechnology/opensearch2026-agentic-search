@@ -13,13 +13,13 @@ where adaptive retrieval provides the most value.
 Requires:
   - OpenSearch cluster with esci_judgments index (ESCI dataset ingested)
   - LocalStack/Docker for PostgreSQL (checkpoints only — not used in this benchmark)
-  - GOOGLE_API_KEY env var (only if --classify-intents is used)
+  - A local Ollama server with the embedding model (and LLM_MODEL if --classify-intents is used)
 
 Usage:
     # Fast reproducible run (no LLM intent classification)
     make benchmark-esci-fast
 
-    # Full adaptive run with Gemini intent classification
+    # Full adaptive run with LLM intent classification
     make benchmark-esci
 
     # Dry-run on 2 queries
@@ -41,13 +41,11 @@ from langchain_core.documents import Document
 from opensearchpy import OpenSearch
 
 from core.config import (
-    EMBEDDINGS_MODEL,
     OPENSEARCH_HOST,
     OPENSEARCH_PASSWORD,
     OPENSEARCH_PORT,
     OPENSEARCH_USE_SSL,
     OPENSEARCH_VERIFY_CERTS,
-    VECTOR_DIMENSION,
 )
 from observability.relevancy_metrics import StageMetrics, compute_stage_metrics
 from retrieval.reranker import CrossEncoderReranker
@@ -90,7 +88,7 @@ class ESCIBenchmark:
             fast_mode: Use alpha=0.65 for all search/follow_up (no LLM).
             fetch_k: Retrieval candidate count.
             rerank_top_k: Post-rerank list size.
-            classify_intents: Call Gemini intent classifier (slow, requires API key).
+            classify_intents: Call the LLM intent classifier (slow; needs LLM_MODEL in Ollama).
         """
         self.limit = limit
         self.alpha_hybrid = alpha_hybrid
@@ -101,15 +99,9 @@ class ESCIBenchmark:
         self.classify_intents = classify_intents
 
         # Initialize OpenSearch and retriever
-        try:
-            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+        from retrieval.embeddings import build_embeddings
 
-            self.embeddings = GoogleGenerativeAIEmbeddings(
-                model=EMBEDDINGS_MODEL, output_dimensionality=VECTOR_DIMENSION
-            )
-        except ImportError as e:
-            logger.error(f"Failed to initialize embeddings: {e}")
-            sys.exit(1)
+        self.embeddings = build_embeddings()
 
         self.vector_store = OpenSearchVectorStore(
             embeddings=self.embeddings, collection_id="esci_products"

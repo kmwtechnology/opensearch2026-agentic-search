@@ -86,7 +86,9 @@ load_dotenv()
 
 __all__ = [
     # Google AI configuration
-    "GOOGLE_API_KEY",
+    "OLLAMA_HOST",
+    "OLLAMA_KEEP_ALIVE",
+    "OLLAMA_NUM_CTX",
     "LLM_MODEL",
     "LLM_TEMPERATURE",
     "EMBEDDINGS_MODEL",
@@ -124,12 +126,10 @@ __all__ = [
     # Reranker configuration
     "ENABLE_RERANKING",
     "RERANKER_TYPE",
-    "RERANKER_MODEL",
     "CROSS_ENCODER_MODEL",
     "RERANKER_FETCH_K",
     "RETRY_FETCH_MULTIPLIER",
     "RERANKER_TOP_K",
-    "RERANKER_BATCH_SIZE",
     "RERANKER_WARMUP_ENABLED",
     # Query evaluation configuration
     "ENABLE_QUERY_EVALUATION",
@@ -195,28 +195,48 @@ __all__ = [
 ]
 
 # ============================================================================
-# GOOGLE AI CONFIGURATION
+# LOCAL MODELS (OLLAMA) -- #148
 # ============================================================================
 
-# Google API Key (required for Gemini models)
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+# Everything runs on a local Ollama server (native on the host for Metal GPU
+# access): generation, classify/eval/judge, and query embeddings. Documents are
+# embedded at ingest by Lucille's OllamaEmbedStage against the same server.
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
-# LLM Model (Gemini) -- gemini-2.5-flash, not a Gemini 3.x model (#126). Avoids
-# Gemini 3's mandatory "thinking" tax (minimum level is "low", never off) while
-# still following this app's long, instruction-heavy system prompt reliably.
-# gemini-3.5-flash-lite looked faster in a single-turn isolated benchmark but
-# real multi-turn pipeline testing (turn 2+, with accumulated conversation
-# history) showed it balloon to ~30s per call vs. ~6-11s here -- a live-app-only
-# regression an isolated benchmark can't catch. gemini-2.5-flash-lite is faster
-# still but drops required prompt instructions (e.g. the refinement intent's
-# "From the N products I showed you earlier" framing) in favor of generic
-# phrasing -- fine for classify/eval/judge (QUERY_EVAL_MODEL/JUDGE_MODEL below),
-# too lossy for generation.
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+
+# How long Ollama keeps a model resident after a call. A cold load is 7-18s,
+# which would land mid-demo on the first turn after an idle spell.
+# Same variable name the Ollama server reads, so a host already running
+# `OLLAMA_KEEP_ALIVE=1h ollama serve` behaves the same for this app. Accepts
+# Ollama's duration syntax ("90s", "60m", "1h") or bare seconds; normalized
+# to int seconds because langchain-ollama's OllamaEmbeddings only takes an int.
+def _duration_seconds(value: str) -> int:
+    value = value.strip().lower()
+    for suffix, factor in (("h", 3600), ("m", 60), ("s", 1)):
+        if value.endswith(suffix):
+            return int(float(value[:-1]) * factor)
+    return int(value)
+
+
+OLLAMA_KEEP_ALIVE = _duration_seconds(os.getenv("OLLAMA_KEEP_ALIVE", "60m"))
+# Chat context window, in tokens. Ollama silently truncates anything longer
+# (see core/llm.py). The longest real prompts -- agent system prompt + up to
+# 10 products + multi-turn history -- stay well under this; qwen3.6 supports
+# far more, but every extra token of window costs KV-cache memory.
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "32768"))
+
+# One model for every chat call. qwen3.6:35b-a3b is a mixture-of-experts model
+# (~3B active params per token): on the real intent prompt it matched all 8
+# DEMO.md demo turns and ran FASTER than qwen3.5:9b on every call measured
+# (intent ~1.5s vs ~2.5s warm). QUERY_EVAL_MODEL / JUDGE_MODEL below stay
+# separate settings so a smaller classifier can be split out later.
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3.6:35b-a3b-q4_K_M")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", 0))
 
-# Embeddings Model (Gemini)
-EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "models/gemini-embedding-001")
+# Query embeddings. Must be the model Lucille embedded the corpus with, and
+# 768-dim to match the index mapping. nomic-embed-text is asymmetric -- the
+# search_query:/search_document: prefixes are applied in retrieval/embeddings.py.
+EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "nomic-embed-text")
 
 # ============================================================================
 # POSTGRES CONFIGURATION
@@ -260,7 +280,7 @@ DB_POOL_MAX_SIZE = 20
 # VECTOR CONFIGURATION
 # ============================================================================
 
-# Vector embedding dimension (models/gemini-embedding-001 with output_dimensionality=768)
+# Vector embedding dimension (nomic-embed-text is natively 768-dim)
 # Default is 3072 but 768 is recommended: nearly identical quality with far less storage
 VECTOR_DIMENSION = 768
 
@@ -322,14 +342,11 @@ RETRIEVER_SEARCH_TYPE = "hybrid"
 ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS = float(os.getenv("ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS", "5"))
 
 # ============================================================================
-# RERANKER CONFIGURATION (Gemini LLM-as-Reranker)
+# RERANKER CONFIGURATION (local cross-encoder)
 # ============================================================================
 
-# Enable reranking of hybrid search results using LLM scoring
+# Enable cross-encoder reranking of hybrid search results
 ENABLE_RERANKING = True
-
-# Gemini model for LLM-based reranking (scores documents via batch prompting)
-RERANKER_MODEL = os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview")
 
 # Number of candidates to fetch before reranking
 # 40 enables the "wide net recall" → cross-encoder precision narrative
@@ -346,18 +363,15 @@ RETRY_FETCH_MULTIPLIER = 4
 # Final number of documents to return after reranking
 RERANKER_TOP_K = 10
 
-# Documents per API call (all scored in a single prompt per batch)
-RERANKER_BATCH_SIZE = int(os.getenv("RERANKER_BATCH_SIZE", 20))
-
 # Enable API connection priming on startup to reduce first-query latency
 RERANKER_WARMUP_ENABLED = os.getenv("RERANKER_WARMUP_ENABLED", "true").lower() == "true"
 
-# Reranker backend: "cross-encoder" (local, ~2s for a 40-doc batch, measured in
-# production) or "gemini" (LLM, ~500ms/batch)
-# Default to cross-encoder for speed; set to "gemini" to revert to LLM-based reranking
-RERANKER_TYPE = os.getenv("RERANKER_TYPE", "cross-encoder")
+# Reranker backend. Only "cross-encoder" exists since the Gemini LLM-as-reranker
+# was removed (#148); kept as a constant because reranker_result events carry it
+# and the UI keys its description off it (#87). ~2s for a 40-doc batch.
+RERANKER_TYPE = "cross-encoder"
 
-# Cross-encoder model for local reranking (ignored if RERANKER_TYPE == "gemini")
+# Cross-encoder model for local reranking
 CROSS_ENCODER_MODEL = os.getenv("CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-12-v2")
 
 # ============================================================================
@@ -382,10 +396,10 @@ ENABLE_QUERY_EVAL_CACHE = True
 QUERY_EVAL_CACHE_MAX_SIZE = 100
 
 # Query evaluator model settings (lightweight alpha estimator)
-QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", "gemini-2.5-flash-lite")
+QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", LLM_MODEL)
 # LLM-as-judge for the Pipeline Quality Summary "Generation" stage. Distinct
 # from the agent's main LLM to reduce self-preference bias.
-JUDGE_MODEL = os.getenv("JUDGE_MODEL", "gemini-2.5-flash-lite")
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", LLM_MODEL)
 QUERY_EVAL_TEMPERATURE = float(os.getenv("QUERY_EVAL_TEMPERATURE", "0"))
 QUERY_EVAL_MAX_TOKENS = int(os.getenv("QUERY_EVAL_MAX_TOKENS", "1024"))
 

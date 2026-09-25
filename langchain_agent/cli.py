@@ -228,11 +228,11 @@ def _invoke_agent(agent, user_input: str):
         agent.update_conversation_title()
 
     except httpx.ConnectError as e:
-        print(f"✗ Cannot connect to Google AI API")
+        print("✗ Cannot connect to the local Ollama server")
         print(f"  Error: {e}")
-        print(f"\n  To fix:")
-        print(f"  1. Check that GOOGLE_API_KEY is set correctly")
-        print(f"  2. Verify internet connectivity")
+        print("\n  To fix:")
+        print("  1. Start Ollama (`ollama serve` or the Ollama app)")
+        print("  2. Check OLLAMA_HOST in .env (default http://localhost:11434)")
     except Exception as e:
         print(f"✗ Error invoking agent: {e}")
         import traceback

@@ -1,7 +1,7 @@
 """
 Unit tests for EnrichmentValueJudge -- the second-opinion gate that decides
 whether a proposed trigger_enrichment call is worth a real catalog write +
-reindex, independent of the agent's own tool-call decision. ChatGoogleGenerativeAI
+reindex, independent of the agent's own tool-call decision. The chat model
 is mocked throughout so these never make a real API call.
 """
 
@@ -39,8 +39,8 @@ class TestBuildPrompt:
 
 class TestEnrichmentValueJudge:
     def _judge_with_mocked_response(self, assessment: EnrichmentValueAssessment):
-        with patch("quality.enrichment_value_judge.ChatGoogleGenerativeAI"):
-            judge = EnrichmentValueJudge(model_name="gemini-3.1-flash-lite-preview")
+        with patch("quality.enrichment_value_judge.build_chat_model"):
+            judge = EnrichmentValueJudge(model_name="qwen3.6:35b-a3b-q4_K_M")
         judge.structured_llm = MagicMock()
         judge.structured_llm.invoke.return_value = assessment
         return judge

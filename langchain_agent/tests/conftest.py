@@ -142,17 +142,28 @@ def quality_gate_test_cases():
     ]
 
 
-def pytest_collection_modifyitems(config, items):
-    """Skip tests requiring real API credentials when API key is fake/test."""
-    google_api_key = os.environ.get("GOOGLE_API_KEY", "")
-    is_fake_key = google_api_key.startswith("test-") or google_api_key == ""
+def _ollama_reachable() -> bool:
+    """True when the local Ollama server answers (the models' only "API" since #148)."""
+    import urllib.request
 
-    if is_fake_key:
-        skip_marker = pytest.mark.skip(reason="Requires real GOOGLE_API_KEY")
-        for item in items:
-            # Skip content generation tests that require real API
-            if "test_content_gen" in item.nodeid:
-                item.add_marker(skip_marker)
-            # Skip tests that explicitly require real API
-            if item.get_closest_marker("requires_real_api"):
-                item.add_marker(skip_marker)
+    host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    try:
+        with urllib.request.urlopen(f"{host}/api/tags", timeout=2):
+            return True
+    except OSError:
+        return False
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip tests that call real models when no local Ollama server is running."""
+    needs_models = [
+        item
+        for item in items
+        if "test_content_gen" in item.nodeid or item.get_closest_marker("requires_real_api")
+    ]
+    # Only probe Ollama when something actually needs it -- keeps the plain
+    # unit run (make ci) free of network calls.
+    if needs_models and not _ollama_reachable():
+        skip_marker = pytest.mark.skip(reason="Requires a running local Ollama server")
+        for item in needs_models:
+            item.add_marker(skip_marker)

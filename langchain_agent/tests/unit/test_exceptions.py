@@ -74,9 +74,9 @@ class TestConfigurationError:
         assert e.recoverable is False
 
     def test_config_key_stored(self):
-        e = ConfigurationError("missing", config_key="GOOGLE_API_KEY")
-        assert e.config_key == "GOOGLE_API_KEY"
-        assert "GOOGLE_API_KEY" in str(e)
+        e = ConfigurationError("missing", config_key="OLLAMA_HOST")
+        assert e.config_key == "OLLAMA_HOST"
+        assert "OLLAMA_HOST" in str(e)
 
     def test_no_config_key(self):
         e = ConfigurationError("missing")

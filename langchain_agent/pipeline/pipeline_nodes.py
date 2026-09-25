@@ -21,11 +21,11 @@ from core.agent_state import CustomAgentState
 from core.config import (
     ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS,
     ANSWER_STREAM_TAG,
+    CROSS_ENCODER_MODEL,
     DEFAULT_ALPHA,
     ENABLE_RERANKING,
     INTERNAL_LLM_TAG,
     RERANKER_FETCH_K,
-    RERANKER_MODEL,
     RERANKER_TOP_K,
     RETRIEVER_FETCH_K,
     RETRIEVER_K,
@@ -3127,7 +3127,7 @@ Original query: {query}
             try:
                 self._emit_event_from_sync(
                     RerankerStartEvent(
-                        model=RERANKER_MODEL,
+                        model=CROSS_ENCODER_MODEL,
                         candidate_count=len(retrieved_documents),
                     )
                 )

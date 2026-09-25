@@ -17,8 +17,9 @@ import logging
 import time
 from typing import Optional
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
+
+from core.llm import build_chat_model
 
 logger = logging.getLogger(__name__)
 
@@ -104,12 +105,7 @@ class EnrichmentValueJudge:
 
     def __init__(self, model_name: str) -> None:
         self.model_name = model_name
-        self.llm = ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=0,
-            streaming=False,
-            max_output_tokens=512,
-        )
+        self.llm = build_chat_model(model_name, temperature=0, max_tokens=512)
         self.structured_llm = self.llm.with_structured_output(EnrichmentValueAssessment)
         logger.info("EnrichmentValueJudge loaded: model=%s", model_name)
 

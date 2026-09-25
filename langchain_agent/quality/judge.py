@@ -8,16 +8,16 @@ structured judgment with a pairwise verdict, four absolute scores
 a brief justification, and any specific hallucinations the judge spotted.
 
 Bias mitigations:
-  * Use a different model for the judge than the agent (we use
-    gemini-2.5-flash-lite by default; the agent uses
-    gemini-2.5-flash). Reduces self-preference.
+  * JUDGE_MODEL is its own setting so the judge *can* run a different model
+    than the agent (reduces self-preference). Since the move to local Ollama
+    (#148) both default to the same qwen3.6:35b-a3b -- one resident model --
+    so this mitigation is currently off unless JUDGE_MODEL is set.
   * Randomize "Response A" / "Response B" labels per call to mitigate
     positional bias on the pairwise verdict. The judge sees blind
     labels; we map back to llm/baseline server-side.
   * Tight token limits + temperature=0 for repeatability.
 
-Cost: one extra Gemini Flash Lite call per judged query (~1-2s,
-~$0.0005). Skipped when ``optimizations.llm_judge:false`` or
+Cost: one extra local LLM call per judged query (~2-3s warm, no API cost). Skipped when ``optimizations.llm_judge:false`` or
 ``optimizations.llm:false``.
 """
 
@@ -30,8 +30,9 @@ from enum import Enum
 from typing import List, Literal, Optional
 
 from langchain_core.documents import Document
-from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field, field_validator
+
+from core.llm import build_chat_model
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +172,7 @@ def _format_docs_for_prompt(documents: List[Document], max_chars: int = 10_000) 
     Default 10 000 chars/doc — effectively no truncation for any realistic ESCI
     product (ceiling ~2498 chars, e.g. Thursday Boot Company Captain B07PQ9M1C5).
     At RETRIEVER_K=4 docs the block is ≤40 000 chars (~10 000 tokens), still
-    negligible for Gemini Flash Lite's 1M-token context. Earlier limits (360 in
+    well inside the 32K-token OLLAMA_NUM_CTX window. Earlier limits (360 in
     issue #81, 1500 in PR #82, 2500 in issue #84) all caused false-positive
     fabrication flags when grounded product attributes appeared in late Amazon
     bullet points past the cutoff. 10 000 is a safety cap against pathological
@@ -254,16 +255,13 @@ Provide a 1-2 sentence justification for the pairwise verdict."""
 class LLMJudge:
     """Pairwise + absolute LLM-as-judge for the Generation stage."""
 
-    def __init__(self, model_name: str = "gemini-2.5-flash-lite"):
-        self.model_name = model_name
-        self.llm = ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=0,
-            streaming=False,
-            max_output_tokens=1024,
-        )
+    def __init__(self, model_name: Optional[str] = None):
+        from core.config import JUDGE_MODEL
+
+        self.model_name = model_name or JUDGE_MODEL
+        self.llm = build_chat_model(self.model_name, temperature=0, max_tokens=1024)
         self.structured_llm = self.llm.with_structured_output(JudgmentResult)
-        logger.info("LLMJudge loaded: model=%s", model_name)
+        logger.info("LLMJudge loaded: model=%s", self.model_name)
 
     def judge(
         self,
