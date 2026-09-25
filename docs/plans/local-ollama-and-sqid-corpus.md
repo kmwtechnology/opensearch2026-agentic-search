@@ -213,3 +213,26 @@ Unit tests: 861 pass. Frontend: 311 pass.
 citations, and remove the old image workaround), Step 5 (re-validate all 4 demos
 live, benchmarks, docs), then `make check`, push, and open a PR. The user asked
 for a branch and PR this session, not a direct push to main.
+
+## Resume here (paused again 2026-09-25, later)
+
+Steps 0-4 are done and committed through `16f93af`. The full 158,637-product ingest into
+`agentic_hybrid_search_docs_v2` is complete (0 failures). Local `.env` points at v2. Retag
+parity passes on the full corpus. All 4 demos ran end to end on local models. Judgments
+were refreshed (65,028 queries, created from the explicit mapping).
+
+**Open items:**
+1. **The demo 2 ground-truth query needs replacing.** Re-measured "sewing machine" on the
+   new corpus (stable across 2 runs): stock_bm25 NDCG@10 0.409 → bm25 0.160 → hybrid 0.463 →
+   reranked 0.359. That's no longer a clean story (our BM25 is worse than stock, and the
+   reranker drops below hybrid). `web/src/demos/registry.ts` `watchFor` still quotes the
+   OLD numbers (0.81/0.91/0.95/0.92). Scan test/small queries for a clean monotonic
+   progression, the same way the registry comment describes the original selection.
+2. **Benchmark:** `make benchmark-esci-fast` now scores test/small queries by default. A
+   run was started at the pause and may not have finished; re-run it and replace
+   `BENCHMARK_RESULTS.md`. Previous all-splits run, not comparable: full-set NDCG@10
+   lexical 0.254 / hybrid 0.302 / adaptive 0.321.
+3. `make check`, push the branch, open the PR (the user asked for branch+PR this session), close #147/#148.
+4. Delete the throwaway `ollama_smoke_docs` index. Decide whether to drop the old
+   `agentic_hybrid_search_docs` (Gemini vectors) or re-ingest into the default name.
+5. Docker Desktop was found stopped once mid-session. If OpenSearch refuses connections, `open -a Docker`, then `docker compose up -d opensearch postgres`.
