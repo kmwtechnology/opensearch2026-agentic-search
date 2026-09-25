@@ -431,6 +431,15 @@ if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
   # deliberately reused/appended to across ingest runs).
   info "Clearing esci_judgments index before re-ingest..."
   curl -s -X DELETE "$_DISPLAY_URL/esci_judgments" -o /dev/null || true
+  # Recreate it with the explicit mapping BEFORE Lucille writes to it. Left to
+  # dynamic mapping, query.keyword has no lowercase normalizer -- so
+  # lookup_judgments' lowercased exact match silently misses every mixed-case
+  # query -- and judgments loses its nested type.
+  if ! curl -sf -X PUT "$OPENSEARCH_URL/esci_judgments" -H 'Content-Type: application/json' \
+      --data-binary @"$ESCI_MODULE_DIR/mapping/judgments_mapping.json" -o /dev/null; then
+    error "Failed to create esci_judgments with lucille-esci/mapping/judgments_mapping.json"
+    exit 1
+  fi
 
   info "Running Lucille judgments ingest..."
   info "  Source: $JUDGMENTS_PARQUET"

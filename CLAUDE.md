@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval fused via RRF, dynamic alpha per intent, cross-encoder reranking with a quality gate, real-time WebSocket streaming, and an agentic taxonomy self-correction loop. Runs **local-only** via Docker Compose + Google Gemini — see "Deploy & CI reality" below.
+**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval fused via RRF, dynamic alpha per intent, cross-encoder reranking with a quality gate, real-time WebSocket streaming, and an agentic taxonomy self-correction loop. Runs **fully local** — Docker Compose + native Ollama for every model (chat and embeddings), no cloud API key — see "Deploy & CI reality" below.
 
 ## New Session Checklist
 
@@ -33,13 +33,14 @@ cd langchain_agent   # required first — commands below assume this cwd
 
 # First-time setup / every-session startup (brings up Postgres + OpenSearch via
 # Docker, backend on :8000, frontend on :5173 — no manual `docker compose up` needed)
-./scripts/setup.sh          # or: make setup   (10-20 min, first time only)
+./scripts/setup.sh          # or: make setup   (first time only: pulls Ollama models ~23 GB, then ~35-40 min of Lucille embedding)
 ./scripts/start.sh          # or: make dev     (every session)
 ./scripts/stop.sh           # or: make stop    (stops processes + containers, keeps volumes)
 ./scripts/teardown.sh       # or: make teardown (DESTRUCTIVE: removes .venv, node_modules, all Docker volumes)
 
 # ESCI ingestion via Lucille ETL
-bash scripts/lucille_ingest.sh    # products + judgments, Docker-based by default
+bash scripts/lucille_ingest.sh    # products + judgments, Docker-based; Lucille embeds all ~158K products via Ollama (~35-40 min)
+bash scripts/lucille_ingest.sh --skip-products   # judgments only (after the products index changes)
 make seed-taxonomy                # rediscover color taxonomy — DESTRUCTIVE, needed once per fresh cluster (waterproof grows separately, live)
 make reindex / make reindex-products
 
@@ -61,7 +62,7 @@ make format-fix        # black + isort, fixes in place
 
 # Benchmarks (requires docker compose up -d)
 make benchmark-esci-fast   # ~5 min, deterministic (no LLM)
-make benchmark-esci        # ~10 min, full adaptive (requires GOOGLE_API_KEY)
+make benchmark-esci        # full adaptive (LLM intent classification via Ollama)
 
 # Smoke test (run standalone, or via `make check` above — no git hook triggers this)
 make smoke           # ~13-20s, search-intent smoke, needs Docker + backend
@@ -128,7 +129,7 @@ Same-origin checking (`api/middleware/origin_auth.py`, `verify_same_origin`) is 
 
 Color/waterproof attribute detection runs in the Lucille ETL via `AttributeDetectorStage` (one generic Java stage, `langchain_agent/lucille-esci/src/main/java`, parameterized per attribute type), writing `product_<type>_primary`/`_secondary` keyword fields. The taxonomy itself lives in OpenSearch (not a committed file) — rules-based, auditable, no AI at ingest time. A fresh cluster's taxonomy store is empty; `scripts/setup.sh` seeds color unconditionally on first-time setup, but `make seed-taxonomy` is the manual re-seed entry point later (destructive to any agent-learned color mappings). `waterproof` (issue #142) is deliberately NOT seeded either way — `WATERPROOF_CANONICALS` ships with zero variant terms on purpose, so it starts as a genuine gap and grows entirely from the live flywheel below. The stage hard-fails the ingest if the taxonomy lookup can't load — never soft-fail a store lookup in a custom Lucille stage.
 
-Beyond ingest-time detection, the agent can grow *or fix* the live taxonomy at runtime via one tool, `trigger_enrichment(attribute_type, variant, canonical)` (gated by `ENABLE_ENRICHMENT_TOOL`, default off in code but `true` in this repo's local `.env`), which writes the mapping to OpenSearch and triggers a real Lucille reindex through `pipeline/reindex_trigger.py` (~19-20s, runs `scripts/lucille_ingest.sh` as a subprocess). Both color's and waterproof's unresolved-term filter are hard exact-match filters, so both reliably trigger the growth path live through chat (this used to differ — `material` had a soft fallback + was subject to filter relaxation, so it only ever triggered via `/api/admin/enrich`; `material` was removed in favor of `waterproof` for exactly this reason). The correction case — a shopper disputes an existing wrong tag — is caught by `_detect_correction_signal`/`_try_correction_tool` in `agent_node` on `refinement`/`follow_up` turns; this matters architecturally because a wrong-but-mapped result still **passes** the quality gate, so it's invisible to any automated check. Full detail in `langchain_agent/ARCHITECTURE.md`'s "Taxonomy Growth & Correction" section.
+Beyond ingest-time detection, the agent can grow *or fix* the live taxonomy at runtime via one tool, `trigger_enrichment(attribute_type, variant, canonical)` (gated by `ENABLE_ENRICHMENT_TOOL`, default off in code but `true` in this repo's local `.env`), which writes the mapping to OpenSearch and applies it through `pipeline/reindex_trigger.py`. The default `REINDEX_TRIGGER=scoped` re-detects the attribute on only the products whose text mentions the changed variant (`pipeline/scoped_retag.py`, a line-for-line port of `AttributeDetectorStage`; seconds, e.g. tan→brown re-tagged 679 of 905 candidates in <1s), because a full Lucille run now re-embeds ~158K products (30+ min) and is kept only as `REINDEX_TRIGGER=local`. Scoped candidates come from the `chunk_text.words` subfield (ASCII-word tokenizer mirroring Java's `\b`); `scripts/check_retag_parity.py` proves detection parity and candidate recall against a real index — rerun it after changing either side. Both color's and waterproof's unresolved-term filter are hard exact-match filters, so both reliably trigger the growth path live through chat (this used to differ — `material` had a soft fallback + was subject to filter relaxation, so it only ever triggered via `/api/admin/enrich`; `material` was removed in favor of `waterproof` for exactly this reason). The correction case — a shopper disputes an existing wrong tag — is caught by `_detect_correction_signal`/`_try_correction_tool` in `agent_node` on `refinement`/`follow_up` turns; this matters architecturally because a wrong-but-mapped result still **passes** the quality gate, so it's invisible to any automated check. Full detail in `langchain_agent/ARCHITECTURE.md`'s "Taxonomy Growth & Correction" section.
 
 ### Event sync
 
@@ -146,16 +147,16 @@ The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns
 
 ### LLM observability (Oodle)
 
-`observability/otel.py::setup_tracing()` installs an OTLP `TracerProvider` plus Traceloop's `LangchainInstrumentor`, called first thing in the `api/main.py` lifespan and in `cli.py::main()` (`shutdown_tracing()` flushes on exit). It's a **no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set** — tests and `make ci` never touch the network. The exporter reads the standard `OTEL_EXPORTER_OTLP_*` vars from `os.environ`, which works only because `core/config.py` calls `load_dotenv()`. One chat turn becomes one `LangGraph.workflow` trace with a span per node and a `ChatGoogleGenerativeAI.chat` span per Gemini call carrying `gen_ai.request.model`, token usage, and full prompt/response text (`TRACELOOP_TRACE_CONTENT=false` drops the text). The local `.env` exports direct to Oodle; the `.env.example` block has placeholders. To query traces from the CLI, tag filters need Oodle's `span::` prefix: `oodle traces list --start -15m --end now --tags '{"span::gen_ai.request.model":"gemini-2.5-flash"}'`. `traces list` omits span attributes, so use `traces get <id> --start … --end …` to see them.
+`observability/otel.py::setup_tracing()` installs an OTLP `TracerProvider` plus Traceloop's `LangchainInstrumentor`, called first thing in the `api/main.py` lifespan and in `cli.py::main()` (`shutdown_tracing()` flushes on exit). It's a **no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set** — tests and `make ci` never touch the network. The exporter reads the standard `OTEL_EXPORTER_OTLP_*` vars from `os.environ`, which works only because `core/config.py` calls `load_dotenv()`. One chat turn becomes one `LangGraph.workflow` trace with a span per node and a chat-model span per LLM call carrying `gen_ai.request.model` (was `ChatGoogleGenerativeAI.chat` under Gemini; the exact span name under `ChatOllama` hasn't been re-verified in Oodle since #148), token usage, and full prompt/response text (`TRACELOOP_TRACE_CONTENT=false` drops the text). The local `.env` exports direct to Oodle; the `.env.example` block has placeholders. To query traces from the CLI, tag filters need Oodle's `span::` prefix: `oodle traces list --start -15m --end now --tags '{"span::gen_ai.request.model":"qwen3.6:35b-a3b-q4_K_M"}'`. `traces list` omits span attributes, so use `traces get <id> --start … --end …` to see them.
 
 ## Tech stack
 
 | Layer | Tech |
 |---|---|
-| LLM (generation) | Gemini 2.5 Flash |
-| LLM (classify/eval/judge) | Gemini 2.5 Flash-Lite |
-| Reranker | Local cross-encoder (`ms-marco-MiniLM-L-12-v2`), `RERANKER_TYPE=cross-encoder` default; a Gemini-based reranker exists but isn't shipped default |
-| Embeddings | `models/gemini-embedding-001` (768-dim) |
+| LLM (all calls) | `qwen3.6:35b-a3b-q4_K_M` via local Ollama (`core/llm.py::build_chat_model`; `reasoning=False`, explicit `num_ctx`) |
+| Reranker | Local cross-encoder (`ms-marco-MiniLM-L-12-v2`) — the only reranker |
+| Embeddings | `nomic-embed-text` via local Ollama (768-dim; `search_document:` at ingest by Lucille's `OllamaEmbedStage`, `search_query:` at query time via `retrieval/embeddings.py`) |
+| Corpus | 158,637 ESCI US test/small products (query-first, every query fully judged), 95.5% with a SQID image URL |
 | Agent framework | LangGraph + LangChain |
 | Vector DB | OpenSearch (HNSW knn + BM25) |
 | Checkpoints | PostgreSQL, via `langgraph-checkpoint-postgres` |

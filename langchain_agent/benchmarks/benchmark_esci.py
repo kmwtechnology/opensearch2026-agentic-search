@@ -123,7 +123,9 @@ class ESCIBenchmark:
             "query": {"term": {"locale": locale}},
             "size": 1000,
             "_source": ["query"],
-            "sort": [{"query_id": "asc"}],
+            # _id, not query_id: Lucille consumes query_id as the document
+            # _id, so the field is never in _source and can't page search_after.
+            "sort": [{"_id": "asc"}],
         }
 
         count = 0
