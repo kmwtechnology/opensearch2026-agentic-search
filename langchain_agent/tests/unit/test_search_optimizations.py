@@ -78,9 +78,16 @@ class TestBuildMultiMatchDefaults:
 class TestBuildMultiMatchIndividualFlags:
     """Each flag controls one observable property of the DSL."""
 
+    def test_fuzzy_expansion_is_bounded(self):
+        """Unbounded fuzzy expansion exceeded maxClauseCount on the 158K corpus (#147)."""
+        clause = _multi_match({})
+        assert clause["prefix_length"] == 1
+        assert clause["max_expansions"] == 10
+
     def test_fuzzy_off_drops_fuzziness(self):
         clause = _multi_match({"fuzzy": False})
         assert "fuzziness" not in clause
+        assert "max_expansions" not in clause
         # Other features unchanged
         assert "title_phrase^2.5" in clause["fields"]
 

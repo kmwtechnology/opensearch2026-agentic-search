@@ -34,8 +34,9 @@ import json
 import logging
 import sys
 from datetime import datetime
+from pathlib import Path
 from statistics import mean, stdev
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from langchain_core.documents import Document
 from opensearchpy import OpenSearch
@@ -115,12 +116,29 @@ class ESCIBenchmark:
             timeout=30,
         )
 
-    def scroll_judged_queries(self, locale: str = "us") -> List[str]:
-        """Scroll all judged queries from esci_judgments index."""
-        logger.info(f"Scrolling judged queries (locale={locale})...")
+    def scroll_judged_queries(self, locale: str = "us", test_only: bool = True) -> List[str]:
+        """Scroll judged queries from the esci_judgments index.
+
+        ``test_only`` (default) keeps the ESCI ``split=test`` + ``small_version``
+        queries -- the ones the corpus is built from (#147), so every one has
+        its full judgment set (~20 judged products) in the index. Train queries
+        survive the judgments filter with only a product or two present, and
+        scoring them measures the sampling, not retrieval: they drove the
+        bottom quartile to NDCG 0 and made the hard-query slice meaningless.
+        """
+        logger.info(f"Scrolling judged queries (locale={locale}, test_only={test_only})...")
         queries = []
+        filters: List[Dict[str, Any]] = [{"term": {"locale": locale}}]
+        allowed: Optional[Set[str]] = None
+        if test_only:
+            filters.append({"term": {"split": "test"}})
+            # small_version can't be filtered in the index: Lucille's parquet
+            # connector drops boolean columns, so it never reaches
+            # esci_judgments. Take the test/small query set from the same
+            # committed parquet the corpus was built from instead.
+            allowed = self._test_small_queries()
         body = {
-            "query": {"term": {"locale": locale}},
+            "query": {"bool": {"filter": filters}},
             "size": 1000,
             "_source": ["query"],
             # _id, not query_id: Lucille consumes query_id as the document
@@ -137,7 +155,7 @@ class ESCIBenchmark:
 
             for hit in hits:
                 query_str = hit["_source"].get("query", "").strip()
-                if query_str:
+                if query_str and (allowed is None or query_str in allowed):
                     queries.append(query_str)
                     count += 1
                     if self.limit and count >= self.limit:
@@ -150,6 +168,16 @@ class ESCIBenchmark:
 
         logger.info(f"Found {len(queries)} judged queries")
         return queries
+
+    @staticmethod
+    def _test_small_queries() -> Set[str]:
+        """ESCI split=test + small_version query strings (the corpus's queries)."""
+        import pandas as pd
+
+        path = Path(__file__).resolve().parents[2] / "data" / "esci_judgments_aggregated.parquet"
+        df = pd.read_parquet(path, columns=["query", "split", "small_version"])
+        df = df[(df["split"] == "test") & (df["small_version"])]
+        return {q.strip() for q in df["query"]}
 
     def _dedup_by_product_id(self, docs: List[Document]) -> List[Document]:
         """Deduplicate documents by product_id, preserving order."""
@@ -521,6 +549,11 @@ def main():
     parser.add_argument("--qg-threshold", type=float, default=0.45, help="Quality gate threshold")
     parser.add_argument("--fast", action="store_true", help="Skip LLM intent classification")
     parser.add_argument("--output", type=str, default=None, help="Write results to JSON file")
+    parser.add_argument(
+        "--all-splits",
+        action="store_true",
+        help="Also score ESCI train queries (only partially judged in the corpus)",
+    )
     args = parser.parse_args()
 
     benchmark = ESCIBenchmark(
@@ -533,7 +566,7 @@ def main():
     )
 
     # Run benchmarks
-    all_queries = benchmark.scroll_judged_queries()
+    all_queries = benchmark.scroll_judged_queries(test_only=not args.all_splits)
     if not all_queries:
         logger.error("No judged queries found. Did you ingest ESCI judgments?")
         sys.exit(1)

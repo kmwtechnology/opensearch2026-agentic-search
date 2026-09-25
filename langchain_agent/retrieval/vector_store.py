@@ -564,6 +564,15 @@ class OpenSearchVectorStore:
         }
         if fuzzy:
             clause["fuzziness"] = "AUTO"
+            # Bound the expansion. Unbounded AUTO fuzziness expands each term
+            # into up to 50 vocabulary variants *per field*; over this many
+            # fields and a 158K-product vocabulary (#147) an ordinary 8-10 word
+            # query blew past OpenSearch's 1024-clause limit and hybrid search
+            # failed outright. No fuzzing the first character is the usual
+            # typo-tolerance trade-off; 10 variants per term keeps a 22-word
+            # query well inside the limit.
+            clause["prefix_length"] = 1
+            clause["max_expansions"] = 10
         if not synonyms:
             # `standard` analyzer skips the synonym_filter applied by english_analyzer
             clause["analyzer"] = "standard"
