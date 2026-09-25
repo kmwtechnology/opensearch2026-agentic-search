@@ -17,9 +17,10 @@
 
 > **Demo notes:**
 >
-> - Local and prod share the same ~9,618-product corpus and the same
->   1.9M-judgment index, so the NDCG@10 numbers below are the on-stage
->   numbers (no "will populate in prod" surprises).
+> - This doc's numbers predate the corpus rebuild to 158,637 products
+>   (query-first ESCI sample, see `data/README.md`); local and prod now
+>   share that corpus, so treat the NDCG@10 numbers below as historical,
+>   not current (TODO: re-measure if this doc is ever revived).
 > - Demo 1's retry pass returns the same max_score as the first pass (same
 >   docs at any α + deterministic cross-encoder). The QG firing IS the
 >   audience-visible payoff — narrate the diagnostic loop, not "second try

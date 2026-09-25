@@ -171,8 +171,9 @@ export function GuidePage() {
               </li>
             </ol>
             <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-2">
-              Only 3 products are judged for this query — the sample corpus' judgment sets are sparse. The number
-              is real; it isn't large.
+              11 products are judged for this query in the corpus. The corpus is built query-first (#147), so a
+              judged test query keeps ~20 judged products on average — the number is real, and it's measured
+              against a full judgment set, not one or two stragglers.
             </p>
           </div>
 
@@ -345,7 +346,7 @@ export function GuidePage() {
               <code>bash scripts/lucille_ingest.sh</code>
             </pre>
             <p className="text-amber-900 mt-1 text-[1.25rem]">
-              ~9,618 products and ~97,345 queries are ingested locally via Lucille (sparse judgments, averaging ~1 judged product per query). After ingestion, queries that match an ESCI query exactly (lowercased) trigger the BM25 → Hybrid → Reranked layout. Use <code className="bg-yellow-100 px-1">--skip-judgments</code> flag to skip this step.
+              ~158,637 products (every judged product of the ESCI test queries, embedded by Lucille through the local Ollama model) and 65,028 judged queries are ingested locally via Lucille (~20 judged products per test query). After ingestion, queries that match an ESCI query exactly (lowercased) trigger the BM25 → Hybrid → Reranked layout. Use <code className="bg-yellow-100 px-1">--skip-judgments</code> flag to skip this step.
             </p>
           </div>
         </div>
@@ -526,7 +527,7 @@ export function GuidePage() {
             <div className="border-l-4 border-yellow-500 pl-3">
               <p className="font-semibold text-gray-900">Demo: has_ground_truth is always false</p>
               <p className="text-gray-600">Expected behavior (except for one specific query)</p>
-              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">The ESCI judgments are sparse — most of the demo queries don't match any ESCI query exactly. Only the "sewing machine" turn in the "Proving It With Real Judgments" demo produces has_ground_truth=true. Anywhere else it's false is expected, not a bug.</p>
+              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Ground truth needs an EXACT match against an ESCI query, and most of the scripted demo queries aren't ESCI queries. Only the "sewing machine" turn in the "Proving It With Real Judgments" demo produces has_ground_truth=true. Anywhere else it's false is expected, not a bug.</p>
             </div>
 
             <div className="border-l-4 border-yellow-500 pl-3">

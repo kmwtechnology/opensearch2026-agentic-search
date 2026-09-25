@@ -197,7 +197,7 @@ export const DEMOS: Demo[] = [
         query: 'sewing machine',
         watchFor:
           'has_ground_truth flips to true — the Pipeline Quality Summary switches from the self-referential confidence proxy to real ESCI NDCG@10 per stage: stock BM25 0.81, BM25 0.91, hybrid 0.95, reranked 0.92. This is the same progression the other six turns imply but never actually show: hybrid and reranking measurably beating plain BM25, graded by Amazon\'s own relevance judgments, not this system\'s own scoring.',
-        note: 'Only 3 products are judged for this query (the sample corpus\' judgment sets are sparse, average ~1 per query) — do not oversell the sample size. The point is that the number is REAL, not that it is large.',
+        note: '11 products are judged for this query in the corpus (#147 builds it query-first, ~20 judged products per test query). The point is that the number is REAL — graded by Amazon\'s own judgments.',
       },
     ],
   },

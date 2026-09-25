@@ -19,7 +19,7 @@ deployment path anymore — the project is local-only as of issue #110/#113.
 | `logs.sh` | Tail backend/frontend logs | Debugging | — |
 | **CI/Manual Gates** |
 | `pre-commit.sh` | Black + isort + flake8 on staged `.py` files | Installed as `.git/hooks/pre-commit` by `setup.sh` — runs automatically on `git commit` | ~2 s |
-| `lucille_ingest.sh` | ESCI re-ingestion (builds Lucille on first run, reads `data/*.parquet`) | Manual re-ingest | 30 s–1 min |
+| `lucille_ingest.sh` | ESCI re-ingestion (builds Lucille on first run, reads `data/*.parquet`, embeds via Ollama) | Manual re-ingest | ~35-40 min full products (`--skip-products` for judgments-only, much faster) |
 | **Utilities** |
 | `prepare_judgments_parquet.py` | Pre-aggregate ESCI judgments (one-time or on sample change) | Data ops | 2–3 min |
 | `rebuild_attribute_taxonomies.py` | Wipe and rebuild the color attribute taxonomy from scratch via discovery against real `chunk_text` (writes to OpenSearch, not a committed file). Also what `lucille_ingest.sh --seed-taxonomy` / `make seed-taxonomy` run between the two products passes. Deliberately does NOT touch "waterproof" — that type starts empty and is grown entirely by the live enrichment flywheel | Data ops (once per cluster whose mapping store is empty, or to reset color to seed state; the live enrichment flywheel grows both taxonomies incrementally otherwise) | ~1 min |
@@ -31,8 +31,8 @@ deployment path anymore — the project is local-only as of issue #110/#113.
 
 1. **First time:**
    ```bash
-   cp .env.example .env          # Fill in GOOGLE_API_KEY
-   ./scripts/setup.sh            # Creates .venv, starts Docker, ingests ESCI
+   cp .env.example .env          # Ollama must be installed and running
+   ./scripts/setup.sh            # Creates .venv, pulls Ollama models, starts Docker, ingests ESCI
    ```
 
 2. **Each session:**

@@ -22,7 +22,7 @@ How to contribute code, tests, and documentation to Agentic Hybrid Search.
 cd langchain_agent
 cp .env.example .env
 # Set GOOGLE_API_KEY in .env
-./scripts/setup.sh    # ~10-20 min
+./scripts/setup.sh    # ~35-40 min + Ollama model download (~23 GB)
 ```
 
 **Start development servers:**

@@ -22,13 +22,13 @@ Response (200 OK):
   "status": "ok",
   "version": "1.1.0",
   "postgres": true,
-  "google_ai": true,
+  "llm": true,
   "vector_store": true,
-  "document_count": 9618
+  "document_count": 158637
 }
 ```
 
-`status` is `"ok"` when postgres and google_ai are both healthy, otherwise `"degraded"` (always returns 200, even when degraded — fail-open for monitoring).
+`status` is `"ok"` when postgres and llm are both healthy, otherwise `"degraded"` (always returns 200, even when degraded — fail-open for monitoring). `llm` is true when Ollama is reachable and every configured model is pulled; an optional `llm_error` field carries detail when it isn't.
 
 ---
 
@@ -91,12 +91,12 @@ Response (200 OK):
   "opensearch": {
     "connected": true,
     "index": "esci-products",
-    "documents": 9618
+    "documents": 158637
   }
 }
 ```
 
-This is an index-level probe (does the product index exist and how many documents does it have), distinct from the public `/api/health` (Postgres + Google AI + vector store reachability). `status` is `"healthy"` (index exists and is queryable), `"degraded"` (OpenSearch reachable but index missing), or `"unhealthy"` (OpenSearch unreachable, with an `error` field).
+This is an index-level probe (does the product index exist and how many documents does it have), distinct from the public `/api/health` (Postgres + Ollama LLM + vector store reachability). `status` is `"healthy"` (index exists and is queryable), `"degraded"` (OpenSearch reachable but index missing), or `"unhealthy"` (OpenSearch unreachable, with an `error` field).
 
 ### Diagnose (Field-Level Metrics)
 
@@ -109,11 +109,14 @@ Diagnostic-only: probes the live index for a query (`q`, default `"sony"`) acros
 
 ### Enrich Attribute Taxonomy
 
-Grows the live color/waterproof taxonomy with a new variant term and triggers a
-real full Lucille reindex of the catalog (~15-20s) — the same mechanism the
-agent's own `trigger_enrichment` tool uses when it recognizes a taxonomy gap
-during a chat turn (see `ARCHITECTURE.md`'s "Enrichment Flywheel" section).
-Disabled by default; requires `ENABLE_ENRICHMENT_TOOL=true` on the backend.
+Grows the live color/waterproof taxonomy with a new variant term and, by
+default (`REINDEX_TRIGGER=scoped`), triggers a scoped re-tag of just the
+products whose text mentions the changed variant — no full reindex, no
+re-embedding, measured live at well under a second to a few seconds — the
+same mechanism the agent's own `trigger_enrichment` tool uses when it
+recognizes a taxonomy gap during a chat turn (see `ARCHITECTURE.md`'s
+"Enrichment Flywheel" section). Disabled by default; requires
+`ENABLE_ENRICHMENT_TOOL=true` on the backend.
 
 ```bash
 curl -X POST http://localhost:8000/api/admin/enrich \
@@ -137,8 +140,8 @@ Response (200 OK):
   "reason": null,
   "reindex_triggered": true,
   "reindex_success": true,
-  "docs_processed": 9618,
-  "duration_seconds": 21.16
+  "docs_processed": 679,
+  "duration_seconds": 0.9
 }
 ```
 

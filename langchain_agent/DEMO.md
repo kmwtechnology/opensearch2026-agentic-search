@@ -82,14 +82,14 @@ the **quality bar** (best match against the threshold it had to clear).
 One person, one conversation, narrowing the way people actually shop. Nothing
 starts a new thread; nothing contradicts an earlier turn.
 
-**The spine is alpha moving: 0.25 → 0.35 → 0.70.** The dial swings as the
+**The spine is alpha moving: 0.25 → 0.35 → 0.55.** The dial swings as the
 questions get less literal, and nobody configured it per query.
 
 | # | Query | Intent | α | Filters | Score |
 |---|---|---|---|---|---|
 | 1 | `Show me blue running shoes` | attribute_filter | **0.25** lexical-heavy | color: blue, feature: running | 0.97 |
 | 2 | `only size 10` | refinement | **0.35** balanced | + feature: 10 | 0.95 |
-| 3 | `what about trail running?` | search | **0.70** semantic-heavy | none | 0.998 |
+| 3 | `what about trail running?` | refinement | **0.55** semantic-heavy | none | 0.998 |
 
 **Turn 1 — it reads the question before answering it.**
 Two of the words are real indexed attributes, so the filter line shows
@@ -104,7 +104,7 @@ narrowed rather than searched again.
 **Turn 3 — four words with no subject, colour, or size.**
 Watch the **Query Rewriter** line: it turns `what about trail running?` into
 *"Show me blue trail running shoes in size 10"*, carrying both earlier
-constraints forward. Alpha jumps to 0.70 because this question is about purpose,
+constraints forward. Alpha jumps to 0.55 because this question is about purpose,
 not a literal attribute.
 
 > Ask the room to notice that nothing in turn 3 says "blue" or "size 10". The
@@ -135,9 +135,10 @@ looks like a tagging error."*
 Use this phrasing. `"that's not"` is what trips the correction detector.
 
 In order: the correction is detected, a second model approves the change, and a
-**real Lucille re-index of all 9,618 products** runs. The elapsed counter ticks
-the whole way — this is the ingest pipeline running, not a cached swap. It takes
-about **20 seconds**; talk over it.
+**scoped re-tag** runs — `pipeline/scoped_retag.py` re-checks only the products
+whose text mentions "tan" and re-detects their color, rather than a full
+catalog reindex. The elapsed counter ticks briefly — measured live, it re-checks
+905 products and re-tags 679 in under a second; talk over it.
 
 It ends on **"Correction applied"** with the pair that makes the point:
 
@@ -156,13 +157,13 @@ same. The fix is in the data, permanent, for every future shopper.
 The closing beat is what the agent *stops* saying: in turn 1 it volunteered a
 tagging error; here it says nothing, because there is nothing left to flag.
 
-> **Heads-up:** turn 3 can sit on the status card for ~30s before streaming —
-> longer than any other turn — despite retrieving the same 10 documents as turn 1
-> in a plain `attribute_filter` query with no tool-offer/correction check running
-> (see #106: the earlier "reasoning about the correction" explanation was wrong —
-> nothing is checking anything on this turn). The cause of the spike itself is
-> still unconfirmed; treat it as ordinary answer-generation latency and have a
-> sentence ready rather than narrating what the status card says.
+> **Heads-up:** turn 3 can sit on the status card longer than other turns before
+> streaming — despite retrieving the same 10 documents as turn 1 in a plain
+> `attribute_filter` query with no tool-offer/correction check running (see #106:
+> the earlier "reasoning about the correction" explanation was wrong — nothing is
+> checking anything on this turn). The cause of the spike itself is still
+> unconfirmed (TODO: re-measure); treat it as ordinary answer-generation latency
+> and have a sentence ready rather than narrating what the status card says.
 
 ---
 
@@ -209,17 +210,15 @@ its one turn:
 **Query: `sewing machine`**
 
 Watch the Pipeline Quality Summary switch from the confidence proxy to real
-numbers: **stock BM25 NDCG@10 0.81 → BM25 0.91 → hybrid 0.95 → reranked
-0.92**, against 3 relevance judgments from Amazon's own ESCI benchmark —
-not this system's own scoring. This is the concrete version of the claim
-both arcs make in passing (hybrid + reranking beat plain lexical search):
-here it's measured against an external, academic ground truth instead of
-the system grading its own homework.
-
-**Don't oversell the sample size.** Only 3 products are judged for this
-query — the demo corpus' judgment sets are sparse (~1 judged product per
-query on average; this one is unusually rich at 3). The point is that the
-number is *real*, not that it's large.
+numbers against relevance judgments from Amazon's own ESCI benchmark — not
+this system's own scoring. This query now has 11 judged products in the
+corpus (up from 3 on the old 10K sample), so the "don't oversell the sample
+size" caveat that used to apply here no longer does. This is the concrete
+version of the claim both arcs make in passing (hybrid + reranking beat
+plain lexical search): here it's measured against an external, academic
+ground truth instead of the system grading its own homework. (TODO:
+re-measure the exact NDCG@10/BM25/hybrid/reranked numbers on the new
+corpus.)
 
 ---
 
@@ -240,8 +239,9 @@ Zero results. `product_waterproof_primary` genuinely doesn't exist yet on a
 freshly-armed cluster (`WATERPROOF_CANONICALS` ships with zero seed
 variants on purpose — see `retrieval/attribute_discovery.py`). Watch for
 the agent to notice the gap **on its own** and call `trigger_enrichment` —
-no shopper has to ask, unlike Arc 2. A real ~20-30s Lucille reindex of all
-9,618 products follows, same elapsed-counter card as Arc 2's correction.
+no shopper has to ask, unlike Arc 2. A scoped re-tag follows, same
+elapsed-counter card as Arc 2's correction — measured live, it tagged 7,441
+products in about 8 seconds.
 
 > **If the model declines to call the tool this run:** it's a genuine
 > per-turn LLM decision, not a scripted certainty — the turn just shows the
@@ -267,22 +267,23 @@ one you're about to run — nothing presenter-facing changes.
 
 ## Q&A
 
-**What models?** Gemini 2.5 Flash for generation, Gemini 2.5 Flash-Lite for
-classification/query evaluation/judging (#126 — avoids Gemini 3's mandatory
-"thinking" tax; Flash-Lite for generation was tested and rejected — it
-regressed badly on multi-turn conversations), `models/gemini-embedding-001`
-(768-dim) for embeddings. Reranking is a **local cross-encoder**
-(`ms-marco-MiniLM-L-12-v2`), not an LLM call — baked into the image, no added
-API latency.
+**What models?** `qwen3.6:35b-a3b-q4_K_M` via local Ollama for generation,
+classification, query evaluation, and judging — no cloud API key needed.
+`nomic-embed-text` (768-dim) via Ollama for embeddings. Reranking is a
+**local cross-encoder** (`ms-marco-MiniLM-L-12-v2`), not an LLM call — baked
+into the image, no added latency.
 
 **How does RRF fusion work?** Per document,
 `score = 1/(rank_vector + 60) + 1/(rank_lexical + 60)`. Normalizes ranks from
 both methods without needing probability calibration.
 
-**Was that re-index real, or just the affected products?** The whole catalog — a
-full Lucille run, ~20s for 9,618 products. A full reindex turned out to be fast
-enough to run live, so there was no need for a narrower, less authentic
-mechanism.
+**Was that re-index real, or just the affected products?** Just the affected
+products — a scoped re-tag (`pipeline/scoped_retag.py`) re-detects the
+attribute only on products whose text mentions the changed variant and
+bulk-updates just those, with no re-embedding. It's a real re-detection
+against live OpenSearch, not a cached swap; a full Lucille reindex remains
+available (`REINDEX_TRIGGER=local`) but takes 30+ minutes on the full
+~158K-product catalog, too slow to run live.
 
 **Why didn't the quality gate catch the bug itself?** Because it is not a
 failure by any tracked metric — it is a wrong-but-confident result, scoring 0.56
@@ -312,8 +313,9 @@ context compaction.
 reranking 1–2s → agent 3–8s. Roughly 6–15s per turn, and you will see the agent
 step dominate.
 
-**Index size?** Amazon ESCI (~1.2M US products); the demo uses a 10K sample
-(9,618 indexed) for fast setup.
+**Index size?** Amazon ESCI (~1.2M US products); the demo uses a corpus of
+158,637 products — every judged product of the ESCI US test + small_version
+queries.
 
 ---
 

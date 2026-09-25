@@ -43,9 +43,8 @@ When you ask a question, the pipeline routes your intent (is this a search, a co
 
 | Layer | Technology |
 | --- | --- |
-| **LLM (generation)** | Gemini 2.5 Flash |
-| **LLM (classify/eval)** | Gemini 2.5 Flash-Lite |
-| **Embeddings** | `models/gemini-embedding-001` (768-dim) |
+| **LLM (all chat calls)** | `qwen3.6:35b-a3b-q4_K_M` via local Ollama |
+| **Embeddings** | `nomic-embed-text` via local Ollama (768-dim) |
 | **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder, local, ~2s/40-doc batch) |
 | **Vector Database** | OpenSearch 3.8.0 (HNSW + BM25) |
 | **Checkpoints** | PostgreSQL 18 (LangGraph state persistence) |
@@ -60,23 +59,22 @@ This app is a **local-only demo**, not a cloud service. You run it entirely on y
 
 **Prerequisites:**
 
-- Google AI API key from <https://aistudio.google.com/apikey>
+- [Ollama](https://ollama.com/) installed and running locally — no cloud API key
 - Docker Desktop
 - Python 3.14+
 - Node.js 24+
-- ~1.5 GB disk space
+- Disk space for the ESCI corpus, Docker volumes, and Ollama models (~23 GB)
 
 **Setup and run:**
 
 ```bash
 cd langchain_agent
 cp .env.example .env
-# Edit .env and set GOOGLE_API_KEY
-./scripts/setup.sh    # One-time: ~10–20 min, sets up Docker, database, and ESCI data
+./scripts/setup.sh    # One-time: pulls Ollama models, sets up Docker, database, and the full ESCI corpus (~35-40 min on an M4 Max)
 ./scripts/start.sh    # Starts backend (:8000) and frontend (:5173)
 ```
 
-Open <http://localhost:5173> and start chatting. The backend runs locally; there is no network request to a remote server (except for LLM inference calls to Google Gemini).
+Open <http://localhost:5173> and start chatting. The backend runs locally; there is no network request to a remote server — the LLM and embeddings run through a local Ollama server.
 
 Stop or clean up with:
 
@@ -106,9 +104,9 @@ You'll need several tools installed before setup begins. Here's what each does a
 | **Docker Desktop** | 4.x | Runs PostgreSQL + OpenSearch containers locally | `docker --version` |
 | **Python** | 3.14+ | Backend virtual environment | `python3 --version` |
 | **Node.js** | 24+ | React frontend and Vite dev server | `node --version` |
-| **Java** | 21+ | Lucille ETL for product ingestion | `java -version` |
-| **Maven** | 3.8+ | Build tool for Lucille ETL | `mvn --version` |
-| **Google AI API Key** | — | LLM (Gemini) and embeddings | Get from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (free tier available) |
+| **Java** | 21+ | Lucille ETL for product ingestion (only needed if `LUCILLE_USE_DOCKER=false`) | `java -version` |
+| **Maven** | 3.8+ | Build tool for Lucille ETL (only needed if `LUCILLE_USE_DOCKER=false`) | `mvn --version` |
+| **Ollama** | — | Local LLM (`qwen3.6:35b-a3b-q4_K_M`) and embeddings (`nomic-embed-text`); no cloud API key | Get from [ollama.com](https://ollama.com/) |
 
 #### Installing Prerequisites on macOS
 
@@ -118,8 +116,9 @@ Using Homebrew:
 brew install docker
 brew install python@3.14
 brew install node
-brew install openjdk@21
-brew install maven
+brew install ollama
+brew install openjdk@21  # only needed for LUCILLE_USE_DOCKER=false
+brew install maven       # only needed for LUCILLE_USE_DOCKER=false
 ```
 
 #### Installing Prerequisites on Ubuntu/Debian
@@ -150,7 +149,7 @@ sudo apt-get install maven
 - **Java 21+**: <https://www.oracle.com/java/technologies/downloads/>
 - **Maven**: <https://maven.apache.org/download.cgi>
 
-### One-Time Setup (10–20 minutes)
+### One-Time Setup (~35-40 minutes plus the Ollama model download)
 
 #### Step 1: Clone the Repository
 
@@ -161,21 +160,16 @@ cd opensearch2026-agentic-search/langchain_agent
 
 All commands in this chapter run from the `langchain_agent/` directory.
 
-#### Step 2: Obtain and Configure Your Google API Key
+#### Step 2: Configure Your Environment
 
-You'll need a Google API key for the LLM (Gemini) and embeddings:
-
-1. Visit [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-2. Create a new API key (free tier is available)
-3. In the `langchain_agent/` directory, create a `.env` file and add your key:
+No cloud API key is needed — everything runs against a local Ollama server:
 
 ```bash
 cp .env.example .env
-# Edit .env and set:
-# GOOGLE_API_KEY=<your-actual-key>
 ```
 
-Alternatively, if you skip this step, `./scripts/setup.sh` (below) will create an empty `.env` file and remind you to add the key before starting the backend.
+`./scripts/setup.sh` (below) checks that Ollama is installed and running,
+and pulls any missing models automatically.
 
 #### Step 3: Run One-Time Setup
 
@@ -189,12 +183,12 @@ This script initializes everything in six phases:
 
 | Phase | What Happens | Time |
 | ------- | -------------- | ------ |
-| 1: Prereq Checks | Verifies Docker, Python, Node, Java, Maven are installed | instant |
-| 2: ESCI Clone | Downloads 10K product samples (1.5 GB, from GitHub) | 2–5 min |
+| 1: Prereq Checks | Verifies Docker, Python, Node, Ollama (installed + running) | instant |
+| 2: Ollama models | Pulls any missing Ollama models (~23 GB) | varies |
 | 3: Python venv | Creates `.venv` and installs backend dependencies | 3–5 min |
 | 4: Node deps | Installs frontend packages (npm install) | 1–2 min |
 | 5: Docker up | Starts PostgreSQL and OpenSearch containers | ~30 sec |
-| 6: Ingest | Initializes the database and indexes products via Lucille ETL | 3–5 min |
+| 6: Ingest | Initializes the database and indexes the full ESCI product corpus (158,637 products) via Lucille + Ollama embedding | ~35-40 min |
 
 When setup completes, it prints the app URLs. There is no login gate — the app is immediately accessible.
 
@@ -273,7 +267,7 @@ This kills the backend and frontend processes. Docker containers stay running, s
 - `web/node_modules` directory
 - All logs
 
-Use this only if you want a completely clean slate. You'll need to run `./scripts/setup.sh` again (10–20 minutes) to rebuild everything.
+Use this only if you want a completely clean slate. You'll need to run `./scripts/setup.sh` again (~35-40 minutes) to rebuild everything.
 
 **Critical distinction:**
 
@@ -521,7 +515,7 @@ The agent flags it anyway in prose: *"listed as Tan but indexed as yellow, which
 
 Use this phrasing. `"that's not"` is what trips the correction detector.
 
-The system detects a correction, a second model approves the change, and a *real, full Lucille re-index of all 9,618 products* runs live. The elapsed counter ticks the whole way—this is the ingest pipeline running, not a cached swap. It takes about **20 seconds**. The system processes the entire catalog, not just the affected products.
+The system detects a correction, a second model approves the change, and a *scoped re-tag* runs live — `pipeline/scoped_retag.py` re-checks only the products whose text mentions "tan" and re-detects their color, rather than reindexing the whole catalog. The elapsed counter ticks briefly; measured live, it re-checks 905 products and re-tags 679 in under a second.
 
 It ends on **"Correction applied"** with the proof:
 
@@ -552,7 +546,7 @@ This is the concrete version of the claim both arcs make in passing: hybrid retr
 
 Select **"Data Enrichment: Schema Evolution"** from the demo dropdown to see the taxonomy-growth machinery's other shape: not correcting a wrong mapping (that's Arc 2), but growing a filter dimension — `waterproof` — that doesn't exist in the catalog at all yet. Unlike Arc 2, no shopper has to dispute anything; the fix fires automatically the moment a hard attribute filter returns zero results.
 
-**Turn 1: `Show me waterproof boots`** — On a freshly-armed cluster this returns zero results: `product_waterproof_primary` is genuinely unindexed (the `WATERPROOF_CANONICALS` taxonomy ships with a registered bucket but zero seed variants, on purpose). Watch the agent notice the gap and propose growing the taxonomy itself, unprompted — `trigger_enrichment` fires, a second model approves it, and a real ~20-second Lucille reindex of all 9,618 products runs live, the same elapsed-counter card as Arc 2's correction.
+**Turn 1: `Show me waterproof boots`** — On a freshly-armed cluster this returns zero results: `product_waterproof_primary` is genuinely unindexed (the `WATERPROOF_CANONICALS` taxonomy ships with a registered bucket but zero seed variants, on purpose). Watch the agent notice the gap and propose growing the taxonomy itself, unprompted — `trigger_enrichment` fires, a second model approves it, and a scoped re-tag runs live, the same elapsed-counter card as Arc 2's correction — measured live, it tagged 7,441 products in about 8 seconds.
 
 **Turn 2: `Show me waterproof boots` (new conversation)** — Same query, new session. The filter now reads `product_waterproof_primary: "waterproof"` across the full catalog — that field existing at all is the proof, permanent for every future shopper.
 
@@ -573,7 +567,7 @@ These turns across all four demos (nine total: three + one + three + two) are fu
 
 ### Models and Performance
 
-**Generation:** Gemini 2.5 Flash. **Classification/evaluation/judging:** Gemini 2.5 Flash-Lite (avoids the mandatory "thinking" overhead of later Gemini versions). **Embeddings:** `models/gemini-embedding-001` (768-dim). **Reranking:** local cross-encoder (`ms-marco-MiniLM-L-12-v2`), no LLM call.
+**Generation, classification, evaluation, judging:** `qwen3.6:35b-a3b-q4_K_M` via a local Ollama server — no cloud API key. **Embeddings:** `nomic-embed-text` via Ollama (768-dim). **Reranking:** local cross-encoder (`ms-marco-MiniLM-L-12-v2`), no LLM call.
 
 Typical latency: intent classification 10–500ms, query evaluation 10–500ms, retrieval 200–500ms, reranking 1–2s, agent response 3–8s. Roughly 6–15s per turn; the agent generation step dominates.
 
@@ -704,7 +698,7 @@ The Retriever is the workhorse of retrieval. It fetches candidates using two par
 
 **Dual-path search:**
 
-1. **Vector Search (HNSW)**: Gemini 768-dimensional embeddings with cosine similarity, k=20 candidates
+1. **Vector Search (HNSW)**: `nomic-embed-text` 768-dimensional embeddings via Ollama with cosine similarity, k=20 candidates
 2. **Lexical Search (BM25)**: Full-text analysis using:
    - Primary fields (`chunk_text`, `product_brand`, `product_color`) with `light_english_analyzer` (kstem, light stemming) for precision ("Beats" ≠ "beat")
    - Heavy sub-fields with `heavy_english_analyzer` (snowball, aggressive stemming) at 0.3 boost for morphological recall fallback (matching "running/runs/ran")
@@ -738,7 +732,7 @@ The Reranker re-scores all 40 candidates using a local cross-encoder model (`sen
 
 The reranker also sets `reranker_max_score` (the highest score across all candidates), which feeds the Quality Gate decision.
 
-**Alternative LLM-based reranker** (`GeminiReranker`): Exists in the codebase but is not the shipped default. The cross-encoder path is explicitly set in `.env.example`.
+The local cross-encoder is the only reranker; the earlier LLM-based reranker (`GeminiReranker`) has been removed.
 
 ### Quality Gate: Retry Logic with Alpha Adjustment
 
@@ -769,7 +763,7 @@ The Agent formats the retrieved documents into a prompt context, calls the LLM t
 
 **Document formatting:** Creates a structured context window with product titles, descriptions, and key attributes.
 
-**LLM generation:** Gemini 2.5 Flash generates the conversational response. The prompt is carefully crafted to avoid hallucination and to ground all claims in the provided context.
+**LLM generation:** `qwen3.6:35b-a3b-q4_K_M` (local Ollama) generates the conversational response. The prompt is carefully crafted to avoid hallucination and to ground all claims in the provided context.
 
 **Citation building:**
 
@@ -793,7 +787,7 @@ The LLM Judge is an optional layer that runs **after the Agent** to detect and a
 
 **Process:**
 
-- Blind A/B evaluation: A second LLM call (Gemini Flash Lite, a cheaper model) scores the response against the query and retrieved context, unaware of the original generation process (reduces bias)
+- Blind A/B evaluation: A second call to the local LLM (`JUDGE_MODEL`) scores the response against the query and retrieved context, unaware of the original generation process (reduces bias)
 - Positional-bias randomization: Shuffles document order when presenting context to avoid ranking artifacts
 - Produces a `JudgmentResult` with:
   - `pairwise_verdict` — boolean (is this response accurate?)
@@ -883,7 +877,7 @@ The taxonomy itself lives in OpenSearch (not a committed file) and can be grown 
 
 - Both color's and waterproof's fallback is a **hard exact-match filter** (e.g., "chrome" for color, "weatherproof" for waterproof), reliably producing zero results — deliberately unlike the generic feature field (everything that isn't a color or a waterproofing requirement, e.g. "breathable", "noise canceling"), which stays a **soft lexical filter** to avoid over-filtering legitimate feature words
 
-If the retriever returns nothing (color case) or very poor scores after a quality-gate retry (either attribute type), the `agent_node` offers the LLM a `trigger_enrichment(attribute_type, variant, canonical)` tool. The LLM decides whether to map the new term to an existing canonical bucket or create a new one. If it calls the tool, the mapping is written to OpenSearch and a real Lucille reindex triggers (~19-20 seconds for 9,618 products).
+If the retriever returns nothing (color case) or very poor scores after a quality-gate retry (either attribute type), the `agent_node` offers the LLM a `trigger_enrichment(attribute_type, variant, canonical)` tool. The LLM decides whether to map the new term to an existing canonical bucket or create a new one. If it calls the tool, the mapping is written to OpenSearch and, by default (`REINDEX_TRIGGER=scoped`), a scoped re-tag triggers — `pipeline/scoped_retag.py` re-detects the attribute only on products whose text mentions the changed variant, measured live at well under a second to a few seconds, with no re-embedding.
 
 **Correction detection (mis-mappings):** In refinement or follow-up turns, `agent_node` watches for correction language ("that's wrong", "actually that's..."). If detected, it builds a prompt with recent conversation history and offers the same `trigger_enrichment` tool, allowing the LLM to propose a fix. Before execution, an independent `EnrichmentValueJudge` evaluates whether the proposed mapping would genuinely improve search quality (a gate that can veto low-confidence proposals). If accepted, the mapping is rewritten and a reindex follows.
 
@@ -959,7 +953,7 @@ langchain_agent/
 │   └── reindex_trigger.py      # Spawns lucille_ingest.sh subprocess
 ├── retrieval/
 │   ├── vector_store.py         # OpenSearch client, hybrid search
-│   ├── reranker.py             # Cross-encoder + optional Gemini reranker
+│   ├── reranker.py             # Cross-encoder (only reranker)
 │   ├── attribute_discovery.py  # Taxonomy seed vocabularies
 │   └── link_verifier.py        # URL validation cache
 ├── quality/
@@ -967,7 +961,7 @@ langchain_agent/
 │   ├── enrichment_value_judge.py # Gate for taxonomy proposals
 │   └── demo_reset.py           # Demo-specific utilities
 ├── observability/
-│   ├── embedding_cache.py      # 60-min Gemini embedding cache
+│   ├── embedding_cache.py      # 60-min query embedding cache
 │   ├── relevancy_metrics.py
 │   └── llm_content_helpers.py
 ├── checkpoints/
@@ -1092,13 +1086,13 @@ Response (200 OK):
   "status": "ok",
   "version": "1.1.0",
   "postgres": true,
-  "google_ai": true,
+  "llm": true,
   "vector_store": true,
-  "document_count": 9618
+  "document_count": 158637
 }
 ```
 
-`status` is `"ok"` when PostgreSQL and Google AI are both healthy; otherwise `"degraded"`. The endpoint always returns HTTP 200, even when degraded — it fails open for monitoring purposes.
+`status` is `"ok"` when PostgreSQL and the LLM (`llm` field, true when Ollama is reachable and every configured model is pulled) are both healthy; otherwise `"degraded"`. An optional `llm_error` field carries detail when it isn't healthy. The endpoint always returns HTTP 200, even when degraded — it fails open for monitoring purposes.
 
 #### Suggestions (Typeahead Autocomplete)
 
@@ -1227,7 +1221,7 @@ Response (200 OK):
   "opensearch": {
     "connected": true,
     "index": "esci-products",
-    "documents": 9618
+    "documents": 158637
   }
 }
 ```
@@ -1245,7 +1239,7 @@ Query parameter `q` defaults to "sony" and is used to probe the suggest fields. 
 
 **Enrich attribute taxonomy:**
 
-Adds a new variant-to-canonical mapping for colors or waterproofing terms and triggers a full Lucille reindex (~15–20 seconds). This is the same mechanism the agent's `trigger_enrichment` tool uses when it encounters an unmapped attribute during a chat turn.
+Adds a new variant-to-canonical mapping for colors or waterproofing terms and, by default (`REINDEX_TRIGGER=scoped`), triggers a scoped re-tag of just the products whose text mentions the changed variant — measured live at well under a second to a few seconds, no re-embedding. This is the same mechanism the agent's `trigger_enrichment` tool uses when it encounters an unmapped attribute during a chat turn.
 
 ```bash
 curl -X POST http://localhost:8000/api/admin/enrich \
@@ -1271,12 +1265,12 @@ Response (200 OK):
   "reason": null,
   "reindex_triggered": true,
   "reindex_success": true,
-  "docs_processed": 9618,
-  "duration_seconds": 21.16
+  "docs_processed": 905,
+  "duration_seconds": 0.8
 }
 ```
 
-When enrichment succeeds, a real Lucille reindex runs asynchronously. `success: false` (still HTTP 200) indicates the term could not be classified or is already mapped:
+When enrichment succeeds, a scoped re-tag runs. `success: false` (still HTTP 200) indicates the term could not be classified or is already mapped:
 
 ```json
 {
@@ -1732,7 +1726,7 @@ An unexpected error occurred on the server.
 }
 ```
 
-**Fix:** Check `/api/health` to see which dependency probe failed (PostgreSQL, Google AI, OpenSearch). Review server logs for details.
+**Fix:** Check `/api/health` to see which dependency probe failed (PostgreSQL, Ollama LLM, OpenSearch). Review server logs for details.
 
 #### 503 Service Unavailable
 
@@ -2022,7 +2016,7 @@ PYTHONPATH=. pytest tests/ -v
 
 ```bash
 PYTHONPATH=. pytest tests/unit/ -v              # ~0.5s, no dependencies
-PYTHONPATH=. pytest tests/integration/ -v      # requires Docker + GOOGLE_API_KEY
+PYTHONPATH=. pytest tests/integration/ -v      # requires Docker (Postgres + OpenSearch) + Ollama
 PYTHONPATH=. pytest tests/e2e/ -v              # requires running backend
 ```
 
@@ -2068,7 +2062,7 @@ The following markers are available for organizing and filtering tests:
 | `pipeline` | Full RAG pipeline flow tests |
 | `quality_gate_retry` | Quality gate retry logic |
 | `retriever_reranker` | Retrieval and reranking integration |
-| `requires_real_api` | Tests needing external LLM calls (Gemini) |
+| `requires_real_api` | Tests needing live LLM calls (local Ollama) |
 | `evaluator` | Query evaluator and dynamic alpha selection |
 | `intent` | Intent classification |
 | `quality_gate` | Quality gate decision logic |
@@ -2121,10 +2115,10 @@ Integration tests exercise real databases (Postgres, OpenSearch) and the HTTP/We
    PGPASSWORD=postgres psql -h localhost -U postgres -d langchain_agent -c 'SELECT 1;'
    ```
 
-3. Set your Gemini API key:
+3. Confirm Ollama is running and the required models are pulled:
 
    ```bash
-   export GOOGLE_API_KEY="<your-key>"
+   curl http://localhost:11434/api/tags
    ```
 
 **Running integration tests:**
@@ -2181,7 +2175,7 @@ E2E tests drive a real running backend via HTTP and WebSocket to validate the co
 **Smoke test (fast, single-query regression):**
 
 ```bash
-make smoke            # ~13-20 seconds, part of `make check`
+make smoke            # part of `make check`
 ```
 
 **Full regression suite (all intents + scenarios):**
@@ -2231,7 +2225,7 @@ This runs:
 
 ### ESCI Relevancy Benchmarks
 
-The project includes a benchmark suite that measures retrieval quality on the Amazon ESCI dataset (1.8M products, 97K judged US queries) against ground-truth relevance judgments. The benchmark compares three retrieval strategies on hard queries (bottom-quartile by standard-hybrid NDCG@10).
+The project includes a benchmark suite that measures retrieval quality on the Amazon ESCI dataset against ground-truth relevance judgments (65,028 queries in the shipped `esci_judgments` corpus). The benchmark compares three retrieval strategies on hard queries (bottom-quartile by standard-hybrid NDCG@10).
 
 #### Benchmark Prerequisites
 
@@ -2261,10 +2255,10 @@ The project includes a benchmark suite that measures retrieval quality on the Am
 
    ```bash
    cd langchain_agent
-   bash scripts/lucille_ingest.sh    # ~25 seconds
+   bash scripts/lucille_ingest.sh    # full products ingest: ~35-40 min (embeds via Ollama)
    ```
 
-   Expected: ~9,618 products indexed to `agentic_hybrid_search_docs`, ~97K queries with judgments in `esci_judgments`.
+   Expected: 158,637 products indexed to `agentic_hybrid_search_docs`, 65,028 queries with judgments in `esci_judgments`.
 
 Verify:
 
@@ -2281,17 +2275,16 @@ cd langchain_agent
 make benchmark-esci-fast    # ~5 minutes for 5000 queries
 ```
 
-Uses intent fast-path alpha table; no Gemini API calls. Reproducible and suitable for iterative tuning.
+Uses intent fast-path alpha table; no LLM calls. Reproducible and suitable for iterative tuning.
 
-**Full adaptive benchmark (with Gemini intent classification):**
+**Full adaptive benchmark (with LLM intent classification):**
 
 ```bash
 cd langchain_agent
-export GOOGLE_API_KEY="<your-key>"
-make benchmark-esci         # ~10-15 minutes
+make benchmark-esci         # requires a running local Ollama server
 ```
 
-Calls Gemini for intent classification; results vary slightly by API version.
+Calls the local LLM for intent classification; results vary slightly by model version.
 
 **Dry-run (sanity check):**
 
@@ -2365,7 +2358,7 @@ All three systems:
 - `--limit 500`: ~2 minutes
 - `--limit 1000`: ~4 minutes
 - `--limit 5000`: ~5 minutes (Makefile default)
-- All 97K: ~90+ minutes
+- All 65K: (TODO: re-measure on the new corpus)
 
 #### Benchmark Troubleshooting
 
@@ -2375,7 +2368,7 @@ All three systems:
 | `ConnectionError: Error connecting to OpenSearch` | Run `docker compose up -d` from repo root |
 | `lookup_judgments returned None` | Normal—queries need exact matches in esci_judgments index |
 | `CrossEncoderReranker warmup failed` | Model auto-downloads from HuggingFace (~100MB), retry |
-| `GOOGLE_API_KEY not found` | Set `export GOOGLE_API_KEY="..."` or use `--fast` flag |
+| Ollama unreachable / model not pulled | Confirm `curl http://localhost:11434/api/tags`, or use `--fast` flag to skip LLM calls |
 | Benchmark takes >30 min | Use `--limit 1000` to sample fewer queries |
 
 ### Common Test Issues
@@ -2557,7 +2550,7 @@ Write comments for **why**, not **what**. Code should be self-documenting:
 
 ```python
 # ✓ Correct — explains the non-obvious reasoning
-# Gemini returns list-of-content-blocks; flatten to string for state
+# LLM content can arrive as a list-of-content-blocks; flatten to string for state
 text = _flatten_llm_content(llm_response)
 
 # ✗ Wrong — just repeats what the code does
@@ -2765,10 +2758,10 @@ Your system uses the **ESCI dataset** from Amazon Science — a large-scale, ann
 
 The data comes in two parts:
 
-1. **Products** — A sample of ~9,600 real Amazon products, each with a title, brand, color, and a 768-dimensional vector embedding pre-computed using Google's Gemini embedding model.
-2. **Relevance judgments** — ~97,000 queries with human-annotated relevance labels showing which products are relevant to each query, using a 4-point scale: Exact (4.0), Substitute (1.0), Complement (0.1), and Irrelevant (0.0).
+1. **Products** — The full corpus of 158,637 real Amazon products (every judged product of the ESCI US `test` + `small_version` queries, built query-first), each with a title, brand, color, and other text fields. The parquet is text only — no precomputed vectors; embeddings are generated at ingest time via Lucille's `OllamaEmbedStage` (`nomic-embed-text`, 768-dim).
+2. **Relevance judgments** — 65,028 queries with human-annotated relevance labels showing which products are relevant to each query, using a 4-point scale: Exact (4.0), Substitute (1.0), Complement (0.1), and Irrelevant (0.0).
 
-Both files are stored in Parquet format (a compressed columnar format) and committed to the repository using Git LFS (Large File Storage) so you don't need to re-embed or re-prepare data on first run — the embeddings are already computed and ready to index.
+Both files are stored in Parquet format (a compressed columnar format) and committed to the repository using Git LFS (Large File Storage).
 
 ### Data Directory Layout
 
@@ -2776,10 +2769,10 @@ Both files are stored in Parquet format (a compressed columnar format) and commi
 
 ```text
 data/                                  # repo root, NOT langchain_agent/data/
-├── esci_products_sample_10000.parquet
-│   └─ 9,618 product documents with title, brand, color, and 768-dim knn_vector
+├── esci_products.parquet
+│   └─ 158,637 product documents with title, brand, color (text only, no vectors)
 ├── esci_judgments_aggregated.parquet
-│   └─ 97,345 queries with relevance judgments for evaluation
+│   └─ 65,028 queries with relevance judgments for evaluation
 └─ (no taxonomy files here — see "Attribute Detection & Taxonomy" below)
 ```
 
@@ -2857,12 +2850,10 @@ bash scripts/lucille_ingest.sh
 
 1. Builds a custom Docker image layering your attribute-detection code onto the public Lucille base image (~1 min on first run, ~10 s cached)
 2. Regenerates `conf/products.generated.conf` via `config_generator.py`
-3. Runs Lucille products ingest: reads `data/esci_products_sample_10000.parquet`, applies transformations, bulk-indexes into OpenSearch (~10 s)
-4. Runs Lucille judgments ingest: reads `data/esci_judgments_aggregated.parquet`, indexes into `esci_judgments` for ground-truth lookups (~5 s)
+3. Runs Lucille products ingest: reads `data/esci_products.parquet`, applies transformations, embeds each document through Ollama's `nomic-embed-text` (`OllamaEmbedStage`), bulk-indexes into OpenSearch (full ~158K-product run: ~35-40 minutes on an M4 Max)
+4. Runs Lucille judgments ingest: reads `data/esci_judgments_aggregated.parquet`, indexes into `esci_judgments` for ground-truth lookups
 
-**Total time:** ~30–40 seconds (including Docker build on first run)
-
-You don't need to install Java or Maven locally — the Docker path is the default and requires only Docker Desktop. No embedding API calls are made because embeddings are precomputed in the parquet files.
+You don't need to install Java or Maven locally — the Docker path is the default and requires only Docker Desktop. Lucille reaches the host's Ollama server via `host.docker.internal` (the script translates a `localhost` `OLLAMA_HOST` automatically).
 
 **Common options:**
 
@@ -2895,7 +2886,7 @@ make seed-taxonomy
 
 This is **destructive** — it erases any mappings the agent has learned at runtime and rebuilds the taxonomy from scratch by sampling product text. You typically run this once per fresh cluster setup (it's automated by `scripts/setup.sh` on first-time setup). If you need to reset and rebuild the taxonomy later, `make seed-taxonomy` is the entry point.
 
-**Growing the taxonomy:** At runtime, your agent can learn and add new mappings through the enrichment flywheel. When a shopper queries "navy blue headphones" and the system doesn't know "navy" maps to "blue", the agent can trigger enrichment to add the mapping, which then triggers a Lucille reindex (~20 seconds) to apply the new rule to all products. This keeps the taxonomy fresh without manual intervention.
+**Growing the taxonomy:** At runtime, your agent can learn and add new mappings through the enrichment flywheel. When a shopper queries "navy blue headphones" and the system doesn't know "navy" maps to "blue", the agent can trigger enrichment to add the mapping, which then triggers a scoped re-tag (`REINDEX_TRIGGER=scoped`, the default) — re-detecting the attribute only on products whose text mentions the changed variant, measured live at well under a second to a few seconds — to apply the new rule. This keeps the taxonomy fresh without manual intervention, and without a full reindex.
 
 ### Ingestion Troubleshooting
 
@@ -2967,23 +2958,15 @@ make reindex-products
 bash scripts/lucille_ingest.sh --reset-index --skip-judgments
 ```
 
-**Regenerate embeddings for a different product sample:**
+**Build a different product sample:**
 
-If you want to use a larger or smaller product sample, you'll need to download the full ESCI dataset and re-embed:
-
-```bash
-# Clone the dataset:
-git clone https://github.com/amazon-science/esci-data esci/
-
-# Re-embed with BigQuery (requires GCP project and credentials):
-cd langchain_agent
-PYTHONPATH=. python scripts/bigquery_batch_embeddings.py \
-  --project YOUR_GCP_PROJECT \
-  --parquet-input ../esci/products.parquet \
-  --parquet-output ../data/esci_products_sample_100000.parquet
-```
-
-Then update `scripts/lucille_ingest.sh` to reference your new parquet file, and run the ingest.
+The shipped `data/esci_products.parquet` is built query-first by
+`langchain_agent/scripts/build_product_sample.py` from a full ESCI dataset
+checkout. Embeddings are no longer precomputed offline — Lucille embeds
+each document through Ollama's `nomic-embed-text` at ingest time
+(`OllamaEmbedStage`), so regenerating the sample only requires re-running
+that script against a fresh ESCI checkout and then re-running
+`scripts/lucille_ingest.sh`; there is no separate batch-embedding step.
 
 **Re-aggregate judgments (e.g., for a different locale):**
 
