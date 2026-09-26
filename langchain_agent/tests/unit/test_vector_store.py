@@ -199,6 +199,22 @@ class TestHitToDocument:
         doc = OpenSearchVectorStore._hit_to_document(hit)
         assert doc.metadata["product_color_primary"] == ""
 
+    def test_carries_product_image_url_as_image_url(self):
+        """#147: every SQID product image rides from the index into citations."""
+        url = "https://m.media-amazon.com/images/I/81tuQl6ZooL._AC_SY575_.jpg"
+        doc = OpenSearchVectorStore._hit_to_document(self._make_hit(product_image_url=url))
+        assert doc.metadata["image_url"] == url
+
+    def test_image_url_empty_when_product_has_no_photo(self):
+        doc = OpenSearchVectorStore._hit_to_document(self._make_hit())
+        assert doc.metadata["image_url"] == ""
+
+    def test_mapping_stores_image_url_without_indexing_it(self):
+        from retrieval.vector_store import INDEX_MAPPING
+
+        field = INDEX_MAPPING["mappings"]["properties"]["product_image_url"]
+        assert field == {"type": "keyword", "index": False}
+
     def test_retrieval_score_from_hit_score(self):
         hit = self._make_hit(score=0.42)
         doc = OpenSearchVectorStore._hit_to_document(hit)

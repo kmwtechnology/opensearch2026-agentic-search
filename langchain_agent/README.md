@@ -5,19 +5,18 @@
 > [tests/e2e/README.md](tests/e2e/README.md)
 
 A production-grade LangGraph RAG agent for e-commerce product discovery.
-Uses Google Gemini for LLM inference and embeddings, OpenSearch for hybrid
-vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
+Uses a local Ollama LLM and embeddings, OpenSearch for hybrid vector + BM25
+search, and PostgreSQL for LangGraph checkpoints. No cloud API key required.
 
 **Capabilities:**
 
 - **6-intent classification** — `search`, `comparison`, `attribute_filter`,
   `refinement`, `follow_up`, `summary`. Single structured-output LLM call
   (no keyword fast-path).
-- **Hybrid retrieval** — vector (768-dim Gemini embeddings) + BM25, fused via
-  RRF (k=60), with dynamic α per intent.
-- **Cross-encoder reranking** (default) — local `ms-marco-MiniLM-L-12-v2`
-  scores query-product relevance, no API call; Gemini LLM reranking is a
-  non-default alternative (~500ms/batch).
+- **Hybrid retrieval** — vector (768-dim `nomic-embed-text` embeddings via
+  Ollama) + BM25, fused via RRF (k=60), with dynamic α per intent.
+- **Cross-encoder reranking** — local `ms-marco-MiniLM-L-12-v2` scores
+  query-product relevance, no API call; the only reranker.
 - **Quality gate** — retries once with α ±0.3 (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only) if max reranker score < 0.5.
 - **Real-time streaming** — token-by-token WebSocket output with full
   observability events.
@@ -33,8 +32,8 @@ vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 - **Frontend:** React 19, TypeScript, Tailwind, Zustand
 - **Data layer:** OpenSearch 3.8.0 (HNSW + BM25) · PostgreSQL 16
   (LangGraph checkpoints only)
-- **LLM:** Google Gemini 2.5 Flash (generation) + Gemini 2.5 Flash-Lite
-  (classify/rerank) · `models/gemini-embedding-001` (embeddings)
+- **LLM:** local Ollama `qwen3.6:35b-a3b-q4_K_M` (generation, classify,
+  eval, judge) · `nomic-embed-text` via Ollama (embeddings)
 
 ---
 
@@ -46,13 +45,17 @@ backend and React frontend.
 
 ### Prerequisites
 
-A Google API key from <https://aistudio.google.com/apikey>, plus:
+[Ollama](https://ollama.com/) installed and running locally, plus:
 
 ```bash
 docker --version      # Docker Desktop
 python3 --version     # Python 3.14+
 node --version        # Node.js 24+
 ```
+
+`scripts/setup.sh` checks that Ollama is installed/running and pulls any
+missing models (~23 GB on first run); `scripts/doctor.sh` re-checks
+reachability and that the configured models are pulled.
 
 Lucille ETL ingest runs via Docker by default (`LUCILLE_USE_DOCKER=true`) —
 no local Java/Maven needed. Set `LUCILLE_USE_DOCKER=false` to use the native
@@ -63,19 +66,20 @@ path instead (requires Java 21+ and Maven: `brew install openjdk@21 maven`).
 ```bash
 cd langchain_agent
 cp .env.example .env
-# Set GOOGLE_API_KEY in .env before continuing.
 ./scripts/setup.sh
 ./scripts/start.sh
 ```
 
-Takes ~3–5 min on first run (embeddings are precomputed in the shipped sample — no API calls needed for the default 10 k ingest):
+First-time setup, including pulling Ollama models and the full ~158K-product
+ingest, takes roughly 35-40 minutes on an M4 Max:
 
 1. Creates `.env` from `.env.example` (set `ADMIN_TOKEN` yourself if you want automation access to `/api/admin/*`)
 2. Creates `.venv`, installs Python + frontend dependencies
-3. Starts PostgreSQL and OpenSearch via Docker
-4. Initializes the checkpoint DB and OpenSearch index
-5. Validates the Google AI API key
-6. Ingests an ESCI product sample (9,618 docs) and judgments (97,345 queries) via [Lucille ETL](lucille-esci/)
+3. Checks Ollama is installed/running and pulls any missing models
+4. Starts PostgreSQL and OpenSearch via Docker
+5. Initializes the checkpoint DB and OpenSearch index
+6. Ingests the full ESCI product corpus (158,637 products, embedded through
+   Ollama at ingest time) and judgments (65,028 queries) via [Lucille ETL](lucille-esci/)
 
 Backend FastAPI runs on `:8000`, React frontend on `:5173` (Vite proxies
 `/api` to the backend).
@@ -182,7 +186,7 @@ Frontend UI (`web/src/components/ChatPanel/TypeaheadSuggestions.tsx`):
 #### Admin API — `/api/admin/*`
 
 ```bash
-# Grow/correct the live color/waterproof taxonomy and trigger a real reindex
+# Grow/correct the live color/waterproof taxonomy and trigger a scoped re-tag
 curl -X POST http://localhost:8000/api/admin/enrich \
   -H "Content-Type: application/json" \
   -H "X-Admin-Token: your_admin_token_here" \
@@ -193,10 +197,12 @@ curl http://localhost:8000/api/admin/health \
   -H "X-Admin-Token: your_admin_token_here"
 ```
 
-There is no in-container ingest/reindex endpoint. Reindexing happens via
-`scripts/lucille_ingest.sh`; `POST /api/admin/enrich` triggers a real
-reindex as a side effect of adding/correcting one taxonomy mapping. Verify
-the result via `GET /api/admin/health`.
+There is no in-container full-ingest endpoint. A full re-ingest happens via
+`scripts/lucille_ingest.sh`; `POST /api/admin/enrich` triggers a scoped
+re-detection/re-tag (`REINDEX_TRIGGER=scoped`, the default) as a side effect
+of adding/correcting one taxonomy mapping — only products whose text
+mentions the changed variant are re-checked and updated, no re-embedding.
+Verify the result via `GET /api/admin/health`.
 
 #### Conversations observability — `GET /api/conversations/{thread_id}/observability`
 
@@ -227,14 +233,20 @@ Everything lives in `core/config.py`; most (but not all) values are `.env`-overr
 ### Models
 
 ```bash
-LLM_MODEL=gemini-2.5-flash                         # generation
-RERANKER_MODEL=gemini-3.1-flash-lite-preview       # reranking (unused by default; RERANKER_TYPE=cross-encoder)
-QUERY_EVAL_MODEL=gemini-2.5-flash-lite             # query evaluator
-EMBEDDINGS_MODEL=models/gemini-embedding-001      # 768-dim embeddings
+LLM_MODEL=qwen3.6:35b-a3b-q4_K_M   # generation, classify, judge (default for all chat calls)
+QUERY_EVAL_MODEL=qwen3.6:35b-a3b-q4_K_M   # query evaluator (defaults to LLM_MODEL)
+JUDGE_MODEL=qwen3.6:35b-a3b-q4_K_M        # LLM judge (defaults to LLM_MODEL)
+EMBEDDINGS_MODEL=nomic-embed-text  # 768-dim embeddings
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_KEEP_ALIVE=60m
+OLLAMA_NUM_CTX=32768
 LLM_TEMPERATURE=0
 QUERY_EVAL_TEMPERATURE=0
 QUERY_EVAL_MAX_TOKENS=1024
 ```
+
+Every chat call goes through `core/llm.py::build_chat_model` (`ChatOllama`,
+`reasoning=False`).
 
 `VECTOR_DIMENSION` (768) is **not** on this list — it's a hardcoded literal in `core/config.py`, not an env override, despite living right next to `EMBEDDINGS_MODEL` in the source.
 
@@ -310,9 +322,11 @@ A continuity score combines category matching and document-ID overlap:
 
 ### Quality gate with α adjustment
 
-If the top reranker score is below 0.5 after reranking, the quality gate
-adjusts α by ±0.3 (toward the opposite strategy) and retries retrieval
-once. Prevents low-relevance outputs without an infinite loop.
+If the top reranker score is below the intent-specific threshold
+(comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45)
+after reranking, the quality gate adjusts α by ±0.3 (toward the opposite
+strategy) and retries retrieval once. Prevents low-relevance outputs
+without an infinite loop.
 
 ### Link verification
 
@@ -397,8 +411,9 @@ Implementation:
 `GET /api/admin/health` returns index health and document count.
 `GET /api/admin/diagnose` probes field-level hit counts and mapping
 presence per field. `POST /api/admin/enrich` grows or corrects the
-color/waterproof taxonomy and triggers a real full Lucille reindex
-(~19-20s) — see "Agentic Taxonomy Growth & Correction" below and
+color/waterproof taxonomy and, by default, triggers a scoped re-detection
+of only the affected products (well under a second to a few seconds,
+measured live) — see "Agentic Taxonomy Growth & Correction" below and
 `docs/integration/rest-api.md` for the request/response shape. All three
 rely on same-origin checking only (no login gate); `X-Admin-Token` support
 exists in `api/middleware/admin_auth.py` but isn't wired into these routes.
@@ -413,8 +428,11 @@ to reindex products only.
 The agent can grow *or fix* its own catalog taxonomy live via one shared
 tool, `trigger_enrichment(attribute_type, variant, canonical)`, gated by
 `ENABLE_ENRICHMENT_TOOL` (default off). Calling it writes the mapping to
-OpenSearch, regenerates the Lucille ingest config, and triggers a real
-full reindex — not a scoped patch, not a mock.
+OpenSearch and, by default (`REINDEX_TRIGGER=scoped`), re-detects the
+attribute only on the products whose text mentions the changed variant and
+bulk-updates just those (`pipeline/scoped_retag.py`) — no re-embedding, no
+full reindex. `REINDEX_TRIGGER=local` remains available for a genuine full
+Lucille reindex but takes 30+ minutes.
 
 **Gap** (a term the taxonomy has never seen): when `attribute_filter`
 intent extracts a color or waterproof term the taxonomy doesn't recognize
@@ -532,8 +550,9 @@ TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
 ### Re-ingest ESCI data (Lucille ETL — default)
 
 The standard ingest path uses [Lucille](lucille-esci/) — a Java ETL framework
-that reads parquet files and bulk-indexes into OpenSearch without calling the
-embedding API (embeddings are precomputed in the shipped parquet).
+that reads parquet files, embeds each document through Ollama's
+`nomic-embed-text` at ingest time (`OllamaEmbedStage`), and bulk-indexes into
+OpenSearch.
 
 ```bash
 # Re-run the full ingest (products + judgments)
@@ -546,19 +565,16 @@ python scripts/prepare_judgments_parquet.py --locale us --force
 Config lives in `lucille-esci/conf/` (HOCON). The script auto-builds the Maven
 module on first run and skips the build when no source files changed.
 
-The default 10 k sample ships precomputed at `data/esci_products_sample_10000.parquet` (read by Lucille). Lucille is the **only** supported ingest mechanism — the Python ingest scripts (`ingest_esci_products.py`, `ingest_esci_judgments.py`) were removed in PR #48.
+The full corpus ships at `data/esci_products.parquet` (158,637 products,
+text only — no precomputed vectors; read by Lucille). Lucille is the
+**only** supported ingest mechanism — the Python ingest scripts
+(`ingest_esci_products.py`, `ingest_esci_judgments.py`) were removed in PR
+#48.
 
 ESCI labels are mapped to numeric relevance: `E=4.0`, `S=1.0`, `C=0.1`,
 `I=0.0`. Lookups from `OpenSearchVectorStore.lookup_judgments(query)` are
 best-effort exact-keyword matches; absence is non-fatal — the summary
 falls back to the confidence proxy.
-
-### Batch embedding via BigQuery
-
-For large ingestions, `bigquery_batch_embeddings.py` offloads embedding
-generation to BigQuery ML (`AI.GENERATE_EMBEDDING`) — ~15–30 min for
-1.2 M products vs ~4.5 h serially. See the script's `--help` for the
-one-time GCP setup and flags.
 
 ### Benchmarks
 
@@ -631,7 +647,7 @@ npm run lint         # eslint
 | Query evaluation (α + expansion) | ~300–500 ms |
 | Quality Gate retry | +1–2 s |
 | LLM response (streaming) | ~3–8 s |
-| **Total per query** | **~6–15 s** (first request after startup is slower: cross-encoder model load) |
+| **Total per query** | **~6–21 s** (measured across the 4 scripted demos on the local-Ollama stack, M4 Max) (first request after startup is slower: cross-encoder model load) |
 | Link verification (cached) | ~50 ms / URL |
 
 Optimizations: HNSW vector index · embedding cache (60-min TTL) ·
@@ -691,7 +707,7 @@ langchain_agent/
 │   └── reindex_trigger.py # local Lucille subprocess trigger
 ├── retrieval/
 │   ├── vector_store.py    # OpenSearchVectorStore + retriever (RRF)
-│   ├── reranker.py        # CrossEncoderReranker (default) + GeminiReranker (fallback)
+│   ├── reranker.py        # CrossEncoderReranker (only reranker)
 │   ├── attribute_discovery.py      # Attribute/taxonomy discovery
 │   ├── attribute_mapping_store.py  # OpenSearch-backed taxonomy store
 │   ├── link_verifier.py   # URL validation w/ TTL cache
@@ -703,7 +719,7 @@ langchain_agent/
 ├── observability/
 │   ├── relevancy_metrics.py  # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)
 │   ├── embedding_cache.py    # Thread-safe query embedding cache
-│   └── llm_content.py        # _flatten_llm_content (Gemini content-block normalization)
+│   └── llm_content.py        # _flatten_llm_content (LLM content-block normalization)
 ├── checkpoints/
 │   ├── checkpoint_maintenance.py  # Checkpoint GC
 │   └── checkpoint_optimizer.py    # Checkpoint tuning
@@ -742,7 +758,7 @@ PYTHONPATH=. python setup.py
 ### Backend won't start
 
 ```bash
-grep ^GOOGLE_API_KEY .env  # must be set
+curl http://localhost:11434/api/tags  # Ollama must be reachable
 ./scripts/logs.sh backend
 
 # If the port is stuck:
@@ -757,13 +773,12 @@ curl http://localhost:8000/api/health
 ./scripts/logs.sh frontend
 ```
 
-### Google AI API issues
+### Ollama issues
 
 ```bash
-echo $GOOGLE_API_KEY
-python -c "from langchain_google_genai import GoogleGenerativeAIEmbeddings; \
-  e = GoogleGenerativeAIEmbeddings(model='models/gemini-embedding-001', output_dimensionality=768); \
-  print(len(e.embed_query('test')))"
+curl http://localhost:11434/api/tags   # confirm Ollama is running and models are pulled
+ollama pull qwen3.6:35b-a3b-q4_K_M
+ollama pull nomic-embed-text
 ```
 
 ### Database issues
@@ -815,5 +830,4 @@ curl http://localhost:8000/api/health          # Backend
 - LangChain: <https://python.langchain.com/>
 - OpenSearch: <https://opensearch.org/docs/latest/>
 - OpenSearch Python client: <https://opensearch-project.github.io/opensearch-py/>
-- Google Gemini: <https://ai.google.dev/>
-- Google AI Studio: <https://aistudio.google.com/>
+- Ollama: <https://ollama.com/>

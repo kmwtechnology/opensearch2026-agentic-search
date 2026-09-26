@@ -322,6 +322,21 @@ describe('narrate — enrichment lifecycle', () => {
     expect(line?.text).not.toContain('No products are tagged')
   })
 
+  it('narrates a scoped re-tag as checked-vs-changed, not a full rebuild (#147)', () => {
+    const line = narrate(
+      enrichment({
+        status: 'complete',
+        canonical: 'brown',
+        corrected_from: 'yellow',
+        docs_processed: 31,
+        docs_scanned: 274,
+        duration_seconds: 0.8,
+      })
+    )
+    expect(line?.text).toContain('Re-checked the 274 products that mention it; re-tagged 31 in 0.8s.')
+    expect(line?.text).not.toContain('Rebuilt')
+  })
+
   it('distinguishes a CORRECTION from merely learning a new term', () => {
     const corrected = narrate(
       enrichment({

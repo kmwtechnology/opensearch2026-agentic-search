@@ -2,8 +2,8 @@
 Unit tests for configuration validation.
 
 Tests that:
-- All required env vars are present (GOOGLE_API_KEY, OPENSEARCH_HOST, etc.)
-- Model names in config match env vars (LLM_MODEL, EMBEDDINGS_MODEL, RERANKER_MODEL)
+- All required env vars are present (OLLAMA_HOST, OPENSEARCH_HOST, etc.)
+- Model names in config are local Ollama models (LLM_MODEL, EMBEDDINGS_MODEL, ...)
 - Invalid configs raise clear errors
 - Default values work when optional vars missing
 """
@@ -24,38 +24,48 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 class TestRequiredEnvironmentVariables:
     """Test that all required environment variables are present."""
 
-    def test_google_api_key_in_config_all(self):
-        """GOOGLE_API_KEY must be exported from config so callers can import it."""
+    def test_ollama_settings_in_config_all(self):
+        """OLLAMA_* settings must be exported so callers can import them."""
         from core import config
 
-        assert "GOOGLE_API_KEY" in config.__all__
+        for name in ("OLLAMA_HOST", "OLLAMA_KEEP_ALIVE", "OLLAMA_NUM_CTX"):
+            assert name in config.__all__
+        assert "GOOGLE_API_KEY" not in config.__all__
 
-    def test_google_api_key_validation_when_set(self):
-        """Test GOOGLE_API_KEY format when set."""
-        test_key = "test-api-key-12345"
+    @staticmethod
+    def _agent_with_healthy_stores(bare_agent):
+        from unittest.mock import MagicMock
 
-        # Verify it's a non-empty string
-        assert len(test_key) > 0
-        assert isinstance(test_key, str)
-
-    def test_verify_prerequisites_exits_when_google_api_key_absent(self, bare_agent):
-        """verify_prerequisites must exit(1) when GOOGLE_API_KEY is not set."""
-        from unittest.mock import MagicMock, patch
-
-        # Mock vector_store so OpenSearch checks pass
         mock_vs = MagicMock()
         mock_vs.client.info.return_value = {"version": {"number": "2.19"}}
         mock_vs.client.count.return_value = {"count": 100}
         bare_agent.vector_store = mock_vs
+        return bare_agent
 
-        # Patch Postgres connect and GOOGLE_API_KEY to simulate missing key
+    def test_verify_prerequisites_exits_when_ollama_unreachable(self, bare_agent):
+        agent = self._agent_with_healthy_stores(bare_agent)
         with (
             patch("psycopg.connect"),
-            patch("main.GOOGLE_API_KEY", None),
+            patch("main.missing_ollama_models", side_effect=OSError("refused")),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                bare_agent.verify_prerequisites()
+                agent.verify_prerequisites()
             assert exc_info.value.code == 1
+
+    def test_verify_prerequisites_exits_when_model_not_pulled(self, bare_agent):
+        agent = self._agent_with_healthy_stores(bare_agent)
+        with (
+            patch("psycopg.connect"),
+            patch("main.missing_ollama_models", return_value=["nomic-embed-text"]),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                agent.verify_prerequisites()
+            assert exc_info.value.code == 1
+
+    def test_verify_prerequisites_passes_when_models_present(self, bare_agent):
+        agent = self._agent_with_healthy_stores(bare_agent)
+        with patch("psycopg.connect"), patch("main.missing_ollama_models", return_value=[]):
+            agent.verify_prerequisites()  # must not raise
 
     def test_opensearch_host_has_default(self):
         """Test OPENSEARCH_HOST has a default value."""
@@ -151,84 +161,51 @@ class TestRequiredEnvironmentVariables:
 @pytest.mark.unit
 @pytest.mark.phase1
 class TestModelNameConfiguration:
-    """Test model name configuration and consistency."""
+    """Model settings: local Ollama models, one embedding model on both sides."""
 
-    def test_llm_model_default_value(self):
-        """Test LLM_MODEL has correct default."""
-        model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+    def test_chat_models_are_non_empty_ollama_names(self):
+        from core import config
 
-        assert model is not None
-        assert "gemini" in model.lower()
-        assert isinstance(model, str)
+        for name in ("LLM_MODEL", "QUERY_EVAL_MODEL", "JUDGE_MODEL"):
+            value = getattr(config, name)
+            assert value and not value.startswith("gemini"), f"{name}={value!r}"
 
-    def test_reranker_model_default_value(self):
-        """Test RERANKER_MODEL has correct default."""
-        model = os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview")
+    def test_classifier_and_judge_default_to_the_llm_model(self):
+        """One resident model by default (#148); the split is opt-in via env."""
+        from core import config
 
-        assert model is not None
-        assert "gemini" in model.lower()
-        assert "flash-lite" in model.lower() or "flash" in model.lower()
+        with patch.dict(os.environ, {}, clear=False):
+            for var in ("QUERY_EVAL_MODEL", "JUDGE_MODEL"):
+                os.environ.pop(var, None)
+            import importlib
 
-    def test_query_eval_model_default_value(self):
-        """Test QUERY_EVAL_MODEL has correct default."""
-        model = os.getenv("QUERY_EVAL_MODEL", "gemini-2.5-flash-lite")
+            reloaded = importlib.reload(config)
+            try:
+                assert reloaded.QUERY_EVAL_MODEL == reloaded.LLM_MODEL
+                assert reloaded.JUDGE_MODEL == reloaded.LLM_MODEL
+            finally:
+                importlib.reload(config)
 
-        assert model is not None
-        assert "gemini" in model.lower()
-        assert "flash-lite" in model.lower() or "flash" in model.lower()
+    def test_query_side_embedding_model_matches_lucille_conf(self):
+        """Lucille reads ${EMBEDDINGS_MODEL} too -- both sides must use one model."""
+        from config_generator import generate_products_conf
 
-    def test_embeddings_model_default_value(self):
-        """Test EMBEDDINGS_MODEL has correct default."""
-        model = os.getenv("EMBEDDINGS_MODEL", "models/text-embedding-005")
+        assert "modelName: ${EMBEDDINGS_MODEL}" in generate_products_conf([])
 
-        assert model is not None
-        assert "embedding" in model.lower() or "models/" in model
+    def test_keep_alive_parses_ollama_durations(self):
+        from core.config import _duration_seconds
 
-    def test_llm_model_format_valid(self):
-        """Test LLM model name follows Gemini naming convention."""
-        model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+        assert _duration_seconds("1h") == 3600
+        assert _duration_seconds("60m") == 3600
+        assert _duration_seconds("90s") == 90
+        assert _duration_seconds("300") == 300
+        assert _duration_seconds("-1") == -1  # Ollama: keep loaded forever
 
-        # Should be gemini-<version>-<type>[-<qualifier>]
-        assert model.startswith("gemini-")
-        assert isinstance(model, str)
-        assert len(model) > 7
+    def test_num_ctx_is_large_enough_for_agent_prompts(self):
+        """Ollama silently truncates past num_ctx; the judge alone can send ~10K tokens."""
+        from core.config import OLLAMA_NUM_CTX
 
-    def test_reranker_model_format_valid(self):
-        """Test reranker model name is valid."""
-        model = os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview")
-
-        assert model.startswith("gemini-")
-        assert "flash" in model
-        assert isinstance(model, str)
-
-    def test_embeddings_model_format_valid(self):
-        """Test embeddings model name is valid."""
-        model = os.getenv("EMBEDDINGS_MODEL", "models/text-embedding-005")
-
-        assert "embedding" in model or "models/" in model
-        assert isinstance(model, str)
-
-    def test_model_names_not_empty_strings(self):
-        """Test model names are never empty strings."""
-        models = {
-            "LLM_MODEL": "gemini-2.5-flash",
-            "RERANKER_MODEL": "gemini-3.1-flash-lite-preview",
-            "QUERY_EVAL_MODEL": "gemini-2.5-flash-lite",
-            "EMBEDDINGS_MODEL": "models/text-embedding-005",
-        }
-
-        for env_var, default in models.items():
-            model = os.getenv(env_var, default)
-            assert len(model) > 0, f"{env_var} should not be empty"
-
-    def test_model_env_vars_can_be_overridden(self):
-        """Test that model env vars can be overridden."""
-        # Simulate override with patch
-        test_model = "gemini-custom-model"
-
-        assert test_model != ""
-        assert "gemini" in test_model
-        # In real usage, would be set via os.getenv
+        assert OLLAMA_NUM_CTX >= 16384
 
 
 @pytest.mark.unit
@@ -510,8 +487,8 @@ class TestEnvironmentVariableTypes:
             "OPENSEARCH_HOST",
             "LLM_MODEL",
             "EMBEDDINGS_MODEL",
-            "RERANKER_MODEL",
             "QUERY_EVAL_MODEL",
+            "OLLAMA_HOST",
         ]
 
         for key in string_configs:

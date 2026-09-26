@@ -12,8 +12,10 @@ import type { ObservabilitySnapshot } from './observabilityStore'
 export interface Citation {
   label: string
   url: string
-  /** Amazon ASIN, present for ESCI products. Keys the bundled product image (#144). */
+  /** Amazon ASIN, present for ESCI products. */
   asin?: string
+  /** Product photo URL (SQID, #147); absent when Amazon has none. */
+  image_url?: string
 }
 
 export interface ChatMessage {

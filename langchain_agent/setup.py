@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Unified Setup Script for E-Commerce Search Agent
-Initializes PostgreSQL database, loads ESCI product data, and validates Google AI API key.
+Initializes PostgreSQL database, loads ESCI product data, and validates the local Ollama models.
 This is the single entry point for complete system setup from scratch
 
 Usage:
@@ -14,7 +14,6 @@ import sys
 from pathlib import Path
 
 import psycopg
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import sql
 from psycopg_pool import ConnectionPool
@@ -24,8 +23,8 @@ from core.config import (
     DB_CONNECTION_KWARGS,
     DB_POOL_MAX_SIZE,
     EMBEDDINGS_MODEL,
-    GOOGLE_API_KEY,
     LLM_MODEL,
+    OLLAMA_HOST,
     OPENSEARCH_INDEX_NAME,
     OPENSEARCH_SEARCH_PIPELINE,
     POSTGRES_DB,
@@ -34,7 +33,6 @@ from core.config import (
     POSTGRES_PORT,
     POSTGRES_USER,
     QUERY_EVAL_MODEL,
-    RERANKER_MODEL,
     VECTOR_DIMENSION,
 )
 
@@ -185,36 +183,45 @@ def init_metadata_table():
 
 
 # ============================================================================
-# STEP 2: GOOGLE AI API VALIDATION
+# STEP 2: LOCAL MODEL (OLLAMA) VALIDATION
 # ============================================================================
 
 
-def validate_google_api():
-    """Validate Google API key by testing an embedding call"""
-    print("\n[5/7] Validating Google AI API key...")
+def validate_ollama_models():
+    """Check Ollama is up, every configured model is pulled, and embeddings fit the index."""
+    from core.llm import missing_ollama_models
 
-    if not GOOGLE_API_KEY:
-        print("      ✗ GOOGLE_API_KEY not set in environment")
-        print("      Set it in .env or export GOOGLE_API_KEY=your-key")
+    print("\n[5/7] Validating local Ollama models...")
+    try:
+        missing = missing_ollama_models([LLM_MODEL, QUERY_EVAL_MODEL, EMBEDDINGS_MODEL])
+    except OSError as e:
+        print(f"      ✗ Ollama not reachable at {OLLAMA_HOST}: {e}")
+        print("      Start it (`ollama serve` or the Ollama app)")
         return False
+    if missing:
+        for m in missing:
+            print(f"      ✗ Model not pulled: {m}  (run: ollama pull {m})")
+        return False
+
+    from retrieval.embeddings import build_embeddings
 
     try:
-        embeddings = GoogleGenerativeAIEmbeddings(
-            model=EMBEDDINGS_MODEL, output_dimensionality=VECTOR_DIMENSION
-        )
-        result = embeddings.embed_query("test")
-        print(f"      ✓ Google AI API key is valid")
-        print(f"      ✓ Embedding dimension: {len(result)}")
-        print(f"      Models configured:")
-        print(f"        LLM: {LLM_MODEL}")
-        print(f"        Classifier: {QUERY_EVAL_MODEL}")
-        print(f"        Embeddings: {EMBEDDINGS_MODEL}")
-        print(f"        Reranker: {RERANKER_MODEL} (Google AI)")
-        return True
+        dims = len(build_embeddings().embed_query("test"))
     except Exception as e:
-        print(f"      ✗ Google AI API validation failed: {e}")
-        print("      Check your GOOGLE_API_KEY in .env")
+        print(f"      ✗ Embedding call failed: {e}")
         return False
+    if dims != VECTOR_DIMENSION:
+        print(
+            f"      ✗ {EMBEDDINGS_MODEL} returns {dims}-dim vectors; the index expects {VECTOR_DIMENSION}"
+        )
+        return False
+
+    print(f"      ✓ Ollama reachable at {OLLAMA_HOST}")
+    print("      Models configured:")
+    print(f"        LLM: {LLM_MODEL}")
+    print(f"        Classifier: {QUERY_EVAL_MODEL}")
+    print(f"        Embeddings: {EMBEDDINGS_MODEL} ({dims}-dim)")
+    return True
 
 
 # ============================================================================
@@ -228,7 +235,9 @@ def main():
     parser.add_argument(
         "--skip-docs", action="store_true", help="Skip document loading (database setup only)"
     )
-    parser.add_argument("--skip-models", action="store_true", help="Skip Google AI API validation")
+    parser.add_argument(
+        "--skip-models", action="store_true", help="Skip local Ollama model validation"
+    )
     parser.add_argument(
         "--reset-index",
         action="store_true",
@@ -250,7 +259,7 @@ def main():
     print("  2. Create OpenSearch index (for products)")
     print("  3. Create search pipeline (for hybrid search)")
     if not args.skip_models:
-        print("  4. Validate Google AI API key")
+        print("  4. Validate local Ollama models")
     if not args.skip_docs:
         print("  5. Load ESCI e-commerce products")
     print("\n" + "=" * 70)
@@ -267,9 +276,9 @@ def main():
         create_opensearch_index(reset=args.reset_index)
         create_search_pipeline()
 
-        # Step 2: Google AI API validation (optional)
+        # Step 2: local model validation (optional)
         if not args.skip_models:
-            validate_google_api()
+            validate_ollama_models()
 
         # Step 3: Product + Judgment Data Loading via Lucille ETL
         docs_ingest_failed = False
@@ -354,7 +363,7 @@ def main():
         print("\nTroubleshooting:")
         print("1. PostgreSQL: Ensure Docker container is running")
         print("   docker compose up -d")
-        print("2. Google AI: Ensure GOOGLE_API_KEY is set in .env")
+        print("2. Ollama: ensure it is running and the models are pulled (scripts/doctor.sh)")
         print("3. ESCI Dataset: Ensure files are present in ../esci/shopping_queries_dataset/")
         print("4. Connection: Verify config.py settings")
         print("\n" + "=" * 70)

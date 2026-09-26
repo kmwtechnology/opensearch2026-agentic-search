@@ -36,7 +36,7 @@
             "keyboard, mechanical keyboard",
             "mouse, mice, trackpad"
           ]
-        },
+        }
       },
       "analyzer": {
         "light_english_analyzer": {
@@ -76,6 +76,18 @@
           "filter": [
             "lowercase"
           ]
+        },
+        "ascii_words_analyzer": {
+          "tokenizer": "ascii_word_tokenizer",
+          "filter": [
+            "lowercase"
+          ]
+        }
+      },
+      "tokenizer": {
+        "ascii_word_tokenizer": {
+          "type": "pattern",
+          "pattern": "[^A-Za-z0-9]+"
         }
       }
     }
@@ -102,6 +114,10 @@
           "heavy": {
             "type": "text",
             "analyzer": "heavy_english_analyzer"
+          },
+          "words": {
+            "type": "text",
+            "analyzer": "ascii_words_analyzer"
           }
         }
       },
@@ -183,6 +199,10 @@
         "type": "text",
         "analyzer": "english_shingle_analyzer"
       },
+      "product_image_url": {
+        "type": "keyword",
+        "index": false
+      }
     }
   }
 }

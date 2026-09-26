@@ -33,13 +33,16 @@ _PRELUDE = """# Lucille ETL: ESCI Products → OpenSearch
 # (agentic_hybrid_search_attribute_mappings). See that module and
 # AttributeDetectorStage.java for the mechanism.
 #
-# Reads the precomputed 10k parquet sample (embeddings already baked in as 768-dim doubles).
-# No embedding API calls are made during this ingest.
+# Reads the text-only products parquet (data/esci_products.parquet) and embeds
+# chunk_text in-pipeline with a local Ollama model (OllamaEmbedStage, #148) --
+# no vectors are committed, no cloud embedding API is called.
 #
 # Required env vars (set from langchain_agent/.env by lucille_ingest.sh):
 #   OPENSEARCH_URL   e.g. http://localhost:9200
 #   OPENSEARCH_INDEX e.g. agentic_hybrid_search_docs
-#   PARQUET_PATH     absolute path to esci_products_sample_10000.parquet
+#   PARQUET_PATH     absolute path to esci_products.parquet
+#   OLLAMA_HOST      e.g. http://host.docker.internal:11434 (embed stage only)
+#   EMBEDDINGS_MODEL e.g. nomic-embed-text (embed stage only)
 
 connectors: [
   {
@@ -65,7 +68,7 @@ pipelines: [
         formatString: "{product_title} {product_description} {product_bullet_point}"
         updateMode: "overwrite"
       }
-      # Copy product_title → title (used by the search pipeline).
+{embed_stage}      # Copy product_title → title (used by the search pipeline).
       {
         name: "copyTitle"
         class: "com.kmwllc.lucille.stage.CopyFields"
@@ -134,13 +137,37 @@ opensearch {
   acceptInvalidCert: true
 }
 
+# Embedding is GPU-bound on the Ollama host: ~100 docs/s at 4 concurrent
+# requests, no faster at 8 (measured, nomic-embed-text on an M4 Max).
 worker {
-  threads: 2
+  threads: 4
 }
 
 log {
   seconds: 15
 }
+"""
+
+
+# nomic-embed-text is asymmetric: documents and queries carry different task
+# prefixes. The query side (retrieval/embeddings.py) must prepend the matching
+# QUERY prefix or kNN recall drops.
+DOCUMENT_PREFIX = "search_document: "
+VECTOR_DIMENSION = 768  # must equal the index mapping's knn_vector dimension
+
+_EMBED_STAGE = f"""      # Embed chunk_text with a local Ollama model (#148). Hard-fails at
+      # start-up if Ollama is unreachable or the model isn't pulled -- an index
+      # without vectors would silently make every hybrid query BM25-only.
+      {{
+        name: "embedChunkText"
+        class: "com.kmwllc.esci.OllamaEmbedStage"
+        source: "chunk_text"
+        dest: "embedding"
+        hostURL: ${{OLLAMA_HOST}}
+        modelName: ${{EMBEDDINGS_MODEL}}
+        prefix: "{DOCUMENT_PREFIX}"
+        dimensions: {VECTOR_DIMENSION}
+      }}
 """
 
 
@@ -169,13 +196,18 @@ def _render_attribute_stage(attribute_type: str) -> str:
 """
 
 
-def generate_products_conf(attribute_types: Optional[List[str]] = None) -> str:
+def generate_products_conf(attribute_types: Optional[List[str]] = None, embed: bool = True) -> str:
     """
     Render the full products.conf HOCON text.
 
     Args:
         attribute_types: attribute types to generate a detector stage for.
             Queried live from the OS-backed mapping store if None.
+        embed: include the Ollama embed stage. False only for the throwaway
+            first pass of ``lucille_ingest.sh --seed-taxonomy``, which exists
+            just to put chunk_text in the index for taxonomy discovery; the
+            second pass re-indexes every product with vectors anyway, so
+            embedding twice would add ~26 min to setup for nothing.
 
     Returns:
         Full HOCON config text.
@@ -184,17 +216,22 @@ def generate_products_conf(attribute_types: Optional[List[str]] = None) -> str:
         attribute_types = AttributeMappingStore().get_all_attribute_types()
 
     middle = "".join(_render_attribute_stage(t) for t in attribute_types)
-    return _PRELUDE + middle + _EPILOGUE
+    prelude = _PRELUDE.replace("{embed_stage}", _EMBED_STAGE if embed else "")
+    return prelude + middle + _EPILOGUE
 
 
-def write_generated_conf(attribute_types: Optional[List[str]] = None) -> Path:
+def write_generated_conf(attribute_types: Optional[List[str]] = None, embed: bool = True) -> Path:
     """Generate and write products.generated.conf. Returns the path written."""
-    content = generate_products_conf(attribute_types)
+    content = generate_products_conf(attribute_types, embed=embed)
     GENERATED_CONF_PATH.write_text(content)
     return GENERATED_CONF_PATH
 
 
 if __name__ == "__main__":
-    path = write_generated_conf()
+    import sys
+
+    embed = "--no-embed" not in sys.argv[1:]
+    path = write_generated_conf(embed=embed)
     types = AttributeMappingStore().get_all_attribute_types()
-    print(f"Generated {path} with stages for: {types}")
+    # lucille_ingest.sh matches "stages for: []" in this line -- keep the format.
+    print(f"Generated {path} (embed={embed}) with stages for: {types}")

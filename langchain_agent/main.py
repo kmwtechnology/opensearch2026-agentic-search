@@ -5,17 +5,17 @@ E-Commerce Product RAG Agent with Real-Time Streaming, Hybrid Search, and Persis
 A production-grade LangGraph pipeline for e-commerce product discovery:
 - 6-intent classifier (search, comparison, attribute_filter, refinement, follow_up, summary)
 - Hybrid vector + BM25 retrieval fused via Reciprocal Rank Fusion (RRF, k=60)
-- LLM-based reranking with quality gate and alpha-adjustment retry
+- Cross-encoder reranking with quality gate and alpha-adjustment retry
 - Conversational query rewriting to resolve pronouns and follow-up references
 - Persistent conversation memory via PostgreSQL LangGraph checkpointer
 - Real-time token-by-token streaming over WebSocket with typed observability events
 - Per-turn Pipeline Quality Summary (NDCG@10, MRR, Recall@20, Precision@10)
 
 Powered by:
-- LLM: Google Gemini (gemini-2.5-flash) for generation
-- Classify/Eval/Judge: Google Gemini (gemini-2.5-flash-lite)
-- Rerank: local cross-encoder by default (Gemini gemini-3.1-flash-lite-preview available via RERANKER_TYPE=gemini)
-- Embeddings: Google Gemini (text-embedding-005, 768-dim) for semantic search
+- LLM: local Ollama (qwen3.6:35b-a3b) for generation, classify/eval, and judge
+- Rerank: local cross-encoder (ms-marco-MiniLM-L-12-v2)
+- Embeddings: local Ollama nomic-embed-text (768-dim); documents are embedded
+  at ingest by Lucille, queries here (retrieval/embeddings.py)
 - Vector Store: OpenSearch 2.19.1 with HNSW knn + BM25
 - Database: PostgreSQL for LangGraph checkpoints
 - Framework: LangGraph (graph-based pipeline, not ReAct tool-binding)
@@ -30,7 +30,6 @@ import warnings
 from typing import Optional
 
 import psycopg
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, StateGraph
 from langgraph.utils.runnable import RunnableCallable
@@ -38,13 +37,15 @@ from psycopg_pool import AsyncConnectionPool, ConnectionPool
 
 # Import extracted modules
 from core.agent_state import CustomAgentState
+from core.llm import build_chat_model, missing_ollama_models
 from pipeline.conversation_management import ConversationManagementMixin
 from pipeline.pipeline_nodes import AlphaEstimation, IntentClassification, PipelineNodesMixin
 from quality.enrichment_value_judge import EnrichmentValueJudge
 from quality.judge import LLMJudge
 from retrieval.doc_replacer import DocumentReplacer
+from retrieval.embeddings import build_embeddings
 from retrieval.link_verifier import LinkVerifier
-from retrieval.reranker import CrossEncoderReranker, GeminiReranker
+from retrieval.reranker import CrossEncoderReranker
 from retrieval.vector_store import OpenSearchVectorStore
 
 # Setup logging
@@ -77,20 +78,17 @@ from core.config import (
     EMBEDDINGS_MODEL,
     ENABLE_QUERY_EVALUATION,
     ENABLE_RERANKING,
-    GOOGLE_API_KEY,
     LLM_MODEL,
     LLM_TEMPERATURE,
+    OLLAMA_HOST,
     QUERY_EVAL_MAX_TOKENS,
     QUERY_EVAL_MODEL,
     QUERY_EVAL_TEMPERATURE,
     RERANKER_FETCH_K,
-    RERANKER_MODEL,
-    RERANKER_TYPE,
     RETRIEVER_ALPHA,
     RETRIEVER_FETCH_K,
     RETRIEVER_K,
     VECTOR_COLLECTION_NAME,
-    VECTOR_DIMENSION,
 )
 
 
@@ -99,7 +97,7 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
     Production-grade LangGraph RAG agent for e-commerce product discovery.
 
     This is the main orchestrator for a conversational product search system powered by
-    Google Gemini, OpenSearch hybrid search, and LangGraph. It implements a sophisticated
+    local Ollama models, OpenSearch hybrid search, and LangGraph. It implements a sophisticated
     6-intent classifier, dynamic alpha weighting for semantic/lexical balance, LLM-based
     reranking, and real-time WebSocket streaming with full observability.
 
@@ -125,7 +123,7 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
     - `summary`: Recap previous results
 
     **Hybrid Search**:
-    - Vector search (768-dim Gemini embeddings) + BM25 lexical search
+    - Vector search (768-dim nomic-embed-text embeddings) + BM25 lexical search
     - Reciprocal Rank Fusion (k=60) for score fusion
     - Dynamic alpha (0.0–1.0) per query: lexical-heavy for exact matches, semantic-heavy for conceptual needs
 
@@ -186,12 +184,13 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         3. Emit from node: `self._emit_event_from_sync(MyEvent(...))`
         4. Update `observabilityStore.ts` and `StepCard.tsx` to render the event
 
-    **Swap the LLM provider** (e.g., Claude instead of Gemini):
-        1. Update `LLM_MODEL` in `config.py`
-        2. Update `EMBEDDINGS_MODEL` if switching embedding provider
-        3. Update LLM instantiation in `initialize_components()` (line 240)
-        4. Update alpha_estimator_llm if using different classification model (line 250)
-        5. Update reranker initialization (line 313) for new provider's structured output syntax
+    **Swap the LLM or embedding model**:
+        1. Any Ollama model: set `LLM_MODEL` / `QUERY_EVAL_MODEL` / `JUDGE_MODEL` in `.env`
+        2. A different provider: change `core/llm.py::build_chat_model` (every chat
+           caller goes through it) and `retrieval/embeddings.py::build_embeddings`
+        3. A different embedding model also means re-ingesting: Lucille embeds the
+           corpus with the same model (`OllamaEmbedStage`), and the index mapping
+           pins the vector dimension
 
     ## Implementation Notes
 
@@ -270,13 +269,18 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
             print("  Run: python setup.py")
             sys.exit(1)
 
-        # Check Google API key — required; langchain-google-genai uses the Gemini Developer
-        # API which authenticates only with an API key string, not ADC / service accounts.
-        if not GOOGLE_API_KEY:
-            print("✗ GOOGLE_API_KEY is not set")
-            print("  Get a key at https://aistudio.google.com/apikey and set it in .env")
+        # Check the local Ollama server has every model this agent will call
+        try:
+            missing = missing_ollama_models([LLM_MODEL, QUERY_EVAL_MODEL, EMBEDDINGS_MODEL])
+        except OSError as e:
+            print(f"✗ Cannot reach Ollama at {OLLAMA_HOST}: {e}")
+            print("  Start it: `ollama serve` (or the Ollama app)")
             sys.exit(1)
-        print("✓ GOOGLE_API_KEY is set")
+        if missing:
+            for model in missing:
+                print(f"✗ Ollama model not pulled: {model}  (run: ollama pull {model})")
+            sys.exit(1)
+        print(f"✓ Ollama is serving {LLM_MODEL} and {EMBEDDINGS_MODEL}")
 
         print()
 
@@ -285,23 +289,17 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         print("Initializing components...")
         print()
 
-        # Initialize LLM with streaming enabled
+        # Main generation model (streams via astream_events in the API path)
         print(f"Loading LLM: {LLM_MODEL}")
-        self.llm = ChatGoogleGenerativeAI(
-            model=LLM_MODEL,
-            temperature=LLM_TEMPERATURE,
-            streaming=True,
-            max_output_tokens=8192,
-        )
+        self.llm = build_chat_model(LLM_MODEL, temperature=LLM_TEMPERATURE, max_tokens=8192)
         print("✓ LLM initialized")
 
         if ENABLE_QUERY_EVALUATION:
             print(f"Loading query evaluator (alpha estimator): {QUERY_EVAL_MODEL}")
-            self.alpha_estimator_llm = ChatGoogleGenerativeAI(
-                model=QUERY_EVAL_MODEL,
+            self.alpha_estimator_llm = build_chat_model(
+                QUERY_EVAL_MODEL,
                 temperature=QUERY_EVAL_TEMPERATURE,
-                streaming=False,
-                max_output_tokens=QUERY_EVAL_MAX_TOKENS,
+                max_tokens=QUERY_EVAL_MAX_TOKENS,
             )
             self.alpha_structured = self.alpha_estimator_llm.with_structured_output(AlphaEstimation)
             self.intent_structured = self.alpha_estimator_llm.with_structured_output(
@@ -315,10 +313,7 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
 
         # Initialize Embeddings
         print(f"Loading embeddings: {EMBEDDINGS_MODEL}")
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model=EMBEDDINGS_MODEL,
-            output_dimensionality=VECTOR_DIMENSION,
-        )
+        self.embeddings = build_embeddings()
         print("✓ Embeddings initialized")
 
         # Initialize Postgres connection pools (must be before vector store)
@@ -357,14 +352,10 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
             },
         )
 
-        # Initialize Reranker (cross-encoder or LLM-based)
+        # Initialize Reranker (local cross-encoder)
         if ENABLE_RERANKING:
-            if RERANKER_TYPE == "cross-encoder":
-                print(f"Loading cross-encoder reranker: {CROSS_ENCODER_MODEL}")
-                self.reranker = CrossEncoderReranker(model_name=CROSS_ENCODER_MODEL)
-            else:
-                print(f"Loading Gemini reranker: {RERANKER_MODEL}")
-                self.reranker = GeminiReranker(model_name=RERANKER_MODEL)
+            print(f"Loading cross-encoder reranker: {CROSS_ENCODER_MODEL}")
+            self.reranker = CrossEncoderReranker(model_name=CROSS_ENCODER_MODEL)
             print("✓ Reranker initialized")
             # Warmup is deferred to observable_agent lifespan to avoid blocking startup
         else:

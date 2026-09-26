@@ -1,14 +1,12 @@
 /**
  * Tests for the product cards an answer's bullet list turns into (#144).
  *
- * `indexProducts` is tested with an injected image resolver, so those cases
- * never touch Vite's asset pipeline. The `Message` cases deliberately do —
- * they use real bundled ASINs, which also asserts that `import.meta.glob`
- * keys the assets by bare ASIN under vitest.
+ * Each citation carries its product's own image URL (SQID, #147), so a card
+ * exists exactly when the cited product has a photo.
  */
 
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { Message } from '../Message'
 import { indexProducts } from '../productIndex'
 import type { Citation, ChatMessage } from '../../../stores/chatStore'
@@ -18,21 +16,21 @@ const citations: Citation[] = [
     label: "[1] adidas Men's BB6622 Supernova Trail Shoe, Hi-Res Blue/Hi-Res Orange/Black - 10 M",
     url: 'https://www.amazon.com/s?k=adidas',
     asin: 'B07FBKWMBY',
+    image_url: 'https://m.media-amazon.com/images/I/adidas.jpg',
   },
   {
     label: '[2] Singer 3221 Simple Sewing Machine with Automatic Needle Threader, 21 Stitches',
     url: 'https://www.amazon.com/s?k=singer',
     asin: 'B0085SRIC2',
+    image_url: 'https://m.media-amazon.com/images/I/singer.jpg',
   },
   {
     label: '[3] Brother LB7000 Computerized Embroidery and Sewing Machine',
     url: 'https://www.amazon.com/s?k=brother',
     asin: 'B08PC22TYB',
+    image_url: 'https://m.media-amazon.com/images/I/brother.jpg',
   },
 ]
-
-const allImages = (asin?: string) => (asin ? `/img/${asin}.jpg` : undefined)
-const noImages = () => undefined
 
 function answer(content: string, overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -48,7 +46,7 @@ function answer(content: string, overrides: Partial<ChatMessage> = {}): ChatMess
 describe('indexProducts', () => {
   it('matches a bold name that is only a prefix of the full catalog title', () => {
     // The LLM bolds a short name; the citation carries colorway and size.
-    const product = indexProducts(citations, allImages)("adidas Men's BB6622 Supernova Trail Shoe")
+    const product = indexProducts(citations)("adidas Men's BB6622 Supernova Trail Shoe")
 
     expect(product?.asin).toBe('B07FBKWMBY')
     expect(product?.title).toContain('Hi-Res Blue')
@@ -56,7 +54,7 @@ describe('indexProducts', () => {
   })
 
   it('matches when the bold name is longer than the catalog title', () => {
-    const longer = indexProducts(citations, allImages)(
+    const longer = indexProducts(citations)(
       'Brother LB7000 Computerized Embroidery and Sewing Machine with 103 Stitches'
     )
 
@@ -64,37 +62,39 @@ describe('indexProducts', () => {
   })
 
   it('ignores punctuation and case differences when matching', () => {
-    const product = indexProducts(citations, allImages)('ADIDAS MENS BB6622 SUPERNOVA TRAIL SHOE')
+    const product = indexProducts(citations)('ADIDAS MENS BB6622 SUPERNOVA TRAIL SHOE')
 
     expect(product?.asin).toBe('B07FBKWMBY')
   })
 
   it('does not match an unrelated product name', () => {
-    expect(indexProducts(citations, allImages)('Hand-cranked butter churn')).toBeUndefined()
+    expect(indexProducts(citations)('Hand-cranked butter churn')).toBeUndefined()
   })
 
-  it('skips products with no bundled image rather than promising a photo', () => {
-    const onlySinger = (asin?: string) => (asin === 'B0085SRIC2' ? '/img/singer.jpg' : undefined)
-    const find = indexProducts(citations, onlySinger)
+  it('skips products with no image URL rather than promising a photo', () => {
+    const find = indexProducts(
+      citations.map((c) => (c.asin === 'B0085SRIC2' ? c : { ...c, image_url: undefined }))
+    )
 
     expect(find('Singer 3221 Simple Sewing Machine')?.asin).toBe('B0085SRIC2')
     expect(find('Brother LB7000 Computerized Embroidery and Sewing Machine')).toBeUndefined()
   })
 
-  it('skips citations with no ASIN, since the image is keyed by it', () => {
-    const noAsin: Citation[] = [{ label: '[1] Documentation', url: 'https://example.com' }]
-
-    expect(indexProducts(noAsin, allImages)('Documentation')).toBeUndefined()
+  it('uses the citation image URL as the card photo', () => {
+    expect(indexProducts(citations)('Singer 3221')?.image).toBe(
+      'https://m.media-amazon.com/images/I/singer.jpg'
+    )
   })
 
   it('returns nothing when there are no citations or no images at all', () => {
-    expect(indexProducts(undefined, allImages)('Singer 3221')).toBeUndefined()
-    expect(indexProducts([], allImages)('Singer 3221')).toBeUndefined()
-    expect(indexProducts(citations, noImages)('Singer 3221')).toBeUndefined()
+    const noImages = citations.map((c) => ({ ...c, image_url: undefined }))
+    expect(indexProducts(undefined)('Singer 3221')).toBeUndefined()
+    expect(indexProducts([])('Singer 3221')).toBeUndefined()
+    expect(indexProducts(noImages)('Singer 3221')).toBeUndefined()
   })
 
   it('ignores an empty name', () => {
-    expect(indexProducts(citations, allImages)('')).toBeUndefined()
+    expect(indexProducts(citations)('')).toBeUndefined()
   })
 })
 
@@ -118,7 +118,7 @@ describe('Message — product cards', () => {
     expect(singer.closest('li')).not.toBeNull()
     expect(singer.querySelector('img')).toHaveAttribute(
       'src',
-      expect.stringContaining('B0085SRIC2')
+      'https://m.media-amazon.com/images/I/singer.jpg'
     )
     expect(singer).toHaveTextContent('has an automatic needle threader.')
     expect(singer.querySelector('a')).toHaveAttribute('href', 'https://www.amazon.com/s?k=singer')
@@ -176,7 +176,19 @@ describe('Message — product cards', () => {
     expect(screen.getByTestId('product-card')).toBeInTheDocument()
   })
 
-  it('renders a plain list when no product has a bundled image', () => {
+  it('falls back to the plain bullet when the image URL is dead', () => {
+    render(
+      <Message message={answer('*   **Singer 3221 Simple Sewing Machine** — a good starter.')} />
+    )
+
+    fireEvent.error(screen.getByRole('img'))
+
+    expect(screen.queryByTestId('product-card')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByText(/a good starter/)).toBeInTheDocument()
+  })
+
+  it('renders a plain list when no product has an image', () => {
     const unknown: Citation[] = [
       { label: '[1] Imaginary Product', url: 'https://example.com', asin: 'NOTREAL0001' },
     ]

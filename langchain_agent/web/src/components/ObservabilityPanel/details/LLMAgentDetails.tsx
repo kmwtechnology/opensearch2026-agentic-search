@@ -85,13 +85,15 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
             </div>
             <div className="text-[1.25rem] text-[#065F46]/90 mt-1">
               {agentStep.status === 'running' ? (
-                'Writing the new mapping and re-indexing the catalog live (~15-20s)...'
+                'Writing the new mapping and re-tagging the matching products live...'
               ) : enrichmentEvent.duration_seconds != null ? (
                 <>
                   New mapping written; catalog re-indexed —{' '}
                   <span className="font-mono">
                     {enrichmentEvent.docs_processed != null &&
-                      `${enrichmentEvent.docs_processed} products in `}
+                      (enrichmentEvent.docs_scanned != null
+                        ? `${enrichmentEvent.docs_processed} of ${enrichmentEvent.docs_scanned} matching products re-tagged in `
+                        : `${enrichmentEvent.docs_processed} products in `)}
                     {enrichmentEvent.duration_seconds.toFixed(1)}s
                   </span>
                   . This query — and future ones — now resolve it.

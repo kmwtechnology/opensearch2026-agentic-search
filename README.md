@@ -7,8 +7,8 @@
 A production-grade **LangGraph RAG agent** for Amazon ESCI e-commerce product search.
 Combines hybrid retrieval (vector + BM25 via RRF), cross-encoder reranking, intent
 routing, and real-time WebSocket streaming. Runs **local-only** (Docker
-Compose) with Google Gemini — see issue #110/#113 for why the earlier GCP
-Cloud Run deploy path was removed.
+Compose) with a local Ollama LLM and embeddings — no cloud API key required —
+see issue #110/#113 for why the earlier GCP Cloud Run deploy path was removed.
 
 ## Local Development With Docker
 
@@ -17,7 +17,8 @@ Runs PostgreSQL and OpenSearch in Docker, the FastAPI backend on
 
 ### Prerequisites
 
-- Google AI API key from <https://aistudio.google.com/apikey>
+- [Ollama](https://ollama.com/) installed and running locally (`setup.sh`
+  checks and pulls the required models)
 - Docker Desktop
 - Python 3.14+
 - Node.js 24+
@@ -30,8 +31,7 @@ Docker-based Lucille ETL ingest (`LUCILLE_USE_DOCKER=false`).
 ```bash
 cd langchain_agent
 cp .env.example .env
-# Set GOOGLE_API_KEY in .env before continuing.
-./scripts/setup.sh    # One-time setup (10–20 min)
+./scripts/setup.sh    # One-time setup: pulls Ollama models (~23 GB), then ~35-40 min of Lucille embedding
 ./scripts/start.sh    # Start backend + frontend → http://localhost:5173
 ```
 
@@ -48,16 +48,15 @@ Useful follow-up commands:
 
 ## What It Does
 
-A conversational RAG agent powered by Google Gemini for e-commerce product discovery:
+A conversational RAG agent powered by a local Ollama LLM for e-commerce product discovery:
 
 - **6-intent classifier** — `search`, `comparison`, `attribute_filter`,
   `refinement`, `follow_up`, `summary` — single structured-output LLM call
   (no keyword fast-path)
-- **Hybrid search** — vector (768-dim Gemini embeddings) + BM25 lexical,
-  fused via Reciprocal Rank Fusion (k=60)
-- **Cross-encoder reranking** (default) — local `ms-marco-MiniLM-L-12-v2`
-  scores query-product relevance, no API call; Gemini LLM reranking is a
-  non-default alternative (~500ms/batch)
+- **Hybrid search** — vector (768-dim `nomic-embed-text` embeddings via
+  Ollama) + BM25 lexical, fused via Reciprocal Rank Fusion (k=60)
+- **Cross-encoder reranking** — local `ms-marco-MiniLM-L-12-v2` scores
+  query-product relevance, no API call; it is the only reranker
 - **Dynamic alpha** — query-aware lexical/semantic balance; fast-path alpha
   for comparison/attribute_filter/refinement, LLM path for search/follow_up
 - **Quality gate** — if max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45), adjusts alpha ±0.3, widens the candidate pool 4x, and retries once (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only)
@@ -80,16 +79,16 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   tan→yellow mis-tag defect so it can be demonstrated again
 - **Agentic taxonomy growth & correction** — the agent can grow *or fix*
   its own catalog taxonomy via `trigger_enrichment`, gated by
-  `ENABLE_ENRICHMENT_TOOL`: a genuine new color/material term gets added
-  (proven live through chat for color; material's live-chat trigger is
-  off by default since its deliberate lexical fallback + filter
-  relaxation protect real feature-word queries like "waterproof"), and a
-  term already mapped to the *wrong* bucket can be corrected when a
+  `ENABLE_ENRICHMENT_TOOL`: a genuine new color/waterproof term gets added,
+  and a term already mapped to the *wrong* bucket can be corrected when a
   shopper disputes it (e.g. the shipped taxonomy maps "tan" to "yellow"
-  instead of "brown" — a real bug affecting 29 products, invisible to
-  automated quality gates since the wrong result still scores above
-  threshold). Either way, a genuine full Lucille reindex runs (~19–20s) —
-  see `langchain_agent/ARCHITECTURE.md` and `langchain_agent/DEMO.md`
+  instead of "brown"), invisible to automated quality gates since the wrong
+  result still scores above threshold. By default (`REINDEX_TRIGGER=scoped`)
+  this re-detects the attribute only on products whose text mentions the
+  changed variant and bulk-updates just those (well under a second to a few
+  seconds, no re-embedding); a full Lucille reindex remains available via
+  `REINDEX_TRIGGER=local` but takes 30+ minutes — see
+  `langchain_agent/ARCHITECTURE.md` and `langchain_agent/DEMO.md`
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
   boosting, and field boosting, displayed in the observability panel's
   "Search Optimizations" card
@@ -128,7 +127,7 @@ flowchart TB
     end
 
     subgraph Search["Hybrid Search"]
-        VS["Vector Search<br/>(768-dim Gemini)"]
+        VS["Vector Search<br/>(768-dim, Ollama nomic-embed-text)"]
         BM25["BM25 Lexical<br/>(OpenSearch)"]
         RRF["RRF Fusion<br/>(k=60)"]
     end
@@ -138,15 +137,13 @@ flowchart TB
         CHK["PostgreSQL<br/>(LangGraph checkpoints)"]
     end
 
-    subgraph GoogleAI["Google Gemini"]
-        LLM["Gemini 2.5 Flash<br/>(generation)"]
-        CLASSIFIER["Gemini 2.5 Flash-Lite<br/>(intent, eval)"]
-        EMB["models/gemini-embedding-001<br/>(768-dim)"]
+    subgraph OllamaLLM["Local Ollama"]
+        LLM["qwen3.6:35b-a3b-q4_K_M<br/>(generation, classify, eval, judge)"]
+        EMB["nomic-embed-text<br/>(768-dim)"]
     end
 
     subgraph Reranking["Reranking"]
-        CE["ms-marco-MiniLM-L-12-v2<br/>(cross-encoder, default, ~2s/40-doc batch)"]
-        LLMR["Gemini Flash Lite<br/>(non-default fallback, ~500ms)"]
+        CE["ms-marco-MiniLM-L-12-v2<br/>(cross-encoder, only reranker, ~2s/40-doc batch)"]
     end
 
     UI --> IC
@@ -158,20 +155,18 @@ flowchart TB
     VS --> RRF
     BM25 --> RRF
     RRF --> RERANK
-    RERANK -.->|default| CE
-    RERANK -.->|non-default| LLMR
+    RERANK --> CE
     RERANK --> QG
     QG -->|retry| RET
     QG -->|pass| AGENT
     SUM --> AGENT
     AGENT --> LLM
     AGENT --> JUDGE
-    JUDGE --> CLASSIFIER
     AGENT --> UI
     AGENT --> CHK
     IDX --> RET
-    CLASSIFIER --> IC
-    CLASSIFIER --> QE
+    LLM --> IC
+    LLM --> QE
 ```
 
 ### Pipeline Flow (RAG Q&A Mode)
@@ -198,7 +193,7 @@ Key decision points:
   and not yet retried, adjusts α ±0.3, widens the candidate pool 4x, and
   loops back to the retriever; otherwise continues to the agent.
 - **Reranker** — cross-encoder scoring of top-K documents on a 0.0–1.0
-  scale; Gemini Flash Lite fallback with Pydantic-validated output.
+  scale; the only reranker (no LLM fallback).
 - **Citations** — Amazon search URLs derived from product title
   (`https://www.amazon.com/s?k={title}`), deduplicated and filtered by a
   minimum reranker score (0.10). Search-by-title is robust against delisted
@@ -232,17 +227,16 @@ adjustment.
 
 | Category | Technology | Purpose |
 | --- | --- | --- |
-| **LLM (generation)** | Gemini 2.5 Flash | Response generation |
-| **LLM (classify/eval)** | Gemini 2.5 Flash-Lite | Intent classification, query evaluation |
-| **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder) | Default reranker (~2s for a 40-doc batch, measured in production); Gemini Flash Lite fallback (~500ms) |
-| **Embeddings** | `models/gemini-embedding-001` | 768-dim vectors |
+| **LLM (all chat calls)** | `qwen3.6:35b-a3b-q4_K_M` via local Ollama | Generation, intent classification, query evaluation, LLM judge, enrichment value judge |
+| **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder) | Only reranker (~2s for a 40-doc batch, measured in production) |
+| **Embeddings** | `nomic-embed-text` via local Ollama | 768-dim vectors |
 | **Vector Database** | OpenSearch 3.8.0 | HNSW `knn_vector` + BM25 |
 | **Search Fusion** | Reciprocal Rank Fusion (k=60) | Hybrid score fusion |
 | **Checkpoints** | PostgreSQL 18 (local dev via `pgvector/pgvector:0.8.6-pg18`) | LangGraph state persistence |
 | **Agent Framework** | LangGraph + LangChain | Graph-based pipeline with typed state |
 | **Backend API** | FastAPI + WebSocket | REST/WebSocket with real-time streaming |
 | **Frontend** | React 19 + TypeScript + Tailwind + Zustand | Observability panel + chat UI |
-| **Data** | Amazon ESCI (Shopping Queries Dataset) | 1.8M+ product listings |
+| **Data** | Amazon ESCI (Shopping Queries Dataset) | 158,637 judged products |
 | **Deployment** | Local only (Docker Compose) | Conference demo |
 
 ## The Four Demos
@@ -261,21 +255,23 @@ page.
 **Adaptive Query Enhancements** — one conversation, three turns that narrow
 the way a real shopper actually shops: "Show me blue running shoes" →
 "only size 10" → "what about trail running?". Watch α move 0.25 → 0.35 →
-0.70 as the questions get less literal: turn 2 narrows within the prior
+0.55 as the questions get less literal: turn 2 narrows within the prior
 turn's pinned results, and turn 3 gets rewritten into a full query that
 carries both earlier constraints forward into a fresh, more semantic
 search. (This catalog has no price field, so every turn stays on
 attributes that exist — color, size, brand, feature, waterproofing.)
 
-**Proving It With Real Judgments** — a standalone turn ("sewing machine")
+**Proving It With Real Judgments** — a standalone turn ("headphones with microphone")
 that happens to hit real Amazon ESCI ground truth, so the Pipeline Quality
 Summary switches from the self-referential confidence proxy to genuine
 graded NDCG@10 / MRR / Recall@20 / Precision@10 per stage.
 
 **Classification & Ingestion** — the centerpiece. The shipped catalog
 mis-tags "tan" as "yellow"; a shopper disputes it in chat; the agent
-corrects the taxonomy and triggers a real ~19–20s Lucille reindex of all
-9,618 products, live. Re-searching in a new conversation proves the fix
+corrects the taxonomy via a scoped re-detection — re-checking only the
+products that mention the disputed variant (905 products re-checked,
+679 re-tagged, in under a second, measured live) — with no full reindex
+and no re-embedding. Re-searching in a new conversation proves the fix
 stuck. This demo consumes its own bug to demonstrate the fix, so the UI
 re-arms it automatically each time it's selected
 (`POST /api/admin/demo-reset` does the same thing manually).
@@ -345,7 +341,6 @@ Pure-Python metric implementations live in
 | **Context-validated refinement** | Continuity scoring (category match + doc-ID overlap) distinguishes "make them waterproof" (refine prior boots) from "find me dresses" (reset) |
 | **Dynamic α** | Fast-path α for comparison/attribute_filter/refinement; LLM path for search/follow_up |
 | **RRF fusion** | `score = Σ 1/(rank + 60)` combining vector and BM25 rankings |
-| **LLM reranking (non-default fallback)** | Gemini Flash Lite scores query-product relevance, Pydantic-validated 0.0–1.0 |
 | **Quality gate with α adjustment** | Retries once with α ±0.3 and a 4x wider candidate pool if max reranker score is below the intent-specific threshold (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45) |
 | **Embedding cache** | Query embedding cache (60-min TTL) reduces API calls |
 | **Deterministic sampling** | ESCI products sampled with `random_state=42` for reproducibility |
@@ -361,7 +356,7 @@ opensearch2026-agentic-search/
 ├── docker-compose.yml            # PostgreSQL + OpenSearch (local dev)
 ├── LICENSE
 ├── data/                         # Precomputed ESCI parquets (see data/README.md)
-│   ├── esci_products_sample_10000.parquet
+│   ├── esci_products.parquet
 │   └── esci_judgments_aggregated.parquet
 ├── docs/                         # Docs for API consumers and contributors
 │   ├── integration/              # REST/WebSocket examples, auth patterns
@@ -415,7 +410,7 @@ opensearch2026-agentic-search/
 
 ## Search Optimization
 
-- **Vector search** — 768-dim `models/gemini-embedding-001` via HNSW (~200–500 ms)
+- **Vector search** — 768-dim `nomic-embed-text` (Ollama) via HNSW (~200–500 ms)
 - **Lexical search** — BM25 via OpenSearch's Lucene analyzer (~100–300 ms)
 - **RRF fusion** — `score = Σ 1/(rank + 60)` normalizes across methods
 - **Dynamic α** — set per-query by the Query Evaluator
@@ -437,7 +432,7 @@ ENABLE_RERANKING = True
 ENABLE_QUERY_EVALUATION = True
 ```
 
-Environment variables (in `.env`) that **do** affect behavior include `ESCI_INGEST_LIMIT`, `QUALITY_GATE_THRESHOLD`, `RERANKER_BATCH_SIZE`, and the model selections (`LLM_MODEL`, `EMBEDDINGS_MODEL`, `RERANKER_MODEL`, `QUERY_EVAL_MODEL`, `JUDGE_MODEL`) — see `langchain_agent/.env.example` for the full, current list with defaults. That file is the single source of truth for what's genuinely configurable; this README doesn't duplicate it in full to avoid drifting out of sync again.
+Environment variables (in `.env`) that **do** affect behavior include `ESCI_INGEST_LIMIT`, `QUALITY_GATE_THRESHOLD`, and the model selections (`LLM_MODEL`, `EMBEDDINGS_MODEL`, `QUERY_EVAL_MODEL`, `JUDGE_MODEL`, `OLLAMA_HOST`, `OLLAMA_KEEP_ALIVE`, `OLLAMA_NUM_CTX`) — see `langchain_agent/.env.example` for the full, current list with defaults. That file is the single source of truth for what's genuinely configurable; this README doesn't duplicate it in full to avoid drifting out of sync again.
 
 ## Operations
 
@@ -445,28 +440,28 @@ Local development is fully driven by scripts in `langchain_agent/scripts/`:
 
 ```bash
 cd langchain_agent
-cp .env.example .env        # Fill in GOOGLE_API_KEY
-./scripts/setup.sh          # Docker + venv + DB + product ingestion
+cp .env.example .env
+./scripts/setup.sh          # Docker + venv + DB + Ollama models + product ingestion
 ./scripts/start.sh          # Backend :8000 + frontend :5173
 ./scripts/stop.sh           # Stop local services
 ./scripts/teardown.sh       # Full cleanup
 ```
 
-**Prerequisites:** Docker Desktop, Python 3.14+, Node.js 24+, Google API key
-([get one](https://aistudio.google.com/apikey)), and ~1.5 GB disk for the
-ESCI dataset plus Docker volumes. (Java 21+/Maven only needed for
-`LUCILLE_USE_DOCKER=false`.)
+**Prerequisites:** Docker Desktop, Python 3.14+, Node.js 24+, [Ollama](https://ollama.com/)
+installed and running (`setup.sh` pulls the required models, ~23 GB), and
+disk for the ESCI dataset plus Docker volumes. (Java 21+/Maven only needed
+for `LUCILLE_USE_DOCKER=false`.)
 
 There is no CI/CD pipeline and no deploy step (issue #110/#113) — `make check`
 run locally is the only gate before merging to `main`.
 
 ### ESCI data ships in `data/`
 
-`data/esci_products_sample_10000.parquet` (9,618 products with pre-computed
-768-dim embeddings) and `data/esci_judgments_aggregated.parquet` (97,345
-judgment queries) are committed to the repo and read directly by
-`scripts/lucille_ingest.sh`. The Docker image does not bundle these — ingest
-runs from a workstation, not inside the container.
+`data/esci_products.parquet` (158,637 products, text only — embeddings are
+generated at ingest time by Lucille via Ollama) and
+`data/esci_judgments_aggregated.parquet` are committed to the repo and read
+directly by `scripts/lucille_ingest.sh`. The Docker image does not bundle
+these — ingest runs from a workstation, not inside the container.
 
 ## Performance
 

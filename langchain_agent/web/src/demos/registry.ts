@@ -191,13 +191,24 @@ export const DEMOS: Demo[] = [
      * below hybrid), but every optimized stage clearly beats the stock
      * baseline, the catalog is clean (Singer/Suteck/Brother — real products,
      * no spam), and there is nothing here for anyone to raise an eyebrow at.
+     *
+     * 'headphones with microphone' (current, #147) replaced it when the corpus
+     * was rebuilt query-first (158K products, local nomic embeddings). On the
+     * new corpus 'sewing machine' measured stock 0.41 -> bm25 0.16 -> hybrid
+     * 0.46 -> reranked 0.36: our BM25 below stock and reranking below hybrid,
+     * the opposite of the story. 16 benign test/small candidates with >=12
+     * Exact judgments were run live through the full pipeline; this was the
+     * clean monotonic winner, identical across 3 runs 2026-09-25: stock_bm25
+     * NDCG@10=0.164 -> bm25=0.284 -> hybrid=0.404 -> reranked=0.596, with 39
+     * judged products in the corpus (35 Exact). ('baby boy onesies' was also
+     * monotonic but starts at 0.0 and tops out at 0.43.)
      */
     turns: [
       {
-        query: 'sewing machine',
+        query: 'headphones with microphone',
         watchFor:
-          'has_ground_truth flips to true — the Pipeline Quality Summary switches from the self-referential confidence proxy to real ESCI NDCG@10 per stage: stock BM25 0.81, BM25 0.91, hybrid 0.95, reranked 0.92. This is the same progression the other six turns imply but never actually show: hybrid and reranking measurably beating plain BM25, graded by Amazon\'s own relevance judgments, not this system\'s own scoring.',
-        note: 'Only 3 products are judged for this query (the sample corpus\' judgment sets are sparse, average ~1 per query) — do not oversell the sample size. The point is that the number is REAL, not that it is large.',
+          'has_ground_truth flips to true — the Pipeline Quality Summary switches from the self-referential confidence proxy to real ESCI NDCG@10 per stage: stock BM25 0.16, BM25 0.28, hybrid 0.40, reranked 0.60 — every stage beats the one before it. This is the same progression the other six turns imply but never actually show: hybrid and reranking measurably beating plain BM25, graded by Amazon\'s own relevance judgments, not this system\'s own scoring.',
+        note: '39 products are judged for this query in the corpus (35 Exact) — #147 builds the corpus query-first, so every judged test query keeps its full judgment set. The number is REAL, graded by Amazon\'s own judgments.',
       },
     ],
   },

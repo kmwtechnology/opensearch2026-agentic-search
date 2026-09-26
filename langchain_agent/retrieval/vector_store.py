@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import urllib3
 from langchain_core.documents import Document
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_core.embeddings import Embeddings
 from opensearchpy import OpenSearch, RequestsHttpConnection
 
 from core.config import (
@@ -77,6 +77,15 @@ INDEX_MAPPING = {
             "knn.algo_param.ef_search": 100,
         },
         "analysis": {
+            # Splits on every non-[A-Za-z0-9] character -- the same word
+            # boundaries as Java 21's ASCII \b in AttributeDetectorStage. The
+            # standard tokenizer keeps "Color:black" / "Brown.All" as ONE token
+            # (Unicode MidLetter rules), so a phrase query on chunk_text misses
+            # text the detector regex matches; chunk_text.words doesn't. Used
+            # only to find scoped re-tag candidates (pipeline/scoped_retag.py).
+            "tokenizer": {
+                "ascii_word_tokenizer": {"type": "pattern", "pattern": "[^A-Za-z0-9]+"},
+            },
             "filter": {
                 "edge_ngram_filter": {
                     "type": "edge_ngram",
@@ -129,6 +138,10 @@ INDEX_MAPPING = {
                     "tokenizer": "standard",
                     "filter": ["lowercase"],
                 },
+                "ascii_words_analyzer": {
+                    "tokenizer": "ascii_word_tokenizer",
+                    "filter": ["lowercase"],
+                },
             },
         },
     },
@@ -147,7 +160,10 @@ INDEX_MAPPING = {
             "chunk_text": {
                 "type": "text",
                 "analyzer": "light_english_analyzer",
-                "fields": {"heavy": {"type": "text", "analyzer": "heavy_english_analyzer"}},
+                "fields": {
+                    "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
+                    "words": {"type": "text", "analyzer": "ascii_words_analyzer"},
+                },
             },
             "document_id": {"type": "keyword"},
             "chunk_index": {"type": "integer"},
@@ -194,6 +210,9 @@ INDEX_MAPPING = {
             "product_waterproof_primary": {"type": "keyword"},
             "product_waterproof_secondary": {"type": "keyword"},
             "product_locale": {"type": "keyword"},
+            # SQID image URL (#147): displayed, never searched -- keep it out of
+            # the inverted index entirely.
+            "product_image_url": {"type": "keyword", "index": False},
             "esci_labels": {"type": "keyword"},
             "collection": {"type": "keyword"},
             # Autocomplete suggest fields
@@ -299,7 +318,7 @@ class OpenSearchVectorStore:
     if the hybrid query type is not available.
 
     Attributes:
-        embeddings: GoogleGenerativeAIEmbeddings instance for generating query embeddings
+        embeddings: query-side embeddings (retrieval/embeddings.py's PrefixedOllamaEmbeddings)
         collection_id: Collection ID for document filtering
         client: OpenSearch client instance
         index_name: Name of the OpenSearch index
@@ -339,7 +358,7 @@ class OpenSearchVectorStore:
 
     def __init__(
         self,
-        embeddings: GoogleGenerativeAIEmbeddings,
+        embeddings: Embeddings,
         collection_id: str,
         client: Optional[OpenSearch] = None,
     ) -> None:
@@ -545,6 +564,15 @@ class OpenSearchVectorStore:
         }
         if fuzzy:
             clause["fuzziness"] = "AUTO"
+            # Bound the expansion. Unbounded AUTO fuzziness expands each term
+            # into up to 50 vocabulary variants *per field*; over this many
+            # fields and a 158K-product vocabulary (#147) an ordinary 8-10 word
+            # query blew past OpenSearch's 1024-clause limit and hybrid search
+            # failed outright. No fuzzing the first character is the usual
+            # typo-tolerance trade-off; 10 variants per term keeps a 22-word
+            # query well inside the limit.
+            clause["prefix_length"] = 1
+            clause["max_expansions"] = 10
         if not synonyms:
             # `standard` analyzer skips the synonym_filter applied by english_analyzer
             clause["analyzer"] = "standard"
@@ -1065,6 +1093,8 @@ class OpenSearchVectorStore:
             "product_brand": src.get("product_brand", ""),
             "product_color": src.get("product_color", ""),
             "product_color_primary": src.get("product_color_primary", ""),
+            # ~95% of products carry one (SQID); "" when Amazon has no photo.
+            "image_url": src.get("product_image_url", "") or "",
         }
         if score is not None:
             metadata["retrieval_score"] = float(score)

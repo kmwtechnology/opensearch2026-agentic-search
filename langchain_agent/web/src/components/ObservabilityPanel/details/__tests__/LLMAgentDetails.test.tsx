@@ -56,7 +56,7 @@ describe('LLMAgentDetails', () => {
     })
     render(<LLMAgentDetails step={step} />)
 
-    expect(screen.getByText(/re-indexing the catalog live/i)).toBeInTheDocument()
+    expect(screen.getByText(/re-tagging the matching products live/i)).toBeInTheDocument()
   })
 
   it('shows completed copy once the step is done', () => {
@@ -79,6 +79,16 @@ describe('LLMAgentDetails', () => {
     expect(container.textContent).toContain('9618 products in 21.5s')
   })
 
+  it('reports re-tagged of scanned for a scoped re-tag (#147)', () => {
+    const step = makeStep({
+      status: 'complete',
+      events: [makeEnrichmentEvent({ duration_seconds: 0.8, docs_processed: 31, docs_scanned: 274 })],
+    })
+    const { container } = render(<LLMAgentDetails step={step} />)
+
+    expect(container.textContent).toContain('31 of 274 matching products re-tagged in 0.8s')
+  })
+
   it('falls back to generic completed copy when duration_seconds is not available', () => {
     const step = makeStep({
       status: 'complete',
@@ -97,7 +107,7 @@ describe('LLMAgentDetails', () => {
     })
     render(<LLMAgentDetails step={step} />)
 
-    expect(screen.getByText(/re-indexing the catalog live/i)).toBeInTheDocument()
+    expect(screen.getByText(/re-tagging the matching products live/i)).toBeInTheDocument()
     expect(screen.queryByText(/9618 products/i)).not.toBeInTheDocument()
   })
 

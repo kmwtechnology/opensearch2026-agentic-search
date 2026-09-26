@@ -40,7 +40,7 @@ def _reset_shared_client():
 
 _PSYCOPG = "api.routes.health.psycopg"
 _OS_CLIENT = "retrieval.vector_store.get_shared_opensearch_client"
-_API_KEY = "api.routes.health.GOOGLE_API_KEY"
+_MISSING_MODELS = "api.routes.health.missing_ollama_models"
 
 
 def _pg_ok():
@@ -67,7 +67,7 @@ def _os_ok(count=100):
 # ---------------------------------------------------------------------------
 
 
-@patch(_API_KEY, "fake-key")
+@patch(_MISSING_MODELS, lambda models: [])
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect", return_value=_pg_ok())
 def test_health_all_ok(mock_pg, mock_os, client):
@@ -76,23 +76,36 @@ def test_health_all_ok(mock_pg, mock_os, client):
     body = r.json()
     assert body["status"] == "ok"
     assert body["postgres"] is True
-    assert body["google_ai"] is True
+    assert body["llm"] is True
     assert body["vector_store"] is True
     assert body["document_count"] == 100
 
 
-@patch(_API_KEY, "")
+@patch(_MISSING_MODELS, lambda models: ["nomic-embed-text"])
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect", return_value=_pg_ok())
-def test_health_degraded_when_no_api_key(mock_pg, mock_os, client):
+def test_health_degraded_when_model_not_pulled(mock_pg, mock_os, client):
     r = client.get("/api/health")
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "degraded"
-    assert body["google_ai"] is False
+    assert body["llm"] is False
+    assert "nomic-embed-text" in body["llm_error"]
 
 
-@patch(_API_KEY, "fake-key")
+@patch(_MISSING_MODELS, side_effect=OSError("connection refused"))
+@patch(_OS_CLIENT, return_value=_os_ok())
+@patch(_PSYCOPG + ".connect", return_value=_pg_ok())
+def test_health_degraded_when_ollama_down(mock_pg, mock_os, mock_models, client):
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "degraded"
+    assert body["llm"] is False
+    assert body["llm_error"] == "Ollama not reachable"
+
+
+@patch(_MISSING_MODELS, lambda models: [])
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect", side_effect=Exception("connection refused"))
 def test_health_degraded_when_postgres_fails(mock_pg, mock_os, client):
@@ -104,20 +117,20 @@ def test_health_degraded_when_postgres_fails(mock_pg, mock_os, client):
     assert "postgres_error" in body
 
 
-@patch(_API_KEY, "fake-key")
+@patch(_MISSING_MODELS, lambda models: [])
 @patch(_OS_CLIENT, side_effect=Exception("opensearch down"))
 @patch(_PSYCOPG + ".connect", return_value=_pg_ok())
 def test_health_vector_store_error_not_degraded_overall(mock_pg, mock_os, client):
-    # vector_store failure doesn't affect overall "ok" (only postgres + google_ai gate it)
+    # vector_store failure doesn't affect overall "ok" (only postgres + llm gate it)
     r = client.get("/api/health")
     assert r.status_code == 200
     body = r.json()
     assert body["vector_store"] is False
     assert "vector_store_error" in body
-    assert body["status"] == "ok"  # postgres+google_ai still healthy
+    assert body["status"] == "ok"  # postgres+llm still healthy
 
 
-@patch(_API_KEY, "fake-key")
+@patch(_MISSING_MODELS, lambda models: [])
 @patch(_OS_CLIENT, return_value=_os_ok(count=0))
 @patch(_PSYCOPG + ".connect", return_value=_pg_ok())
 def test_health_vector_store_false_when_zero_docs(mock_pg, mock_os, client):
@@ -128,7 +141,7 @@ def test_health_vector_store_false_when_zero_docs(mock_pg, mock_os, client):
     assert body["document_count"] == 0
 
 
-@patch(_API_KEY, "fake-key")
+@patch(_MISSING_MODELS, lambda models: [])
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect", return_value=_pg_ok())
 def test_health_returns_version(mock_pg, mock_os, client):
@@ -141,7 +154,7 @@ def test_health_returns_version(mock_pg, mock_os, client):
 # ---------------------------------------------------------------------------
 
 
-@patch(_API_KEY, "fake-key")
+@patch(_MISSING_MODELS, lambda models: [])
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect", return_value=_pg_ok())
 def test_ready_returns_true_when_healthy_and_warmed_up(mock_pg, mock_os, client):
@@ -151,7 +164,7 @@ def test_ready_returns_true_when_healthy_and_warmed_up(mock_pg, mock_os, client)
     assert r.json() == {"ready": True}
 
 
-@patch(_API_KEY, "")
+@patch(_MISSING_MODELS, lambda models: ["qwen3.6:35b-a3b-q4_K_M"])
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect", return_value=_pg_ok())
 def test_ready_returns_503_with_reason_when_degraded(mock_pg, mock_os, client):
@@ -164,12 +177,12 @@ def test_ready_returns_503_with_reason_when_degraded(mock_pg, mock_os, client):
     assert body["reason"]["status"] == "degraded"
 
 
-@patch(_API_KEY, "fake-key")
+@patch(_MISSING_MODELS, lambda models: [])
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect", return_value=_pg_ok())
 def test_ready_returns_503_when_healthy_but_warmup_incomplete(mock_pg, mock_os, client):
     """Regression test for #23: a cold instance whose reranker is still
-    loading must NOT report ready, even if postgres/opensearch/google_ai are
+    loading must NOT report ready, even if postgres/opensearch/llm are
     all healthy -- this is what gates Cloud Run's --startup-probe so it
     doesn't route concurrent chat traffic to a not-yet-warm instance."""
     with patch.object(chat_manager.agent_service, "_warmup_complete", False):
@@ -213,7 +226,7 @@ def test_config_uses_env_var_for_http_origin(client):
 # ---------------------------------------------------------------------------
 
 
-@patch(_API_KEY, "fake-key")
+@patch(_MISSING_MODELS, lambda models: [])
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect")
 @pytest.mark.asyncio

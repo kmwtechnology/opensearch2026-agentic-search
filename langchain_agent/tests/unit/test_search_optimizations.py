@@ -78,9 +78,16 @@ class TestBuildMultiMatchDefaults:
 class TestBuildMultiMatchIndividualFlags:
     """Each flag controls one observable property of the DSL."""
 
+    def test_fuzzy_expansion_is_bounded(self):
+        """Unbounded fuzzy expansion exceeded maxClauseCount on the 158K corpus (#147)."""
+        clause = _multi_match({})
+        assert clause["prefix_length"] == 1
+        assert clause["max_expansions"] == 10
+
     def test_fuzzy_off_drops_fuzziness(self):
         clause = _multi_match({"fuzzy": False})
         assert "fuzziness" not in clause
+        assert "max_expansions" not in clause
         # Other features unchanged
         assert "title_phrase^2.5" in clause["fields"]
 
@@ -759,3 +766,13 @@ class TestRetrieverForwarding:
         store = _make_store()
         retriever = store.as_retriever(search_type="hybrid")
         assert retriever.optimizations is None
+
+
+class TestCitationModel:
+    def test_rest_citation_carries_image_url(self):
+        """#147: the REST fallback exposes the same image_url the WS event does."""
+        from api.routes.chat import Citation
+
+        c = Citation(label="[1] Boot", url="https://x", asin="B01", image_url="https://img/1.jpg")
+        assert c.image_url == "https://img/1.jpg"
+        assert Citation(label="[1] Boot", url="https://x").image_url is None

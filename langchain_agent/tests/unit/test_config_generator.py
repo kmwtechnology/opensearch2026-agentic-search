@@ -129,3 +129,32 @@ class TestGenerateProductsConf:
         collection_pos = conf.index('name: "setCollectionId"')
 
         assert brand_pos < waterproof_pos < collection_pos
+
+
+class TestEmbedStage:
+    """The Ollama embed stage (#148): present by default, omitted on request."""
+
+    def test_embed_stage_present_by_default(self):
+        conf = generate_products_conf(["color"])
+
+        assert conf.count('class: "com.kmwllc.esci.OllamaEmbedStage"') == 1
+        assert "hostURL: ${OLLAMA_HOST}" in conf
+        assert "modelName: ${EMBEDDINGS_MODEL}" in conf
+        assert 'prefix: "search_document: "' in conf
+        assert "dimensions: 768" in conf
+
+    def test_embed_stage_runs_after_chunk_text_is_built(self):
+        conf = generate_products_conf(["color"])
+
+        assert conf.index('name: "buildChunkText"') < conf.index('name: "embedChunkText"')
+
+    def test_no_embed_omits_the_stage(self):
+        conf = generate_products_conf(["color"], embed=False)
+
+        assert 'name: "embedChunkText"' not in conf
+        assert conf.count("{") == conf.count("}")
+
+    def test_embed_braces_balanced(self):
+        conf = generate_products_conf(["color", "waterproof"], embed=True)
+
+        assert conf.count("{") == conf.count("}")

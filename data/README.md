@@ -2,91 +2,89 @@
 
 > **Parent**: [README.md](../README.md)
 
-Precomputed ESCI product and judgment parquets committed to the repo. Read directly by
-`scripts/lucille_ingest.sh` — no Google API embedding calls needed for the default 10k ingest.
+Product and judgment parquets committed to the repo (Git LFS) and read by
+`langchain_agent/scripts/lucille_ingest.sh`. They hold **text only**, with no vectors.
+Lucille embeds every product at ingest time with a local Ollama model
+(`OllamaEmbedStage`, `nomic-embed-text`, 768-dim; see #148), so no cloud
+embedding API is involved anywhere.
 
 ## Files
 
-| File | Records | Schema | Origin |
-|------|---------|--------|--------|
-| `esci_products_sample_10000.parquet` | 9,618 products | `product_id`, `product_title`, `product_brand`, `product_color`, `knn_vector` (768-dim Gemini embeddings), `collection_id` | Amazon ESCI dataset, sampled with `random_state=42`, pre-embedded |
-| `esci_judgments_aggregated.parquet` | 97,345 queries | `query`, `judgments` (list of `[product_id, relevance_label]`), relevance ∈ {`E`→4.0, `S`→1.0, `C`→0.1, `I`→0.0} | Amazon ESCI dataset, pre-aggregated by query |
+| File | Records | Contents | Origin |
+|------|---------|----------|--------|
+| `esci_products.parquet` | 158,637 products | `product_id` (ASIN), `product_title`, `product_description`, `product_bullet_point`, `product_brand`, `product_color`, `product_locale`, `product_image_url` | Every judged product of the ESCI US `test` + `small_version` queries, built by `scripts/build_product_sample.py` (#147). 95.5% have a real SQID image URL |
+| `esci_judgments_aggregated.parquet` | 97,345 queries | `query_id`, `query`, `locale`, `split`, `small_version`, `judgments_json` (relevance: `E`→4.0, `S`→1.0, `C`→0.1, `I`→0.0) | Amazon ESCI, pre-aggregated by query (`scripts/prepare_judgments_parquet.py`) |
+| `esci_products_smoke.parquet` | 1,921 products | same as `esci_products.parquet` | `build_product_sample.py --max-products 2000`: a small sample for fast local ingest tests |
+
+### Why query-first
+
+The corpus used to be a random 10K-product sample. Sampling products at random
+leaves about one judged product per query in the index, so NDCG and the
+ground-truth demo meant little. Selecting whole queries and keeping *all* of
+their judged products leaves ~19.8 judged products per test query in the
+corpus. The ESCI test/small subset is also exactly the one
+[SQID](https://github.com/Crossing-Minds/shopping-queries-image-dataset)
+scraped image URLs for.
 
 ## How They're Used
 
 `scripts/lucille_ingest.sh` reads both files:
-- **Products** — bulk-indexed into OpenSearch via Lucille ETL; embeddings are copied directly (no re-embedding)
-- **Judgments** — indexed as a separate `esci_judgments` index; lookups via `OpenSearchVectorStore.lookup_judgments(query)` for ground-truth evaluation
+- **Products**: Lucille builds `chunk_text` (title + description + bullets),
+  embeds it through Ollama, runs attribute detection, and indexes into
+  `OPENSEARCH_INDEX_NAME`. The full corpus takes ~35-40 min, almost all of it embedding.
+- **Judgments**: indexed into `esci_judgments` (created from
+  `lucille-esci/mapping/judgments_mapping.json`), filtered to queries with at
+  least one product in the products index. `OpenSearchVectorStore.lookup_judgments(query)`
+  uses it for ground-truth metrics. After the products index changes, refresh
+  only the judgments with `bash scripts/lucille_ingest.sh --skip-products`.
 
-## Regenerating Data
+## Regenerating the products parquet
 
-### Products
+Inputs are external and gitignored under `<repo>/esci/`:
 
-To create a new product sample (different size or seed), you'll need to download the full ESCI dataset from GitHub and re-embed. The current `esci_products_sample_10000.parquet` was pre-embedded with `models/gemini-embedding-001`.
+1. The ESCI dataset: `git clone https://github.com/amazon-science/esci-data esci/`
+   (the products parquet is 1.1 GB, via LFS).
+2. The SQID image URLs: `esci/sqid/product_image_urls.csv` and
+   `esci/sqid/supp_product_image_urls.csv`, from
+   [Crossing-Minds/shopping-queries-image-dataset](https://github.com/Crossing-Minds/shopping-queries-image-dataset) (`sqid/`).
 
-For regeneration:
-1. Clone the Amazon ESCI dataset: `git clone https://github.com/amazon-science/esci-data esci/`
-2. Re-embed products with Gemini:
-   ```bash
-   cd langchain_agent
-   PYTHONPATH=. python scripts/bigquery_batch_embeddings.py \
-     --project <GCP_PROJECT> \
-     --parquet-input ../esci/products.parquet \
-     --parquet-output data/esci_products_sample_<size>.parquet
-   ```
-   (Parallelizes embedding via BigQuery ML; ~15–30 min for 1.2M products)
-3. Update `scripts/lucille_ingest.sh` to reference the new file
+Then, from `langchain_agent/`:
+
+```bash
+PYTHONPATH=. python scripts/build_product_sample.py --dry-run          # counts + demo preconditions only
+PYTHONPATH=. python scripts/build_product_sample.py                    # writes data/esci_products.parquet
+PYTHONPATH=. python scripts/build_product_sample.py --max-products 2000 --output ../data/esci_products_smoke.parquet
+```
+
+Null text fields are written as `""`. When a field is null, Lucille's
+`Concatenate` stage leaves a literal `{product_description}` placeholder in
+`chunk_text`, which is how the old sample ended up with that string in 45% of
+its products.
 
 ### Judgments
 
-To re-aggregate (e.g., after updating locale or label mapping):
-
 ```bash
-cd langchain_agent
 PYTHONPATH=. python scripts/prepare_judgments_parquet.py --locale us --force
-# Outputs: data/esci_judgments_aggregated.parquet (overwrites existing)
-```
-
-Then re-ingest via Lucille:
-```bash
 bash scripts/lucille_ingest.sh --skip-products
 ```
 
-**Note:** The older standalone Python ingest scripts (`ingest_esci_products.py`, `ingest_esci_judgments.py`) were removed in PR #48. Lucille ETL is now the canonical ingest path.
-
 ## Storage Notes
 
-- **Size** — products: ~64 MB (9k docs × 768-dim vectors); judgments: ~23 MB (97k queries)
-- **Compression** — parquet format with Snappy codec (default)
-- **Versioning** — Git LFS tracks these files; `git lfs install` required locally
-- **Idempotency** — Lucille ingest is idempotent; re-running `lucille_ingest.sh` is safe
-
-## Sources
-
-- **ESCI Dataset** — [Amazon Science ESCI Data](https://github.com/amazon-science/esci-data)
-- **Embeddings** — `models/gemini-embedding-001` (768-dim), generated with `output_dimensionality=768`
-- **Relevance labels** — Amazon e-commerce relevance judgments (5-point scale mapped to 4 numeric levels)
+- **Size**: products ~125 MB (text only); judgments ~23 MB.
+- **Versioning**: Git LFS tracks `data/*.parquet`; `git lfs install` is required locally.
+- **Changing the embedding model** means a full re-ingest. The index mapping
+  pins 768 dimensions, and Lucille and the query side must use the same model
+  (`EMBEDDINGS_MODEL`).
 
 ## Troubleshooting
 
-**Lucille ingest fails with "file not found":**
-```bash
-ls -lh data/esci_*.parquet
-# If missing, commit them:
-git lfs pull
-```
+**Lucille ingest fails with "file not found":** run `git lfs pull`.
 
-**Re-embedding is slow:**
-```bash
-# For large samples, use BigQuery:
-PYTHONPATH=. python scripts/bigquery_batch_embeddings.py \
-  --project <GCP_PROJECT> \
-  --parquet-input esci/shopping_queries_dataset/esci_products_sample_100000.parquet \
-  --parquet-output data/esci_products_sample_100000.parquet
-# ~15–30 min for 1.2M products vs ~4.5 h serially
-```
+**Ingest stops at "Ollama embedding model ... not available":** start Ollama and
+`ollama pull nomic-embed-text`. The Docker Lucille path reaches the host's
+Ollama via `host.docker.internal` automatically.
 
-**Judgment lookups always miss:**
-Check that `esci_judgments_aggregated.parquet` is indexed and that queries match exactly
-(case-sensitive, whitespace-sensitive). Misses are graceful — the observability panel
-falls back to the confidence proxy.
+**Judgment lookups always miss:** check that `esci_judgments` exists and was
+created from `judgments_mapping.json`. Its `query.keyword` has a lowercase
+normalizer, and a dynamically-mapped index lacks it, so mixed-case queries miss.
+Misses are graceful; the observability panel falls back to the confidence proxy.

@@ -16,10 +16,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.config import (
     API_VERSION,
     DATABASE_URL,
-    GOOGLE_API_KEY,
+    EMBEDDINGS_MODEL,
+    JUDGE_MODEL,
+    LLM_MODEL,
     OPENSEARCH_INDEX_NAME,
+    QUERY_EVAL_MODEL,
     VECTOR_COLLECTION_NAME,
 )
+from core.llm import missing_ollama_models
 
 router = APIRouter()
 
@@ -37,7 +41,7 @@ def _health_check_sync() -> dict:
         "status": "ok",
         "version": API_VERSION,
         "postgres": False,
-        "google_ai": False,
+        "llm": False,
         "vector_store": False,
     }
 
@@ -65,17 +69,26 @@ def _health_check_sync() -> dict:
     except Exception:  # noqa: BLE001 # health probe must not raise
         status["vector_store_error"] = "Vector store connection failed"
 
-    # Check Google AI API key is configured (don't leak the fact it's missing)
-    status["google_ai"] = bool(GOOGLE_API_KEY)
+    # Check the local Ollama server is up and has every model the agent calls
+    # (#148). /api/tags is a local, sub-millisecond call -- fine for a probe.
+    try:
+        missing = missing_ollama_models(
+            [LLM_MODEL, QUERY_EVAL_MODEL, JUDGE_MODEL, EMBEDDINGS_MODEL]
+        )
+        status["llm"] = not missing
+        if missing:
+            status["llm_error"] = f"Ollama models not pulled: {', '.join(missing)}"
+    except Exception:  # noqa: BLE001 # health probe must not raise
+        status["llm_error"] = "Ollama not reachable"
 
     # Overall status
-    if not all([status["postgres"], status["google_ai"]]):
+    if not all([status["postgres"], status["llm"]]):
         status["status"] = "degraded"
 
     return status
 
 
-@router.get("/health", summary="Full dependency health check (postgres, google_ai, opensearch)")
+@router.get("/health", summary="Full dependency health check (postgres, llm, opensearch)")
 async def health_check():
     """
     Comprehensive health check of API and all dependencies.
@@ -84,7 +97,7 @@ async def health_check():
 
     **Checks:**
         - **PostgreSQL** — Database for conversation checkpoints
-        - **Google AI API** — LLM and embeddings service (checks API key only)
+        - **Ollama** — local LLM + embedding server (reachable, models pulled)
         - **OpenSearch** — Vector store for product search index
 
     **Response:** 200 OK
@@ -93,7 +106,7 @@ async def health_check():
             "status": "ok",
             "version": "1.0.0",
             "postgres": true,
-            "google_ai": true,
+            "llm": true,
             "vector_store": true,
             "document_count": 10000
         }
@@ -108,8 +121,8 @@ async def health_check():
         - `version` — API version
         - `postgres` — PostgreSQL connection healthy (bool)
         - `postgres_error` — Error message if postgres check failed (optional)
-        - `google_ai` — Google AI API key configured (bool)
-        - `google_ai_error` — Error message if google_ai check failed (optional)
+        - `llm` — Ollama reachable with every configured model pulled (bool)
+        - `llm_error` — Why the llm check failed (optional)
         - `vector_store` — OpenSearch has documents (bool)
         - `vector_store_error` — Error message if vector_store check failed (optional)
         - `document_count` — Number of indexed documents (int, optional)
@@ -124,7 +137,7 @@ async def health_check():
         blocking (psycopg, requests-based OpenSearch client).
 
     Returns:
-        Health status of postgres, google_ai, vector_store, and overall system.
+        Health status of postgres, llm, vector_store, and overall system.
     """
     return await run_in_threadpool(_health_check_sync)
 

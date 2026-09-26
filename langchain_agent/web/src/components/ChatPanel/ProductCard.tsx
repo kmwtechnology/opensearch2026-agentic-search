@@ -1,8 +1,9 @@
 /**
  * ProductCard - one named product, rendered the way a shopper expects (#144).
  *
- * The ESCI catalog has no images, so before this the audience read a bullet
- * list of product names with nothing to look at. Rather than hang a row of
+ * ESCI itself has no images; each product's photo URL comes from SQID (#147)
+ * and is loaded straight from Amazon's image CDN. Before cards, the audience
+ * read a bullet list of product names with nothing to look at. Rather than hang a row of
  * photos off the bottom of the answer, each bullet the answer names becomes a
  * card: photo on the left, the name and the model's own blurb on the right.
  * The description is the list item's markdown, passed straight through, so
@@ -14,7 +15,7 @@
  * same place. Every product is also a text link in the sources footer.
  */
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { DemoProduct } from './productIndex'
 
 interface ProductCardProps {
@@ -24,6 +25,11 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, children }: ProductCardProps) {
+  // A dead image URL (product delisted since SQID was scraped) falls back to
+  // the plain bullet text -- never a broken-image icon or a placeholder.
+  const [imageFailed, setImageFailed] = useState(false)
+  if (imageFailed) return <>{children}</>
+
   return (
     <div
       data-testid="product-card"
@@ -40,6 +46,8 @@ export function ProductCard({ product, children }: ProductCardProps) {
           src={product.image}
           alt={product.title}
           loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setImageFailed(true)}
           className="h-[8rem] w-[8rem] rounded-lg bg-white object-contain"
         />
       </a>

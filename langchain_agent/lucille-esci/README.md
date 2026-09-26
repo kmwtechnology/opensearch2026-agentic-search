@@ -34,8 +34,9 @@ lucille-esci/
 3. **lucille_ingest.sh** — orchestration script that:
    - Checks/builds `lucille-esci` + `lucille-bom` + `lucille-parquet` from the source tree
    - Regenerates `conf/products.generated.conf` via `PYTHONPATH=. python config_generator.py`
-   - Reads `data/*.parquet` (precomputed embeddings, no API calls)
-   - Applies `conf/products.generated.conf` / `conf/judgments.conf` to transform records
+   - Reads `data/*.parquet` (text only — no precomputed vectors)
+   - Applies `conf/products.generated.conf` / `conf/judgments.conf` to transform records,
+     embedding each document through Ollama (`OllamaEmbedStage`, `nomic-embed-text`)
    - Bulk-indexes into OpenSearch
 
 ## Configuration Files
@@ -112,7 +113,7 @@ To bump the Maven version: update `LUCILLE_VERSION` in `.env.example` (and your 
 
 ## Running Lucille Ingest
 
-### Standard (default 10 k sample)
+### Standard (full corpus)
 
 ```bash
 # From langchain_agent/:
@@ -127,20 +128,18 @@ bash scripts/lucille_ingest.sh
    - Cache-efficient: only compiles our code (~256 MB on top of the ~318 MB base image), not the full Lucille framework
    - Build time: ~1 min (first run); ~10 s (cached)
 2. Regenerates `conf/products.generated.conf` via `config_generator.py` (fixed prelude/epilogue + one detection stage per attribute type currently registered in OpenSearch)
-3. Runs Lucille products ingest via `docker compose run --rm lucille`: `data/esci_products_sample_10000.parquet` → OpenSearch
+3. Runs Lucille products ingest via `docker compose run --rm lucille`: `data/esci_products.parquet` → OpenSearch
    - Applies `conf/products.generated.conf` transformations: title/brand copy, chunk_text build, collection_id set
+   - Embeds every document through Ollama (`OllamaEmbedStage`, `nomic-embed-text`, prefix `"search_document: "`) — Lucille reaches the host's Ollama via `host.docker.internal` (the script translates a `localhost` `OLLAMA_HOST` automatically)
    - Runs the generated `detectColor`/`detectWaterproof` stages (both instances of `AttributeDetectorStage`) and `normalizeBrand` (`BrandNormalizerStage`) during ingest — no separate post-processing pass
-   - ~10 s
+   - Full ~158K-product run: ~35-40 minutes on an M4 Max (~60-100 docs/s), dominated by embedding through Ollama
 4. Runs Lucille judgments ingest: `data/esci_judgments_aggregated.parquet` → OpenSearch
-   - ~5 s
-
-**Total:** ~30–40 s (including Docker build on first run)
+   - `--skip-products` refreshes only this step
 
 **Details:**
 
-- Reads `data/esci_products_sample_10000.parquet` (9,618 docs + embeddings)
-- Reads `data/esci_judgments_aggregated.parquet` (97,345 queries)
-- No embedding API calls needed (embeddings precomputed in parquet)
+- Reads `data/esci_products.parquet` (158,637 products, text only — every judged product of the ESCI US `test` + `small_version` queries)
+- Reads `data/esci_judgments_aggregated.parquet` (65,028 queries in `esci_judgments`)
 - Attribute detection happens during Lucille ingest via `AttributeDetectorStage`/`BrandNormalizerStage` (deterministic, reproducible, rules-only)
 
 ### With reset (atomically recreates index)

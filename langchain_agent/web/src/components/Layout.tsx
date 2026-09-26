@@ -116,7 +116,7 @@ export function Layout() {
   // trap: the taxonomy demo rewrites the catalog when it succeeds, so a
   // "restarted" demo would replay against already-corrected data and quietly
   // show nothing wrong — the failure mode is a demo that looks fine and
-  // proves nothing. The reindex takes ~20s, hence the explicit busy state.
+  // proves nothing. The reset re-tags live data, hence the explicit busy state.
   const handleRestart = useCallback(async () => {
     setTurnCursor(0)
     startNewConversation()

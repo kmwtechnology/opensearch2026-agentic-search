@@ -21,11 +21,11 @@ from core.agent_state import CustomAgentState
 from core.config import (
     ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS,
     ANSWER_STREAM_TAG,
+    CROSS_ENCODER_MODEL,
     DEFAULT_ALPHA,
     ENABLE_RERANKING,
     INTERNAL_LLM_TAG,
     RERANKER_FETCH_K,
-    RERANKER_MODEL,
     RERANKER_TOP_K,
     RETRIEVER_FETCH_K,
     RETRIEVER_K,
@@ -894,10 +894,11 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         # Build citation list from retrieved documents' URLs (deduplicated)
         # Only include citations if documents have meaningful relevance scores
-        # Map URL to (label, doc_indices, asin). The ASIN rides along so the UI can
-        # look up a bundled product image (#144) — citations dedup by title-derived
-        # URL, so we keep the first ASIN seen for a URL.
-        citations_dict: Dict[str, Tuple[str, List[int], str]] = {}
+        # Map URL to (label, doc_indices, asin, image_url). The ASIN and the
+        # product's image URL (#147) ride along so the UI can render the product
+        # as a card -- citations dedup by title-derived URL, so we keep the first
+        # product seen for a URL.
+        citations_dict: Dict[str, Tuple[str, List[int], str, str]] = {}
 
         # Check max relevance score - suppress citations if all docs are irrelevant.
         # When the user has disabled reranking, no doc has a `reranker_score`
@@ -951,7 +952,12 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                             label = parts[-2].replace("_", " ").replace("-", " ").title()
                 if not label:
                     label = "Documentation"
-                citations_dict[url] = (label, [i], doc.metadata.get("product_id", "") or "")
+                citations_dict[url] = (
+                    label,
+                    [i],
+                    doc.metadata.get("product_id", "") or "",
+                    doc.metadata.get("image_url", "") or "",
+                )
         else:
             logger.info(
                 f"Suppressing citations: max_relevance={max_relevance:.3f} < {MIN_CITATION_RELEVANCE}"
@@ -959,11 +965,13 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         # Convert to list format with document index prefixes
         citations = []
-        for url, (label, indices, asin) in citations_dict.items():
+        for url, (label, indices, asin, image_url) in citations_dict.items():
             index_prefix = ",".join(str(idx) for idx in indices)
             citation: Dict[str, str] = {"label": f"[{index_prefix}] {label}", "url": url}
             if asin:
                 citation["asin"] = asin
+            if image_url:
+                citation["image_url"] = image_url
             citations.append(citation)
 
         # LLM-off short-circuit: render a plain search-results list (no Gemini call).
@@ -1280,6 +1288,9 @@ so briefly."""
             ),
             docs_processed=(
                 enrichment_result.docs_processed if enrichment_result.reindex_success else None
+            ),
+            docs_scanned=(
+                enrichment_result.docs_scanned if enrichment_result.reindex_success else None
             ),
         )
 
@@ -3127,7 +3138,7 @@ Original query: {query}
             try:
                 self._emit_event_from_sync(
                     RerankerStartEvent(
-                        model=RERANKER_MODEL,
+                        model=CROSS_ENCODER_MODEL,
                         candidate_count=len(retrieved_documents),
                     )
                 )

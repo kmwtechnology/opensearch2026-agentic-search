@@ -28,15 +28,10 @@ from statistics import mean, stdev
 from typing import Any, Dict, List
 
 import psycopg
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from core.config import (
-    DATABASE_URL,
-    EMBEDDINGS_MODEL,
-    VECTOR_COLLECTION_NAME,
-    VECTOR_DIMENSION,
-)
-from retrieval.reranker import GeminiReranker
+from core.config import DATABASE_URL, VECTOR_COLLECTION_NAME
+from retrieval.embeddings import build_embeddings
+from retrieval.reranker import CrossEncoderReranker
 from retrieval.vector_store import OpenSearchVectorStore
 
 logger = logging.getLogger(__name__)
@@ -67,15 +62,12 @@ class SearchBenchmark:
 
     def __init__(self):
         """Initialize benchmark with database and vector store."""
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model=EMBEDDINGS_MODEL,
-            output_dimensionality=VECTOR_DIMENSION,
-        )
+        self.embeddings = build_embeddings()
         self.vector_store = OpenSearchVectorStore(
             embeddings=self.embeddings,
             collection_id=VECTOR_COLLECTION_NAME,
         )
-        self.reranker = GeminiReranker()
+        self.reranker = CrossEncoderReranker()
 
     def measure_query_latency(
         self, queries: List[str], k: int = 4, fetch_k: int = 30, alpha: float = 0.25

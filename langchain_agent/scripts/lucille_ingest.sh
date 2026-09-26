@@ -25,13 +25,17 @@
 #       AttributeDetectorStage entry per attribute type currently registered
 #       in the OS-backed attribute mapping store; always fresh, never
 #       hand-edited (see langchain_agent/config_generator.py)
-#   5. Run Lucille products ingest (ParquetConnector → OpenSearch)
+#   5. Run Lucille products ingest (ParquetConnector → OpenSearch). chunk_text
+#      is embedded in-pipeline by OllamaEmbedStage against the host's Ollama
+#      (#148) -- ~26 min for the full ~158K-product corpus.
 #   5b. (--seed-taxonomy only) Rebuild the color attribute taxonomy in the
 #       OS-backed mapping store via discovery against the products just
 #       indexed (scripts/rebuild_attribute_taxonomies.py), regenerate
 #       products.generated.conf (now with one detect* stage per type), and
 #       run the products ingest a second time so every product gets its
-#       product_<type>_primary fields. This is how a fresh cluster (hosted or
+#       product_<type>_primary fields. The FIRST pass skips embedding: it only
+#       exists to put chunk_text in the index for discovery, and the second
+#       pass re-indexes every product with vectors anyway. This is how a fresh cluster (hosted or
 #       local) gets a color taxonomy at all -- nothing else seeds the store
 #       (#71). "waterproof" is deliberately NOT part of this step; it starts
 #       empty and is grown entirely by the live enrichment flywheel.
@@ -39,9 +43,13 @@
 #
 # Required env vars (sourced from langchain_agent/.env):
 #   OPENSEARCH_HOST, OPENSEARCH_PORT, OPENSEARCH_INDEX_NAME
+#   OLLAMA_HOST (default http://localhost:11434), EMBEDDINGS_MODEL (default
+#   nomic-embed-text) -- Ollama runs natively on the host (Metal GPU); the
+#   Docker path reaches it via host.docker.internal.
 #
 # Parquet files are read from: <repo-root>/data/
-#   esci_products_sample_10000.parquet  — precomputed products (shipped with repo)
+#   esci_products.parquet               — products, text + product_image_url, no
+#                                         vectors (scripts/build_product_sample.py)
 #   esci_judgments_aggregated.parquet   — pre-aggregated judgments (generated on first run)
 #
 # Optional env vars:
@@ -56,6 +64,10 @@
 #   --reset-index     Delete the products index, then recreate the mapping via
 #                     setup.py before ingest. Use when mappings change.
 #   --skip-judgments  Skip Step 6 (judgments ingest)
+#   --skip-products   Skip Steps 4b-5b (products ingest) and only refresh the
+#                     judgments -- e.g. after the products index changed, since
+#                     the judgments filter keeps only products present in it.
+#                     Not combinable with --reset-index or --seed-taxonomy.
 #   --seed-taxonomy   Run Step 5b. DESTRUCTIVE to the color mapping: wipes
 #                     every color mapping (including agent-learned ones) and
 #                     rediscovers from scratch. Does NOT touch "waterproof".
@@ -67,17 +79,24 @@ set -euo pipefail
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 SKIP_JUDGMENTS=false
+SKIP_PRODUCTS=false
 RESET_INDEX=false
 SEED_TAXONOMY=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-judgments) SKIP_JUDGMENTS=true; shift ;;
+    --skip-products)  SKIP_PRODUCTS=true;  shift ;;
     --reset-index)    RESET_INDEX=true;    shift ;;
     --seed-taxonomy)  SEED_TAXONOMY=true;  shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
+
+if [[ "$SKIP_PRODUCTS" == "true" && ( "$RESET_INDEX" == "true" || "$SEED_TAXONOMY" == "true" || "$SKIP_JUDGMENTS" == "true" ) ]]; then
+  echo "--skip-products only refreshes judgments; it can't be combined with --reset-index, --seed-taxonomy or --skip-judgments" >&2
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -157,6 +176,13 @@ if [[ "$OPENSEARCH_HOST" == "localhost" ]]; then
 else
   CONTAINER_OPENSEARCH_URL="$OPENSEARCH_URL"
 fi
+# Embeddings come from Ollama on the host (#148). From inside a container,
+# localhost is the container itself, so point the Docker path at Docker
+# Desktop's host alias instead; any non-local host passes through unchanged.
+OLLAMA_HOST="${OLLAMA_HOST:-http://localhost:11434}"
+EMBEDDINGS_MODEL="${EMBEDDINGS_MODEL:-nomic-embed-text}"
+CONTAINER_OLLAMA_HOST="$(echo "$OLLAMA_HOST" | sed -E 's#://(localhost|127\.0\.0\.1)#://host.docker.internal#')"
+
 # Single source of truth: LUCILLE_VERSION from .env (see .env.example). This
 # value is also what lucille-esci/pom.xml reads via ${env.LUCILLE_VERSION}.
 LUCILLE_VERSION="${LUCILLE_VERSION:-0.11.1}"
@@ -288,9 +314,9 @@ fi
 # the whole ingest: callers invoke this inside `if !`, which suspends `set -e`,
 # so the exit has to be explicit here or a stale generated conf would be used.
 generate_products_conf() {
-  info "Regenerating products.generated.conf from current OpenSearch attribute types..."
+  info "Regenerating products.generated.conf from current OpenSearch attribute types${1:+ ($1)}..."
   local summary
-  if ! summary="$(cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" config_generator.py)"; then
+  if ! summary="$(cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" config_generator.py "$@")"; then
     error "config_generator.py failed -- cannot regenerate products.generated.conf, aborting."
     exit 1
   fi
@@ -298,7 +324,16 @@ generate_products_conf() {
   [[ "$summary" != *"stages for: []"* ]]
 }
 
-if ! generate_products_conf; then
+if [[ "$SKIP_PRODUCTS" == "true" ]]; then
+  info "Skipping products ingest (--skip-products)."
+else
+
+# The --seed-taxonomy first pass only feeds discovery, so it skips embedding
+# (see Step 5b); every other run embeds.
+FIRST_PASS_ARGS=()
+[[ "$SEED_TAXONOMY" == "true" ]] && FIRST_PASS_ARGS=(--no-embed)
+
+if ! generate_products_conf "${FIRST_PASS_ARGS[@]+"${FIRST_PASS_ARGS[@]}"}"; then
   if [[ "$SEED_TAXONOMY" == "true" ]]; then
     info "Attribute mapping store is empty -- Step 5b will seed it after the products ingest."
   else
@@ -311,9 +346,20 @@ if ! generate_products_conf; then
 fi
 
 # ── Step 5: Run products ingest ───────────────────────────────────────────────
-PRODUCTS_PARQUET="$DATA_DIR/esci_products_sample_10000.parquet"
+# PRODUCTS_PARQUET may be overridden (e.g. a --max-products smoke sample); it
+# must live in data/, which is what the Docker path mounts at /lucille/data.
+PRODUCTS_PARQUET="${PRODUCTS_PARQUET:-$DATA_DIR/esci_products.parquet}"
 if [[ ! -f "$PRODUCTS_PARQUET" ]]; then
-  error "Products parquet not found: $PRODUCTS_PARQUET"
+  error "Products parquet not found: $PRODUCTS_PARQUET (build it with scripts/build_product_sample.py)"
+  exit 1
+fi
+
+# Fail in one second here rather than minutes into a run: OllamaEmbedStage
+# would refuse to start anyway, but only after the image build and connector
+# spin-up. Checked from the host, where OLLAMA_HOST is meaningful.
+if ! curl -sf "$OLLAMA_HOST/api/tags" | grep -q "\"$EMBEDDINGS_MODEL"; then
+  error "Ollama embedding model '$EMBEDDINGS_MODEL' not available at $OLLAMA_HOST."
+  error "  Start Ollama and run: ollama pull $EMBEDDINGS_MODEL"
   exit 1
 fi
 
@@ -332,11 +378,15 @@ run_products_ingest() {
       -e OPENSEARCH_URL="$CONTAINER_OPENSEARCH_URL" \
       -e OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
       -e OPENSEARCH_VERIFY_CERTS="$OPENSEARCH_VERIFY_CERTS" \
+      -e OLLAMA_HOST="$CONTAINER_OLLAMA_HOST" \
+      -e EMBEDDINGS_MODEL="$EMBEDDINGS_MODEL" \
       lucille)
   else
     PARQUET_PATH="$PRODUCTS_PARQUET" \
     OPENSEARCH_URL="$OPENSEARCH_URL" \
     OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
+    OLLAMA_HOST="$OLLAMA_HOST" \
+    EMBEDDINGS_MODEL="$EMBEDDINGS_MODEL" \
       java \
         -Dconfig.file="$ESCI_MODULE_DIR/conf/products.generated.conf" \
         -cp "$ESCI_MODULE_DIR/target/lib/*:$ESCI_MODULE_DIR/target/lucille-esci-1.0.0.jar" \
@@ -366,6 +416,8 @@ if [[ "$SEED_TAXONOMY" == "true" ]]; then
   run_products_ingest
 fi
 
+fi  # SKIP_PRODUCTS
+
 # ── Step 6: Run judgments ingest ──────────────────────────────────────────────
 if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
   # Delete first: filterJudgmentsToProducts (judgments.conf) drops most docs
@@ -379,6 +431,15 @@ if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
   # deliberately reused/appended to across ingest runs).
   info "Clearing esci_judgments index before re-ingest..."
   curl -s -X DELETE "$_DISPLAY_URL/esci_judgments" -o /dev/null || true
+  # Recreate it with the explicit mapping BEFORE Lucille writes to it. Left to
+  # dynamic mapping, query.keyword has no lowercase normalizer -- so
+  # lookup_judgments' lowercased exact match silently misses every mixed-case
+  # query -- and judgments loses its nested type.
+  if ! curl -sf -X PUT "$OPENSEARCH_URL/esci_judgments" -H 'Content-Type: application/json' \
+      --data-binary @"$ESCI_MODULE_DIR/mapping/judgments_mapping.json" -o /dev/null; then
+    error "Failed to create esci_judgments with lucille-esci/mapping/judgments_mapping.json"
+    exit 1
+  fi
 
   info "Running Lucille judgments ingest..."
   info "  Source: $JUDGMENTS_PARQUET"

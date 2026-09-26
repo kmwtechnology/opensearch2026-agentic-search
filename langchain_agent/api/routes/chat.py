@@ -510,8 +510,12 @@ class Citation(BaseModel):
     url: str = Field(description="Product URL (Amazon search by title for ESCI products)")
     asin: Optional[str] = Field(
         default=None,
-        description="Amazon ASIN, when the cited document is an ESCI product. "
-        "Used by the UI to look up a bundled product image (#144).",
+        description="Amazon ASIN, when the cited document is an ESCI product.",
+    )
+    image_url: Optional[str] = Field(
+        default=None,
+        description="Product photo URL (SQID, #147), when Amazon has one. "
+        "The UI renders the product as a card with this image.",
     )
 
 
@@ -636,6 +640,7 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
                         label=c.get("label", ""),
                         url=c.get("url", ""),
                         asin=c.get("asin") or None,
+                        image_url=c.get("image_url") or None,
                     )
                     for c in event.citations
                     if c.get("url")  # Only include citations with URLs

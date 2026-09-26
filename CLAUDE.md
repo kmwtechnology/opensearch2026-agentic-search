@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval fused via RRF, dynamic alpha per intent, cross-encoder reranking with a quality gate, real-time WebSocket streaming, and an agentic taxonomy self-correction loop. Runs **local-only** via Docker Compose + Google Gemini — see "Deploy & CI reality" below.
+**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval fused via RRF, dynamic alpha per intent, cross-encoder reranking with a quality gate, real-time WebSocket streaming, and an agentic taxonomy self-correction loop. Runs **fully local** — Docker Compose + native Ollama for every model (chat and embeddings), no cloud API key — see "Deploy & CI reality" below.
 
 ## New Session Checklist
 
@@ -33,13 +33,14 @@ cd langchain_agent   # required first — commands below assume this cwd
 
 # First-time setup / every-session startup (brings up Postgres + OpenSearch via
 # Docker, backend on :8000, frontend on :5173 — no manual `docker compose up` needed)
-./scripts/setup.sh          # or: make setup   (10-20 min, first time only)
+./scripts/setup.sh          # or: make setup   (first time only: pulls Ollama models ~23 GB, then ~35-40 min of Lucille embedding)
 ./scripts/start.sh          # or: make dev     (every session)
 ./scripts/stop.sh           # or: make stop    (stops processes + containers, keeps volumes)
 ./scripts/teardown.sh       # or: make teardown (DESTRUCTIVE: removes .venv, node_modules, all Docker volumes)
 
 # ESCI ingestion via Lucille ETL
-bash scripts/lucille_ingest.sh    # products + judgments, Docker-based by default
+bash scripts/lucille_ingest.sh    # products + judgments, Docker-based; Lucille embeds all ~158K products via Ollama (~35-40 min)
+bash scripts/lucille_ingest.sh --skip-products   # judgments only (after the products index changes)
 make seed-taxonomy                # rediscover color taxonomy — DESTRUCTIVE, needed once per fresh cluster (waterproof grows separately, live)
 make reindex / make reindex-products
 
@@ -60,8 +61,8 @@ make ci                # fast static sub-check (no live services): black/isort -
 make format-fix        # black + isort, fixes in place
 
 # Benchmarks (requires docker compose up -d)
-make benchmark-esci-fast   # ~5 min, deterministic (no LLM)
-make benchmark-esci        # ~10 min, full adaptive (requires GOOGLE_API_KEY)
+make benchmark-esci-fast   # ~35 min, deterministic (no LLM), 5000 fully judged test queries
+make benchmark-esci        # full adaptive (LLM intent classification via Ollama)
 
 # Smoke test (run standalone, or via `make check` above — no git hook triggers this)
 make smoke           # ~13-20s, search-intent smoke, needs Docker + backend
@@ -128,36 +129,34 @@ Same-origin checking (`api/middleware/origin_auth.py`, `verify_same_origin`) is 
 
 Color/waterproof attribute detection runs in the Lucille ETL via `AttributeDetectorStage` (one generic Java stage, `langchain_agent/lucille-esci/src/main/java`, parameterized per attribute type), writing `product_<type>_primary`/`_secondary` keyword fields. The taxonomy itself lives in OpenSearch (not a committed file) — rules-based, auditable, no AI at ingest time. A fresh cluster's taxonomy store is empty; `scripts/setup.sh` seeds color unconditionally on first-time setup, but `make seed-taxonomy` is the manual re-seed entry point later (destructive to any agent-learned color mappings). `waterproof` (issue #142) is deliberately NOT seeded either way — `WATERPROOF_CANONICALS` ships with zero variant terms on purpose, so it starts as a genuine gap and grows entirely from the live flywheel below. The stage hard-fails the ingest if the taxonomy lookup can't load — never soft-fail a store lookup in a custom Lucille stage.
 
-Beyond ingest-time detection, the agent can grow *or fix* the live taxonomy at runtime via one tool, `trigger_enrichment(attribute_type, variant, canonical)` (gated by `ENABLE_ENRICHMENT_TOOL`, default off in code but `true` in this repo's local `.env`), which writes the mapping to OpenSearch and triggers a real Lucille reindex through `pipeline/reindex_trigger.py` (~19-20s, runs `scripts/lucille_ingest.sh` as a subprocess). Both color's and waterproof's unresolved-term filter are hard exact-match filters, so both reliably trigger the growth path live through chat (this used to differ — `material` had a soft fallback + was subject to filter relaxation, so it only ever triggered via `/api/admin/enrich`; `material` was removed in favor of `waterproof` for exactly this reason). The correction case — a shopper disputes an existing wrong tag — is caught by `_detect_correction_signal`/`_try_correction_tool` in `agent_node` on `refinement`/`follow_up` turns; this matters architecturally because a wrong-but-mapped result still **passes** the quality gate, so it's invisible to any automated check. Full detail in `langchain_agent/ARCHITECTURE.md`'s "Taxonomy Growth & Correction" section.
+Beyond ingest-time detection, the agent can grow *or fix* the live taxonomy at runtime via one tool, `trigger_enrichment(attribute_type, variant, canonical)` (gated by `ENABLE_ENRICHMENT_TOOL`, default off in code but `true` in this repo's local `.env`), which writes the mapping to OpenSearch and applies it through `pipeline/reindex_trigger.py`. The default `REINDEX_TRIGGER=scoped` re-detects the attribute on only the products whose text mentions the changed variant (`pipeline/scoped_retag.py`, a line-for-line port of `AttributeDetectorStage`; seconds, e.g. tan→brown re-tagged 679 of 905 candidates in <1s), because a full Lucille run now re-embeds ~158K products (30+ min) and is kept only as `REINDEX_TRIGGER=local`. Scoped candidates come from the `chunk_text.words` subfield (ASCII-word tokenizer mirroring Java's `\b`); `scripts/check_retag_parity.py` proves detection parity and candidate recall against a real index — rerun it after changing either side. Both color's and waterproof's unresolved-term filter are hard exact-match filters, so both reliably trigger the growth path live through chat (this used to differ — `material` had a soft fallback + was subject to filter relaxation, so it only ever triggered via `/api/admin/enrich`; `material` was removed in favor of `waterproof` for exactly this reason). The correction case — a shopper disputes an existing wrong tag — is caught by `_detect_correction_signal`/`_try_correction_tool` in `agent_node` on `refinement`/`follow_up` turns; this matters architecturally because a wrong-but-mapped result still **passes** the quality gate, so it's invisible to any automated check. Full detail in `langchain_agent/ARCHITECTURE.md`'s "Taxonomy Growth & Correction" section.
 
 ### Event sync
 
 `api/schemas/events.py` must stay in sync with `web/src/types/events.ts` — each event's `node` field pins it to a pipeline step. Every return path in `agent_node` must include a `"citations"` key (empty list if none). ESCI products cite via `https://www.amazon.com/s?k={title}` (robust against delisted ASINs).
 
-### Product images (issue #144)
+### Product images (issues #144, #147)
 
-Each citation also carries an `asin` (the OpenSearch `_id`, already in `metadata["product_id"]`). `citations` is typed `List[Dict[str, str]]`, so adding it needed no event-schema change — but the strict REST `Citation` model in `api/routes/chat.py` and both frontend types did change.
+Every product carries its own photo URL. The corpus is the ESCI US `test` + `small_version` subset (158,637 products). [SQID](https://github.com/Crossing-Minds/shopping-queries-image-dataset) scraped Amazon image URLs for exactly that subset, and `scripts/build_product_sample.py` joins them in as `product_image_url` (95.5% coverage; SQID's `Default_Background_Art` placeholder is treated as no image). The index stores the field as `keyword`, `index: false`: it is displayed, never searched. `_hit_to_document` exposes it as `metadata["image_url"]`, and each citation carries `image_url` next to `asin`. `citations` is typed `List[Dict[str, str]]`, so the event schema needs no change. The strict REST `Citation` model in `api/routes/chat.py` and both frontend types do declare it.
 
-Images are **committed**, not fetched at runtime: `web/src/assets/products/<ASIN>.jpg`, resolved by `import.meta.glob` in that directory's `index.ts`. They must live under `src/assets/` rather than `web/public/` — `api/main.py` mounts only `/assets`, so anything in `public/` lands at the `dist/` root where the SPA catch-all returns `index.html` instead of the file. (`public/kmw-logo.svg` already has this bug on :8000.) Going through `src/` gets Vite content-hashing into `dist/assets/`, which works on both :5173 and :8000.
+Images are **not** bundled or curated. They load straight from Amazon's CDN (`referrerPolicy="no-referrer"`). The old committed-JPG approach (`web/src/assets/products/`, `fetch_product_images.py`, hand-picked substitute ASINs) was removed in #147. A URL that 404s (a product delisted since the SQID scrape) trips `ProductCard`'s `onError`, and that bullet falls back to plain text.
 
-Regenerate with `PYTHONPATH=. python scripts/fetch_product_images.py` (`--report` for coverage only). Inputs are two committed files: `scripts/demo_product_asins.json` (the 38 products the demos surface, `named: true` = spoken on screen) and `scripts/demo_product_image_substitutes.json` (hand-curated map for ASINs Amazon no longer serves a photo for). Amazon answers a miss with a 43-byte 1x1 GIF at HTTP 200, so the script size-checks rather than trusting the status code.
-
-The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns each bullet the answer writes into a `ProductCard` — photo left, name and the model's own blurb right — so the answer reads as a shopping result list. The bullet's first `<strong>` (read from the hast `node`, which makes tight and loose lists behave alike) prefix-matches a citation label via `indexProducts`; the LLM bolds a shortened name while the citation carries the full catalog title, so the match runs in both directions. A bullet that matches nothing, or whose ASIN has no bundled image, stays a plain bullet — never a placeholder.
+The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns each bullet the answer writes into a `ProductCard` — photo left, name and the model's own blurb right — so the answer reads as a shopping result list. The bullet's first `<strong>` (read from the hast `node`, which makes tight and loose lists behave alike) prefix-matches a citation label via `indexProducts`; the LLM bolds a shortened name while the citation carries the full catalog title, so the match runs in both directions. A bullet that matches nothing, or whose citation has no `image_url`, stays a plain bullet — never a placeholder.
 
 **An answer must render exactly once.** Because the cards are keyed off the citations, and the citations arrive on `agent_complete` — one WebSocket frame *after* `llm_response_chunk(is_complete)` delivers the last token — committing the text on that earlier frame renders the list as plain bullets and then re-renders it as cards. Two things prevent that: `chatStore.completeTurn()` writes the content and the citations in a single `set`, and `MessageList` withholds a still-streaming assistant bubble entirely, leaving the pipeline status card up for the whole turn instead. Don't reintroduce a `finalizeStreaming()` call in the `llm_response_chunk` handler; `agent_error` is the escape hatch for the failure path.
 
 ### LLM observability (Oodle)
 
-`observability/otel.py::setup_tracing()` installs an OTLP `TracerProvider` plus Traceloop's `LangchainInstrumentor`, called first thing in the `api/main.py` lifespan and in `cli.py::main()` (`shutdown_tracing()` flushes on exit). It's a **no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set** — tests and `make ci` never touch the network. The exporter reads the standard `OTEL_EXPORTER_OTLP_*` vars from `os.environ`, which works only because `core/config.py` calls `load_dotenv()`. One chat turn becomes one `LangGraph.workflow` trace with a span per node and a `ChatGoogleGenerativeAI.chat` span per Gemini call carrying `gen_ai.request.model`, token usage, and full prompt/response text (`TRACELOOP_TRACE_CONTENT=false` drops the text). The local `.env` exports direct to Oodle; the `.env.example` block has placeholders. To query traces from the CLI, tag filters need Oodle's `span::` prefix: `oodle traces list --start -15m --end now --tags '{"span::gen_ai.request.model":"gemini-2.5-flash"}'`. `traces list` omits span attributes, so use `traces get <id> --start … --end …` to see them.
+`observability/otel.py::setup_tracing()` installs an OTLP `TracerProvider` plus Traceloop's `LangchainInstrumentor`, called first thing in the `api/main.py` lifespan and in `cli.py::main()` (`shutdown_tracing()` flushes on exit). It's a **no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set** — tests and `make ci` never touch the network. The exporter reads the standard `OTEL_EXPORTER_OTLP_*` vars from `os.environ`, which works only because `core/config.py` calls `load_dotenv()`. One chat turn becomes one `LangGraph.workflow` trace with a span per node and a chat-model span per LLM call carrying `gen_ai.request.model` (was `ChatGoogleGenerativeAI.chat` under Gemini; the exact span name under `ChatOllama` hasn't been re-verified in Oodle since #148), token usage, and full prompt/response text (`TRACELOOP_TRACE_CONTENT=false` drops the text). The local `.env` exports direct to Oodle; the `.env.example` block has placeholders. To query traces from the CLI, tag filters need Oodle's `span::` prefix: `oodle traces list --start -15m --end now --tags '{"span::gen_ai.request.model":"qwen3.6:35b-a3b-q4_K_M"}'`. `traces list` omits span attributes, so use `traces get <id> --start … --end …` to see them.
 
 ## Tech stack
 
 | Layer | Tech |
 |---|---|
-| LLM (generation) | Gemini 2.5 Flash |
-| LLM (classify/eval/judge) | Gemini 2.5 Flash-Lite |
-| Reranker | Local cross-encoder (`ms-marco-MiniLM-L-12-v2`), `RERANKER_TYPE=cross-encoder` default; a Gemini-based reranker exists but isn't shipped default |
-| Embeddings | `models/gemini-embedding-001` (768-dim) |
+| LLM (all calls) | `qwen3.6:35b-a3b-q4_K_M` via local Ollama (`core/llm.py::build_chat_model`; `reasoning=False`, explicit `num_ctx`) |
+| Reranker | Local cross-encoder (`ms-marco-MiniLM-L-12-v2`) — the only reranker |
+| Embeddings | `nomic-embed-text` via local Ollama (768-dim; `search_document:` at ingest by Lucille's `OllamaEmbedStage`, `search_query:` at query time via `retrieval/embeddings.py`) |
+| Corpus | 158,637 ESCI US test/small products (query-first, every query fully judged), 95.5% with a SQID image URL |
 | Agent framework | LangGraph + LangChain |
 | Vector DB | OpenSearch (HNSW knn + BM25) |
 | Checkpoints | PostgreSQL, via `langgraph-checkpoint-postgres` |

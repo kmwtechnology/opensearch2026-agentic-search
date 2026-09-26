@@ -11,9 +11,9 @@ Get the project running on your machine for development.
 - **Backend**: FastAPI server on `localhost:8000` (Python 3.14+, .venv)
 - **Frontend**: React + Vite dev server on `localhost:5173` (Node.js 24+)
 - **Services**: PostgreSQL (checkpoints) + OpenSearch (search index) in Docker
-- **Data**: 10K ESCI product samples with precomputed embeddings, ingested via Lucille ETL
+- **Data**: full ESCI product corpus (158,637 products), embedded at ingest time via Lucille + Ollama
 
-**One-time setup:** 10–20 minutes  
+**One-time setup:** first-time setup, including the full ~158K-product ingest, takes roughly 35-40 minutes on an M4 Max  
 **Daily workflow:** `./scripts/start.sh` or `make dev`
 
 ---
@@ -27,9 +27,9 @@ Verify each tool is installed. The **Why** column explains what it's used for.
 | **Docker Desktop** | 4.x | Runs PostgreSQL + OpenSearch containers locally | `docker --version` |
 | **Python** | 3.14+ | Backend venv (setup.sh creates it) | `python3 --version` |
 | **Node.js** | 24+ | React frontend and Vite dev server | `node --version` |
-| **Java** | 21+ | Lucille ETL for product ingestion | `java -version` |
-| **Maven** | 3.8+ | Build tool for Lucille ETL | `mvn --version` |
-| **Google AI Key** | — | LLM (Gemini) and embeddings | Get from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| **Java** | 21+ | Lucille ETL for product ingestion (only needed if `LUCILLE_USE_DOCKER=false`) | `java -version` |
+| **Maven** | 3.8+ | Build tool for Lucille ETL (only needed if `LUCILLE_USE_DOCKER=false`) | `mvn --version` |
+| **Ollama** | — | Local LLM (`qwen3.6:35b-a3b-q4_K_M`) and embeddings (`nomic-embed-text`); no cloud API key | Get from [ollama.com](https://ollama.com/) |
 
 ### Installing Prerequisites
 
@@ -38,8 +38,9 @@ Verify each tool is installed. The **Why** column explains what it's used for.
 brew install docker
 brew install python@3.14
 brew install node
-brew install openjdk@21
-brew install maven
+brew install ollama
+brew install openjdk@21  # only needed for LUCILLE_USE_DOCKER=false
+brew install maven       # only needed for LUCILLE_USE_DOCKER=false
 ```
 
 **Ubuntu/Debian:**
@@ -64,7 +65,7 @@ sudo apt-get install maven
 
 ---
 
-## One-Time Setup (10–20 min)
+## One-Time Setup (~35-40 min + Ollama model download)
 
 ### Step 1: Clone the Repository
 
@@ -75,22 +76,13 @@ cd opensearch2026-agentic-search/langchain_agent
 
 ### Step 2: Configure Environment
 
-You have two options:
-
-**Option A (Recommended): Let setup.sh create .env, then add your key**
-```bash
-# Skip this step; setup.sh will create .env and then ask you to add GOOGLE_API_KEY
-# Jump straight to Step 3
-```
-
-**Option B: Manually create .env first**
 ```bash
 cp .env.example .env
-# Edit .env and set GOOGLE_API_KEY=<your-actual-key>
-# Then proceed to Step 3
 ```
 
-Either way, you'll need a Google API key from: https://aistudio.google.com/apikey (free tier available)
+No API key is needed — everything runs against a local Ollama server.
+`setup.sh` checks that Ollama is installed and running, and pulls any
+missing models automatically.
 
 ### Step 3: Run One-Time Setup
 
@@ -102,12 +94,12 @@ This script handles all initialization in 6 phases:
 
 | Phase | What Happens | Time |
 |-------|--------------|------|
-| 1: Preq Checks | Verifies Docker, Python, Node, Java, Maven | instant |
-| 2: ESCI Clone | Downloads 10K product sample (1.5 GB, GitHub) | 2–5 min |
+| 1: Preq Checks | Verifies Docker, Python, Node, Ollama (installed + running) | instant |
+| 2: Ollama models | Pulls any missing Ollama models (~23 GB) | varies |
 | 3: Python venv | Creates `.venv`, installs dependencies (pip install) | 3–5 min |
 | 4: Node deps | Installs frontend packages (npm install) | 1–2 min |
 | 5: Docker up | Starts Postgres, OpenSearch containers | ~30s |
-| 6: Ingest | Initializes DB + indexes products (Lucille ETL) | 3–5 min |
+| 6: Ingest | Initializes DB + indexes the full ESCI product corpus (158,637 products), embedded via Lucille + Ollama | ~35-40 min |
 
 **At the end**, the script prints the app URLs. There is no login gate — the app is open to any same-origin caller, so you'll go straight from setup to using the app with no login step.
 
@@ -193,7 +185,7 @@ Kills the backend and frontend processes. Docker containers stay running, so you
 ./scripts/teardown.sh
 ```
 
-⚠️  **This is destructive.** Removes Docker containers + volumes, deletes `.venv`, deletes `node_modules`. Your PostgreSQL database and OpenSearch index are deleted permanently. Use this only if you want a clean slate. You'll need to run `./scripts/setup.sh` again (takes 10–20 min).
+⚠️  **This is destructive.** Removes Docker containers + volumes, deletes `.venv`, deletes `node_modules`. Your PostgreSQL database and OpenSearch index are deleted permanently. Use this only if you want a clean slate. You'll need to run `./scripts/setup.sh` again (takes ~35-40 min plus the Ollama model download).
 
 ---
 

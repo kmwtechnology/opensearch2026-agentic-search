@@ -15,12 +15,14 @@ FAILED=0
 # Helper functions
 check_pass() {
   echo -e "${GREEN}✓${NC} $1"
-  ((PASSED++))
+  # Not ((PASSED++)): that evaluates to the OLD value, so the first increment
+  # returns status 1 and `set -e` ended the script after one check.
+  PASSED=$((PASSED + 1))
 }
 
 check_fail() {
   echo -e "${RED}✗${NC} $1"
-  ((FAILED++))
+  FAILED=$((FAILED + 1))
 }
 
 check_warn() {
@@ -59,11 +61,24 @@ else
   check_fail "Node.js not installed — required for frontend; install from nodejs.org"
 fi
 
-# 4. .env file with GOOGLE_API_KEY
-if [ -f .env ] && grep -q "^GOOGLE_API_KEY=" .env && [ -n "$(grep '^GOOGLE_API_KEY=' .env | cut -d= -f2)" ]; then
-  check_pass "GOOGLE_API_KEY set in .env"
+# 4. Local Ollama server with the configured models (#148 -- no cloud API key)
+env_value() {  # first value of KEY in .env (inline comment stripped), else $2
+  local v
+  v=$( [ -f .env ] && grep -E "^$1=" .env | head -1 | cut -d= -f2- | sed 's/#.*//; s/[[:space:]]*$//' )
+  echo "${v:-$2}"
+}
+OLLAMA_URL="$(env_value OLLAMA_HOST http://localhost:11434)"
+if TAGS="$(curl -sf "$OLLAMA_URL/api/tags" 2>/dev/null)"; then
+  check_pass "Ollama reachable ($OLLAMA_URL)"
+  for model in "$(env_value LLM_MODEL qwen3.6:35b-a3b-q4_K_M)" "$(env_value EMBEDDINGS_MODEL nomic-embed-text)"; do
+    if echo "$TAGS" | grep -q "\"$model[\":]"; then
+      check_pass "Ollama model pulled: $model"
+    else
+      check_fail "Ollama model missing: $model — run 'ollama pull $model'"
+    fi
+  done
 else
-  check_fail "GOOGLE_API_KEY missing in .env — get key from aistudio.google.com/apikey"
+  check_fail "Ollama not reachable at $OLLAMA_URL — install from ollama.com and start it"
 fi
 
 # 5. OpenSearch reachable

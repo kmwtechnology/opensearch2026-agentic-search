@@ -72,23 +72,25 @@ REQUIREMENTS:
     - Docker (for PostgreSQL + OpenSearch containers)
     - Python 3.13+ (creates .venv at project root if missing)
     - Node.js 24+ (for frontend; 24.21.0 or later)
-    - Google API Key (for Gemini embeddings and LLM)
-    - ~1.5 GB disk space (ESCI dataset + sample parquet + Docker volumes)
+    - Ollama, running natively (https://ollama.com) — every model is local;
+      setup pulls qwen3.6:35b-a3b-q4_K_M (~23 GB) and nomic-embed-text if missing
+    - ~26 GB disk space (models ~23 GB, ESCI dataset + parquet + Docker volumes)
     - Internet access (to clone ESCI dataset repo from GitHub)
 
 WHAT THIS SCRIPT DOES:
     1. Checks prerequisites (Docker, Python 3.13+, Node.js 24+)
     2. Clones ESCI dataset repo (if not present) → ../esci/
     3. Creates Python virtual environment at project root (if not present)
-    4. Creates .env file and configures Google API key (if not present)
+    4. Creates .env file from .env.example (if not present)
     5. Creates frontend .env configuration
     6. Installs Python dependencies in root .venv
     7. Installs Node.js frontend dependencies
     8. Starts PostgreSQL and OpenSearch containers
     9. Initializes database and OpenSearch index
-    10. Runs Lucille ETL to ingest precomputed 10K ESCI products + judgments into OpenSearch
-        (reads from data/esci_products_sample_10000.parquet — no API calls needed),
-        including a mandatory color taxonomy discovery + reindex pass
+    10. Runs Lucille ETL to ingest ~158K ESCI products + judgments into OpenSearch
+        (reads data/esci_products.parquet; Lucille embeds every product with the
+        local Ollama model — ~25-40 min), including a mandatory color taxonomy
+        discovery + reindex pass
         (a fresh cluster's taxonomy store is otherwise empty, so every
         color attribute_filter query would return zero results). The
         "waterproof" type is deliberately NOT seeded here — it starts empty
@@ -99,8 +101,7 @@ SERVICES STARTED:
     - OpenSearch (document search) → localhost:9200
 
 REQUIREMENTS:
-    GOOGLE_API_KEY must be set in .env file
-    Get your key from: https://aistudio.google.com/apikey
+    Ollama running locally (no cloud API key is needed)
 
 NEXT STEPS after setup:
     1. Start backend: make dev-api (from langchain_agent/)
@@ -197,6 +198,20 @@ else
     echo "✓ Lucille ETL will run via Docker (no local Java/Maven needed)"
 fi
 
+# Ollama: every model runs locally (#148). Must be native on the host, not in
+# Docker -- on macOS only a native install gets the Metal GPU.
+if ! command -v ollama &> /dev/null; then
+    echo "❌ Ollama not found"
+    echo "   Install from https://ollama.com (native app), then re-run."
+    exit 1
+fi
+if ! curl -sf "${OLLAMA_HOST:-http://localhost:11434}/api/tags" > /dev/null; then
+    echo "❌ Ollama is installed but not running"
+    echo "   Start the Ollama app (or: ollama serve), then re-run."
+    exit 1
+fi
+echo "✓ Ollama running"
+
 end_step
 
 echo ""
@@ -267,25 +282,27 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
     fi
 
     echo "   ✓ Generated API_KEY"
-    echo ""
-    echo "   ERROR: GOOGLE_API_KEY is required. Set it in .env before running."
-    echo "   Get your key from: https://aistudio.google.com/apikey"
-    exit 1
 else
     # Extract existing API_KEY
     API_KEY=$(grep "^API_KEY=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
     echo "   ✓ Using existing API_KEY"
-
-    # Check if GOOGLE_API_KEY is still the placeholder
-    EXISTING_GOOGLE_KEY=$(grep "^GOOGLE_API_KEY=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
-    if [ "$EXISTING_GOOGLE_KEY" = "your-google-api-key-here" ] || [ -z "$EXISTING_GOOGLE_KEY" ]; then
-        echo "   ERROR: GOOGLE_API_KEY is required. Set it in .env before running."
-        echo "   Get your key from: https://aistudio.google.com/apikey"
-        exit 1
-    else
-        echo "   ✓ Using existing GOOGLE_API_KEY"
-    fi
 fi
+
+# Pull the local models if missing (idempotent; the chat model is ~23 GB, so
+# the first run takes a while). Names come from .env, defaults from .env.example.
+env_model() {
+    local v
+    v=$(grep -E "^$1=" "$PROJECT_DIR/.env" | head -1 | cut -d'=' -f2- | sed 's/#.*//; s/[[:space:]]*$//')
+    echo "${v:-$2}"
+}
+for model in "$(env_model LLM_MODEL qwen3.6:35b-a3b-q4_K_M)" "$(env_model EMBEDDINGS_MODEL nomic-embed-text)"; do
+    if ollama list | awk 'NR>1 {print $1}' | grep -qE "^${model}(:latest)?$"; then
+        echo "   ✓ Ollama model present: $model"
+    else
+        echo "   Pulling Ollama model: $model ..."
+        ollama pull "$model"
+    fi
+done
 
 # 3. Create frontend .env (if missing)
 if [ ! -f "$PROJECT_DIR/web/.env" ]; then
@@ -437,11 +454,11 @@ PYTHONPATH=. python setup.py 2>&1 | tee -a logs/setup.log
 
 if [ "${PIPESTATUS[0]}" -eq 0 ]; then
     echo ""
-    SAMPLE_FILE="$PARENT_DIR/esci/shopping_queries_dataset/esci_products_sample_10000.parquet"
+    SAMPLE_FILE="$PARENT_DIR/data/esci_products.parquet"
     if [ -f "$SAMPLE_FILE" ]; then
         SAMPLE_SIZE=$(du -h "$SAMPLE_FILE" | cut -f1)
-        log "✓ 10K product sample: $SAMPLE_SIZE"
-        echo "✓ 10K product sample: $SAMPLE_SIZE"
+        log "✓ Products parquet: $SAMPLE_SIZE"
+        echo "✓ Products parquet: $SAMPLE_SIZE"
     fi
     log "✓ Database initialization complete"
     echo "✓ Database initialization complete"

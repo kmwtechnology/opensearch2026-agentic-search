@@ -69,7 +69,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 
 **Process**:
 
-- Single structured-output LLM call (Gemini 2.5 Flash-Lite, #126) classifies into 6 intents
+- Single structured-output LLM call (`qwen3.6:35b-a3b-q4_K_M` via local Ollama, #126) classifies into 6 intents
   — there is no keyword-based fast-path (see #26); every request pays this LLM
   round-trip
   - `search` — product discovery ("find me...")
@@ -102,7 +102,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
   - `comparison` → α = 0.60 (semantic-heavy, needs meaning matching)
   - `attribute_filter` → α = 0.25 (lexical-heavy, exact attributes)
   - `refinement` → α = 0.35 (lexical-heavy, constrains prior results)
-- **LLM-path**: For `search` and `follow_up`, Gemini evaluates query type and assigns α
+- **LLM-path**: For `search` and `follow_up`, the LLM evaluates query type and assigns α
 - **Query expansion**: Resolves pronouns ("does it"), comparatives ("which is cheaper"), short attribute questions ("how much?") using conversation history
 - Skips expansion if query contains specific brand/product name (avoids over-expansion)
 - Emits `QueryEvaluationEvent` with assigned α, reasoning, expanded query if applicable
@@ -148,7 +148,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
     (feature/size) filters but keeps color + waterproof + brand exact-match filters (user
     explicitly named them) — this can retry all the way down to 0 fully-filtered results
 - **Dual-path search**:
-  1. **Vector Search** (HNSW): Gemini 768-dim embeddings, cosine similarity
+  1. **Vector Search** (HNSW): `nomic-embed-text` 768-dim embeddings via Ollama, cosine similarity
   2. **Lexical Search** (BM25): Dual-analyzer pattern — primary fields (`chunk_text`, `product_brand`, `product_color`) use `light_english_analyzer` (kstem, light stemming) for precision; `.heavy` sub-fields use `heavy_english_analyzer` (snowball, aggressive stemming) at ^0.3 boost for morphological recall fallback. Dense vectors handle the bulk of morphological recall, so BM25 is tuned for precision ("Beats" ≠ "beat" with kstem, but still matches "running/runs/ran" via embeddings).
 - **RRF Fusion** (Reciprocal Rank Fusion):
 
@@ -188,9 +188,8 @@ previously only described the alternative LLM-based path):
 - Emits `RerankerProgressEvent` with per-document scores and top-K selection
 - Sets `reranker_max_score` for Quality Gate decision
 
-An LLM-based alternative (`RERANKER_TYPE=gemini`) exists (`retrieval/reranker.py`'s `GeminiReranker`):
-batch-scores documents via structured-output Gemini calls instead of a local model. Not
-the shipped default — `RERANKER_TYPE=cross-encoder` is set explicitly in `.env.example`.
+The local cross-encoder is the only reranker; the earlier LLM-based reranker
+(`RERANKER_TYPE=gemini`, `GeminiReranker`) has been removed.
 
 **Output State**:
 
@@ -246,7 +245,7 @@ the shipped default — `RERANKER_TYPE=cross-encoder` is set explicitly in `.env
 **Process**:
 
 - **Document formatting**: Creates context window with product details
-- **LLM generation**: Gemini 2.5 Flash generates conversational response (#126)
+- **LLM generation**: `qwen3.6:35b-a3b-q4_K_M` (local Ollama) generates conversational response (#126)
 - **Citation building**:
   - Extracts product titles from metadata (ESCI products have no ASIN; use title-based search for robustness)
   - Constructs Amazon URLs: `https://www.amazon.com/s?k={title}` (search by title; ASIN-based `/dp/` links 404 frequently)
@@ -278,7 +277,7 @@ the shipped default — `RERANKER_TYPE=cross-encoder` is set explicitly in `.env
 
 **Process**:
 
-- **Blind A/B evaluation**: Gemini Flash Lite scores the response against the query + context, unaware of the original LLM's generation process (reduces inherent bias)
+- **Blind A/B evaluation**: a second call to the same local LLM (`JUDGE_MODEL`) scores the response against the query + context, unaware of the original LLM's generation process (reduces inherent bias)
 - **Positional-bias randomization**: Shuffles doc order when presenting context to avoid ranking artifacts
 - **Produces `JudgmentResult`**: Pydantic model with:
   - `pairwise_verdict` — boolean (is this response accurate?)
@@ -473,7 +472,9 @@ UI-assist path.
 
 The canonical re-indexing mechanism is **`scripts/lucille_ingest.sh`**, which
 runs Lucille ETL via Docker (or natively) to ingest ESCI products and
-judgments into the local OpenSearch cluster (~19-20s for 9,618 products).
+judgments into the local OpenSearch cluster. A full products ingest embeds
+all ~158K products through Ollama (~35-40 minutes on an M4 Max);
+`--skip-products` refreshes only judgments.
 
 **Flags**:
 - `--reset-index` (default: off) — drop and recreate the products index before ingest
@@ -488,8 +489,9 @@ judgments into the local OpenSearch cluster (~19-20s for 9,618 products).
 - `GET /api/admin/health` — index document count, service status
 - `GET /api/admin/diagnose` — field-level hit counts and mapping inspection
 - `POST /api/admin/enrich` — grow or correct the color/waterproof taxonomy
-  and trigger a real reindex; see "Taxonomy Growth & Correction" below
-  (gated by `ENABLE_ENRICHMENT_TOOL`, default off)
+  and trigger a scoped re-tag by default (`REINDEX_TRIGGER=scoped`); see
+  "Taxonomy Growth & Correction" below (gated by `ENABLE_ENRICHMENT_TOOL`,
+  default off)
 - Protected by same-origin check only (no login gate)
 
 ---
@@ -732,8 +734,7 @@ live enrichment flywheel (below) just registered.
    missing.
 2. **Correction** — a variant can be *in* the taxonomy but mapped to the
    wrong canonical bucket (e.g. the shipped taxonomy maps color variant
-   `"tan"` to canonical `"yellow"` instead of `"brown"` — a real bug,
-   affecting 29 products). This produces a **passing** quality-gate
+   `"tan"` to canonical `"yellow"` instead of `"brown"`). This produces a **passing** quality-gate
    result (the retrieved products are genuinely relevant, just filed
    under the wrong color), so it's invisible to gap-detection by
    construction — only a shopper actually looking at the product can
@@ -829,13 +830,17 @@ explicit action) bypasses this gate.
 
 **Shared write path** (both gap and correction, `enrich_attribute`):
 classify (or use the LLM-supplied canonical directly) → write the
-mapping to OpenSearch → additively ensure the index mapping has the
-`product_<type>` fields → regenerate `products.generated.conf` →
-trigger a real catalog reindex through `pipeline/reindex_trigger.py`:
-`LocalReindexTrigger` runs `scripts/lucille_ingest.sh --skip-judgments` as
-a subprocess and waits (~19-20s for 9,618 products — a genuine full
-reindex, not a scoped patch). `make reindex` / `make reindex-products` are
-the human-facing entry points to the same script.
+mapping to OpenSearch → trigger a reindex through
+`pipeline/reindex_trigger.py`. By default (`REINDEX_TRIGGER=scoped`),
+`pipeline/scoped_retag.py` re-detects the attribute only on the products
+whose text mentions the changed variant and bulk-updates just those — no
+re-embedding, measured live at under a second (tan→brown correction:
+905 products re-checked, 679 re-tagged) to a few seconds (waterproof
+growth: 7,441 products tagged in ~8s). `REINDEX_TRIGGER=local` remains
+available for a genuine full Lucille reindex (`LocalReindexTrigger` runs
+`scripts/lucille_ingest.sh --skip-judgments` as a subprocess and waits,
+30+ minutes for the full ~158K-product catalog) — `make reindex` /
+`make reindex-products` are the human-facing entry points to that script.
 
 `EnrichmentResult.reindex_mode` / `reindex_run_url` / `reindex_error`
 carry the outcome; the agent tool phrases its reply accordingly
@@ -1007,11 +1012,11 @@ type needs no new Java code and no hand-edited Lucille config:
 
 ### Swapping the LLM Provider
 
-1. Replace `ChatGoogleGenerativeAI` with `ChatOpenAI`, `ChatAnthropic`, etc. in `main.py`
+1. Replace `ChatOllama` in `core/llm.py::build_chat_model` with `ChatOpenAI`, `ChatAnthropic`, etc.
 2. Update model names in `core/config.py`
 3. Ensure all models support structured output (required for reranker)
 4. Update temperature/token settings if needed
-5. Test: `PYTHONPATH=. python3 setup.py` to validate API connection
+5. Test: `PYTHONPATH=. python3 setup.py` to validate the connection
 
 ---
 
@@ -1086,7 +1091,7 @@ The Agentic Hybrid Search system is a **LangGraph-powered RAG agent** that:
 1. **Classifies intent** (6 categories) to route conversation
 2. **Evaluates queries** with dynamic α to balance semantic/lexical search
 3. **Retrieves candidates** via hybrid search (vector + BM25 fused by RRF)
-4. **Reranks** with a local cross-encoder (LLM-based scoring is a non-default alternative)
+4. **Reranks** with a local cross-encoder (the only reranker)
 5. **Quality gates** with automatic α retry if scores are low
 6. **Generates responses** with citations and streaming
 7. **Persists memory** in PostgreSQL checkpoints
