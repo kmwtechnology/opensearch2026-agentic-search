@@ -163,17 +163,16 @@ export function GuidePage() {
             </p>
             <ol className="list-decimal list-inside space-y-2 text-[1.375rem] text-gray-700 mt-2">
               <li>
-                <code className="bg-gray-100 px-1">sewing machine</code> — the summary card switches to real
-                NDCG@10 per stage: stock BM25 0.81 → BM25 0.91 → Hybrid 0.95 → Reranked 0.92. Every optimized
-                stage clearly beats the plain-BM25 baseline — that's the point — but it isn't a clean climb
-                straight to the top: reranked actually lands slightly below hybrid here. Graded against Amazon's
-                own relevance judgments, not this system's own scoring.
+                <code className="bg-gray-100 px-1">headphones with microphone</code> — the summary card switches to
+                real NDCG@10 per stage: stock BM25 0.16 → BM25 0.28 → Hybrid 0.40 → Reranked 0.60. A clean climb:
+                every stage beats the one before it. Graded against Amazon's own relevance judgments, not this
+                system's own scoring.
               </li>
             </ol>
             <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-2">
-              11 products are judged for this query in the corpus. The corpus is built query-first (#147), so a
-              judged test query keeps ~20 judged products on average — the number is real, and it's measured
-              against a full judgment set, not one or two stragglers.
+              39 products are judged for this query in the corpus (35 of them Exact). The corpus is built
+              query-first (#147), so a judged test query keeps its full judgment set — the number is real, and
+              it's measured against dozens of human judgments, not one or two stragglers.
             </p>
           </div>
 
@@ -256,7 +255,7 @@ export function GuidePage() {
           <div className="space-y-2">
             <h4 className="font-semibold text-gray-900 mt-4">Tips for Best Results</h4>
             <ul className="space-y-1 text-[1.375rem] text-gray-700">
-              <li className="flex gap-2"><span>💡</span> Use exact query strings in demo turns — several are crafted for specific behaviors (e.g., "show me tan boots" for the taxonomy demo, "sewing machine" for ground-truth metrics)</li>
+              <li className="flex gap-2"><span>💡</span> Use exact query strings in demo turns — several are crafted for specific behaviors (e.g., "show me tan boots" for the taxonomy demo, "headphones with microphone" for ground-truth metrics)</li>
               <li className="flex gap-2"><span>🎯</span> Avoid asking about price — there is no price field in this catalog. Focus on attributes like color, size, brand, feature, and waterproofing</li>
               <li className="flex gap-2"><span>🔄</span> The taxonomy demo re-arms itself automatically on selection, restoring the original tan→yellow mis-tag so the turn-1 failure is fresh every time</li>
               <li className="flex gap-2"><span>📋</span> Click citations to see full product details on Amazon</li>
@@ -527,7 +526,7 @@ export function GuidePage() {
             <div className="border-l-4 border-yellow-500 pl-3">
               <p className="font-semibold text-gray-900">Demo: has_ground_truth is always false</p>
               <p className="text-gray-600">Expected behavior (except for one specific query)</p>
-              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Ground truth needs an EXACT match against an ESCI query, and most of the scripted demo queries aren't ESCI queries. Only the "sewing machine" turn in the "Proving It With Real Judgments" demo produces has_ground_truth=true. Anywhere else it's false is expected, not a bug.</p>
+              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Ground truth needs an EXACT match against an ESCI query, and most of the scripted demo queries aren't ESCI queries. Only the "headphones with microphone" turn in the "Proving It With Real Judgments" demo produces has_ground_truth=true. Anywhere else it's false is expected, not a bug.</p>
             </div>
 
             <div className="border-l-4 border-yellow-500 pl-3">

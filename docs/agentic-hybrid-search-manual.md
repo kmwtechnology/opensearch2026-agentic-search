@@ -534,13 +534,13 @@ The field changing is the proof—not the product list, which looks much the sam
 
 If there is time, select **"Bonus: Proving It With Real Judgments"** from the demo dropdown and run the single turn:
 
-**Query: `sewing machine`**
+**Query: `headphones with microphone`**
 
 This query exists in Amazon's ESCI benchmark with actual human relevance judgments. Watch the Pipeline Quality Summary switch from the system's internal confidence proxy to real numbers:
 
-**stock BM25 NDCG@10 0.81 → BM25 0.91 → hybrid 0.95 → reranked 0.92**, against 3 human judgments from Amazon's ESCI dataset—not this system's own scoring.
+**stock BM25 NDCG@10 0.16 → BM25 0.28 → hybrid 0.40 → reranked 0.60**, against 39 human-judged products from Amazon's ESCI dataset (35 Exact)—not this system's own scoring. Every stage beats the one before it.
 
-This is the concrete version of the claim both arcs make in passing: hybrid retrieval plus reranking beat plain lexical search. Here it is measured against external, academic ground truth instead of the system grading its own homework. Note that only 3 products are judged for this query—the demo corpus has sparse judgments (~1 judged product per query on average). The point is that the number is real, not that it is large.
+This is the concrete version of the claim both arcs make in passing: hybrid retrieval plus reranking beat plain lexical search. Here it is measured against external, academic ground truth instead of the system grading its own homework. The corpus is built query-first, so this query keeps its full judgment set; the number is both real and measured against dozens of judgments.
 
 ### Bonus — Data Enrichment: Schema Evolution (Optional)
 

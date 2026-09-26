@@ -261,7 +261,7 @@ carries both earlier constraints forward into a fresh, more semantic
 search. (This catalog has no price field, so every turn stays on
 attributes that exist — color, size, brand, feature, waterproofing.)
 
-**Proving It With Real Judgments** — a standalone turn ("sewing machine")
+**Proving It With Real Judgments** — a standalone turn ("headphones with microphone")
 that happens to hit real Amazon ESCI ground truth, so the Pipeline Quality
 Summary switches from the self-referential confidence proxy to genuine
 graded NDCG@10 / MRR / Recall@20 / Precision@10 per stage.
