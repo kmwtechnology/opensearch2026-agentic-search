@@ -171,68 +171,23 @@ Note: `DEMO.md` records demo 1 turn 1 ("Show me blue running shoes") as
   cross-encoder on 64 GB works, but check this under demo load.
 
 
-## Resume here (paused 2026-09-25)
+## Status: complete (2026-09-25)
 
-**Done and committed on the branch:** Step 0 (decisions + smoke test), Step 1 (Lucille
-`OllamaEmbedStage`, text-only `data/esci_products.parquet`, 158,637 products),
-Step 2 (all LLM calls go through `core/llm.py` ChatOllama, query embeddings through
-`retrieval/embeddings.py`, Gemini removed), and Step 3 (scoped re-tag is the default
-`REINDEX_TRIGGER`; `scripts/check_retag_parity.py` passes on the smoke index).
-Unit tests: 861 pass. Frontend: 311 pass.
+Everything in the plan is done on `feat/issue-147-local-ollama-sqid-corpus`:
 
-**Local state, not in git:**
-- The full ingest into index **`agentic_hybrid_search_docs_v2`** was left running in the
-  background, at ~92K of 158K products at 18:02, ~60 docs/s. Log:
-  `$TMPDIR/.../scratchpad/full_ingest.log` (session scratchpad). Check the doc count with
-  `curl -s localhost:9200/agentic_hybrid_search_docs_v2/_count`. If it died, re-run:
-  `OPENSEARCH_INDEX_NAME=agentic_hybrid_search_docs_v2 bash scripts/lucille_ingest.sh --reset-index --skip-judgments`
-  (from `langchain_agent/`).
-- **v2 was created before `chunk_text.words` existed.** Once the ingest finishes, add
-  the subfield in place (no re-embed): close the index, add `ascii_word_tokenizer` +
-  `ascii_words_analyzer` to its settings, reopen, `put_mapping` chunk_text from
-  `vector_store.INDEX_MAPPING`, then `_update_by_query` over all docs. The session
-  used a one-off script for this, `add_words_subfield.py`, in the scratchpad; it's
-  about 20 lines and easy to recreate. Then run
-  `OPENSEARCH_INDEX_NAME=agentic_hybrid_search_docs_v2 PYTHONPATH=. python scripts/check_retag_parity.py`,
-  which must PASS. A fresh `make setup` doesn't need any of this, because `setup.py`
-  creates the index with the subfield.
-- The old demo index `agentic_hybrid_search_docs` (9,618 products, Gemini vectors) is
-  untouched. Its query-side embeddings no longer match (nomic vs Gemini), so the app
-  must point at v2: set `OPENSEARCH_INDEX_NAME` in `.env`, or re-ingest into the default name.
-- Local `.env` model lines were switched to Ollama. The pre-change backup is in the
-  session scratchpad as `env.backup-pre-ollama`. `GOOGLE_API_KEY` and `RERANKER_MODEL`
-  lines are still in `.env`; both are harmless and unused.
-- OpenSearch now runs with a 2g heap (the container was recreated).
-- `data/esci_products_smoke.parquet` (1,921 products) and the `ollama_smoke_docs`
-  index are throwaway smoke artifacts. Delete both when done.
-- Judgments were **not** re-ingested for the new corpus (`--skip-judgments`). Do that
-  at cutover, and re-seed the color taxonomy on the new corpus (`--seed-taxonomy`),
-  both of which rewrite shared indexes.
-
-**Remaining:** Step 4 (images: `product_image_url` into the mapping, metadata and
-citations, and remove the old image workaround), Step 5 (re-validate all 4 demos
-live, benchmarks, docs), then `make check`, push, and open a PR. The user asked
-for a branch and PR this session, not a direct push to main.
-
-## Resume here (paused again 2026-09-25, later)
-
-Steps 0-4 are done and committed through `16f93af`. The full 158,637-product ingest into
-`agentic_hybrid_search_docs_v2` is complete (0 failures). Local `.env` points at v2. Retag
-parity passes on the full corpus. All 4 demos ran end to end on local models. Judgments
-were refreshed (65,028 queries, created from the explicit mapping).
-
-**Open items:**
-1. **The demo 2 ground-truth query needs replacing.** Re-measured "sewing machine" on the
-   new corpus (stable across 2 runs): stock_bm25 NDCG@10 0.409 → bm25 0.160 → hybrid 0.463 →
-   reranked 0.359. That's no longer a clean story (our BM25 is worse than stock, and the
-   reranker drops below hybrid). `web/src/demos/registry.ts` `watchFor` still quotes the
-   OLD numbers (0.81/0.91/0.95/0.92). Scan test/small queries for a clean monotonic
-   progression, the same way the registry comment describes the original selection.
-2. **Benchmark:** `make benchmark-esci-fast` now scores test/small queries by default. A
-   run was started at the pause and may not have finished; re-run it and replace
-   `BENCHMARK_RESULTS.md`. Previous all-splits run, not comparable: full-set NDCG@10
-   lexical 0.254 / hybrid 0.302 / adaptive 0.321.
-3. `make check`, push the branch, open the PR (the user asked for branch+PR this session), close #147/#148.
-4. Delete the throwaway `ollama_smoke_docs` index. Decide whether to drop the old
-   `agentic_hybrid_search_docs` (Gemini vectors) or re-ingest into the default name.
-5. Docker Desktop was found stopped once mid-session. If OpenSearch refuses connections, `open -a Docker`, then `docker compose up -d opensearch postgres`.
+- **Corpus:** 158,637 products in `agentic_hybrid_search_docs`, embedded by Lucille through
+  Ollama. The migration-era `_v2` index was cloned back to the plain name and deleted, and the
+  old 9,618-product Gemini index was deleted. Judgments: 65,028 queries in `esci_judgments`,
+  created from its explicit mapping.
+- **Live checks:** retag parity passed on the full corpus (0 mismatches, 0 missed candidates).
+  All 4 demos ran end to end on local models, and every cited product had an image.
+- **Demo 2** ground truth is now "headphones with microphone": NDCG@10 0.16 → 0.28 → 0.40 → 0.60,
+  identical across 3 runs.
+- **Benchmark** (`--fast`, 5000 test/small queries, 0 failures): full-set NDCG@10 lexical 0.392 /
+  hybrid 0.451 / adaptive 0.480; hard-query adaptive vs hybrid NDCG@10 +122%. See
+  `langchain_agent/BENCHMARK_RESULTS.md`.
+- Bugs found and fixed along the way: fuzzy-expansion maxClauseCount on long queries; the
+  esci_judgments mapping never being applied; the `{product_description}` placeholder in 45% of
+  chunk_text; the double query prefix in the embeddings wrapper; the retag deleting the dataset's
+  product_color; doctor.sh stopping after its first check; judgment booleans dropped by Lucille's
+  parquet connector (the benchmark reads small_version from the parquet instead).

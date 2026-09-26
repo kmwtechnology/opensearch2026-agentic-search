@@ -61,7 +61,7 @@ make ci                # fast static sub-check (no live services): black/isort -
 make format-fix        # black + isort, fixes in place
 
 # Benchmarks (requires docker compose up -d)
-make benchmark-esci-fast   # ~5 min, deterministic (no LLM)
+make benchmark-esci-fast   # ~35 min, deterministic (no LLM), 5000 fully judged test queries
 make benchmark-esci        # full adaptive (LLM intent classification via Ollama)
 
 # Smoke test (run standalone, or via `make check` above — no git hook triggers this)
