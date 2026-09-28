@@ -1,4 +1,4 @@
-.PHONY: help doctor setup reindex reindex-products seed-taxonomy demo-reset test lint format-fix clean run stop teardown dev dev-api dev-web install-web ci ci-format ci-test ci-frontend ci-tools benchmark-esci benchmark-esci-fast smoke check clean-db
+.PHONY: help doctor setup reindex reindex-products seed-taxonomy demo-reset test lint format-fix clean run stop teardown dev dev-api dev-web demo demo-down install-web ci ci-format ci-test ci-frontend ci-tools benchmark-esci benchmark-esci-fast smoke check clean-db
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -35,6 +35,8 @@ help:
 	@echo "  make dev-api            - Start FastAPI backend only (port 8000; Docker must already be up)"
 	@echo "  make dev-web            - Start React frontend only (port 5173)"
 	@echo "  make stop               - Stop all running services (processes + Docker, containers persist for a fast restart)"
+	@echo "  make demo               - Fully-Dockerized backend+UI (needs Docker + native Ollama only, after one 'make setup')"
+	@echo "  make demo-down          - Stop the fully-Dockerized app"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make teardown           - Full destructive cleanup (delegates to scripts/teardown.sh: removes .venv, node_modules, Docker volumes)"
@@ -221,5 +223,24 @@ dev:
 	@echo ""
 	@echo "Or start both now (backend in background):"
 	@( PYTHONPATH=. $(VENV)/uvicorn api.main:app --reload --port 8000 & ) && cd web && npm run dev
+
+# Fully-Dockerized backend+UI (docker-compose.yml's "app" service, gated
+# behind the "app" profile). Requires `make setup` to have run at least once
+# (Postgres tables + OpenSearch index/data) and a native Ollama running --
+# Ollama itself is never containerized. Unlike `make dev`, no local
+# Python/Node install is needed at all after that one-time setup.
+demo:
+	@echo "Building and starting the fully-Dockerized app (backend + UI) on http://localhost:8000..."
+	@echo "Requires: Docker, a native Ollama running, and a completed 'make setup' at least once."
+	@cd .. && docker compose --profile app up -d --build
+	@echo ""
+	@echo "Visit http://localhost:8000"
+
+demo-down:
+	@echo "Stopping the fully-Dockerized app..."
+	# `docker compose down` (even scoped with --profile) tears down every
+	# running service in the project, not just this one -- postgres and
+	# opensearch would be stopped too. `stop`+`rm` targets only `app`.
+	@cd .. && docker compose stop app && docker compose rm -f app
 
 .SILENT: help

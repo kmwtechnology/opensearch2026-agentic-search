@@ -98,6 +98,27 @@ Stop or clean up local services:
 Removes running services, the Docker volumes, `.venv`, `node_modules`, and
 log files. Keeps `.env` by default (prompted separately).
 
+### Fully-Dockerized demo (no local Python/Node needed)
+
+After running `./scripts/setup.sh` at least once (creates `.env`, the
+Postgres tables, and the OpenSearch index/data), the backend + UI can run
+entirely in Docker instead of natively:
+
+```bash
+cd langchain_agent
+make demo        # builds + starts the app container on http://localhost:8000
+make demo-down   # stops it (leaves Postgres/OpenSearch running)
+```
+
+This builds `langchain_agent/Dockerfile` — a single image bundling the
+compiled React frontend and the FastAPI backend as one process, one origin —
+and runs it via the `app` service in the root `docker-compose.yml` (gated
+behind the `app` profile, so plain `docker compose up -d` never builds it).
+Ollama is **never** containerized — only a native install gets Metal GPU
+access on macOS, and the 35B model is unusably slow on CPU — so a native
+Ollama must still be running; the container reaches it via
+`host.docker.internal`.
+
 ---
 
 ## Usage
