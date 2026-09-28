@@ -1,4 +1,4 @@
-"""Regression: query-extraction sites must flatten Gemini list-of-blocks content.
+"""Regression: query-extraction sites must flatten list-of-blocks content.
 
 Production incident: a HumanMessage whose ``.content`` was a list of content
 blocks (e.g. ``[{"type": "text", "text": "..."}]``) reached
@@ -8,7 +8,7 @@ blocks (e.g. ``[{"type": "text", "text": "..."}]``) reached
     RequestError(400, 'x_content_parse_exception',
         '[multi_match] unknown token [START_ARRAY] after [query]')
 
-The proximate trigger (``langchain-google-genai`` quirk vs. checkpoint
+The proximate trigger (an LLM provider quirk vs. checkpoint
 serde vs. something else) is unconfirmed — Pydantic enforces ``str`` at
 the chat route — but five sites in ``main.py`` extracted ``msg.content``
 from a HumanMessage as a query string without flattening, so any one of
@@ -30,7 +30,7 @@ from langchain_core.messages import HumanMessage
 
 from observability.llm_content import _flatten_llm_content
 
-GEMINI_BLOCKS: List[dict] = [
+LIST_CONTENT_BLOCKS: List[dict] = [
     {"type": "text", "text": "wireless headphones "},
     {"type": "text", "text": "under $100"},
 ]
@@ -44,7 +44,7 @@ class TestHumanMessageQueryExtractionFlattens:
     as a query string must route through _flatten_llm_content.
 
     The test re-implements each extraction loop verbatim and asserts the
-    extracted value is a plain string for both flat-string and Gemini
+    extracted value is a plain string for both flat-string and
     list-of-blocks content shapes.
     """
 
@@ -52,7 +52,7 @@ class TestHumanMessageQueryExtractionFlattens:
         "content, expected",
         [
             ("wireless headphones under $100", "wireless headphones under $100"),
-            (GEMINI_BLOCKS, EXPECTED),
+            (LIST_CONTENT_BLOCKS, EXPECTED),
         ],
     )
     def test_intent_classifier_extraction(self, content: Any, expected: str) -> None:
@@ -70,7 +70,7 @@ class TestHumanMessageQueryExtractionFlattens:
         "content, expected",
         [
             ("running shoes", "running shoes"),
-            (GEMINI_BLOCKS, EXPECTED),
+            (LIST_CONTENT_BLOCKS, EXPECTED),
         ],
     )
     def test_query_evaluator_extraction(self, content: Any, expected: str) -> None:
@@ -88,7 +88,7 @@ class TestHumanMessageQueryExtractionFlattens:
         "content, expected",
         [
             ("kitchen knives", "kitchen knives"),
-            (GEMINI_BLOCKS, EXPECTED),
+            (LIST_CONTENT_BLOCKS, EXPECTED),
         ],
     )
     def test_agent_node_extraction(self, content: Any, expected: str) -> None:
@@ -106,7 +106,7 @@ class TestHumanMessageQueryExtractionFlattens:
         "content, expected",
         [
             ("noise-cancelling headphones", "noise-cancelling headphones"),
-            (GEMINI_BLOCKS, EXPECTED),
+            (LIST_CONTENT_BLOCKS, EXPECTED),
         ],
     )
     def test_retriever_node_extraction(self, content: Any, expected: str) -> None:
@@ -125,7 +125,7 @@ class TestHumanMessageQueryExtractionFlattens:
         "content, expected",
         [
             ("toaster oven", "toaster oven"),
-            (GEMINI_BLOCKS, EXPECTED),
+            (LIST_CONTENT_BLOCKS, EXPECTED),
         ],
     )
     def test_reranker_node_extraction(self, content: Any, expected: str) -> None:

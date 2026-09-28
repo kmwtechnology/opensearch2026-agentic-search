@@ -7,7 +7,7 @@ from typing import Any
 def _flatten_llm_content(response: Any) -> str:
     """Normalize an LLM response's `content` to a flat string.
 
-    Gemini-family models return ``content`` as a list of content blocks
+    Some LLM providers return ``content`` as a list of content blocks
     (e.g. ``[{"type": "text", "text": "..."}, ...]``) instead of a flat
     string. Pydantic event models in api/schemas/events.py declare these
     fields as ``str``, so passing the raw list raises a validation error.

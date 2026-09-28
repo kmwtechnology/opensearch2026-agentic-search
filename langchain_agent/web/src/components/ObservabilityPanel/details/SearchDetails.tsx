@@ -379,7 +379,7 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
             </>
           ) : rerankerType ? (
             <>
-              {' '}The <strong>reranker</strong> (Gemini) then scores each document
+              {' '}The <strong>reranker</strong> (LLM) then scores each document
               for relevance using LLM-based semantic scoring.
             </>
           ) : (

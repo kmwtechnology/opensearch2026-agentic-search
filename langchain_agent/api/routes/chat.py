@@ -128,14 +128,26 @@ class ConnectionManager:
             thread_id: Target connection's thread ID
             event: Event to send
         """
-        if thread_id in self.active_connections:
-            websocket = self.active_connections[thread_id]
-            try:
-                await websocket.send_json(event.model_dump(mode="json"))
-            except (WebSocketDisconnect, RuntimeError, ValueError) as e:
-                logger.error("websocket_send_error", thread_id=thread_id, error=str(e))
-            except Exception as e:
-                logger.error("unexpected_websocket_send_error", thread_id=thread_id, error=str(e))
+        if thread_id not in self.active_connections:
+            # This used to fail silently -- a caller passing a thread_id that
+            # doesn't match the one the connection was registered under (see
+            # `connect()`) previously dropped every event with no signal at
+            # all, which once produced a WebSocket that looked "hung" from
+            # the client's perspective even though the server had completed
+            # and "successfully emitted" every event into the void.
+            logger.warning(
+                "emit_event_unknown_thread_id",
+                thread_id=thread_id,
+                event_type=type(event).__name__,
+            )
+            return
+        websocket = self.active_connections[thread_id]
+        try:
+            await websocket.send_json(event.model_dump(mode="json"))
+        except (WebSocketDisconnect, RuntimeError, ValueError) as e:
+            logger.error("websocket_send_error", thread_id=thread_id, error=str(e))
+        except Exception as e:
+            logger.error("unexpected_websocket_send_error", thread_id=thread_id, error=str(e))
 
     async def shutdown(self):
         """

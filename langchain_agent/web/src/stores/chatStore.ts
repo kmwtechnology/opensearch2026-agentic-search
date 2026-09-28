@@ -298,7 +298,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.log('Conversation data loaded:', data)
 
       const messages: ChatMessage[] = data.messages.map((msg: { type: string; content: unknown }, index: number) => {
-        // Ensure content is always a string (handle Gemini content blocks and other formats)
+        // Ensure content is always a string (handle content-block arrays and other formats)
         let stringContent: string
         if (typeof msg.content === 'string') {
           stringContent = msg.content

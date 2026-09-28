@@ -195,7 +195,7 @@ Returns 403 when `ENABLE_ENRICHMENT_TOOL` is unset/false, 422 on a missing
 }
 ```
 
-**Fix:** Check `/api/health` to see which probe failed (PostgreSQL, OpenSearch, or Google API).
+**Fix:** Check `/api/health` to see which probe failed (PostgreSQL, OpenSearch, or Ollama).
 
 ---
 

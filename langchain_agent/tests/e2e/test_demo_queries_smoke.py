@@ -15,10 +15,10 @@ DEMO_QUERIES.md scenarios complete cleanly:
 
   1. α-Shift Wins — single turn, expects ``quality_gate`` event with a
      retry, then ``agent_complete``.
-  2. Refinement Keeps Context — two turns, expects ``intent_classified``
+  2. Refinement Keeps Context — two turns, expects ``intent_classification``
      with ``intent='refinement'`` on turn 2.
   3. Query Rewrite Wins — two turns, expects ``query_expansion`` event
-     and ``intent_classified`` with ``intent='follow_up'`` on turn 2.
+     and ``intent_classification`` with ``intent='follow_up'`` on turn 2.
 
 Each scenario asserts no ``agent_error`` event was emitted at any point.
 That is the explicit guard against the original crash class.
@@ -37,20 +37,30 @@ import json
 import uuid
 from typing import Any, Dict, List, Tuple
 
+import httpx
 import pytest
 import websockets.asyncio.client as ws_client
 
-from .conftest import DEPLOYMENT_URL, auth_ws_headers
+from .conftest import DEPLOYMENT_URL, auth_rest_headers, auth_ws_headers
 
 # Single-message budget locally (cross-encoder warm, FETCH_K=40, local Ollama
 # generation) is observed at ~12-35s per turn.
 PER_TURN_TIMEOUT_S = 90.0
 TWO_TURN_TIMEOUT_S = 180.0
+# The two self-correcting/growing demos add a real Lucille reindex (~20s,
+# scoped re-tag) on top of the usual intent->retrieve->rerank->generate
+# pipeline, plus a second LLM call to approve the enrichment tool call.
+ENRICHMENT_TURN_TIMEOUT_S = 150.0
 
 
-def _ws_url() -> str:
+def _ws_url(thread_id: str) -> str:
+    # thread_id must match what _drive_turn sends in the chat_message payload:
+    # ConnectionManager.emit_event routes by the connection's registered
+    # thread_id (set from this query param, or a random one if omitted), so a
+    # mismatch here means every event after connection_established is
+    # silently dropped -- no error, the socket just goes quiet until timeout.
     base = DEPLOYMENT_URL.replace("http://", "ws://").replace("https://", "wss://")
-    return f"{base}/ws/chat"
+    return f"{base}/ws/chat?thread_id={thread_id}"
 
 
 async def _drain_until_welcome(websocket: Any, timeout_s: float = 10.0) -> None:
@@ -78,6 +88,7 @@ async def _drive_turn(
     websocket: Any,
     message: str,
     thread_id: str,
+    timeout_s: float = PER_TURN_TIMEOUT_S,
 ) -> Tuple[List[Dict[str, Any]], bool]:
     """Send one ``chat_message`` and collect events until ``agent_complete``.
 
@@ -96,7 +107,7 @@ async def _drive_turn(
     )
     events: List[Dict[str, Any]] = []
     completed = False
-    deadline = asyncio.get_event_loop().time() + PER_TURN_TIMEOUT_S
+    deadline = asyncio.get_event_loop().time() + timeout_s
     while True:
         remaining = deadline - asyncio.get_event_loop().time()
         if remaining <= 0:
@@ -119,14 +130,36 @@ async def _drive_turn(
     return events, completed
 
 
+async def _drain_trailing(websocket: Any, grace_s: float = 5.0) -> List[Dict[str, Any]]:
+    """Collect any further events for a short grace period after
+    agent_complete. Some events (e.g. pipeline_summary) are emitted after
+    agent_complete, which _drive_turn stops listening for as soon as it sees."""
+    events: List[Dict[str, Any]] = []
+    deadline = asyncio.get_event_loop().time() + grace_s
+    while True:
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            break
+        try:
+            raw = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+        except asyncio.TimeoutError:
+            break
+        try:
+            evt = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        events.append(evt)
+    return events
+
+
 def _summarize(events: List[Dict[str, Any]]) -> str:
     """One-line per event for diagnostic output on failure."""
     lines = []
     for e in events:
         t = e.get("type", "?")
-        if t == "intent_classified":
+        if t == "intent_classification":
             lines.append(
-                f"  intent_classified intent={e.get('intent')} confidence={e.get('confidence')}"
+                f"  intent_classification intent={e.get('intent')} confidence={e.get('confidence')}"
             )
         elif t == "opensearch_query":
             lines.append(
@@ -147,6 +180,14 @@ def _summarize(events: List[Dict[str, Any]]) -> str:
             lines.append(f"  AGENT_ERROR error={e.get('error')!r}")
         elif t == "agent_complete":
             lines.append(f"  agent_complete response_len={len(e.get('response') or '')}")
+        elif t == "enrichment_triggered":
+            lines.append(
+                f"  enrichment_triggered status={e.get('status')} "
+                f"attribute_type={e.get('attribute_type')} variant={e.get('variant')!r} "
+                f"canonical={e.get('canonical')!r} corrected_from={e.get('corrected_from')!r}"
+            )
+        elif t == "pipeline_summary":
+            lines.append(f"  pipeline_summary has_ground_truth={e.get('has_ground_truth')}")
         else:
             lines.append(f"  {t}")
     return "\n".join(lines)
@@ -159,6 +200,22 @@ def _assert_no_error(events: List[Dict[str, Any]], scenario: str) -> None:
         f"flatten fix targets. Errors: {[e.get('error') for e in errors]}\n"
         f"Full event log:\n{_summarize(events)}"
     )
+
+
+async def _reset_demo_taxonomy() -> None:
+    """Re-arm both self-consuming demos (taxonomy-ingestion, schema-evolution)
+    via the same POST /api/admin/demo-reset the UI's Restart button calls.
+
+    Both demos destroy their own preconditions on success (see
+    quality/demo_reset.py) -- this must run before each one so its first
+    turn reliably reproduces the gap it exists to fix, and again after, so a
+    test run doesn't leave the taxonomy mutated for whatever runs next
+    (including a re-export of the precomputed index dump, which asserts
+    zero waterproof mappings).
+    """
+    async with httpx.AsyncClient(base_url=DEPLOYMENT_URL, timeout=30.0) as client:
+        response = await client.post("/api/admin/demo-reset", headers=auth_rest_headers())
+        response.raise_for_status()
 
 
 @pytest.mark.e2e
@@ -182,7 +239,7 @@ class TestDemoQueriesSmoke:
     async def test_demo1_alpha_shift_wins(self) -> None:
         thread_id = f"demo1-{uuid.uuid4().hex[:8]}"
         async with ws_client.connect(
-            _ws_url(),
+            _ws_url(thread_id),
             additional_headers=auth_ws_headers(),
         ) as websocket:
             await _drain_until_welcome(websocket)
@@ -205,7 +262,7 @@ class TestDemoQueriesSmoke:
     async def test_demo2_refinement_keeps_context(self) -> None:
         thread_id = f"demo2-{uuid.uuid4().hex[:8]}"
         async with ws_client.connect(
-            _ws_url(),
+            _ws_url(thread_id),
             additional_headers=auth_ws_headers(),
         ) as websocket:
             await _drain_until_welcome(websocket)
@@ -226,8 +283,8 @@ class TestDemoQueriesSmoke:
 
         # Turn-2 intent must classify as refinement for the demo's
         # "two filter groups" payoff to fire.
-        intents = [e for e in t2_events if e.get("type") == "intent_classified"]
-        assert intents, f"[demo2-turn2] no intent_classified event.\n{_summarize(t2_events)}"
+        intents = [e for e in t2_events if e.get("type") == "intent_classification"]
+        assert intents, f"[demo2-turn2] no intent_classification event.\n{_summarize(t2_events)}"
         intent_value = intents[0].get("intent")
         assert intent_value == "refinement", (
             f"[demo2-turn2] expected intent='refinement', got {intent_value!r}.\n"
@@ -237,7 +294,7 @@ class TestDemoQueriesSmoke:
     async def test_demo3_query_rewrite_wins(self) -> None:
         thread_id = f"demo3-{uuid.uuid4().hex[:8]}"
         async with ws_client.connect(
-            _ws_url(),
+            _ws_url(thread_id),
             additional_headers=auth_ws_headers(),
         ) as websocket:
             await _drain_until_welcome(websocket)
@@ -263,8 +320,8 @@ class TestDemoQueriesSmoke:
         )
         # Intent should be follow_up (not refinement) so the demo shows
         # expansion alone, no product_id filter.
-        intents = [e for e in t2_events if e.get("type") == "intent_classified"]
-        assert intents, f"[demo3-turn2] no intent_classified event.\n{_summarize(t2_events)}"
+        intents = [e for e in t2_events if e.get("type") == "intent_classification"]
+        assert intents, f"[demo3-turn2] no intent_classification event.\n{_summarize(t2_events)}"
         intent_value = intents[0].get("intent")
         assert intent_value == "follow_up", (
             f"[demo3-turn2] expected intent='follow_up', got {intent_value!r}. "
@@ -273,3 +330,220 @@ class TestDemoQueriesSmoke:
             f"Adjust the demo, not the test, if intent stabilizes elsewhere.\n"
             f"Events:\n{_summarize(t2_events)}"
         )
+
+
+@pytest.mark.e2e
+@pytest.mark.slow
+@pytest.mark.asyncio
+class TestScriptedDemos:
+    """Drive the four ACTUAL scripted demos from web/src/demos/registry.ts,
+    verbatim, end to end. This is separate from TestDemoQueriesSmoke above,
+    which exercises the same underlying mechanisms (alpha shift, refinement,
+    query rewrite) with standalone queries that predate the current scripted
+    demos and are NOT the literal on-stage script.
+
+    Query strings here must stay byte-for-byte identical to registry.ts --
+    several are load-bearing in ways documented there (see each demo's
+    comment block). If registry.ts changes a query, update it here too.
+
+    Two of the four demos are self-consuming (color correction, waterproof
+    growth): each destroys its own precondition on success, so a second run
+    without resetting finds nothing to demonstrate. Both reset before AND
+    after via /api/admin/demo-reset, so this class is safe to re-run and
+    leaves the taxonomy clean for anything that runs after it (notably: the
+    precomputed-dump export, which asserts zero waterproof mappings).
+    """
+
+    async def test_demo_adaptive_query_enhancements(self) -> None:
+        """registry.ts id='adaptive-query'. One conversation, three turns
+        that narrow. No retry turn is expected -- see registry.ts's own
+        note on why no query in this arc both fires the quality gate and
+        recovers inside the same conversation."""
+        thread_id = f"adaptive-query-{uuid.uuid4().hex[:8]}"
+        async with ws_client.connect(
+            _ws_url(thread_id),
+            additional_headers=auth_ws_headers(),
+        ) as websocket:
+            await _drain_until_welcome(websocket)
+
+            t1_events, t1_done = await _drive_turn(
+                websocket, "Show me blue running shoes", thread_id
+            )
+            _assert_no_error(t1_events, "adaptive-query-turn1")
+            assert (
+                t1_done
+            ), f"[adaptive-query-turn1] agent_complete never emitted.\n{_summarize(t1_events)}"
+
+            t2_events, t2_done = await _drive_turn(websocket, "only size 10", thread_id)
+            _assert_no_error(t2_events, "adaptive-query-turn2")
+            assert (
+                t2_done
+            ), f"[adaptive-query-turn2] agent_complete never emitted.\n{_summarize(t2_events)}"
+
+            t3_events, t3_done = await _drive_turn(
+                websocket, "what about trail running?", thread_id
+            )
+            _assert_no_error(t3_events, "adaptive-query-turn3")
+            assert (
+                t3_done
+            ), f"[adaptive-query-turn3] agent_complete never emitted.\n{_summarize(t3_events)}"
+
+        # The "wow moment" on turn 3 is the rewriter carrying both earlier
+        # constraints forward into a semantic query.
+        expansions = [e for e in t3_events if e.get("type") == "query_expansion"]
+        assert expansions, (
+            f"[adaptive-query-turn3] no query_expansion event observed -- the "
+            f"vague follow-up should get rewritten with prior context.\n"
+            f"Events:\n{_summarize(t3_events)}"
+        )
+
+    async def test_demo_ground_truth_proof(self) -> None:
+        """registry.ts id='ground-truth-proof'. Single turn, single new
+        conversation. The payoff is has_ground_truth flipping True -- this
+        query is one of the few in the corpus with real ESCI judgments."""
+        thread_id = f"ground-truth-proof-{uuid.uuid4().hex[:8]}"
+        async with ws_client.connect(
+            _ws_url(thread_id),
+            additional_headers=auth_ws_headers(),
+        ) as websocket:
+            await _drain_until_welcome(websocket)
+            events, completed = await _drive_turn(
+                websocket, "headphones with microphone", thread_id
+            )
+            # pipeline_summary is emitted AFTER agent_complete (see
+            # observable_agent.py's process_message) -- _drive_turn stops
+            # collecting the instant it sees agent_complete, so keep
+            # listening briefly to catch the trailing event too.
+            events += await _drain_trailing(websocket)
+        _assert_no_error(events, "ground-truth-proof")
+        assert (
+            completed
+        ), f"[ground-truth-proof] agent_complete never emitted.\n{_summarize(events)}"
+
+        summaries = [e for e in events if e.get("type") == "pipeline_summary"]
+        assert summaries, f"[ground-truth-proof] no pipeline_summary event.\n{_summarize(events)}"
+        assert summaries[0].get("has_ground_truth") is True, (
+            f"[ground-truth-proof] expected has_ground_truth=True for this query -- "
+            f"if this now fails, the corpus/judgments no longer have real ESCI "
+            f"ground truth for 'headphones with microphone'; pick a new query in "
+            f"registry.ts (see its long comment on how the current one was chosen) "
+            f"rather than loosening this test.\n"
+            f"Events:\n{_summarize(events)}"
+        )
+
+    async def test_demo_taxonomy_ingestion(self) -> None:
+        """registry.ts id='taxonomy-ingestion'. Self-consuming: re-arms
+        before and after. Turn 2 disputes a real shipped mis-tag (tan ->
+        yellow) and triggers a live scoped Lucille re-tag; turn 3 is a NEW
+        conversation (same-thread would rewrite the query down a lexical
+        path instead of re-querying the corrected field)."""
+        await _reset_demo_taxonomy()
+        try:
+            thread_id_1 = f"taxonomy-ingestion-{uuid.uuid4().hex[:8]}"
+            async with ws_client.connect(
+                _ws_url(thread_id_1),
+                additional_headers=auth_ws_headers(),
+            ) as websocket:
+                await _drain_until_welcome(websocket)
+
+                t1_events, t1_done = await _drive_turn(websocket, "show me tan boots", thread_id_1)
+                _assert_no_error(t1_events, "taxonomy-ingestion-turn1")
+                assert t1_done, (
+                    f"[taxonomy-ingestion-turn1] agent_complete never emitted.\n"
+                    f"{_summarize(t1_events)}"
+                )
+
+                t2_events, t2_done = await _drive_turn(
+                    websocket,
+                    "that's not tan, that's tagged yellow which is wrong",
+                    thread_id_1,
+                    timeout_s=ENRICHMENT_TURN_TIMEOUT_S,
+                )
+                _assert_no_error(t2_events, "taxonomy-ingestion-turn2")
+                assert t2_done, (
+                    f"[taxonomy-ingestion-turn2] agent_complete never emitted.\n"
+                    f"{_summarize(t2_events)}"
+                )
+
+            enrichments = [e for e in t2_events if e.get("type") == "enrichment_triggered"]
+            assert enrichments, (
+                f"[taxonomy-ingestion-turn2] no enrichment_triggered event -- the "
+                f"correction-dispute phrasing should trigger a live re-tag every "
+                f"time (this is the one demo turn that isn't a soft LLM-choice "
+                f"assertion; see registry.ts's note that this exact phrase 'trips "
+                f"the correction detector').\nEvents:\n{_summarize(t2_events)}"
+            )
+            terminal = [e for e in enrichments if e.get("status") != "started"]
+            assert terminal and terminal[-1].get("status") == "complete", (
+                f"[taxonomy-ingestion-turn2] enrichment did not reach status=complete.\n"
+                f"Events:\n{_summarize(t2_events)}"
+            )
+
+            thread_id_2 = f"taxonomy-ingestion-{uuid.uuid4().hex[:8]}"
+            async with ws_client.connect(
+                _ws_url(thread_id_2),
+                additional_headers=auth_ws_headers(),
+            ) as websocket:
+                await _drain_until_welcome(websocket)
+                t3_events, t3_done = await _drive_turn(websocket, "show me tan boots", thread_id_2)
+            _assert_no_error(t3_events, "taxonomy-ingestion-turn3")
+            assert t3_done, (
+                f"[taxonomy-ingestion-turn3] agent_complete never emitted.\n"
+                f"{_summarize(t3_events)}"
+            )
+        finally:
+            await _reset_demo_taxonomy()
+
+    async def test_demo_schema_evolution(self) -> None:
+        """registry.ts id='schema-evolution'. Self-consuming: re-arms before
+        and after. Turn 1's enrichment trigger is a genuine LLM choice
+        (registry.ts documents that the model may decline on a given run),
+        so that part is asserted softly -- only completion-with-no-error is
+        a hard requirement for turn 1. Turn 2 (new conversation) is only
+        meaningfully checked if turn 1 actually grew the taxonomy."""
+        await _reset_demo_taxonomy()
+        try:
+            thread_id_1 = f"schema-evolution-{uuid.uuid4().hex[:8]}"
+            async with ws_client.connect(
+                _ws_url(thread_id_1),
+                additional_headers=auth_ws_headers(),
+            ) as websocket:
+                await _drain_until_welcome(websocket)
+                t1_events, t1_done = await _drive_turn(
+                    websocket,
+                    "Show me waterproof boots",
+                    thread_id_1,
+                    timeout_s=ENRICHMENT_TURN_TIMEOUT_S,
+                )
+            _assert_no_error(t1_events, "schema-evolution-turn1")
+            assert t1_done, (
+                f"[schema-evolution-turn1] agent_complete never emitted.\n"
+                f"{_summarize(t1_events)}"
+            )
+
+            enrichments = [e for e in t1_events if e.get("type") == "enrichment_triggered"]
+            grew_taxonomy = any(e.get("status") == "complete" for e in enrichments)
+            if not grew_taxonomy:
+                pytest.skip(
+                    "[schema-evolution] model declined to call trigger_enrichment on "
+                    "this run (a documented possibility in registry.ts) -- turn 1 "
+                    "completed cleanly with no error, which is the hard requirement; "
+                    "re-run to exercise the growth path itself."
+                )
+
+            thread_id_2 = f"schema-evolution-{uuid.uuid4().hex[:8]}"
+            async with ws_client.connect(
+                _ws_url(thread_id_2),
+                additional_headers=auth_ws_headers(),
+            ) as websocket:
+                await _drain_until_welcome(websocket)
+                t2_events, t2_done = await _drive_turn(
+                    websocket, "Show me waterproof boots", thread_id_2
+                )
+            _assert_no_error(t2_events, "schema-evolution-turn2")
+            assert t2_done, (
+                f"[schema-evolution-turn2] agent_complete never emitted.\n"
+                f"{_summarize(t2_events)}"
+            )
+        finally:
+            await _reset_demo_taxonomy()

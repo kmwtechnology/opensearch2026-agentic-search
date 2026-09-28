@@ -92,12 +92,12 @@ async def admin_health(request: Request) -> dict:
     **Authentication:** Same-origin only (see module docstring).
 
     Distinct from ``/api/health`` (which probes Postgres + OpenSearch
-    cluster + Google AI reachability) — this endpoint reports the state
+    cluster + Ollama reachability) — this endpoint reports the state
     of the application's primary index: whether it exists, whether
     OpenSearch is reachable, and the current document count.
 
-    Used by the GitHub Actions reindex workflow to confirm the index has
-    documents after a re-ingestion run.
+    Useful to confirm the index has documents after a re-ingestion run
+    (there is no CI to automate this check against -- see #113).
 
     **Status values:**
         - ``healthy`` — index exists and is queryable; ``documents`` reflects

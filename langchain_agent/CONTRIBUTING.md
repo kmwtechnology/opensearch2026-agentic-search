@@ -258,75 +258,63 @@ PYTHONPATH=. pytest tests/integration/test_sentiment_analyzer.py -v
 
 ## Swapping the LLM Provider
 
-**Scenario**: Replace Google Gemini with OpenAI GPT-4o.
+**Scenario**: Replace local Ollama with a hosted provider, e.g. OpenAI GPT-4o.
 
-### Step 1: Update Dependencies
+Every chat model in this codebase is built in exactly one place —
+`core/llm.py::build_chat_model()`, which returns a `ChatOllama` — so a
+provider swap touches that one function plus the reranker, which is a
+separate, non-LLM local cross-encoder (`retrieval/reranker.py`) and isn't
+affected at all.
+
+### Step 1: Update dependencies
 
 ```bash
-pip install openai
-# (or update pyproject.toml, requirements.txt)
+pip install langchain-openai
+# (or update requirements.txt)
 ```
 
 ### Step 2: Update core/config.py
 
 ```python
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "google")  # NEW
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")  # Changed from gemini
-EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-small")
-RERANKER_MODEL = os.getenv("RERANKER_MODEL", "gpt-4o-mini")
-QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", "gpt-4o-mini")
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")  # was e.g. qwen3.6:35b-a3b-q4_K_M
+EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-small")  # was nomic-embed-text
+# VECTOR_DIMENSION must match the new embeddings model's output size, and
+# the OpenSearch index mapping must be rebuilt to match -- changing
+# embeddings always means a full re-ingest (see data/README.md).
 ```
 
-### Step 3: Update main.py
-
-```python
-# At top of file, conditional import
-if config.LLM_PROVIDER == "google":
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    llm = ChatGoogleGenerativeAI(model=config.LLM_MODEL, temperature=0)
-elif config.LLM_PROVIDER == "openai":
-    from langchain_openai import ChatOpenAI
-    llm = ChatOpenAI(model=config.LLM_MODEL, temperature=0)
-else:
-    raise ValueError(f"Unsupported LLM provider: {config.LLM_PROVIDER}")
-```
-
-### Step 4: Update embeddings
-
-In `retrieval/vector_store.py`:
-
-```python
-from langchain_openai import OpenAIEmbeddings
-
-if config.EMBEDDINGS_MODEL.startswith("text-embedding"):
-    embeddings = OpenAIEmbeddings(model=config.EMBEDDINGS_MODEL)
-else:
-    # Fallback to Gemini
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings
-    embeddings = GoogleGenerativeAIEmbeddings(model=config.EMBEDDINGS_MODEL)
-```
-
-### Step 5: Update reranker
-
-In `retrieval/reranker.py`:
+### Step 3: Update core/llm.py
 
 ```python
 from langchain_openai import ChatOpenAI
 
-class GeminiReranker:
-    def __init__(self, model_name: str = "gpt-4o-mini"):
-        self.model_name = model_name
-        # Switch from ChatGoogleGenerativeAI
-        self.llm = ChatOpenAI(model=model_name, temperature=0)
+def build_chat_model(model: str = LLM_MODEL, **kwargs) -> ChatOpenAI:
+    """ChatOpenAI with the pipeline-wide settings above."""
+    return ChatOpenAI(model=model, temperature=LLM_TEMPERATURE, **kwargs)
 ```
 
-### Step 6: Test
+### Step 4: Update embeddings
+
+In `retrieval/embeddings.py` (wherever `build_embeddings()` constructs the
+embeddings client):
+
+```python
+from langchain_openai import OpenAIEmbeddings
+
+def build_embeddings() -> OpenAIEmbeddings:
+    return OpenAIEmbeddings(model=EMBEDDINGS_MODEL)
+```
+
+Lucille's `OllamaEmbedStage` (ingest-time embedding) needs the equivalent
+swap too, or the corpus and query-time embeddings won't be in the same
+vector space.
+
+### Step 5: Test
 
 ```bash
-export LLM_PROVIDER=openai
 export OPENAI_API_KEY=sk-...
-PYTHONPATH=. pytest tests/unit/test_intent_classifier.py -v
-PYTHONPATH=. python3 setup.py  # Validate API connection
+PYTHONPATH=. pytest tests/unit/ -v
+PYTHONPATH=. python3 setup.py  # Validate the new provider connects
 ```
 
 ---

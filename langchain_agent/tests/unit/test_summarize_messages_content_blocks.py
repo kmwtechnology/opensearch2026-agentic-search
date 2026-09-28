@@ -3,12 +3,12 @@
 Regression for task #17: when the user sends a `summary` follow-up against
 a prior thread, the agent emitted `agent_error` because `summarize_messages`
 returned the LLM response's raw `content` — which is a list of content
-blocks on Gemini 3, not a string. The downstream `SummaryEvent.summary_text:
+blocks on some LLM providers, not a string. The downstream `SummaryEvent.summary_text:
 str` Pydantic field then rejected it with a validation error.
 
 Verifies:
 - _flatten_llm_content returns a string for both flat-string content and
-  Gemini list-of-content-blocks content.
+  list-of-content-blocks content.
 - summarize_messages calls the helper and returns a string regardless of
   which shape the LLM produces.
 """
@@ -37,12 +37,12 @@ class TestFlattenLLMContent:
     def test_flat_string_passes_through(self) -> None:
         assert _flatten_llm_content(_Resp("hello world")) == "hello world"
 
-    def test_gemini_content_blocks_joined(self) -> None:
-        gemini_content = [
+    def test_list_content_blocks_joined(self) -> None:
+        list_content = [
             {"type": "text", "text": "Summary of "},
             {"type": "text", "text": "the conversation."},
         ]
-        assert _flatten_llm_content(_Resp(gemini_content)) == "Summary of the conversation."
+        assert _flatten_llm_content(_Resp(list_content)) == "Summary of the conversation."
 
     def test_thinking_blocks_skipped(self) -> None:
         # Reasoning models emit non-text blocks like {"type": "thinking", ...};
@@ -76,7 +76,7 @@ class TestFlattenLLMContent:
 @pytest.mark.phase1
 class TestSummarizeMessagesReturnsString:
     """summarize_messages must always return a str, even when the LLM
-    returns a list of content blocks (Gemini)."""
+    returns a list of content blocks."""
 
     def _agent_with_llm_returning(self, bare_agent, content: Any):
         bare_agent.llm = MagicMock()
@@ -89,15 +89,15 @@ class TestSummarizeMessagesReturnsString:
         assert isinstance(out, str)
         assert out == "Plain summary."
 
-    def test_gemini_content_blocks_flattened(self, bare_agent) -> None:
+    def test_list_content_blocks_flattened(self, bare_agent) -> None:
         # The exact shape that crashed production on 2026-04-29:
         # response.content was a list of {type, text} dicts and the
         # SummaryEvent Pydantic field rejected it.
-        gemini_content = [
+        list_content = [
             {"type": "text", "text": "User asked about headphones. "},
             {"type": "text", "text": "Assistant returned 4 products."},
         ]
-        agent = self._agent_with_llm_returning(bare_agent, gemini_content)
+        agent = self._agent_with_llm_returning(bare_agent, list_content)
         out = agent.summarize_messages([HumanMessage(content="hi"), AIMessage(content="hello")])
         assert isinstance(out, str)
         assert out == "User asked about headphones. Assistant returned 4 products."

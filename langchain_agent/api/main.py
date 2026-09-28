@@ -114,7 +114,7 @@ tags_metadata = [
         "name": "health",
         "description": (
             "System and index health probes. `/api/health` reports Postgres + OpenSearch + "
-            "Google AI reachability; `/api/admin/health` reports current index document count."
+            "Ollama reachability; `/api/admin/health` reports current index document count."
         ),
     },
     {
@@ -156,7 +156,7 @@ app = FastAPI(
         "- **Intent routing**: 7 classes (search, comparison, attribute_filter, refinement, "
         "follow_up, summary, clarify)\n"
         "- **Reranking + quality gate**: Cross-encoder (ms-marco-MiniLM-L-12-v2, ~2s for a "
-        "40-doc batch, default) or optional Gemini LLM (~500ms–1s), 0.0–1.0 scores; on a "
+        "40-doc batch, the only reranker) scores 0.0–1.0; on a "
         "low score the gate retries once with a widened retrieval pool (not just a "
         "re-weighted alpha, which alone was measured to not move the reranker's score)\n"
         "- **Typeahead autocomplete**: `/api/suggest` edge-ngram prefix matching with "

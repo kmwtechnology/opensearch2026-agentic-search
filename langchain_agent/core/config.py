@@ -37,7 +37,7 @@ Controls hybrid search balance and LLM-based relevance scoring.
 
 ### Query Evaluation & Alpha (`ENABLE_QUERY_EVALUATION`, `QUERY_EVAL_*`)
 Dynamic alpha selection based on query intent.
-- `QUERY_EVAL_MODEL`: Fast classifier (gemini-3.1-flash-lite-preview)
+- `QUERY_EVAL_MODEL`: Fast classifier (defaults to `LLM_MODEL`)
 - `ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS`: Max wait for the alpha-decision LLM call (shared with the retriever's attribute-extraction/query-expansion calls, same model family)
 - Alpha table: 0.0 (pure lexical) ← intent categories → 1.0 (pure semantic)
 
@@ -83,7 +83,7 @@ from psycopg.rows import dict_row
 load_dotenv()
 
 __all__ = [
-    # Google AI configuration
+    # Ollama configuration
     "OLLAMA_HOST",
     "OLLAMA_KEEP_ALIVE",
     "OLLAMA_NUM_CTX",
@@ -355,8 +355,8 @@ RERANKER_TOP_K = 10
 # Enable API connection priming on startup to reduce first-query latency
 RERANKER_WARMUP_ENABLED = os.getenv("RERANKER_WARMUP_ENABLED", "true").lower() == "true"
 
-# Reranker backend. Only "cross-encoder" exists since the Gemini LLM-as-reranker
-# was removed (#148); kept as a constant because reranker_result events carry it
+# Reranker backend. Only "cross-encoder" exists since the earlier LLM-as-reranker
+# option was removed (#148); kept as a constant because reranker_result events carry it
 # and the UI keys its description off it (#87). ~2s for a 40-doc batch.
 RERANKER_TYPE = "cross-encoder"
 
@@ -488,7 +488,7 @@ DEFAULT_THREAD_ID = "default_thread"
 # Enable automatic conversation compaction
 ENABLE_COMPACTION = True
 
-# Maximum estimated tokens in context (conservative estimate for gemini-3-flash-preview)
+# Maximum estimated tokens in context (conservative estimate for the local LLM)
 MAX_CONTEXT_TOKENS = 3000
 
 # Trigger compaction at this percentage of max context (0.8 = 80%)

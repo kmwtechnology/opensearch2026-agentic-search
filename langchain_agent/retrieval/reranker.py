@@ -1,7 +1,7 @@
 """
 Cross-encoder reranker: local (query, document) relevance scoring.
 
-The only reranker since #148 removed the Gemini LLM-as-reranker option -- the
+The only reranker since #148 removed the earlier LLM-as-reranker option -- the
 pipeline runs entirely on local models. See CrossEncoderReranker below.
 """
 
@@ -38,12 +38,12 @@ class CrossEncoderReranker:
     ## Performance
 
     - Latency: measured directly from production logs (see #26) at ~1.9–2.0s for a
-      RERANKER_FETCH_K=40-document batch on Cloud Run's CPU-only instance -- not the
+      RERANKER_FETCH_K=40-document batch on a CPU-only instance -- not the
       ~10ms/batch figure this docstring and several other docs previously claimed
       (that number doesn't match observed behavior at real batch size / real hardware;
       don't propagate it further without re-measuring).
-    - Quality: Comparable or better than Gemini on ESCI benchmarks (cross-encoders are
-      rank-trained on MS MARCO)
+    - Quality: Comparable or better than an LLM-as-reranker on ESCI benchmarks
+      (cross-encoders are rank-trained on MS MARCO)
     - Memory: ~200MB model weights (baked into the Docker image at build time, not
       downloaded at runtime — see the HF_HOME/HF_HUB_OFFLINE comments in the Dockerfile)
 

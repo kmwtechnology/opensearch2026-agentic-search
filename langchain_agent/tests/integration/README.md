@@ -2,7 +2,7 @@
 
 > **Parent**: [tests/README.md](../README.md)
 
-Multi-component tests requiring live PostgreSQL, OpenSearch, and `GOOGLE_API_KEY`.
+Multi-component tests requiring live PostgreSQL, OpenSearch, and a local Ollama with the configured models pulled.
 
 ## Running
 
@@ -42,9 +42,9 @@ PYTHONPATH=. pytest tests/integration/ -m "integration and not slow" -v
    make dev-api            # starts on :8000
    ```
 
-3. **Environment:**
+3. **Ollama:**
    ```bash
-   export GOOGLE_API_KEY=<your-key>
+   ollama pull qwen3.6:35b-a3b-q4_K_M && ollama pull nomic-embed-text
    ```
 
 4. **PYTHONPATH:**
@@ -127,12 +127,12 @@ export PYTHONPATH=.
 PYTHONPATH=. pytest tests/integration/test_pipeline_flow.py -v
 ```
 
-### Google API key error
+### Ollama not reachable / model not pulled
 
 ```bash
-echo $GOOGLE_API_KEY
-# If empty, re-set it in .env and source it:
-set -a && source .env && set +a
+curl -s http://localhost:11434/api/tags
+# If Ollama isn't running, start it (or the Ollama app), then:
+ollama pull qwen3.6:35b-a3b-q4_K_M && ollama pull nomic-embed-text
 ```
 
 ## Timing

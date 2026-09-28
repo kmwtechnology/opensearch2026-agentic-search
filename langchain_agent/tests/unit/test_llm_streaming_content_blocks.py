@@ -1,7 +1,7 @@
 """
-Unit tests for Gemini content block format handling in LLM streaming.
+Unit tests for content-block-list format handling in LLM streaming.
 
-Tests the fix in _stream_llm_response_simple() that handles Gemini's content list format.
+Tests the fix in _stream_llm_response_simple() that handles a content list format some LLM providers use.
 Verifies:
 - Correct parsing of content blocks with text fields
 - Proper handling of nested structures (list of dicts)
@@ -25,7 +25,7 @@ class MockChunk:
 @pytest.mark.unit
 @pytest.mark.phase1
 class TestContentBlockExtraction:
-    """Test extraction of text from Gemini content blocks."""
+    """Test extraction of text from content blocks."""
 
     def test_extract_text_from_single_content_block(self):
         """Test extracting text from a single content block in list format."""
@@ -95,7 +95,7 @@ class TestContentBlockExtraction:
         assert result == "actual text"
 
     def test_mixed_content_with_tool_use_blocks(self):
-        """Test content with both text and tool_use blocks (Gemini format)."""
+        """Test content with both text and tool_use blocks (list-of-blocks format)."""
         content = [
             {"text": "Calling tool: "},
             {"tool_use": {"name": "search", "input": "query"}},
@@ -180,7 +180,7 @@ class TestStreamingChunkHandling:
         assert accumulated == "Hello "
 
     def test_list_chunk_content(self):
-        """Test processing chunk with list content (Gemini format)."""
+        """Test processing chunk with list content (list-of-blocks format)."""
         chunk = MockChunk([{"text": "World"}])
         accumulated = ""
 
@@ -204,7 +204,7 @@ class TestStreamingChunkHandling:
             MockChunk("Hello "),
             MockChunk([{"text": "world"}]),
             MockChunk(" from "),
-            MockChunk([{"text": "Gemini"}]),
+            MockChunk([{"text": "Ollama"}]),
         ]
 
         accumulated = ""
@@ -221,7 +221,7 @@ class TestStreamingChunkHandling:
                 if content and isinstance(content, str):
                     accumulated += content
 
-        assert accumulated == "Hello world from Gemini"
+        assert accumulated == "Hello world from Ollama"
 
     def test_empty_chunk_ignored(self):
         """Test that chunks without content are ignored."""

@@ -1060,9 +1060,9 @@ Run `make check` before any push — that's the gate.
 
 **Swapping the LLM provider:**
 
-1. Replace `ChatGoogleGenerativeAI` with your provider (`ChatOpenAI`, `ChatAnthropic`, etc.) in `main.py`
-2. Update model names in `core/config.py`
-3. Ensure all models support structured output (required for intent classification and reranker)
+1. Replace `ChatOllama` with your provider (`ChatOpenAI`, `ChatAnthropic`, etc.) in `core/llm.py::build_chat_model()` -- the single place every chat model is constructed (#148)
+2. Update model names in `core/config.py`, and the embeddings client in `retrieval/embeddings.py` (plus Lucille's `OllamaEmbedStage` for ingest-time embedding, so corpus and query embeddings stay in the same vector space)
+3. Ensure all models support structured output (required for intent classification)
 4. Validate with `PYTHONPATH=. python3 setup.py`
 
 ---
@@ -2997,12 +2997,11 @@ While compiling this manual, each chapter was checked against the project's curr
 
 | # | Where | What's stale | Current, correct fact |
 | --- | --- | --- | --- |
-| 1 | `langchain_agent/README.md` (overview/tech-stack section, ~line 36-37) | Claims generation/classification models are "Gemini 3 Flash" / "Gemini 3.1 Flash Lite" | Actual models (per the same file's own Configuration section, root `README.md`, and `CLAUDE.md`) are **Gemini 2.5 Flash** (generation) and **Gemini 2.5 Flash-Lite** (classify/eval/judge) |
-| 2 | `langchain_agent/api/README.md` (~line 25) | Lists the chat endpoint as `POST /api/chat (WebSocket)` | The actual route is `/ws/chat` — a WebSocket endpoint, not a POST route |
-| 3 | `CLAUDE.md`'s pytest marker list | Includes obsolete markers (`performance`, `load`, `stress`, `profile`) | Those markers belong to test files removed 2026-09-15; the current active marker set is the one listed in the [Testing & Benchmarks](#testing--benchmarks) chapter, sourced from `tests/README.md` |
-| 4 | `docs/contributing/README.md` and `docs/contributing/pr-process.md` | Describe an older PR-based workflow (feature branch, draft PR, required reviewer, CI checks gating merge) | The repo switched to **"cowboy mode"** on 2026-09-15: commits go directly to `main`, no branch protection exists, there's no CI, and `make check` run locally is the only gate. A branch + PR is still allowed but is opt-in, not the default. See the [Contributing & Dev Workflow](#contributing--dev-workflow) chapter for the current process. |
-| 5 | `langchain_agent/web/src/components/README.md` (project structure listing) | Lists a `LoginScreen.tsx` component and describes `ConversationsSidebar` as including "logout" | There is **no login gate** in this app — it was removed entirely (issue #135); same-origin checking is the sole auth layer (see [Authentication & Authorization](#authentication--authorization) in the API chapter, and the "no login screen" notes in the Setup and Demo chapters). `LoginScreen.tsx` and any logout affordance are most likely vestigial/dead code left over from before that removal — worth confirming and deleting if so, rather than treating as a working feature. |
-| 6 | `langchain_agent/DEMO_QUERIES.md` | Describes example queries in a format the Demo-chapter source agent flagged as superseded | `langchain_agent/DEMO.md` (dated 2026-09-15) is the current, authoritative demo script — a **four-demo, nine-turn** scripted walkthrough (two main arcs plus two bonus scenes; see `web/src/demos/registry.ts`) driven by a **Next** button, not free-form querying. `DEMO_QUERIES.md` should be treated as historical/reference only. |
+| 1 | `langchain_agent/api/README.md` (~line 25) | Lists the chat endpoint as `POST /api/chat (WebSocket)` | The actual route is `/ws/chat` — a WebSocket endpoint, not a POST route |
+| 2 | `CLAUDE.md`'s pytest marker list | Includes obsolete markers (`performance`, `load`, `stress`, `profile`) | Those markers belong to test files removed 2026-09-15; the current active marker set is the one listed in the [Testing & Benchmarks](#testing--benchmarks) chapter, sourced from `tests/README.md` |
+| 3 | `docs/contributing/README.md` and `docs/contributing/pr-process.md` | Describe an older PR-based workflow (feature branch, draft PR, required reviewer, CI checks gating merge) | The repo switched to **"cowboy mode"** on 2026-09-15: commits go directly to `main`, no branch protection exists, there's no CI, and `make check` run locally is the only gate. A branch + PR is still allowed but is opt-in, not the default. See the [Contributing & Dev Workflow](#contributing--dev-workflow) chapter for the current process. |
+| 4 | `langchain_agent/web/src/components/README.md` (project structure listing) | Lists a `LoginScreen.tsx` component and describes `ConversationsSidebar` as including "logout" | There is **no login gate** in this app — it was removed entirely (issue #135); same-origin checking is the sole auth layer (see [Authentication & Authorization](#authentication--authorization) in the API chapter, and the "no login screen" notes in the Setup and Demo chapters). `LoginScreen.tsx` and any logout affordance are most likely vestigial/dead code left over from before that removal — worth confirming and deleting if so, rather than treating as a working feature. |
+| 5 | `langchain_agent/DEMO_QUERIES.md` | Describes example queries in a format the Demo-chapter source agent flagged as superseded | `langchain_agent/DEMO.md` (dated 2026-09-15) is the current, authoritative demo script — a scripted walkthrough driven by a **Next** button, not free-form querying (see `web/src/demos/registry.ts` for the current demo count/turns — it has changed since this manual was written, e.g. `schema-evolution` is no longer a "bonus" scene). `DEMO_QUERIES.md` should be treated as historical/reference only. |
 
 **How to use this table:** if you're the one who fixes stale docs, each row names the exact file and section to edit. None of these represent architecture or code that needs to change — only prose that hasn't caught up to it yet.
 
