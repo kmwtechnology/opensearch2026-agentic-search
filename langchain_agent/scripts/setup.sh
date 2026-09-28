@@ -89,14 +89,18 @@ WHAT THIS SCRIPT DOES:
     7. Installs Node.js frontend dependencies
     8. Starts PostgreSQL and OpenSearch containers
     9. Initializes database and OpenSearch index
-    10. Runs Lucille ETL to ingest ~158K ESCI products + judgments into OpenSearch
-        (reads data/esci_products.parquet; Lucille embeds every product with the
-        local Ollama model — ~25-40 min), including a mandatory color taxonomy
-        discovery + reindex pass
+    10. Loads ~158K ESCI products + judgments + color taxonomy into OpenSearch.
+        Default (fast, ~1-2 min): bulk-loads the precomputed dump at
+        data/precomputed/ (embeddings + attribute detection already run once
+        and committed via Git LFS — no Ollama call, no Lucille/Docker/Java).
+        Falls back automatically to the full Lucille ETL ingest (~25-40 min,
+        embeds every product live via local Ollama, includes a mandatory
+        color taxonomy discovery + reindex pass) if no precomputed dump is
+        present. Force the full ingest with: python setup.py --from-scratch
         (a fresh cluster's taxonomy store is otherwise empty, so every
         color attribute_filter query would return zero results). The
-        "waterproof" type is deliberately NOT seeded here — it starts empty
-        and grows entirely from the live enrichment flywheel.
+        "waterproof" type is deliberately NOT seeded either way — it starts
+        empty and grows entirely from the live enrichment flywheel.
 
 SERVICES STARTED:
     - PostgreSQL (checkpoint storage) → localhost:5432
@@ -135,6 +139,30 @@ if ! command -v docker &> /dev/null; then
 fi
 log "✓ Docker found"
 echo "✓ Docker found"
+
+# `docker compose` (v2, the plugin) not `docker-compose` (v1) — every script
+# in this repo uses the v2 subcommand form. An older Docker Desktop with only
+# the v1 binary fails here with "docker: 'compose' is not a docker command"
+# many steps later instead of a clear message now.
+if ! docker compose version &> /dev/null; then
+    log "❌ 'docker compose' (v2) not found"
+    echo "❌ 'docker compose' (v2 plugin) not found — found only the legacy 'docker-compose'?"
+    echo "   Update Docker Desktop to a version that bundles Compose v2."
+    exit 1
+fi
+echo "✓ Docker Compose v2 found"
+
+# git-lfs: without it, `git clone`/`git pull` silently leaves data/*.parquet
+# as tiny ~130-byte pointer stubs instead of the real files — everything
+# downstream (pyarrow, Lucille) then fails with a confusing parse error
+# instead of this clear one.
+if ! command -v git-lfs &> /dev/null; then
+    log "❌ git-lfs not found"
+    echo "❌ git-lfs not found — required to pull the committed data/*.parquet files"
+    echo "   Install with: brew install git-lfs && git lfs install"
+    exit 1
+fi
+echo "✓ git-lfs found"
 
 if ! command -v python3 &> /dev/null; then
     echo "❌ Python 3 not found"
@@ -214,6 +242,20 @@ if ! curl -sf "${OLLAMA_HOST:-http://localhost:11434}/api/tags" > /dev/null; the
 fi
 echo "✓ Ollama running"
 
+# Backend (8000) / frontend (5173) are started natively by `make dev`, not by
+# Docker Compose — something already bound to either port (a stale process
+# from a prior session, another project) fails later with a bare
+# "Address already in use" / EADDRINUSE. Warn now, non-fatally, with the PID
+# so it's a one-line fix instead of a mid-startup mystery.
+for port_check in "8000:backend" "5173:frontend"; do
+    port="${port_check%%:*}"; label="${port_check#*:}"
+    pid="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -1)"
+    if [ -n "$pid" ]; then
+        echo "⚠ Port $port ($label) is already in use by PID $pid ($(ps -p "$pid" -o comm= 2>/dev/null))"
+        echo "   'make dev' will fail with 'Address already in use' unless this is freed first: kill $pid"
+    fi
+done
+
 end_step
 
 echo ""
@@ -237,16 +279,24 @@ echo "📦 Checking for product data..."
 
 SAMPLE_FILE="$PARENT_DIR/data/esci_products.parquet"
 
-if [ -f "$SAMPLE_FILE" ]; then
+# An un-smudged LFS file is a small text pointer ("version https://git-lfs...")
+# rather than real parquet bytes — treat that the same as "missing" so we
+# fall into the `git lfs pull` retry below instead of failing confusingly deep
+# inside Lucille/pyarrow later.
+is_real_parquet() {
+    [ -f "$1" ] && [ "$(head -c 7 "$1" 2>/dev/null)" != "version" ]
+}
+
+if is_real_parquet "$SAMPLE_FILE"; then
     FILE_SIZE=$(du -h "$SAMPLE_FILE" | cut -f1)
     log "✓ Committed products parquet found ($FILE_SIZE) — skipping ESCI dataset clone"
     echo "✓ Committed products parquet found ($FILE_SIZE) — skipping ESCI dataset clone"
 else
-    log "   ❌ data/esci_products.parquet not found — attempting 'git lfs pull'"
-    echo "   ❌ data/esci_products.parquet not found — attempting 'git lfs pull'"
+    log "   ❌ data/esci_products.parquet missing or is an un-pulled LFS pointer — attempting 'git lfs pull'"
+    echo "   ❌ data/esci_products.parquet missing or is an un-pulled LFS pointer — attempting 'git lfs pull'"
     (cd "$PARENT_DIR" && git lfs pull) || true
 
-    if [ -f "$SAMPLE_FILE" ]; then
+    if is_real_parquet "$SAMPLE_FILE"; then
         FILE_SIZE=$(du -h "$SAMPLE_FILE" | cut -f1)
         log "✓ Products parquet pulled from LFS ($FILE_SIZE)"
         echo "✓ Products parquet pulled from LFS ($FILE_SIZE)"
