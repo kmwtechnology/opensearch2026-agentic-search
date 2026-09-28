@@ -10,7 +10,6 @@ demo box, and that's what lets the header's Restart button call
 ``/api/admin/demo-reset`` directly from the browser with no credentials.
 """
 
-import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -19,11 +18,7 @@ from fastapi.concurrency import run_in_threadpool
 from api.middleware.origin_auth import verify_same_origin
 from api.schemas.admin import EnrichmentRequest, EnrichmentResponse
 
-logger = logging.getLogger(__name__)
-
-# Debug: Verify router is being created
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-logger.info(f"Admin router created with prefix: {router.prefix}")
 
 
 @router.get("/diagnose", summary="Diagnose index field coverage for a query")
