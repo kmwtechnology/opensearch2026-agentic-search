@@ -974,7 +974,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 citation["image_url"] = image_url
             citations.append(citation)
 
-        # LLM-off short-circuit: render a plain search-results list (no Gemini call).
+        # LLM-off short-circuit: render a plain search-results list (no LLM call).
         # Document order respects the reranker toggle — if reranking is off the
         # documents arrive here in retriever-determined order, otherwise in
         # reranker-scored order.
@@ -1835,7 +1835,7 @@ Return ONLY a JSON object (use null for missing attributes):
             attributes = json.loads(json_match.group())
             filters = []
 
-            # Coerce LLM-extracted attribute values to strings. Gemini sometimes
+            # Coerce LLM-extracted attribute values to strings. Some models sometimes
             # returns array values (e.g. feature=["noise canceling"])
             # even when the prompt asks for a single string. Passing a list to
             # an OpenSearch ``query`` field fails with
@@ -2333,11 +2333,11 @@ Respond with JSON only. No other text."""
             for chunk in self.llm.stream(messages, config={"tags": [ANSWER_STREAM_TAG]}):
                 chunk_count += 1
 
-                # Extract content from chunk (handle both string and Gemini's list format)
+                # Extract content from chunk (handle both string and list-of-blocks format)
                 if hasattr(chunk, "content") and chunk.content:
                     content = chunk.content
 
-                    # Extract text if content is a list of content blocks (Gemini format)
+                    # Extract text if content is a list of content blocks
                     if isinstance(content, list):
                         text_parts = []
                         for block in content:
@@ -2642,7 +2642,7 @@ Original query: {query}
             HumanMessage(content=correction_prompt),
         ]
         response = self.llm.invoke(messages)
-        # Gemini may return ``content`` as a list of content blocks
+        # Some LLM providers may return ``content`` as a list of content blocks
         # ([{"type": "text", "text": "..."}, ...]) — flatten to a string
         # so downstream Pydantic models accept it.
         content = getattr(response, "content", response)

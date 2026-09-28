@@ -145,7 +145,7 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
     ## Usage Example
 
         agent = EcommerceSearchAgent()
-        agent.verify_prerequisites()  # Check Postgres, OpenSearch, Google API
+        agent.verify_prerequisites()  # Check Postgres, OpenSearch, Ollama
         agent.initialize_components()  # Load LLM, embeddings, reranker
 
         # Build the LangGraph pipeline

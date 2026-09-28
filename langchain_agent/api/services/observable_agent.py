@@ -298,7 +298,7 @@ class ObservableAgentService:
                                     if isinstance(msg, AIMessage) and msg.content:
                                         if not (hasattr(msg, "tool_calls") and msg.tool_calls):
                                             content = msg.content
-                                            # Extract text if content is a list of content blocks (Gemini format)
+                                            # Extract text if content is a list of content blocks
                                             if isinstance(content, list):
                                                 text_parts = []
                                                 for block in content:
@@ -827,7 +827,7 @@ class ObservableAgentService:
                             elif isinstance(chunk, dict) and "content" in chunk:
                                 content = chunk["content"]
 
-                            # Extract text if content is a list of content blocks (Gemini format)
+                            # Extract text if content is a list of content blocks
                             if isinstance(content, list):
                                 text_parts = []
                                 for block in content:
@@ -999,7 +999,7 @@ class ObservableAgentService:
                             # For responses without tool calls, check if content needs parsing
                             # (handles Ollama models that format reasoning as "Reasoning: ... \nAnswer: ...")
                             content = msg.content
-                            # Extract text if content is a list of content blocks (Gemini format)
+                            # Extract text if content is a list of content blocks
                             if isinstance(content, list):
                                 text_parts = []
                                 for block in content:

@@ -401,8 +401,7 @@ class TestEmbeddingDimensionValidation:
         dim_str = os.getenv("VECTOR_DIMENSION", "768")
         dim = int(dim_str)
 
-        # Gemini embedding-001 outputs 768 dimensions
-        # text-embedding-005 can output 768 with output_dimensionality=768
+        # nomic-embed-text (the configured embeddings model) outputs 768 dimensions
         assert dim in [384, 512, 768, 1024, 1536]
 
     def test_vector_dimension_positive(self):

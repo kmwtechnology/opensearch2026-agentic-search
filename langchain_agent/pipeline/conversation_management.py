@@ -313,9 +313,9 @@ Conversation:
 
 Summary:"""
 
-            # Invoke LLM for summary (direct, not through agent). Gemini may
-            # return content as a list of content blocks; flatten so the
-            # SummaryEvent's `summary_text: str` field accepts it.
+            # Invoke LLM for summary (direct, not through agent). Some LLM
+            # providers return content as a list of content blocks; flatten
+            # so the SummaryEvent's `summary_text: str` field accepts it.
             response = self.llm.invoke(summary_prompt)
             return _flatten_llm_content(response)
 

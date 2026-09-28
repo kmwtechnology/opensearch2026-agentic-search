@@ -23,7 +23,7 @@ import clsx from 'clsx'
  * - Handles non-string content (arrays, objects) by converting to string
  */
 function preprocessMarkdown(content: string | unknown): string {
-  // Handle non-string content (from Gemini content blocks or other formats)
+  // Handle non-string content (from content-block arrays or other formats)
   let stringContent: string
   if (typeof content !== 'string') {
     if (Array.isArray(content)) {

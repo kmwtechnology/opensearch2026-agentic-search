@@ -141,10 +141,10 @@ class TestLLMError:
         assert e.recoverable is True
 
     def test_model_and_operation_stored(self):
-        e = LLMError("failed", model="gemini-3-flash-preview", operation="generate")
-        assert e.model == "gemini-3-flash-preview"
+        e = LLMError("failed", model="qwen3.6:35b-a3b-q4_K_M", operation="generate")
+        assert e.model == "qwen3.6:35b-a3b-q4_K_M"
         assert e.operation == "generate"
-        assert "gemini-3-flash-preview" in str(e)
+        assert "qwen3.6:35b-a3b-q4_K_M" in str(e)
 
 
 # ---------------------------------------------------------------------------
@@ -235,8 +235,8 @@ class TestStateError:
 @pytest.mark.unit
 class TestRerankerLLMError:
     def test_model_and_batch_size_stored(self):
-        e = RerankerLLMError("api error", model="gemini-3.1-flash-lite-preview", batch_size=15)
-        assert e.model == "gemini-3.1-flash-lite-preview"
+        e = RerankerLLMError("api error", model="qwen3.6:35b-a3b-q4_K_M", batch_size=15)
+        assert e.model == "qwen3.6:35b-a3b-q4_K_M"
         assert e.batch_size == 15
         assert "15" in str(e)
 

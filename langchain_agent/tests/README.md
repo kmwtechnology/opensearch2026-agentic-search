@@ -60,7 +60,7 @@ PYTHONPATH=. pytest tests/ -v
 
 ```bash
 PYTHONPATH=. pytest tests/unit/ -v             # ~0.5 s, no deps
-PYTHONPATH=. pytest tests/integration/ -v      # needs Postgres + OpenSearch + GOOGLE_API_KEY
+PYTHONPATH=. pytest tests/integration/ -v      # needs Postgres + OpenSearch + Ollama running
 PYTHONPATH=. pytest tests/e2e/ -v              # needs a running backend (DEPLOYMENT_URL defaults to localhost:8000); no credential required, same-origin checking is the only auth layer
 ```
 
@@ -114,13 +114,12 @@ services — everything is mocked through `conftest.py`.
 | `test_intent_classifier_node.py` | LangGraph node wrapper, state mutations |
 | `test_link_verifier.py` | URL validation, TTL cache, timeout handling |
 | `test_llm_streaming_content_blocks.py` | Streaming event emission, token assembly |
-| `test_model_compatibility.py` | Gemini model ID handling, version compatibility |
 | `test_origin_auth.py` | Origin/Referer allow-list, WebSocket auth checks, Host-fallback contract (disallowed Origin + `*.run.app` Host MUST 403 — Host fallback only fires when both Origin and Referer are absent) |
 | `test_origin_auth_contract.py` | TestClient-based regression test wiring `verify_same_origin` into a FastAPI app; replays the exact production header combos from the 2026-04-29 smoke failure |
 | `test_pipeline_nodes.py` | Node input/output contracts across the pipeline |
 | `test_pipeline_summary_event.py` | `_build_pipeline_summary` accumulation, ground-truth vs. confidence-proxy fallback, latency table assembly |
 | `test_relevancy_metrics.py` | NDCG@k / MRR / Recall@k / Precision@k, `compute_stage_metrics`, `confidence_from_scores`, `count_rank_changes`, `latency_cost_benefit` (43 tests, no NumPy) |
-| `test_reranker.py` | `GeminiReranker` scoring, Pydantic validation, partial-JSON fallback |
+| `test_reranker.py` | `CrossEncoderReranker` scoring, empty-input handling, warmup |
 | `test_routing_functions.py` | LangGraph edge routing logic |
 | `test_search_optimizations.py` | BM25 synonym expansion, fuzzy, phrase-boost, phonetic config |
 | `test_vector_store.py` | `OpenSearchVectorStore` hybrid search, RRF fusion, facets, collapse |
@@ -150,7 +149,7 @@ pre-commit, CI fast lane.
 | `test_edge_cases.py` | Empty retrievals, malformed input, low-confidence intents |
 
 **Run time:** ~5–60 s. **Requires:** PostgreSQL + OpenSearch running
-(`docker compose up -d` from repo root) and `GOOGLE_API_KEY` set.
+(`docker compose up -d` from repo root) and a local Ollama with the configured models pulled.
 
 **CI note:** `make ci` only runs `pytest --collect-only` on integration tests. Always run the actual
 test suite locally after middleware/WebSocket changes before pushing.

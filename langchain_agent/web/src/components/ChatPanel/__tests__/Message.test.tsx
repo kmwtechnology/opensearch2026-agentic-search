@@ -169,7 +169,7 @@ describe('Message — preprocessMarkdown (via rendered output)', () => {
     expect(screen.getByText(/Line two/)).toBeInTheDocument()
   })
 
-  it('handles array content blocks (Gemini format)', () => {
+  it('handles array content blocks', () => {
     const arrayContent = [
       { text: 'Part one ' },
       { text: 'part two' },

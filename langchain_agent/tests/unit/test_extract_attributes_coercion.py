@@ -3,7 +3,7 @@
 Production incident reproduced 2026-05-06 via the demo scenario "wireless
 headphones" → "only noise cancelling ones" (DEMO_QUERIES.md scenario 2).
 Turn 2 routes to ``refinement`` intent, which calls ``_extract_attributes``;
-Gemini occasionally returns ``feature`` (or ``size``) as a JSON
+The LLM occasionally returns ``feature`` (or ``size``) as a JSON
 **array** rather than a string — e.g. ``["noise canceling"]``. That array
 gets put into a ``multi_match`` filter as the ``query`` field, and OpenSearch
 rejects it with::

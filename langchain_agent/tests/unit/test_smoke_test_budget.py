@@ -28,7 +28,7 @@ SMOKE_SCRIPT = REPO_ROOT / "langchain_agent" / "scripts" / "smoke_local.sh"
 SMOKE_TEST_FILE = REPO_ROOT / "langchain_agent" / "tests" / "e2e" / "test_deployment_smoke.py"
 
 # Realistic cost multipliers, derived from 2026-04-29 production logs
-# (Gemini 3 Flash + reranker scoring 40 docs + network). Kept conservative
+# (LLM generation + reranker scoring 40 docs + network). Kept conservative
 # even for local runs since a cold model/embedding cache can be just as
 # slow as the original network-bound measurement.
 # Setup includes: ws_connect + connection_established.

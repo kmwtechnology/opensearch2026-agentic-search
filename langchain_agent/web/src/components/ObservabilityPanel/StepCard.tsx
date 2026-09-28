@@ -84,8 +84,9 @@ export function StepCard({ step, index }: StepCardProps) {
       }
 
   // The reranker's label depends on which reranker actually ran this turn —
-  // never assume Gemini/LLM-based when the (default) local cross-encoder is
-  // configured (#87). Spread into a fresh object rather than mutating
+  // never assume an LLM-based reranker when the (default, and only, since
+  // #148) local cross-encoder is configured (#87). Spread into a fresh object
+  // rather than mutating
   // baseConfig, which for known nodes is a direct reference into the
   // shared, module-level nodeConfig map.
   let config = baseConfig

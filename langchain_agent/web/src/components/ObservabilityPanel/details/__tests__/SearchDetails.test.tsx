@@ -193,19 +193,19 @@ describe('SearchDetails (reranker mode)', () => {
         useObservabilityStore.setState({ steps: stepWithRerankerType('cross-encoder') as any })
         render(<SearchDetails mode="reranker" />)
         expect(screen.getByText(/local cross-encoder/i)).toBeInTheDocument()
-        expect(screen.queryByText(/\(Gemini\)/i)).not.toBeInTheDocument()
+        expect(screen.queryByText(/\(LLM\)/i)).not.toBeInTheDocument()
       })
 
-      it('describes Gemini/LLM-based scoring when reranker_type is gemini', () => {
-        useObservabilityStore.setState({ steps: stepWithRerankerType('gemini') as any })
+      it('describes LLM-based scoring for any non-cross-encoder reranker_type', () => {
+        useObservabilityStore.setState({ steps: stepWithRerankerType('llm') as any })
         render(<SearchDetails mode="reranker" />)
-        expect(screen.getByText(/\(Gemini\)/i)).toBeInTheDocument()
+        expect(screen.getByText(/\(LLM\)/i)).toBeInTheDocument()
         expect(screen.getByText(/LLM-based semantic scoring/i)).toBeInTheDocument()
       })
 
       it('falls back to a neutral description when no reranker_result event is present', () => {
         const { container } = render(<SearchDetails mode="reranker" />)
-        expect(screen.queryByText(/\(Gemini\)/i)).not.toBeInTheDocument()
+        expect(screen.queryByText(/\(LLM\)/i)).not.toBeInTheDocument()
         expect(screen.queryByText(/local cross-encoder/i)).not.toBeInTheDocument()
         expect(container.textContent).toMatch(/reranker.*then scores each document for relevance/i)
       })

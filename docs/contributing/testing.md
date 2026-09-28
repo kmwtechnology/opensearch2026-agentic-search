@@ -15,7 +15,7 @@ Test pyramid and local testing commands.
     /______\   full run: bash scripts/smoke_local.sh, ~90s
     /      \
    / Integ. \  Integration Tests (tests/integration/, ~207 tests)
-  /  Tests   \   ~30-120s, live PostgreSQL + OpenSearch + GOOGLE_API_KEY
+  /  Tests   \   ~30-120s, live PostgreSQL + OpenSearch + Ollama running
  /____________\
  /              \
   Unit Tests      863 tests, ~7s, mocked deps
@@ -30,7 +30,7 @@ Test pyramid and local testing commands.
 
 **When:** Always. Every code change must have unit tests.
 
-**What:** Pure functions, no I/O (mock PostgreSQL, OpenSearch, Gemini).
+**What:** Pure functions, no I/O (mock PostgreSQL, OpenSearch, Ollama).
 
 **How:** Run locally before pushing.
 

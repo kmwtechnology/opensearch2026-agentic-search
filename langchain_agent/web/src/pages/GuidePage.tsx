@@ -282,7 +282,7 @@ export function GuidePage() {
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">phrase_boost</code> — adds the <code>title_phrase</code> field with a 2.5× boost.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">field_boost</code> — keeps per-field <code>^N</code> weights. Off ⇒ all fields equal.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">typeahead</code> — frontend autocomplete suggestions.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">reranking</code> — Cross-encoder (default, ~2s / 40-doc batch) or optional Gemini LLM (~500ms–1s). Off ⇒ retriever order is final.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">reranking</code> — local cross-encoder, ~2s / 40-doc batch (the only reranker). Off ⇒ retriever order is final.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">llm</code> — agent generation. Off ⇒ deterministic markdown product list.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">llm_judge</code> — hallucination detection & auto-correction. Off ⇒ no verification pass.</div>
           </div>
@@ -357,7 +357,7 @@ export function GuidePage() {
       content: (
         <div className="space-y-4">
           <p className="text-[1.375rem] text-gray-700">
-            When the <code>llm_judge</code> toggle is on (and the agent generated a synthesized response), a second Gemini Flash Lite call evaluates the answer against the deterministic raw-list baseline. The card adds a <strong>Generation</strong> row to the Pipeline Quality Summary with a pairwise verdict, four absolute scores (faithfulness, answer_relevance, citation_accuracy, context_utilization), and a list of flagged claims.
+            When the <code>llm_judge</code> toggle is on (and the agent generated a synthesized response), a second local LLM call evaluates the answer against the deterministic raw-list baseline. The card adds a <strong>Generation</strong> row to the Pipeline Quality Summary with a pairwise verdict, four absolute scores (faithfulness, answer_relevance, citation_accuracy, context_utilization), and a list of flagged claims.
           </p>
 
           <h4 className="font-semibold text-gray-900 mt-2">Hallucination categories</h4>
@@ -423,19 +423,19 @@ export function GuidePage() {
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-gray-50 p-2 rounded text-[1.25rem]">
                 <p className="font-mono text-gray-900">LLM Generation</p>
-                <p className="text-gray-600">Gemini 2.5 Flash</p>
+                <p className="text-gray-600">qwen3.6:35b-a3b-q4_K_M (local Ollama)</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-[1.25rem]">
                 <p className="font-mono text-gray-900">LLM Classify/Eval/Judge</p>
-                <p className="text-gray-600">Gemini 2.5 Flash-Lite</p>
+                <p className="text-gray-600">qwen3.6:35b-a3b-q4_K_M (local Ollama, same model)</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-[1.25rem]">
                 <p className="font-mono text-gray-900">Reranking</p>
-                <p className="text-gray-600">Cross-encoder (~2s / 40-doc batch, default) or Gemini (~500ms–1s, optional)</p>
+                <p className="text-gray-600">Cross-encoder, ~2s / 40-doc batch (the only reranker)</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-[1.25rem]">
                 <p className="font-mono text-gray-900">Embeddings</p>
-                <p className="text-gray-600">models/gemini-embedding-001 (768-dim)</p>
+                <p className="text-gray-600">nomic-embed-text (local Ollama, 768-dim)</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-[1.25rem]">
                 <p className="font-mono text-gray-900">Vector DB</p>
@@ -494,9 +494,9 @@ export function GuidePage() {
             </div>
 
             <div className="border-l-4 border-red-500 pl-3">
-              <p className="font-semibold text-gray-900">Google AI API validation failed</p>
-              <p className="text-gray-600">Missing GOOGLE_API_KEY</p>
-              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Fix: Get key from <a href="https://aistudio.google.com/apikey" className="text-blue-600 hover:underline">aistudio.google.com/apikey</a>, add to .env</p>
+              <p className="font-semibold text-gray-900">Ollama model validation failed</p>
+              <p className="text-gray-600">Ollama not running, or a configured model isn't pulled</p>
+              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Fix: start Ollama, then <code className="bg-gray-100 px-1">ollama pull qwen3.6:35b-a3b-q4_K_M && ollama pull nomic-embed-text</code></p>
             </div>
 
             <div className="border-l-4 border-red-500 pl-3">
@@ -538,7 +538,7 @@ export function GuidePage() {
             <div className="border-l-4 border-yellow-500 pl-3">
               <p className="font-semibold text-gray-900">Default cross-encoder reranking latency</p>
               <p className="text-gray-600">~2 seconds for a 40-doc batch</p>
-              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">This is the local cross-encoder model running on CPU/GPU, not an API call. If using the optional Gemini LLM reranker, expect ~500ms–1s instead. Check the Details panel for actual measured latency on your hardware.</p>
+              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">This is the local cross-encoder model running on CPU/GPU, not an API call — the only reranker since #148. Check the Details panel for actual measured latency on your hardware.</p>
             </div>
           </div>
 

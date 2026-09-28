@@ -128,12 +128,12 @@ except SearchTimeoutError as e:
 
 ## LLM Content Blocks
 
-Gemini returns list-of-content-blocks for certain fields. Use `_flatten_llm_content()` to convert to string:
+Some LLM providers return list-of-content-blocks for certain fields. Use `_flatten_llm_content()` to convert to string:
 
 ```python
 from observability.llm_content import _flatten_llm_content
 
-# Gemini returns: [{"text": "Hello"}, {"text": " world"}]
+# Some providers return: [{"text": "Hello"}, {"text": " world"}]
 response = llm.generate(prompt)
 text = _flatten_llm_content(response)  # "Hello world"
 ```
@@ -264,7 +264,7 @@ Write comments for **why**, not **what**. Code should be self-documenting.
 
 ```python
 # ✓ Correct — explains the non-obvious reasoning
-# Gemini returns list-of-content-blocks; flatten to string for state
+# Some LLM providers return list-of-content-blocks; flatten to string for state
 text = _flatten_llm_content(llm_response)
 
 # ✗ Wrong — just repeats what the code does

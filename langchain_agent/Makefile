@@ -143,7 +143,7 @@ benchmark-esci-fast:
 	PYTHONPATH=. $(VENV)/python benchmarks/benchmark_esci.py --limit 5000 --fast
 
 benchmark-esci:
-	@echo "Running ESCI relevancy benchmark (full mode, with Gemini intent classification)..."
+	@echo "Running ESCI relevancy benchmark (full mode, with LLM-based intent classification)..."
 	PYTHONPATH=. $(VENV)/python benchmarks/benchmark_esci.py --limit 5000 --hard-only
 
 format-fix:

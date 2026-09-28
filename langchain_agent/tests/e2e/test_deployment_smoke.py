@@ -80,20 +80,6 @@ class TestDeploymentHealth:
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_health_checks_google_api(self):
-        """Verify health endpoint reports Google AI API status."""
-        with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(f"{DEPLOYMENT_URL}/api/health")
-
-        assert response.status_code == 200
-        data = response.json()
-
-        assert "google_ai" in data, "Missing 'google_ai' field"
-        assert isinstance(data["google_ai"], bool), "google_ai field should be boolean"
-        assert data["google_ai"], "Google AI API should be healthy"
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
     def test_health_checks_opensearch(self):
         """Verify health endpoint reports OpenSearch status.
 

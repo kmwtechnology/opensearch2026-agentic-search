@@ -115,8 +115,8 @@ describe('StepCard reranker label (#87)', () => {
     expect(screen.queryByText('LLM Reranker')).not.toBeInTheDocument()
   })
 
-  it('labels the step "LLM Reranker" when reranker_type is gemini', () => {
-    render(<StepCard step={makeRerankerStep('gemini')} index={4} />)
+  it('labels the step "LLM Reranker" for any non-cross-encoder reranker_type', () => {
+    render(<StepCard step={makeRerankerStep('llm')} index={4} />)
     expect(screen.getByText('LLM Reranker')).toBeInTheDocument()
   })
 
