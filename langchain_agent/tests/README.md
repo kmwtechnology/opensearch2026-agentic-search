@@ -61,7 +61,7 @@ PYTHONPATH=. pytest tests/ -v
 ```bash
 PYTHONPATH=. pytest tests/unit/ -v             # ~0.5 s, no deps
 PYTHONPATH=. pytest tests/integration/ -v      # needs Postgres + OpenSearch + GOOGLE_API_KEY
-PYTHONPATH=. pytest tests/e2e/ -v              # needs a running backend (CLOUD_RUN_URL defaults to localhost:8000); no credential required, same-origin checking is the only auth layer
+PYTHONPATH=. pytest tests/e2e/ -v              # needs a running backend (DEPLOYMENT_URL defaults to localhost:8000); no credential required, same-origin checking is the only auth layer
 ```
 
 ### By file or pattern
@@ -245,7 +245,7 @@ the backend if the test exercises the HTTP/WebSocket layer.
 
 ### E2E tests failing with 403
 
-Check `CLOUD_RUN_URL` (if set) has the correct scheme + host — it defaults
+Check `DEPLOYMENT_URL` (if set) has the correct scheme + host — it defaults
 to `http://localhost:8000`. There's no 401/login gate; a 403 means the
 `Origin` wasn't on the same-origin allow-list (`api/middleware/origin_auth.py`).
 

@@ -197,7 +197,7 @@ export function useWebSocket(): UseWebSocketReturn {
       currentThreadId = threadId
 
       // Build WebSocket URL using current window location
-      // When frontend and API are on the same domain (Cloud Run), this uses the current origin
+      // When frontend and API are on the same domain (same-origin deploy), this uses the current origin
       // No API key needed - authentication is based on origin header
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const host = window.location.host

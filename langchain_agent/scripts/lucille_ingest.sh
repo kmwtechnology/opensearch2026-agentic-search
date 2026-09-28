@@ -132,14 +132,6 @@ if [[ -f "$ENV_FILE" ]]; then
   done < <(grep -v '^#' "$ENV_FILE" | grep -v '^$' | grep '=')
 fi
 
-# Nothing in this script is traced, but the Docker CLI honors the standard
-# OTEL_EXPORTER_OTLP_* vars for its OWN telemetry: with them set (from .env,
-# or inherited from the backend when the enrichment flywheel runs this), every
-# `docker compose` call blocks ~10s at exit flushing spans to the collector.
-# That put a ~10s dead gap before the Lucille container even appeared on
-# stage, and another after it finished. Keep them away from docker entirely.
-unset "${!OTEL_@}"
-
 # ── Defaults ─────────────────────────────────────────────────────────────────
 OPENSEARCH_HOST="${OPENSEARCH_HOST:-localhost}"
 OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
@@ -168,9 +160,9 @@ DATA_DIR="$REPO_DIR/data"
 
 # Container-side OpenSearch target (Docker path only). "localhost" (the local-dev
 # default) doesn't resolve to the host machine from inside a container, so use
-# the compose service's DNS name instead. Any other host — CI or a GCP
-# workstation targeting the remote hosted OpenSearch — is reachable directly
-# from the container, so pass OPENSEARCH_URL through unchanged.
+# the compose service's DNS name instead. Any other host — a remote hosted
+# OpenSearch — is reachable directly from the container, so pass OPENSEARCH_URL
+# through unchanged.
 if [[ "$OPENSEARCH_HOST" == "localhost" ]]; then
   CONTAINER_OPENSEARCH_URL="http://opensearch:9200"
 else
@@ -371,7 +363,7 @@ run_products_ingest() {
   if [[ "$LUCILLE_USE_DOCKER" == "true" ]]; then
     # --no-deps: don't let compose start/health-check the local `opensearch`
     # service — irrelevant (and wasted work) when CONTAINER_OPENSEARCH_URL points
-    # at a remote hosted cluster instead (CI, a GCP workstation).
+    # at a remote hosted cluster instead.
     (cd "$REPO_DIR" && docker compose run --rm --no-deps \
       -e LUCILLE_CONF=/lucille/conf/products.generated.conf \
       -e PARQUET_PATH="/lucille/data/$(basename "$PRODUCTS_PARQUET")" \
@@ -404,7 +396,7 @@ run_products_ingest
 # stages it enables can only apply on a second products pass. Two passes
 # instead of one is the price of reusing the exact same discovery script local
 # dev already uses (scripts/rebuild_attribute_taxonomies.py): same result on
-# the runner, a GCP workstation, or a laptop.
+# a laptop or a remote host.
 if [[ "$SEED_TAXONOMY" == "true" ]]; then
   info "Seeding color attribute taxonomy via discovery against $_DISPLAY_URL/$OPENSEARCH_INDEX..."
   (cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" scripts/rebuild_attribute_taxonomies.py)

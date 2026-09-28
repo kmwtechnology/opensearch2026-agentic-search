@@ -225,7 +225,7 @@ async def get_frontend_config(request: Request):
     **Purpose:** Allow frontend to discover API URL at runtime (not build time).
 
     **Why needed:**
-        - Same code runs on localhost (dev) and Cloud Run (prod)
+        - The same code could run behind any domain (dev, or a future deploy)
         - Frontend doesn't know its own domain until runtime
         - API_URL is environment-dependent
 
@@ -234,13 +234,13 @@ async def get_frontend_config(request: Request):
     **Response:** 200 OK
         ```json
         {
-            "apiUrl": "https://agentic-hybrid-search-abc123.run.app"
+            "apiUrl": "https://example.com"
         }
         ```
         (or empty string in dev if not configured)
 
     **Behavior:**
-        - If request Origin is HTTPS → use Origin as apiUrl (Cloud Run)
+        - If request Origin is HTTPS → use Origin as apiUrl (same-origin HTTPS deploy)
         - If request Origin is HTTP → use API_URL env var (dev, may be empty)
         - Frontend uses this to construct WebSocket and API URLs
 
@@ -261,7 +261,7 @@ async def get_frontend_config(request: Request):
     origin = request.headers.get("origin", "")
 
     # Determine API base URL
-    # In production (Cloud Run), use the origin URL
+    # For an HTTPS same-origin deploy, use the origin URL
     # In development, use localhost:8000
     if origin and origin.startswith("https://"):
         api_url = origin

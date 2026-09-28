@@ -1,17 +1,16 @@
 """
 Origin-based authentication for same-origin-only API access.
 
-This middleware ensures that only requests from the same origin
-(the UI served from Cloud Run) can access the API.
+This middleware ensures that only requests from the same origin (the UI
+served alongside this API) can access it. This is a local-only demo — the
+allow-list is an explicit set of localhost origins, nothing else.
 
 Provides:
 - Origin header validation for REST endpoints
 - Same-origin enforcement for WebSocket endpoints
-- Automatic same-origin detection on Cloud Run
 """
 
 import logging
-import re
 from typing import Optional
 
 from fastapi import HTTPException, Request, WebSocket, status
@@ -23,8 +22,7 @@ def get_allowed_origins() -> list[str]:
     """
     Get list of allowed origins.
 
-    On Cloud Run, this automatically includes the service URL and all Cloud Run domains.
-    In development, allows localhost.
+    Explicit localhost/127.0.0.1 allow-list — this app only ever runs locally.
 
     Returns:
         List of allowed origins
@@ -47,8 +45,7 @@ def is_allowed_origin(origin: Optional[str], referer: Optional[str] = None) -> b
     """
     Check if origin is allowed.
 
-    On Cloud Run, accepts any *.a.run.app domain (same service).
-    In development, accepts localhost.
+    Exact match against the localhost allow-list only.
 
     For GET requests without an Origin header, checks the Referer header instead
     (same-origin GET requests don't include Origin by default).
@@ -61,30 +58,15 @@ def is_allowed_origin(origin: Optional[str], referer: Optional[str] = None) -> b
         True if origin is allowed
     """
     # Try Origin header first (sent by cross-origin requests and POST/DELETE/PUT)
-    if origin:
-        allowed_origins = get_allowed_origins()
-
-        # Exact match for development origins
-        if origin in allowed_origins:
-            return True
-
-        # Allow any Cloud Run domain (*.a.run.app)
-        if re.match(r"https://.*\.run\.app$", origin):
-            return True
+    if origin and origin in get_allowed_origins():
+        return True
 
     # Fallback to Referer header for same-origin GET requests
     # (same-origin GET requests don't include Origin by design)
     if referer:
         # Extract origin from referer (e.g., "http://localhost:5173/path" -> "http://localhost:5173")
         referer_origin = "/".join(referer.split("/")[:3])  # Keep only scheme://host:port
-        allowed_origins = get_allowed_origins()
-
-        # Exact match for development origins
-        if referer_origin in allowed_origins:
-            return True
-
-        # Allow any Cloud Run domain (*.a.run.app)
-        if re.match(r"https://.*\.run\.app$", referer_origin):
+        if referer_origin in get_allowed_origins():
             return True
 
     return False
@@ -94,8 +76,8 @@ async def verify_same_origin(request: Request) -> bool:
     """
     Verify that the request is from the same origin.
 
-    This is the primary security mechanism: only the UI served from the same
-    Cloud Run service can access the API. External clients cannot.
+    This is the primary (and only) auth mechanism: only the UI served
+    alongside this API can access it. External clients cannot.
 
     For same-origin requests (which don't include Origin header by default),
     uses the Referer header as a fallback, then Host header as final fallback.
@@ -120,9 +102,8 @@ async def verify_same_origin(request: Request) -> bool:
 
     # If Origin or Referer is present, it is the source of truth.
     # An explicit disallowed Origin must be rejected — the Host header is the
-    # destination, not the source, and on Cloud Run it always matches *.run.app
-    # regardless of who sent the request, so falling back to Host here would
-    # defeat origin enforcement entirely.
+    # destination, not the source, so falling back to Host here would defeat
+    # origin enforcement entirely.
     if origin or referer:
         if is_allowed_origin(origin, referer):
             logger.debug("Request allowed via origin/referer check")
@@ -148,11 +129,6 @@ async def verify_same_origin(request: Request) -> bool:
             if host == allowed_host:
                 logger.debug(f"Request allowed via host match: {host}")
                 return True
-
-        # Check if Host matches Cloud Run domain pattern (*.run.app)
-        if re.match(r".+\.run\.app$", host):
-            logger.debug(f"Request allowed via Cloud Run pattern: {host}")
-            return True
 
     logger.warning(
         f"Request blocked: origin={origin}, referer={referer}, host={host}, method={method}"

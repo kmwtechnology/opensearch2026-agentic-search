@@ -12,7 +12,6 @@ from langchain_core.messages import BaseMessage, HumanMessage
 
 from core.config import DEFAULT_ALPHA, SEARCH_DEFAULTS, VECTOR_COLLECTION_NAME
 from main import EcommerceSearchAgent
-from observability.otel import setup_tracing, shutdown_tracing
 
 
 def run_conversation(agent):
@@ -274,13 +273,8 @@ def run(agent):
 
 def main():
     """CLI entry point."""
-    setup_tracing()
-    try:
-        agent = EcommerceSearchAgent()
-        run(agent)
-    finally:
-        # Short-lived process: flush batched spans before exit.
-        shutdown_tracing()
+    agent = EcommerceSearchAgent()
+    run(agent)
 
 
 if __name__ == "__main__":

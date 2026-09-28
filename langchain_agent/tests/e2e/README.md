@@ -5,8 +5,7 @@
 
 E2E tests exercise a running backend end to end — health, auth, WebSocket
 streaming, and pipeline correctness across all 6 intents. They target
-`http://localhost:8000` by default (`CLOUD_RUN_URL` env var, despite the
-name, just points at whatever backend URL you want to test — set it to a
+`http://localhost:8000` by default (`DEPLOYMENT_URL` env var — set it to a
 remote URL if you ever need to point these at something other than local).
 
 Four heavier suites (`test_real_world_scenarios.py`, `test_latency_profiling.py`,
@@ -119,7 +118,7 @@ PYTHONPATH=. pytest tests/e2e/ -m "not slow" -v
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CLOUD_RUN_URL` | `http://localhost:8000` | Backend URL under test (the name predates local-only mode; it's just the target URL) |
+| `DEPLOYMENT_URL` | `http://localhost:8000` | Backend URL under test |
 | `API_KEY` | `test-api-key` | Read by `test_deployment_smoke.py`, sent as `Authorization: Bearer`, which the backend no longer checks (the only auth layer is same-origin checking) |
 | `ADMIN_TOKEN` | (unset) | Not currently used by these tests — `verify_admin_token` exists as a preserved-but-unused utility, not wired into any route |
 | `TIMEOUT` | 30 | Pytest request timeout in seconds |
@@ -134,7 +133,7 @@ PYTHONPATH=. pytest tests/e2e/ -m "not slow" -v
 
 ## Troubleshooting
 
-**Connection refused** — verify the backend is up (`curl $CLOUD_RUN_URL/api/health`,
+**Connection refused** — verify the backend is up (`curl $DEPLOYMENT_URL/api/health`,
 default `http://localhost:8000`); start it via `./scripts/start.sh` or `make dev-api`.
 
 **Tests timeout** — bump `TIMEOUT=60`; check `logs/backend.log` for errors.
@@ -143,7 +142,7 @@ default `http://localhost:8000`); start it via `./scripts/start.sh` or `make dev
 test origin (`api/middleware/origin_auth.py`).
 
 **Data tests fail** — check document count
-(`curl $CLOUD_RUN_URL/api/health | grep document_count`); re-ingest via
+(`curl $DEPLOYMENT_URL/api/health | grep document_count`); re-ingest via
 `scripts/lucille_ingest.sh` if empty, then verify via `GET /api/admin/health`.
 
 ## See Also

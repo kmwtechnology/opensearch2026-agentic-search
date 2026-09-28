@@ -484,9 +484,8 @@ Tests nodes together with real services.
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
 
-Test against a running local backend (`CLOUD_RUN_URL` env var, despite the
-name, just points at whatever backend URL you're testing; defaults to
-`http://localhost:8000`).
+Test against a running local backend (`DEPLOYMENT_URL` env var points at
+whatever backend URL you're testing; defaults to `http://localhost:8000`).
 
 ### Manual Testing Checklist
 

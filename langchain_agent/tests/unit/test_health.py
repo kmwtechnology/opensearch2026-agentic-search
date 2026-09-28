@@ -208,10 +208,10 @@ def test_config_returns_empty_api_url_in_dev(client):
 def test_config_returns_https_origin_as_api_url(client):
     r = client.get(
         "/api/config",
-        headers={"origin": "https://my-service.a.run.app"},
+        headers={"origin": "https://my-service.example.com"},
     )
     assert r.status_code == 200
-    assert r.json()["apiUrl"] == "https://my-service.a.run.app"
+    assert r.json()["apiUrl"] == "https://my-service.example.com"
 
 
 def test_config_uses_env_var_for_http_origin(client):

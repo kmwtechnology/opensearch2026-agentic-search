@@ -70,7 +70,7 @@ class TestRequiredEnvironmentVariables:
     def test_opensearch_host_has_default(self):
         """Test OPENSEARCH_HOST has a default value."""
         # Default should be set if not in env
-        default = "34.138.97.13"
+        default = "localhost"
         env_val = os.getenv("OPENSEARCH_HOST", default)
 
         assert env_val is not None
@@ -321,22 +321,10 @@ class TestDatabaseConfiguration:
         port = os.getenv("POSTGRES_PORT", "5432")
         db = os.getenv("POSTGRES_DB", "langchain_agent")
 
-        if not host.startswith("/cloudsql/"):
-            url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
-            assert "postgresql://" in url
-            assert host in url
-            assert db in url
-
-    def test_database_url_construction_cloud_sql(self):
-        """Test database URL construction for Cloud SQL."""
-        user = "postgres"
-        password = "testpass"
-        host = "/cloudsql/project:region:instance"
-        db = "langchain_agent"
-
-        url = f"postgresql://{user}:{password}@/{db}?host={host}"
+        url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
         assert "postgresql://" in url
-        assert "host=" in url
+        assert host in url
+        assert db in url
 
     def test_postgres_credentials_non_empty(self):
         """Test Postgres credentials are provided."""
@@ -361,7 +349,7 @@ class TestOpenSearchConfiguration:
 
     def test_opensearch_host_not_localhost(self):
         """Test OpenSearch is configured (not localhost in prod)."""
-        host = os.getenv("OPENSEARCH_HOST", "34.138.97.13")
+        host = os.getenv("OPENSEARCH_HOST", "localhost")
 
         # Could be localhost for testing, but has a real default
         assert host is not None

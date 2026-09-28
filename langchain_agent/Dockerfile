@@ -23,8 +23,8 @@ WORKDIR /app
 # Install Python dependencies (context is repo root, so prefix with langchain_agent/)
 COPY langchain_agent/requirements.txt ./
 # Install CPU-only torch before requirements.txt so sentence-transformers reuses it.
-# Cloud Run is CPU-only; the default PyPI torch wheel bundles ~2GB of CUDA libraries
-# that are never used. The CPU wheel cuts the pip layer from ~3GB to ~750MB.
+# This container has no GPU; the default PyPI torch wheel bundles ~2GB of CUDA
+# libraries that are never used. The CPU wheel cuts the pip layer from ~3GB to ~750MB.
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -69,7 +69,7 @@ ENV HF_HUB_OFFLINE=1 \
 # Set Python path so imports resolve from /app
 ENV PYTHONPATH=/app
 
-# Cloud Run uses PORT env var (default 8080)
+# Standard container convention: bind whatever PORT is passed in (default 8080)
 ENV PORT=8080
 
 EXPOSE ${PORT}

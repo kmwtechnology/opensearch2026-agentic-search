@@ -3,7 +3,7 @@ Smoke Tests for Agentic Hybrid Search
 
 Tests core functionality against a running backend to ensure the system is
 working correctly. Runs locally by default (this is what scripts/smoke_local.sh
-invokes for `make smoke`); CLOUD_RUN_URL can point it at a remote
+invokes for `make smoke`); DEPLOYMENT_URL can point it at a remote
 backend instead. Includes health checks, API authentication, WebSocket
 connectivity, and search pipeline validation.
 
@@ -38,7 +38,7 @@ def _fail_if_origin_blocked(exc: BaseException) -> None:
 
 
 # Configuration
-DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
+DEPLOYMENT_URL = os.environ.get("DEPLOYMENT_URL", "http://localhost:8000")
 API_KEY = os.environ.get("API_KEY", "test-api-key")
 TIMEOUT = 30  # seconds
 # Cross-encoder model loads ~60s on first request; full pipeline round-trip needs ~90-120s

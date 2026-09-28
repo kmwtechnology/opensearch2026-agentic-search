@@ -1,13 +1,14 @@
 """Contract test: origin auth via FastAPI TestClient.
 
 Pure unit test (no network, no live deployment). Wires `verify_same_origin`
-into a minimal FastAPI app and replays the exact header combinations that
-the production deployment receives, plus the smoke-test client's
-disallowed-Origin combination.
+into a minimal FastAPI app and replays representative header combinations,
+including the smoke-test client's disallowed-Origin combination.
 
 Catches the 2026-04-29 smoke failure mode where the Host fallback in
-`verify_same_origin` always matched on Cloud Run (Host = destination =
-always *.run.app) and silently overrode any disallowed Origin.
+`verify_same_origin` matched the app's former Cloud Run deployment's Host
+(destination, always *.run.app) and silently overrode any disallowed Origin.
+This app is local-only now — the allow-list is an explicit localhost set,
+nothing is exempted by pattern.
 """
 
 from __future__ import annotations
@@ -40,11 +41,12 @@ def client(app: FastAPI) -> TestClient:
 # ---------------------------------------------------------------------------
 
 
-def test_disallowed_origin_with_cloud_run_host_returns_403(client: TestClient) -> None:
-    """The exact smoke-test scenario: disallowed Origin + Cloud Run Host must 403.
+def test_disallowed_origin_with_unknown_host_returns_403(client: TestClient) -> None:
+    """The exact smoke-test scenario: disallowed Origin + an unrelated Host must 403.
 
-    Before the 2026-04-29 fix, this returned 200 because the Host fallback
-    accepted any *.run.app value regardless of an explicit disallowed Origin.
+    Before the 2026-04-29 fix, this returned 200 against the app's former
+    Cloud Run deployment because the Host fallback accepted any *.run.app
+    value regardless of an explicit disallowed Origin.
     """
     response = client.get(
         "/protected",
@@ -54,7 +56,7 @@ def test_disallowed_origin_with_cloud_run_host_returns_403(client: TestClient) -
         },
     )
     assert response.status_code == 403, (
-        f"Disallowed Origin must 403 even when Host matches *.run.app — got "
+        f"Disallowed Origin must 403 regardless of Host — got "
         f"{response.status_code}. Host is the destination, not the source; "
         "treating it as a same-origin signal defeats the entire allow-list."
     )
@@ -68,7 +70,7 @@ def test_disallowed_origin_with_localhost_host_returns_403(client: TestClient) -
     assert response.status_code == 403
 
 
-def test_disallowed_referer_with_cloud_run_host_returns_403(client: TestClient) -> None:
+def test_disallowed_referer_with_unknown_host_returns_403(client: TestClient) -> None:
     response = client.get(
         "/protected",
         headers={
@@ -84,7 +86,8 @@ def test_disallowed_referer_with_cloud_run_host_returns_403(client: TestClient) 
 # ---------------------------------------------------------------------------
 
 
-def test_allowed_cloud_run_origin_returns_200(client: TestClient) -> None:
+def test_disallowed_cloud_run_origin_returns_403(client: TestClient) -> None:
+    """No deployed domain is exempt from the explicit allow-list anymore."""
     response = client.get(
         "/protected",
         headers={
@@ -92,7 +95,7 @@ def test_allowed_cloud_run_origin_returns_200(client: TestClient) -> None:
             "Host": "agentic-hybrid-search-123456789012.us-central1.run.app",
         },
     )
-    assert response.status_code == 200
+    assert response.status_code == 403
 
 
 def test_allowed_localhost_origin_returns_200(client: TestClient) -> None:
@@ -103,11 +106,11 @@ def test_allowed_localhost_origin_returns_200(client: TestClient) -> None:
     assert response.status_code == 200
 
 
-def test_no_origin_no_referer_falls_back_to_host_cloud_run(client: TestClient) -> None:
-    """Same-origin GET (browser omits Origin) with Cloud Run Host: 200."""
+def test_no_origin_no_referer_falls_back_to_host_localhost(client: TestClient) -> None:
+    """Same-origin GET (browser omits Origin) with an allow-listed Host: 200."""
     response = client.get(
         "/protected",
-        headers={"Host": "service-12345.us-central1.run.app"},
+        headers={"Host": "localhost:5173"},
     )
     assert response.status_code == 200
 
