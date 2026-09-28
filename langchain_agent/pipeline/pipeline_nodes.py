@@ -57,9 +57,7 @@ _CANONICAL_SEEDS_BY_TYPE = {
 # Import event types for observability
 try:
     from api.schemas.events import (
-        DocumentReplacementEvent,
         HybridSearchResultEvent,
-        LinkVerificationEvent,
         LLMResponseChunkEvent,
         LLMResponseStartEvent,
         OpenSearchQueryEvent,
@@ -71,14 +69,12 @@ try:
     )
 
 except ImportError:
-    # Event types might not be available in all contexts (e.g., CLI mode)
+    # Event types might not be importable in every context (e.g. isolated unit tests)
     HybridSearchResultEvent = None
     RerankerStartEvent = None
     SearchCandidate = None
     SearchProgressEvent = None
     RerankerProgressEvent = None
-    LinkVerificationEvent = None
-    DocumentReplacementEvent = None
     LLMResponseStartEvent = None
     LLMResponseChunkEvent = None
     QueryExpansionEvent = None
@@ -484,87 +480,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 "intent_optimized": False,
             }
 
-    def _verify_and_replace_documents(
-        self,
-        documents: List[Document],
-        min_valid_documents: int,
-    ) -> List[Document]:
-        """
-        Verify all document links and replace broken ones.
-
-        Args:
-            documents: Retrieved documents to verify
-            min_valid_documents: Maintain this many docs with valid links
-
-        Returns:
-            Documents with verified/replaced links
-        """
-        if not documents:
-            return documents
-
-        logger.info(f"LinkVerifier: checking {len(documents)} document links")
-
-        # Extract all URLs from documents
-        urls = []
-        for doc in documents:
-            url = doc.metadata.get("url")
-            if url and url not in urls:
-                urls.append(url)
-
-        # Verify all URLs
-        verification_results = self.link_verifier.verify_urls(urls)
-
-        # Count results
-        broken_urls = {
-            url: reason for url, (is_valid, reason) in verification_results.items() if not is_valid
-        }
-        valid_count = len([is_valid for is_valid, _ in verification_results.values() if is_valid])
-        broken_count = len(broken_urls)
-
-        logger.info(f"LinkVerifier: {valid_count} valid, {broken_count} broken links")
-
-        # Emit link verification event
-        broken_sources = [
-            doc.metadata.get("source", "unknown")
-            for doc in documents
-            if doc.metadata.get("url") in broken_urls
-        ]
-
-        if LinkVerificationEvent:
-            try:
-                event = LinkVerificationEvent(
-                    total_links_checked=len(verification_results),
-                    valid_links=valid_count,
-                    broken_links=broken_count,
-                    broken_link_sources=broken_sources,
-                    cache_hits=0,  # Would need to track in LinkVerifier
-                )
-                self._emit_event_from_sync(event)
-            except Exception as e:
-                logger.debug(f"Could not emit link verification event: {e}")
-
-        # Replace broken documents if any
-        if broken_urls:
-            documents, replacement_info = self.doc_replacer.replace_broken_documents(
-                documents,
-                verification_results,
-                min_valid_documents,
-            )
-
-            # Emit replacement event
-            if DocumentReplacementEvent and replacement_info:
-                try:
-                    event = DocumentReplacementEvent(
-                        replacements_made=len(self.doc_replacer.replacement_log),
-                        replacement_details=self.doc_replacer.replacement_log,
-                        documents_after_replacement=len(documents),
-                    )
-                    self._emit_event_from_sync(event)
-                except Exception as e:
-                    logger.debug(f"Could not emit document replacement event: {e}")
-
-        return documents
-
     @staticmethod
     def _build_grounded_context(documents: List[Document]) -> str:
         """Render retrieved documents as numbered, isolated FACTS blocks.
@@ -740,14 +655,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         This is a deterministic node that runs after retriever_node.
         Uses retrieved documents as context to answer the user's question.
-
-        Features:
-        - Verifies citation links (no 404s sent to LLM)
-        - Replaces broken-link documents to maintain document count
-        - Emits observability events for link verification
         """
-        from core.config import ENABLE_LINK_VERIFICATION, MIN_VALID_DOCUMENTS
-
         start_time = time.time()
         messages = list(state["messages"])
         retrieved_documents = state.get("retrieved_documents", [])
@@ -787,12 +695,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             return {"messages": [AIMessage(content=clarify_response)], "citations": []}
 
         logger.info(f"Agent: processing with {len(retrieved_documents)} retrieved documents")
-
-        # Verify citation links if enabled
-        if ENABLE_LINK_VERIFICATION and retrieved_documents:
-            retrieved_documents = self._verify_and_replace_documents(
-                retrieved_documents, MIN_VALID_DOCUMENTS
-            )
 
         # Extract user query
         user_query = None

@@ -9,7 +9,7 @@ Zustand state management stores for global UI and application state.
 | Store | Purpose | Main State | Key Actions |
 |-------|---------|-----------|-------------|
 | **chatStore** | Messages, conversation, streaming | `threadId`, `messages[]`, `isProcessing`, `streamingContent` | `addMessage()`, `setThreadId()`, `updateMessageStatus()` |
-| **observabilityStore** | Event stream, pipeline timeline | `events[]`, `activeStep`, `snapshots[]` | `addEvent()`, `setActiveStep()`, `saveSnapshot()` |
+| **observabilityStore** | Pipeline step timeline for the current turn | `steps[]`, `currentNode`, `isExecuting`, `pipelineSummary` | `addEvent()`, `startNode()`, `endNode()`, `clearState()` |
 | **optimizationsStore** | UI search-optimization toggles | `optimizations` (a `Record<OptimizationKey, boolean>` — `hybrid`, `fuzzy`, `synonyms`, `phrase_boost`, `field_boost`, `typeahead`, `reranking`, `llm`, `llm_judge`) | `toggle(key)`, `setAll(value)` |
 
 ## Store Files
@@ -17,7 +17,7 @@ Zustand state management stores for global UI and application state.
 ```
 stores/
 ├── chatStore.ts                    ← Messages, thread, streaming, processing state
-├── observabilityStore.ts           ← Event stream, snapshots, timeline
+├── observabilityStore.ts           ← Pipeline step timeline
 ├── optimizationsStore.ts           ← UI toggle switches
 └── __tests__/                      ← Vitest tests for each store
     ├── chatStore.test.ts
@@ -60,12 +60,13 @@ interface ChatState {
 
 ```typescript
 interface ObservabilityState {
-  events: AgentEvent[]
-  activeStep: string | null
-  snapshots: ObservabilitySnapshot[]
+  isExecuting: boolean
+  currentNode: NodeName | null
+  steps: ObservabilityStep[]
   addEvent: (event: AgentEvent) => void
-  setActiveStep: (nodeId: string) => void
-  saveSnapshot: (snapshot: ObservabilitySnapshot) => void
+  startNode: (node: NodeName, summary?: string) => void
+  endNode: (node: NodeName, durationMs: number, summary?: string) => void
+  clearState: () => void
 }
 ```
 

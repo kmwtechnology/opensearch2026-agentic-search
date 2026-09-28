@@ -25,7 +25,6 @@ Powered by:
 
 import logging
 import sys
-import uuid
 import warnings
 from typing import Optional
 
@@ -42,9 +41,7 @@ from pipeline.conversation_management import ConversationManagementMixin
 from pipeline.pipeline_nodes import AlphaEstimation, IntentClassification, PipelineNodesMixin
 from quality.enrichment_value_judge import EnrichmentValueJudge
 from quality.judge import LLMJudge
-from retrieval.doc_replacer import DocumentReplacer
 from retrieval.embeddings import build_embeddings
-from retrieval.link_verifier import LinkVerifier
 from retrieval.reranker import CrossEncoderReranker
 from retrieval.vector_store import OpenSearchVectorStore
 
@@ -190,7 +187,6 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
     - State fields are optional (`total=False`); always use `state.get(key, default)` for safe access
     - The graph is built lazily in `build_graph()` and stored in `self.app`
     - Streaming is handled by `_stream_llm_response_simple()` and WebSocket callback
-    - Link verification (404 detection) prevents dead citations in responses
     """
 
     def __init__(self):
@@ -209,15 +205,6 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         self.retriever = None  # Base retriever
         self.reranker = None  # Cross-encoder reranker
         self.alpha_estimator_llm = None  # Lightweight model for query evaluation
-
-        # Link verification and document replacement
-        from core.config import LINK_CACHE_TTL_MINUTES, LINK_VERIFICATION_TIMEOUT_MS
-
-        self.link_verifier = LinkVerifier(
-            timeout_ms=LINK_VERIFICATION_TIMEOUT_MS,
-            cache_ttl_minutes=LINK_CACHE_TTL_MINUTES,
-        )
-        self.doc_replacer = DocumentReplacer()
 
     def verify_prerequisites(self):
         """Verify that all required services are running"""
@@ -438,13 +425,14 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         workflow.add_node("retriever", self.retriever_node)
         workflow.add_node("reranker", self.reranker_node)
         workflow.add_node("quality_gate", self.quality_gate_node)
-        # The agent node is registered with BOTH faces on purpose. cli.py drives
-        # the graph synchronously via app.invoke() and needs the sync func; the
-        # API path drives it via astream_events and must get the async one, or
+        # The agent node is registered with BOTH faces on purpose: the API path
+        # drives the graph via astream_events and must get the async one, or
         # LangGraph runs the sync body on the event loop thread and a taxonomy
-        # re-index blocks every WebSocket frame for ~20s (#103). name="agent"
-        # is load-bearing: observable_agent branches on the traced node name,
-        # which a hand-built RunnableCallable does not inherit from the key.
+        # re-tag blocks every WebSocket frame (#103); the sync face is the body
+        # itself (aagent_node hands it to a worker thread) and what unit tests
+        # call directly. name="agent" is load-bearing: observable_agent branches
+        # on the traced node name, which a hand-built RunnableCallable does not
+        # inherit from the key.
         workflow.add_node(
             "agent",
             RunnableCallable(self.agent_node, self.aagent_node, name="agent"),
@@ -493,10 +481,6 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         logger.info(
             "Agent graph created: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent → llm_judge"
         )
-
-    def generate_thread_id(self):
-        """Generate a unique thread ID for conversation persistence"""
-        self.thread_id = f"conversation_{uuid.uuid4().hex[:8]}"
 
     def set_thread_id(self, thread_id: str):
         """Set a specific thread ID to resume a conversation"""
@@ -555,9 +539,3 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
             self.pool.close()
 
         # Note: async_pool should be closed via close_async_pool() in async context
-
-
-if __name__ == "__main__":
-    from cli import main
-
-    main()

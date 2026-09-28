@@ -5,11 +5,6 @@ ObservableAgentService (api/services/observable_agent.py) need to count how
 many human/AI messages already exist for a thread_id, read from LangGraph's
 checkpoint_blobs table -- they used to implement this independently and had
 already drifted (one required non-empty message content, the other didn't).
-
-api/routes/conversations.py has a third, structurally different copy: it
-runs over a synchronous connection (via run_in_threadpool) and extracts full
-message content for the REST response, not just a count, so it isn't
-unified here.
 """
 
 from typing import Any, Optional

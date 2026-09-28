@@ -27,10 +27,7 @@ PYTHONPATH=. pytest tests/e2e/ -v
 There is no login gate. Same-origin checking (`api/middleware/origin_auth.py:verify_same_origin`)
 is the backend's only auth layer, so no credential/env var is required to run
 these tests — see `test_deployment_smoke.py`'s `TestAuthentication` for the
-current origin-based auth tests. `ADMIN_TOKEN`/`verify_admin_token`
-(`api/middleware/admin_auth.py`) is preserved as a standalone utility for
-future automation but isn't wired into any route today, so it plays no part
-in these tests either. Some older e2e/load-test files still reference a
+current origin-based auth tests. Some older e2e/load-test files still reference a
 legacy `API_KEY`/`X-API-Key` scheme that the backend no longer checks; treat
 those as stale until updated.
 
@@ -120,7 +117,6 @@ PYTHONPATH=. pytest tests/e2e/ -m "not slow" -v
 | --- | --- | --- |
 | `DEPLOYMENT_URL` | `http://localhost:8080` | Backend URL under test (`:8000` is the demo image — stale by design) |
 | `API_KEY` | `test-api-key` | Read by `test_deployment_smoke.py`, sent as `Authorization: Bearer`, which the backend no longer checks (the only auth layer is same-origin checking) |
-| `ADMIN_TOKEN` | (unset) | Not currently used by these tests — `verify_admin_token` exists as a preserved-but-unused utility, not wired into any route |
 | `TIMEOUT` | 30 | Pytest request timeout in seconds |
 | `PYTHONPATH` | (unset) | Must be `.` for pytest module resolution |
 

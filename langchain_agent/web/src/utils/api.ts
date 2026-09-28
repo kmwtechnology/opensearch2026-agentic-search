@@ -24,7 +24,7 @@ function createHeaders(additionalHeaders?: Record<string, string>): Record<strin
 /**
  * Make an API request that includes the session cookie.
  *
- * @param endpoint - API endpoint (e.g., '/api/conversations')
+ * @param endpoint - API endpoint (e.g., '/api/suggest?q=nik')
  * @param options - Fetch options (method, body, etc.)
  * @returns Fetch response
  */

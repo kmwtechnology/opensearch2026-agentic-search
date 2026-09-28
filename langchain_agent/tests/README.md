@@ -29,7 +29,6 @@ tests/
 │   ├── test_admin_enrich_route.py
 │   ├── test_agent_response.py
 │   ├── test_attribute_mapping_store.py
-│   ├── test_conversations.py
 │   ├── test_edge_cases.py
 │   ├── test_enrichment_service.py
 │   ├── test_pipeline_flow.py
@@ -104,14 +103,11 @@ services — everything is mocked through `conftest.py`.
 | `intent/test_intent_classifier.py` | 6-intent classification via single LLM call (no keyword fast-path — see #26), confidence thresholds |
 | `evaluator/test_query_evaluator.py` | Dynamic α selection, query expansion, fast-path vs LLM-path |
 | `quality_gate/test_quality_gate.py` | Retry decision logic, α adjustment bounds, intent-specific thresholds |
-| `test_admin_routes_auth.py` | Admin route auth contract: same-origin checking (the only thing wired into `/api/admin/*`), plus standalone coverage of the preserved-but-unused `verify_admin_token` utility |
 | `test_config_validation.py` | Required env vars, value ranges, type checks |
-| `test_doc_replacer.py` | Replacement scoring, broken-link substitution, cleanup |
 | `test_embedding_cache.py` | LRU eviction, TTL, disabled-cache no-op, thread safety |
 | `test_exceptions.py` | Custom exception hierarchy, inheritance, error codes |
 | `test_health.py` | `/api/health` response shape, degraded-mode reporting |
 | `test_intent_classifier_node.py` | LangGraph node wrapper, state mutations |
-| `test_link_verifier.py` | URL validation, TTL cache, timeout handling |
 | `test_llm_streaming_content_blocks.py` | Streaming event emission, token assembly |
 | `test_origin_auth.py` | Origin/Referer allow-list, WebSocket auth checks, Host-fallback contract (disallowed Origin + `*.run.app` Host MUST 403 — Host fallback only fires when both Origin and Referer are absent) |
 | `test_origin_auth_contract.py` | TestClient-based regression test wiring `verify_same_origin` into a FastAPI app; replays the exact production header combos from the 2026-04-29 smoke failure |
@@ -141,7 +137,6 @@ pre-commit, CI fast lane.
 | `test_retriever_reranker.py` | Hybrid search + RRF fusion + reranker scoring |
 | `test_quality_gate_retry.py` | Retry triggered when max reranker score < 0.5, α ±0.3 adjustment |
 | `test_agent_response.py` | Response generation, citation formatting, Amazon URL construction |
-| `test_conversations.py` | Conversation CRUD, checkpoint-backed state, session behavior |
 | `test_websocket_integration.py` | WebSocket lifecycle, auth, event ordering |
 | `test_suggest.py` | `/api/suggest` typeahead: prefix matches, spell correction (Levenshtein + ratio), fuzzy distance-1 fallback, corpus-token and prefix guards |
 | `test_admin_enrich_route.py` | `POST /api/admin/enrich` request/response contract, `ENABLE_ENRICHMENT_TOOL` gating, delegation to `enrichment_service` |

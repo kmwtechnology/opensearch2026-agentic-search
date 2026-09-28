@@ -13,7 +13,7 @@ Four layers: **routes** → **middleware** → **schemas** → **services**.
 api/
 ├── main.py               # FastAPI app, lifespan, middleware stack
 ├── routes/               # HTTP/WebSocket endpoints
-├── middleware/           # Origin auth, admin token, CORS, client IP
+├── middleware/           # Origin auth, client IP
 ├── schemas/              # Pydantic event models
 └── services/             # Observable agent wrapper
 ```
@@ -23,7 +23,6 @@ api/
 | File | Endpoints | Purpose |
 |------|-----------|---------|
 | `chat.py` | `WS /ws/chat` | LangGraph agent stream; emits typed Pydantic events |
-| `conversations.py` | `GET /api/conversations`, `GET/DELETE /api/conversations/{thread_id}`, `GET /api/conversations/{thread_id}/observability` | Checkpoint-backed conversation listing/detail/delete + observability snapshot (no REST create/send — that's WebSocket-only) |
 | `suggest.py` | `GET /api/suggest?q=...` | Typeahead autocomplete (edge-ngram + spell correction) |
 | `health.py` | `GET /api/health` | Index health + document count |
 | `admin.py` | `GET /api/admin/health` · `GET /api/admin/diagnose` · `POST /api/admin/enrich` | Index health, field diagnostics, and the live attribute-taxonomy enrichment flywheel (same-origin only) |
@@ -33,9 +32,9 @@ api/
 | File | Purpose |
 |------|---------|
 | `origin_auth.py` | Origin header allow-list enforcement (falls back to `Referer` for same-origin GETs); disallowed Origin always 403s, no further fallback |
-| `admin_auth.py` | `verify_admin_token` — X-Admin-Token header check for unattended automation. Not wired into any route today; preserved as a utility. |
+| `client_ip.py` | Direct socket peer address for rate limiting (no proxy headers trusted) |
 
-**Auth strategy:** Same-origin only — Origin header whitelist (localhost dev ports + `*.run.app`). There is no login gate; do not wire new routes through anything but `verify_same_origin` (plus `verify_admin_token` if you specifically want token-based automation access to that route).
+**Auth strategy:** Same-origin only — Origin header allow-list of localhost dev ports. There is no login gate and no admin token; wire every new route through `verify_same_origin` and nothing else.
 
 ## Schemas (`api/schemas/`)
 
@@ -57,7 +56,6 @@ api/
 No auth-related env vars are required — the app has no login gate. Optional:
 
 ```bash
-ADMIN_TOKEN                # Automation token for X-Admin-Token header (32+ chars) -- not wired into any route today
 CORS_ORIGINS               # Comma-separated allow-list; empty for local dev
 ENABLE_ENRICHMENT_TOOL     # Default false. Gates the agent's trigger_enrichment
                             # tool AND POST /api/admin/enrich (403 when unset).

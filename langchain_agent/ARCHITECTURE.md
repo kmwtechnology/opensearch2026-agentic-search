@@ -253,7 +253,6 @@ The local cross-encoder is the only reranker; the earlier LLM-based reranker
   - Deduplicates by URL
   - Post-processor strips any inline URLs/markdown the LLM emitted (agent prompt forbids inline URLs; belt-and-suspenders defense)
 - **Token-by-token streaming**: Emits `LLMResponseChunkEvent` with each token
-- **Link verification** (optional): Validates URLs before inclusion (60-min TTL cache)
 - Emits `AgentCompleteEvent` when done
 
 **Output State**:
@@ -265,7 +264,6 @@ The local cross-encoder is the only reranker; the earlier LLM-based reranker
 
 - ESCI products have ASIN metadata; canonical URL construction
 - Streaming allows real-time UI feedback (not waiting for full response)
-- Link verification filters out broken URLs (trust but verify)
 
 ---
 
@@ -911,14 +909,6 @@ LangGraph checkpoints are stored in PostgreSQL, allowing conversation resumption
 3. Graph saves checkpoint with `thread_id` (conversation ID)
 4. Next turn, load checkpoint → history restored
 5. Continue conversation as if uninterrupted
-
-### Context Compaction
-
-For long conversations, context window fills up:
-
-- Compaction (enabled by default): Trims older messages when `len(context) > MAX_CONTEXT_TOKENS`
-- Keeps recent `k` turns + system prompt
-- Prevents timeout on very long chats
 
 ---
 

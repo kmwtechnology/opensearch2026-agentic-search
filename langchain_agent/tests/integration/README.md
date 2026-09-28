@@ -60,7 +60,6 @@ PYTHONPATH=. pytest tests/integration/ -m "integration and not slow" -v
 | `test_retriever_reranker.py` | Hybrid search + RRF fusion + reranker scoring | `integration`, `search`, `rerank` |
 | `test_quality_gate_retry.py` | Retry triggered when max reranker score < 0.5, α ±0.3 adjustment | `integration`, `search`, `rerank` |
 | `test_agent_response.py` | Response generation, citation formatting, Amazon URL construction | `integration`, `search` |
-| `test_conversations.py` | Conversation CRUD, checkpoint-backed state, same-origin-only auth (no session/login gate) | `integration`, `database` |
 | `test_websocket_integration.py` | WebSocket lifecycle, same-origin auth, event ordering | `integration`, `websocket` |
 | `test_suggest.py` | `/api/suggest` typeahead: prefix matches, spell correction, fuzzy fallback | `integration`, `search` |
 | `test_admin_enrich_route.py` | `POST /api/admin/enrich` request/response contract, `ENABLE_ENRICHMENT_TOOL` gating | `integration` |

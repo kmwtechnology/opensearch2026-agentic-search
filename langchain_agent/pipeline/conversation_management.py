@@ -1,25 +1,16 @@
 """Conversation & checkpoint management for EcommerceSearchAgent (split out of
-main.py in #47): metadata table, listing/clearing threads, title generation,
-summarization and compaction.
+main.py in #47): metadata table, title generation, summarization.
 """
 
 import json
 import logging
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
 
 import httpx
 import psycopg
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage
 
-from core.config import (
-    COMPACTION_THRESHOLD_PCT,
-    DATABASE_URL,
-    ENABLE_COMPACTION,
-    MAX_CONTEXT_TOKENS,
-    MESSAGES_TO_KEEP_FULL,
-    MIN_MESSAGES_FOR_COMPACTION,
-    TOKEN_CHAR_RATIO,
-)
+from core.config import DATABASE_URL
 from observability.llm_content import _flatten_llm_content
 
 logger = logging.getLogger(__name__)
@@ -53,49 +44,6 @@ class ConversationManagementMixin:
             logger.warning(f"Could not create conversation_metadata table: {e}")
         except Exception as e:
             logger.error(f"Unexpected error creating conversation_metadata table: {e}")
-
-    def list_conversations(self):
-        """List available previous conversations from PostgreSQL with titles"""
-        try:
-            with psycopg.connect(DATABASE_URL) as conn:
-                with conn.cursor() as cur:
-                    # Query the metadata table for conversations with titles
-                    cur.execute("""
-                        SELECT thread_id, title, created_at
-                        FROM conversation_metadata
-                        ORDER BY created_at DESC
-                        LIMIT 20
-                    """)
-                    conversations = cur.fetchall()
-                    return conversations
-        except Exception as e:
-            print(f"Error listing conversations: {e}")
-            return []
-
-    def clear_all_conversations(self):
-        """Clear all previous conversations from the database"""
-        try:
-            with psycopg.connect(DATABASE_URL) as conn:
-                conn.autocommit = True
-                with conn.cursor() as cur:
-                    # Delete all conversation metadata
-                    cur.execute("DELETE FROM conversation_metadata")
-                    metadata_count = cur.rowcount
-
-                    # Delete all checkpoints (conversation history)
-                    cur.execute("DELETE FROM checkpoints")
-                    checkpoint_count = cur.rowcount
-
-                    # Delete checkpoint blobs if they exist
-                    try:
-                        cur.execute("DELETE FROM checkpoint_blobs")
-                    except psycopg.Error:
-                        pass  # Table may not exist, which is acceptable
-
-                    return metadata_count, checkpoint_count
-        except Exception as e:
-            print(f"Error clearing conversations: {e}")
-            return 0, 0
 
     def generate_conversation_title(self, messages: List[BaseMessage]) -> str:
         """Use the LLM to generate a concise title for the conversation.
@@ -205,26 +153,6 @@ Title:"""
             logger.warning(f"Database error updating conversation title: {e}")
         except Exception as e:
             logger.error(f"Unexpected error updating conversation title: {e}")
-
-    def estimate_token_count(self, messages: Sequence[BaseMessage]) -> int:
-        """
-        Estimate token count for a list of messages.
-        Uses 1 token ≈ 4 characters heuristic (conservative for English).
-
-        Args:
-            messages: Sequence of BaseMessage objects to estimate token count for.
-
-        Returns:
-            Estimated token count based on character length.
-        """
-        try:
-            total_chars = 0
-            for msg in messages:
-                if hasattr(msg, "content") and msg.content:
-                    total_chars += len(str(msg.content))
-            return total_chars // TOKEN_CHAR_RATIO
-        except Exception:
-            return 0
 
     def _fallback_summarize(self, messages_to_summarize: Sequence[BaseMessage]) -> str:
         """
@@ -363,54 +291,3 @@ Summary:"""
             )
             logger.info("Falling back to basic summary")
             return self._fallback_summarize(messages_to_summarize)
-
-    def compact_conversation_if_needed(
-        self, messages: Sequence[BaseMessage]
-    ) -> Tuple[Sequence[BaseMessage], bool, int]:
-        """
-        Check if conversation needs compaction and compact if necessary.
-
-        Args:
-            messages: Sequence of messages to check for compaction.
-
-        Returns:
-            Tuple of (compacted_messages, was_compacted, num_compacted) where:
-            - compacted_messages: The potentially compacted message sequence
-            - was_compacted: Boolean indicating if compaction occurred
-            - num_compacted: Number of messages that were compacted
-        """
-        if not ENABLE_COMPACTION or not messages:
-            return messages, False, 0
-
-        if len(messages) < MIN_MESSAGES_FOR_COMPACTION:
-            return messages, False, 0
-
-        # Estimate token count
-        token_count = self.estimate_token_count(messages)
-        threshold = int(MAX_CONTEXT_TOKENS * COMPACTION_THRESHOLD_PCT)
-
-        if token_count < threshold:
-            return messages, False, 0  # No compaction needed
-
-        # Perform compaction
-        messages_to_keep = messages[-MESSAGES_TO_KEEP_FULL:]
-        messages_to_compact = messages[:-MESSAGES_TO_KEEP_FULL]
-
-        # Generate summary
-        summary_text = self.summarize_messages(messages_to_compact)
-
-        # Create summary message
-        summary_msg = SystemMessage(content=f"[Earlier conversation summary]: {summary_text}")
-
-        # Return compacted messages
-        compacted = [summary_msg] + messages_to_keep
-        num_compacted = len(messages_to_compact)
-
-        # Log compaction completion with token counts
-        compacted_token_count = self.estimate_token_count(compacted)
-        logger.info(
-            f"Compacted {num_compacted} messages "
-            f"(token count: {compacted_token_count}/{MAX_CONTEXT_TOKENS})"
-        )
-
-        return compacted, True, num_compacted

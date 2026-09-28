@@ -541,33 +541,6 @@ class MetricsEvent(BaseEvent):
 
 
 # ============================================================================
-# LINK VERIFICATION EVENTS
-# ============================================================================
-
-
-class LinkVerificationEvent(BaseEvent):
-    """Emitted when citation links are verified."""
-
-    type: Literal["link_verification"] = "link_verification"
-    node: Literal["agent"] = "agent"
-    total_links_checked: int
-    valid_links: int
-    broken_links: int
-    broken_link_sources: List[str] = []  # Sources with broken links
-    cache_hits: int = 0
-
-
-class DocumentReplacementEvent(BaseEvent):
-    """Emitted when documents with broken links are replaced."""
-
-    type: Literal["document_replacement"] = "document_replacement"
-    node: Literal["agent"] = "agent"
-    replacements_made: int
-    replacement_details: List[Dict[str, str]] = []  # {old_source, new_source, reason}
-    documents_after_replacement: int
-
-
-# ============================================================================
 # AGENTIC ENRICHMENT FLYWHEEL EVENTS
 # ============================================================================
 
@@ -641,6 +614,4 @@ AgentEvent = (
     | AgentErrorEvent
     | PipelineSummaryEvent
     | MetricsEvent
-    | LinkVerificationEvent
-    | DocumentReplacementEvent
 )

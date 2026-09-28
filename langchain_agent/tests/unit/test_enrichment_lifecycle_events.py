@@ -240,8 +240,8 @@ class TestEnrichmentLifecycleEvents:
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     @patch("quality.enrichment_service.enrich_attribute")
     def test_enrichment_succeeds_with_no_subscriber_attached(self, mock_enrich, mock_store_cls):
-        """cli.py, /api/admin/enrich and the test suite all run with no
-        observer. A real taxonomy write must never depend on one."""
+        """/api/admin/enrich and the test suite run with no observer. A real
+        taxonomy write must never depend on one."""
         mock_store_cls.return_value.get_lookup_table.return_value = {}
         mock_enrich.return_value = EnrichmentResult(
             success=True,

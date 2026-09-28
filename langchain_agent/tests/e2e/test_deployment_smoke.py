@@ -143,9 +143,7 @@ class TestAuthentication:
     def test_request_with_valid_origin_accepted(self):
         """Valid origin → 200 on a same-origin-only route."""
         with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(
-                f"{DEPLOYMENT_URL}/api/conversations", headers=auth_rest_headers()
-            )
+            response = client.get(f"{DEPLOYMENT_URL}/api/admin/health", headers=auth_rest_headers())
 
         if response.status_code == 429:
             pytest.skip("Rate limited; cannot verify origin acceptance")
@@ -161,7 +159,7 @@ class TestAuthentication:
         headers = {"Origin": "https://evil.example.com"}
 
         with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(f"{DEPLOYMENT_URL}/api/conversations", headers=headers)
+            response = client.get(f"{DEPLOYMENT_URL}/api/admin/health", headers=headers)
 
         if response.status_code == 429:
             pytest.skip("Rate limited; cannot verify origin rejection")

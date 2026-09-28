@@ -41,8 +41,6 @@ def bare_agent():
     agent.retriever = None
     agent.reranker = None
     agent.alpha_estimator_llm = None
-    agent.link_verifier = MagicMock()
-    agent.doc_replacer = MagicMock()
     agent.judge = None
     agent.intent_structured = None
     return agent

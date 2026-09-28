@@ -212,53 +212,6 @@ describe('observabilityStore', () => {
       useObservabilityStore.getState().clearState()
       expect(useObservabilityStore.getState().pipelineSummary).toBeNull()
     })
-
-    it('resets historicalSnapshot to null', () => {
-      useObservabilityStore.getState().hydrateSnapshot({
-        thread_id: 'foo',
-        has_data: true,
-        user_query: 'q',
-        intent: 'search',
-        intent_confidence: 0.9,
-        reasoning: 'r',
-        alpha: 0.5,
-        query_analysis: 'a',
-        reranker_max_score: 0.8,
-        quality_gate_retried: false,
-        quality_gate_reason: 'PASS',
-        latency: { reranker_latency_ms: 100 },
-      })
-      useObservabilityStore.getState().clearState()
-      expect(useObservabilityStore.getState().historicalSnapshot).toBeNull()
-    })
   })
 
-  describe('hydrateSnapshot', () => {
-    it('stores a snapshot object', () => {
-      const snapshot = {
-        thread_id: 'conv-1',
-        has_data: true,
-        user_query: 'find headphones',
-        intent: 'search',
-        intent_confidence: 0.92,
-        reasoning: 'product search request',
-        alpha: 0.6,
-        query_analysis: 'looking for audio gear',
-        reranker_max_score: 0.95,
-        quality_gate_retried: false,
-        quality_gate_reason: 'PASS',
-        latency: { bm25_latency_ms: 30, reranker_latency_ms: 200 },
-      }
-      useObservabilityStore.getState().hydrateSnapshot(snapshot)
-      expect(useObservabilityStore.getState().historicalSnapshot).toEqual(snapshot)
-    })
-
-    it('clears the snapshot when called with null', () => {
-      useObservabilityStore.setState({
-        historicalSnapshot: { thread_id: 'x', has_data: true } as any,
-      })
-      useObservabilityStore.getState().hydrateSnapshot(null)
-      expect(useObservabilityStore.getState().historicalSnapshot).toBeNull()
-    })
-  })
 })

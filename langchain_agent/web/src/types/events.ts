@@ -276,25 +276,6 @@ export interface MetricsEvent extends BaseEvent {
   total_ms: number
 }
 
-// Link verification events
-export interface LinkVerificationEvent extends BaseEvent {
-  type: 'link_verification'
-  node: 'agent'
-  total_links_checked: number
-  valid_links: number
-  broken_links: number
-  broken_link_sources: string[]
-  cache_hits: number
-}
-
-export interface DocumentReplacementEvent extends BaseEvent {
-  type: 'document_replacement'
-  node: 'agent'
-  replacements_made: number
-  replacement_details: Array<{ old_source: string; new_source: string; reason: string }>
-  documents_after_replacement: number
-}
-
 // ============================================================================
 // PIPELINE QUALITY SUMMARY
 // ============================================================================
@@ -396,8 +377,6 @@ export type AgentEvent =
   | AgentErrorEvent
   | PipelineSummaryEvent
   | MetricsEvent
-  | LinkVerificationEvent
-  | DocumentReplacementEvent
 
 // Node names for routing
 export type NodeName =

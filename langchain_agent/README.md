@@ -69,7 +69,7 @@ cp .env.example .env
 First-time setup takes roughly a couple minutes, dominated by pulling Ollama
 models (~23 GB):
 
-1. Creates `.env` from `.env.example` (set `ADMIN_TOKEN` yourself if you want automation access to `/api/admin/*`)
+1. Creates `.env` from `.env.example`
 2. Creates `.venv`, installs Python + frontend dependencies
 3. Checks Ollama is installed/running and pulls any missing models
 4. Starts PostgreSQL and OpenSearch via Docker
@@ -86,7 +86,7 @@ native FastAPI backend on `:8080` with the live-reloading React UI on `:5173`
 
 There is no login gate — the UI opens straight to the chat, and every
 same-origin caller, including `/api/admin/*`, is unauthenticated. See
-[auth-patterns.md](../docs/integration/auth-patterns.md).
+[docs/integration/README.md](../docs/integration/README.md).
 
 Stop or clean up local services:
 
@@ -134,18 +134,20 @@ PYTHONPATH=. python main.py
 
 ### API
 
-`/api/health` is public. Every other endpoint is same-origin-only (see
-[auth-patterns.md](../docs/integration/auth-patterns.md)).
+`/api/health` and `/api/suggest` are public; the chat WebSocket, the REST chat
+POST, and `/api/admin/*` are same-origin-only (see
+[docs/integration/README.md](../docs/integration/README.md)).
 
 ```bash
-curl -H "Origin: http://localhost:8000" http://localhost:8000/api/conversations
+curl -H "Origin: http://localhost:8000" http://localhost:8000/api/admin/health
 ```
 
 The primary surface is the WebSocket endpoint under `/api/chat` — see
-`api/routes/chat.py`. REST routes cover health (`/api/health`),
-conversation CRUD (`/api/conversations`), typeahead suggestions
-(`/api/suggest` — see `api/routes/suggest.py`), and admin reindex
-operations (`/api/admin/*` — see `api/routes/admin.py`).
+`api/routes/chat.py`. REST routes cover health (`/api/health`), typeahead
+suggestions (`/api/suggest` — see `api/routes/suggest.py`), and admin
+operations (`/api/admin/*` — see `api/routes/admin.py`). Conversation
+history lives in LangGraph's Postgres checkpoints, keyed by `thread_id`;
+there is no REST conversations resource.
 
 #### Typeahead autocomplete — `GET /api/suggest`
 
@@ -207,12 +209,11 @@ Frontend UI (`web/src/components/ChatPanel/TypeaheadSuggestions.tsx`):
 # Grow/correct the live color/waterproof taxonomy and trigger a scoped re-tag
 curl -X POST http://localhost:8000/api/admin/enrich \
   -H "Content-Type: application/json" \
-  -H "X-Admin-Token: your_admin_token_here" \
+  -H "Origin: http://localhost:8000" \
   -d '{"attribute_type": "waterproof", "variant": "weatherproof", "canonical": "waterproof"}'
 
 # Inspect current index health + document count
-curl http://localhost:8000/api/admin/health \
-  -H "X-Admin-Token: your_admin_token_here"
+curl -H "Origin: http://localhost:8000" http://localhost:8000/api/admin/health
 ```
 
 There is no full-ingest endpoint or full-reindex path at all — the corpus is
@@ -221,13 +222,6 @@ triggers a scoped re-detection/re-tag as a side effect of adding/correcting
 one taxonomy mapping — only products whose text mentions the changed variant
 are re-checked and updated, no re-embedding. Verify the result via
 `GET /api/admin/health`.
-
-#### Conversations observability — `GET /api/conversations/{thread_id}/observability`
-
-- Return the last observability snapshot for a conversation (intent, alpha,
-  reranker score, quality gate verdict, per-stage latency). Hydrated from
-  the latest LangGraph checkpoint. Returns `has_data: false` when no
-  checkpoint exists.
 
 ### Example Queries
 
@@ -346,13 +340,6 @@ after reranking, the quality gate adjusts α by ±0.3 (toward the opposite
 strategy) and retries retrieval once. Prevents low-relevance outputs
 without an infinite loop.
 
-### Link verification
-
-Every citation URL is validated before reaching the LLM. Results cached
-for 60 minutes (thread-safe); URLs timing out above 2 s are marked
-invalid. Broken links are replaced with valid alternatives via
-`retrieval/doc_replacer.py`.
-
 ### Typeahead autocomplete
 
 Edge-ngram prefix search over ESCI product titles and brands, with spell
@@ -433,8 +420,8 @@ color/waterproof taxonomy and, by default, triggers a scoped re-detection
 of only the affected products (well under a second to a few seconds,
 measured live) — see "Agentic Taxonomy Growth & Correction" below and
 `docs/integration/rest-api.md` for the request/response shape. All three
-rely on same-origin checking only (no login gate); `X-Admin-Token` support
-exists in `api/middleware/admin_auth.py` but isn't wired into these routes.
+rely on same-origin checking only, like every other route — there is no
+login gate and no admin token.
 
 There is no routine full re-ingestion — the corpus is a permanent
 precomputed export with no rebuild path (see `data/README.md`).
@@ -654,11 +641,10 @@ npm run lint         # eslint
 | Quality Gate retry | +1–2 s |
 | LLM response (streaming) | ~3–8 s |
 | **Total per query** | **~6–21 s** (measured across the 4 scripted demos on the local-Ollama stack, M4 Max) (first request after startup is slower: cross-encoder model load) |
-| Link verification (cached) | ~50 ms / URL |
 
 Optimizations: HNSW vector index · embedding cache (60-min TTL) ·
-thread-safe link cache · streaming WebSocket generation · fast-path α
-for comparison/attribute_filter/refinement to skip the LLM evaluator.
+streaming WebSocket generation · fast-path α for
+comparison/attribute_filter/refinement to skip the LLM evaluator.
 
 ---
 
@@ -694,7 +680,6 @@ langchain_agent/
 │
 │  # --- Entry points (stay at root: invoked by path from shell scripts/CI) ---
 ├── main.py                # EcommerceSearchAgent: setup, graph wiring, routers, lifecycle (~600 lines)
-├── cli.py                 # Interactive terminal REPL (dev only; `PYTHONPATH=. python main.py`)
 ├── setup.py               # DB + index init; bulk-loads data/precomputed/ for ESCI data
 │
 │  # --- Packages ---
@@ -712,8 +697,7 @@ langchain_agent/
 │   ├── reranker.py        # CrossEncoderReranker (only reranker)
 │   ├── attribute_discovery.py      # Attribute/taxonomy discovery
 │   ├── attribute_mapping_store.py  # OpenSearch-backed taxonomy store
-│   ├── link_verifier.py   # URL validation w/ TTL cache
-│   └── doc_replacer.py    # Broken-link replacement
+│   └── embeddings.py      # nomic-embed-text query/document prefixes
 ├── quality/
 │   ├── judge.py           # LLM Judge (hallucination detection)
 │   ├── enrichment_service.py       # enrich_attribute + reindex orchestration
@@ -812,14 +796,9 @@ curl http://localhost:8000/api/health          # Demo container
 ## Security
 
 - **Same-origin enforcement** — `Origin` header allow-list (localhost dev
-  ports + `*.run.app`). Disallowed origins always 403; host-fallback only
-  when both Origin and Referer are absent. This is the only auth layer —
-  there is no login gate.
-- **Admin token utility** — `api/middleware/admin_auth.py:verify_admin_token`
-  (constant-time comparison via `hmac.compare_digest`, `ADMIN_TOKEN` env var,
-  32+ chars) is preserved for unattended automation but isn't wired into any
-  route today; same-origin already covers `/api/admin/*` for this demo box.
-- **Timing-attack resistant** — `hmac.compare_digest` used throughout.
+  ports). Disallowed origins always 403; host-fallback only when both Origin
+  and Referer are absent. This is the only auth layer — there is no login
+  gate and no admin token.
 - **Input validation** — thread IDs validated by regex
 - **Thread safety** — all caches use `threading.Lock`
 - **Rate limiting** — configurable via `slowapi`

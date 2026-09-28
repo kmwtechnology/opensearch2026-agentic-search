@@ -139,16 +139,6 @@ export function useWebSocket(): UseWebSocketReturn {
         chatStore.completeTurn(data.final_response, data.citations || [])
         chatStore.triggerInputFocus()
         obsStore.endExecution()
-
-        // Update conversation list with the new/updated conversation
-        if (data.thread_id && data.title) {
-          chatStore.upsertConversation({
-            thread_id: data.thread_id,
-            title: data.title,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-        }
         sendNextQueuedMessage()
         break
       }

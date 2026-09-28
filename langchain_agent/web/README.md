@@ -84,7 +84,7 @@ Start with the components directory to understand the UI structure, then explore
 ### WebSocket Integration
 
 - **Hook:** `useWebSocket.ts` — manages connection, auth, reconnection, event routing
-- **Auth:** Session cookie (automatic on login) OR `X-Admin-Token` header (automation)
+- **Auth:** Same-origin only — the browser's `Origin` header is checked on the handshake; no login, no token
 - **Events:** Typed Pydantic payloads streamed from backend; emitted per pipeline stage
 - **URL:** `/api/chat` (proxied to backend by Vite)
 

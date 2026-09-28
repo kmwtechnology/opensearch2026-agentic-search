@@ -3,8 +3,7 @@ Configuration constants for Agentic Hybrid Search RAG Agent.
 
 Most configuration values are loaded from the `.env` file via python-dotenv;
 a subset (see #26 -- notably RETRIEVER_K/FETCH_K/ALPHA, RERANKER_FETCH_K/
-TOP_K, ENABLE_RERANKING, ENABLE_QUERY_EVALUATION,
-VECTOR_DIMENSION, ENABLE_COMPACTION, MAX_CONTEXT_TOKENS)
+TOP_K, ENABLE_RERANKING, ENABLE_QUERY_EVALUATION, VECTOR_DIMENSION)
 are plain Python literals below and are NOT env-overridable, regardless of
 what a matching-looking entry in `.env.example` might suggest. Copy
 `.env.example` to `.env` and customize as needed -- but check `.env.example`
@@ -44,14 +43,6 @@ Dynamic alpha selection based on query intent.
 ### Quality Gate (`ENABLE_QUALITY_GATE`, `QUALITY_GATE_THRESHOLD`)
 Retry retrieval with adjusted alpha if max reranker score < threshold (default 0.50).
 Catches cases where initial alpha was poorly calibrated.
-
-### Link Verification & Caching (`ENABLE_LINK_VERIFICATION`, `LINK_CACHE_TTL_MINUTES`)
-Validates product URLs before including in citations. 60-minute TTL cache reduces API calls.
-
-### Context Management (`ENABLE_COMPACTION`, `MAX_CONTEXT_TOKENS`)
-Conversation memory management for long chat sessions.
-- Compaction trims older messages when context exceeds `MAX_CONTEXT_TOKENS`
-- Conservative estimate (3000 tokens) leaves room for retrieval + agent output
 
 ### Embedding Cache (`ENABLE_EMBEDDING_CACHE`, `EMBEDDING_CACHE_MAX_SIZE`)
 In-memory cache for query embeddings (60-minute TTL). Reduces API calls for repeated queries.
@@ -130,24 +121,10 @@ __all__ = [
     # Quality gate configuration
     "ENABLE_QUALITY_GATE",
     "QUALITY_GATE_THRESHOLD",
-    # Link verification configuration
-    "ENABLE_LINK_VERIFICATION",
-    "LINK_VERIFICATION_TIMEOUT_MS",
-    "LINK_CACHE_TTL_MINUTES",
-    "MIN_VALID_DOCUMENTS",
     # Project paths
     "BASE_DIR",
     "SEARCH_DEFAULTS",
-    # Sample data
-    # Conversation compaction
-    "ENABLE_COMPACTION",
-    "MAX_CONTEXT_TOKENS",
-    "COMPACTION_THRESHOLD_PCT",
-    "MESSAGES_TO_KEEP_FULL",
-    "MIN_MESSAGES_FOR_COMPACTION",
-    "TOKEN_CHAR_RATIO",
     # API Security
-    "RATE_LIMIT_CONVERSATIONS",
     "RATE_LIMIT_CHAT",
     "RATE_LIMIT_ENABLED",
     # Server
@@ -370,31 +347,6 @@ ENABLE_QUALITY_GATE = os.getenv("ENABLE_QUALITY_GATE", "true").lower() == "true"
 QUALITY_GATE_THRESHOLD = float(os.getenv("QUALITY_GATE_THRESHOLD", "0.5"))
 
 # ============================================================================
-# LINK VERIFICATION CONFIGURATION
-# ============================================================================
-
-# Enable verification of citation links before sending to LLM
-# When enabled, checks if all document URLs are accessible (not 404)
-# Replaces broken-link documents with valid alternatives to maintain document count
-ENABLE_LINK_VERIFICATION = os.getenv("ENABLE_LINK_VERIFICATION", "true").lower() == "true"
-
-# Timeout per URL check in milliseconds
-# URLs that don't respond within this time are marked as broken
-# Default: 2000ms (2 seconds)
-LINK_VERIFICATION_TIMEOUT_MS = int(os.getenv("LINK_VERIFICATION_TIMEOUT_MS", "2000"))
-
-# Cache TTL for verification results in minutes
-# Avoids re-checking the same URL repeatedly
-# Default: 60 minutes
-LINK_CACHE_TTL_MINUTES = int(os.getenv("LINK_CACHE_TTL_MINUTES", "60"))
-
-# Minimum number of documents to maintain after link verification
-# If documents are removed due to broken links, replacements are found
-# to maintain this count
-# Default: 10 (standard retrieval count)
-MIN_VALID_DOCUMENTS = int(os.getenv("MIN_VALID_DOCUMENTS", "10"))
-
-# ============================================================================
 # PROJECT PATHS
 # ============================================================================
 
@@ -414,33 +366,10 @@ SEARCH_DEFAULTS = {
 }
 
 # ============================================================================
-# CONVERSATION COMPACTION (Smart Context Management)
-# ============================================================================
-
-# Enable automatic conversation compaction
-ENABLE_COMPACTION = True
-
-# Maximum estimated tokens in context (conservative estimate for the local LLM)
-MAX_CONTEXT_TOKENS = 3000
-
-# Trigger compaction at this percentage of max context (0.8 = 80%)
-COMPACTION_THRESHOLD_PCT = 0.8
-
-# Keep this many recent messages uncompacted (always preserved in full)
-MESSAGES_TO_KEEP_FULL = 10
-
-# Minimum number of messages before considering compaction
-MIN_MESSAGES_FOR_COMPACTION = 20
-
-# Token estimation (1 token ≈ 4 characters, conservative)
-TOKEN_CHAR_RATIO = 4
-
-# ============================================================================
 # API SECURITY CONFIGURATION
 # ============================================================================
 
 # Rate limiting configuration
-RATE_LIMIT_CONVERSATIONS = "10/minute"  # List/manage conversations
 RATE_LIMIT_CHAT = "20/minute"  # Chat requests (REST + WebSocket)
 RATE_LIMIT_ENABLED = True
 

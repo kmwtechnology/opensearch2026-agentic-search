@@ -17,7 +17,7 @@ through this module. It is deliberately tiny and deliberately optional:
   publisher must be callable from a non-loop thread. ``observable_agent``
   installs one that hops back onto the event loop with
   ``run_coroutine_threadsafe``.
-* Nothing else installs a publisher. Under ``cli.py``, the unit tests, or
+* Nothing else installs a publisher. Under the unit tests or
   ``/api/admin/enrich`` there is no subscriber and ``publish`` is a no-op —
   the enrichment itself must never fail because nobody was listening.
 

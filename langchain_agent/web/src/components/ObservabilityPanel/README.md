@@ -13,7 +13,6 @@ Real-time visualization of the LangGraph RAG pipeline: event stream, per-node me
 | `StepCard.tsx` | Individual node card showing elapsed time + status |
 | `PipelineSummaryCard.tsx` | NDCG/MRR/Recall metrics + lift-per-100ms (emitted after `agent_complete`) |
 | `SearchOptimizationDetails.tsx` | Hybrid BM25 + Reranked comparison cards with lift indicators |
-| `HistoricalSnapshotCard.tsx` | Checkpoint snapshot view (if saved to LangGraph) |
 | `DslViewerModal.tsx` | Full OpenSearch DSL query display (hybrid / BM25 baseline / quality-gate retry) |
 
 ## Subdirectories
@@ -23,7 +22,7 @@ Real-time visualization of the LangGraph RAG pipeline: event stream, per-node me
 
 ## Store Dependencies
 
-- `observabilityStore` — event stream, step timeline, snapshots
+- `observabilityStore` — event stream, step timeline
 - `chatStore` — current thread ID
 - `optimizationsStore` — toggle display modes (show metrics, raw events, etc.)
 

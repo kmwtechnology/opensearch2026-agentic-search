@@ -345,7 +345,6 @@ Pure-Python metric implementations live in
 | **Deterministic sampling** | ESCI products sampled with `random_state=42` for reproducibility |
 | **Idempotent ingestion** | Cached sample parquets (`esci_products_sample_{N}.parquet`) reused on re-runs |
 | **Streaming responses** | WebSocket token-by-token generation with cancellation |
-| **Link verification** | URLs validated before inclusion in responses; thread-safe 60-min TTL cache |
 
 ## Directory Structure
 
@@ -358,16 +357,15 @@ opensearch2026-agentic-search/
 │   ├── esci_products.parquet
 │   └── esci_judgments_aggregated.parquet
 ├── docs/                         # Docs for API consumers and contributors
-│   ├── integration/              # REST/WebSocket examples, auth patterns
+│   ├── integration/              # REST/WebSocket examples
 │   ├── contributing/             # Code patterns, testing, PR process
 │   └── presentation/             # Conference talk materials
 ├── langchain_agent/              # Main application (see langchain_agent/README.md)
 │   ├── main.py                   # EcommerceSearchAgent: setup, graph wiring, lifecycle (~600 lines)
-│   ├── cli.py                    # Interactive terminal REPL (dev only)
 │   ├── setup.py                  # DB + index init; invoked by scripts/setup.sh
 │   ├── core/                     # agent_state (CustomAgentState), config, exceptions, logging_config
 │   ├── pipeline/                 # pipeline_nodes (the 8 LangGraph nodes), conversation_management, reindex_trigger
-│   ├── retrieval/                # vector_store (RRF fusion), reranker, attribute_*, link_verifier, doc_replacer
+│   ├── retrieval/                # vector_store (RRF fusion), reranker, embeddings, attribute_*
 │   ├── quality/                  # judge (LLM Judge), enrichment_service, enrichment_value_judge
 │   ├── observability/            # relevancy_metrics, embedding_cache, llm_content
 │   ├── checkpoints/              # checkpoint_maintenance (GC), checkpoint_optimizer

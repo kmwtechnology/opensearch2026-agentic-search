@@ -25,8 +25,6 @@ const INITIAL_STATE = {
   isConnected: false,
   isConnecting: false,
   connectionError: null,
-  conversations: [],
-  conversationsLoading: false,
   inputFocusTrigger: 0,
 }
 
@@ -53,20 +51,16 @@ describe('chatStore', () => {
     })
   })
 
-  describe('clearMessages', () => {
-    it('resets messages to empty array', () => {
-      const { addMessage, clearMessages } = useChatStore.getState()
-      addMessage(makeMessage())
-      clearMessages()
-      expect(useChatStore.getState().messages).toHaveLength(0)
-    })
-
-    it('also clears streamingContent and queuedMessages', () => {
-      useChatStore.setState({ streamingContent: 'partial', queuedMessages: [makeQueued()] })
-      useChatStore.getState().clearMessages()
+  describe('startNewConversation', () => {
+    it('resets the thread with a fresh letter-led id and clears transient state', () => {
+      useChatStore.setState({ streamingContent: 'partial', queuedMessages: [makeQueued()], messages: [makeMessage()] })
+      useChatStore.getState().startNewConversation('auto')
       const state = useChatStore.getState()
+      expect(state.threadId).toMatch(/^conversation_[a-z0-9]+$/)
+      expect(state.messages).toHaveLength(0)
       expect(state.streamingContent).toBe('')
       expect(state.queuedMessages).toHaveLength(0)
+      expect(state.pendingAutoSend).toBe('auto')
     })
   })
 
@@ -175,25 +169,6 @@ describe('chatStore', () => {
       const second = useChatStore.getState().dequeueMessage()
       expect(first?.content).toBe('one')
       expect(second?.content).toBe('two')
-    })
-  })
-
-  describe('updateLastMessage', () => {
-    it('updates content of the last message', () => {
-      useChatStore.getState().addMessage(makeMessage({ id: 'm1', content: 'original' }))
-      useChatStore.getState().updateLastMessage('updated')
-      expect(useChatStore.getState().messages[0].content).toBe('updated')
-    })
-
-    it('sets isStreaming to false on updated message', () => {
-      useChatStore.getState().addMessage(makeMessage({ id: 'm1', isStreaming: true }))
-      useChatStore.getState().updateLastMessage('done')
-      expect(useChatStore.getState().messages[0].isStreaming).toBe(false)
-    })
-
-    it('does nothing when messages array is empty', () => {
-      expect(() => useChatStore.getState().updateLastMessage('anything')).not.toThrow()
-      expect(useChatStore.getState().messages).toHaveLength(0)
     })
   })
 

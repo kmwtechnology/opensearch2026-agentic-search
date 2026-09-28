@@ -5,6 +5,7 @@ import { SwaggerPage } from './pages/SwaggerPage'
 import { GuidePage } from './pages/GuidePage'
 import { useChatStore } from './stores/chatStore'
 import { useWebSocket } from './hooks/useWebSocket'
+import { newThreadId } from './utils/threadId'
 
 function ChatApp() {
   const threadId = useChatStore((s) => s.threadId)
@@ -14,8 +15,7 @@ function ChatApp() {
   // Generate initial thread ID if needed
   useEffect(() => {
     if (!threadId) {
-      const newThreadId = `conversation_${Math.random().toString(36).slice(2, 10)}`
-      setThreadId(newThreadId)
+      setThreadId(newThreadId())
     }
   }, [threadId, setThreadId])
 

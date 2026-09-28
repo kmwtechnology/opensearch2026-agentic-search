@@ -20,7 +20,7 @@ The path is the fixed route `/ws/chat`; `thread_id` is an **optional** query par
 
 ### Authentication
 
-> **Note:** There is no login gate. Same-origin checking (`verify_websocket_origin`) is the only auth layer on the WebSocket handshake — the connecting `Origin` must match the allow-list. See [Auth Patterns](auth-patterns.md) for full details.
+> **Note:** There is no login gate. Same-origin checking (`verify_websocket_origin`) is the only auth layer on the WebSocket handshake — the connecting `Origin` must match the allow-list (see the [integration README](README.md#authentication-overview)).
 
 **JavaScript (browser):**
 ```javascript
@@ -312,4 +312,4 @@ if __name__ == "__main__":
 
 ---
 
-For REST API examples, see [REST API](rest-api.md). For auth details, see [Auth Patterns](auth-patterns.md).
+For REST API examples, see [REST API](rest-api.md).

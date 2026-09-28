@@ -20,24 +20,6 @@ import type {
   EnrichmentTriggeredEvent,
 } from '../types/events'
 
-// Snapshot of a historical conversation's last observability state, hydrated
-// from the backend's GET /api/conversations/{thread_id}/observability endpoint.
-// Mirrors api/routes/conversations.py::ObservabilitySnapshot.
-export interface ObservabilitySnapshot {
-  thread_id: string
-  has_data: boolean
-  user_query: string | null
-  intent: string | null
-  intent_confidence: number | null
-  reasoning: string | null
-  alpha: number | null
-  query_analysis: string | null
-  reranker_max_score: number | null
-  quality_gate_retried: boolean | null
-  quality_gate_reason: string | null
-  latency: Record<string, number>
-}
-
 interface ObservabilityState {
   // Current execution state
   isExecuting: boolean
@@ -64,10 +46,6 @@ interface ObservabilityState {
   // counter is immune to clock skew between the server and this browser.
   enrichmentStartedAt: number | null
 
-  // Historical snapshot — populated when user clicks a past conversation
-  // and we hydrate from a checkpoint instead of a live stream.
-  historicalSnapshot: ObservabilitySnapshot | null
-
   // Search status for interim messages ('idle' | 'running' | 'done')
   searchStatus: 'idle' | 'running' | 'done'
   rerankerStatus: 'idle' | 'running' | 'done'
@@ -88,7 +66,6 @@ interface ObservabilityState {
   endNode: (node: NodeName, durationMs: number, summary?: string) => void
   toggleStepExpanded: (stepId: string) => void
   clearState: () => void
-  hydrateSnapshot: (snapshot: ObservabilitySnapshot | null) => void
 }
 
 export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
@@ -106,7 +83,6 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
   pipelineSummary: null,
   enrichmentTriggered: null,
   enrichmentStartedAt: null,
-  historicalSnapshot: null,
   searchStatus: 'idle',
   rerankerStatus: 'idle',
   searchProgressMessage: null,
@@ -128,7 +104,6 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     rerankedDocuments: [],
     enrichmentTriggered: null,
     enrichmentStartedAt: null,
-    historicalSnapshot: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',
     searchProgressMessage: null,
@@ -324,11 +299,8 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     pipelineSummary: null,
     enrichmentTriggered: null,
     enrichmentStartedAt: null,
-    historicalSnapshot: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',
     expandedSteps: new Set(),
   }),
-
-  hydrateSnapshot: (snapshot) => set({ historicalSnapshot: snapshot }),
 }))

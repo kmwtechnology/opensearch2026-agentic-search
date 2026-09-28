@@ -26,7 +26,6 @@ const INITIAL_OBS = {
   rerankedDocuments: [],
   pipelineSummary: null,
   enrichmentTriggered: null,
-  historicalSnapshot: null,
   searchStatus: 'idle' as const,
   rerankerStatus: 'idle' as const,
   searchProgressMessage: null,

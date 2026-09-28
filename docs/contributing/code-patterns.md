@@ -197,8 +197,8 @@ call (see #26).
 ```python
 from api.middleware.origin_auth import verify_same_origin
 
-@app.get("/api/conversations")
-async def list_conversations(request: Request):
+@app.get("/api/admin/health")
+async def admin_health(request: Request):
     await verify_same_origin(request)
     # Continue
 ```
@@ -207,29 +207,13 @@ async def list_conversations(request: Request):
 ```python
 from api.middleware.auth import verify_api_key  # ImportError -- doesn't exist
 
-@app.get("/api/conversations")
-async def list_conversations(request: Request):
+@app.get("/api/admin/health")
+async def admin_health(request: Request):
     verify_api_key(request)  # Use verify_same_origin instead
 ```
 
-If a route is specifically for unattended automation (no browser involved),
-`verify_admin_token` (`api/middleware/admin_auth.py`) is available as an
-additional, opt-in credential check — an `ADMIN_TOKEN`-backed `X-Admin-Token`
-header check with constant-time comparison. It's preserved from the removed
-session-auth module and unit-tested on its own, but no route wires it in
-today; every existing route (including `/api/admin/*`) relies on
-`verify_same_origin` alone:
-
-```python
-from api.middleware.admin_auth import verify_admin_token
-from api.middleware.origin_auth import verify_same_origin
-
-@app.get("/api/admin/some-automation-route")
-async def automation_only(request: Request):
-    await verify_same_origin(request)
-    await verify_admin_token(request)
-    # Continue
-```
+There is no admin token or other credential: every route, including
+`/api/admin/*`, relies on `verify_same_origin` alone.
 
 ---
 

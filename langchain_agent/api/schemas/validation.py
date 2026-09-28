@@ -1,10 +1,7 @@
 """Shared request-validation helpers for API schemas.
 
-Centralizes THREAD_ID_PATTERN so REST (conversations.py) and WebSocket/REST
-chat (chat.py) endpoints agree on what a valid thread_id looks like -- these
-used to be two independently-maintained regexes that had already diverged
-(chat.py required a letter-led ID, conversations.py allowed a digit-led one),
-so a thread_id accepted by one endpoint could be rejected by the other.
+THREAD_ID_PATTERN is the one definition of a valid thread_id; both chat
+schemas in api/routes/chat.py validate through it.
 """
 
 import re

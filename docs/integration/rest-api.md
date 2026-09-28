@@ -8,7 +8,7 @@ Complete REST endpoint documentation with cURL examples.
 
 ## Authentication
 
-> **Note:** There is no login gate. Same-origin checking (`Origin`/`Referer` header against an allow-list) is the app's only auth layer — see [Auth Patterns](auth-patterns.md) for full details. Just make sure requests carry an allow-listed `Origin` header (see below); no login step is required.
+> **Note:** There is no login gate. Same-origin checking (`Origin`/`Referer` header against an allow-list) is the app's only auth layer — see the [integration README](README.md#authentication-overview). Just make sure requests carry an allow-listed `Origin` header (see below); no login step is required.
 
 ### Health Check (No Auth Required)
 
@@ -75,7 +75,7 @@ Response (200 OK):
 
 ## Admin Endpoints
 
-> **Note:** `/api/admin/*` routes are protected by same-origin checking only, same as everything else — there's no separate admin-token requirement in front of them today. (`ADMIN_TOKEN`/`verify_admin_token` exists in the codebase as a preserved-but-currently-unused utility for future automation; see [Auth Patterns](auth-patterns.md).)
+> **Note:** `/api/admin/*` routes are protected by same-origin checking only, same as everything else — there is no admin token.
 
 ### Admin Health Check
 
@@ -185,7 +185,7 @@ Returns 403 when `ENABLE_ENRICHMENT_TOOL` is unset/false, 422 on a missing
 }
 ```
 
-**Fix:** Check your Origin header matches the allow-list. See [Auth Patterns](auth-patterns.md).
+**Fix:** Check your Origin header matches the allow-list (`api/middleware/origin_auth.py`).
 
 ### 500 Internal Server Error
 
@@ -207,4 +207,4 @@ If you spam requests, you'll simply queue them; they'll be processed in order.
 
 ---
 
-For WebSocket real-time examples, see [WebSocket](websocket.md). For auth details, see [Auth Patterns](auth-patterns.md).
+For WebSocket real-time examples, see [WebSocket](websocket.md).

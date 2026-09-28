@@ -463,10 +463,8 @@ export function GuidePage() {
                 Same-origin checking is the sole auth layer, enforced on every REST call and the WebSocket
                 handshake — there is no login screen and no session cookie (removed entirely, issue #135). Every
                 same-origin caller is unauthenticated, including{' '}
-                <code className="bg-amber-100 px-1">/api/admin/*</code>.{' '}
-                <code className="bg-amber-100 px-1">verify_admin_token</code> /{' '}
-                <code className="bg-amber-100 px-1">ADMIN_TOKEN</code> exist as a preserved utility for future
-                automation, not wired into any route today.
+                <code className="bg-amber-100 px-1">/api/admin/*</code>. There is no admin token or other
+                credential anywhere in the app.
               </p>
             </div>
           </div>

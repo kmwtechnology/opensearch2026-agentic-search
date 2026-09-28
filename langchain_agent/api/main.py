@@ -31,7 +31,7 @@ from slowapi.errors import RateLimitExceeded
 
 from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import get_allowed_origins
-from api.routes import admin, chat, conversations, health, suggest
+from api.routes import admin, chat, health, suggest
 from core.config import API_VERSION, RATE_LIMIT_ENABLED
 from core.logging_config import configure_logging, get_logger
 
@@ -252,7 +252,6 @@ app.add_middleware(
 
 # Register REST routes
 app.include_router(health.router, prefix="/api", tags=["health"])
-app.include_router(conversations.router, prefix="/api", tags=["conversations"])
 app.include_router(suggest.router, prefix="/api", tags=["suggest"])
 app.include_router(admin.router, tags=["admin"])
 
