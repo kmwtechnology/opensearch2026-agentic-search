@@ -26,20 +26,15 @@ seeded color taxonomy) of an index a real Lucille ingest already built:
 no Ollama, no Lucille/Docker/Java) and falls back automatically to the full Lucille ingest if
 this directory is missing. Force the full ingest with `python setup.py --from-scratch`.
 
-**Regenerating this dump** (after changing the embedding model, `INDEX_MAPPING`, or attribute
-detection logic): run a full ingest via `python setup.py --from-scratch` (or `bash
-scripts/lucille_ingest.sh --reset-index --seed-taxonomy`) against an otherwise-untouched
-cluster — **do not use the chat app first**, since one enrichment-tool turn (a waterproof
-variant, a color correction) would get baked into the committed seed. Then:
-
-```bash
-PYTHONPATH=. python scripts/export_precomputed_indices.py
-PYTHONPATH=. python scripts/verify_precomputed_load.py capture > /tmp/baseline.json
-# reset the indices, then:
-PYTHONPATH=. python scripts/load_precomputed_indices.py --reset-index
-PYTHONPATH=. python scripts/verify_precomputed_load.py compare /tmp/baseline.json
-PYTHONPATH=. python scripts/check_retag_parity.py
-```
+**This was a one-time export**, run once against the corpus described above and committed.
+The corpus is static and isn't expected to change, so this isn't meant to run again — the
+export/verify tooling that produced it (`scripts/export_precomputed_indices.py`,
+`scripts/verify_precomputed_load.py`) was retired after use. If the embedding model,
+`INDEX_MAPPING`, or attribute detection logic ever changes for real, `load_precomputed_indices.py`
+will refuse to load the now-mismatched dump (it checks a hash of `INDEX_MAPPING`) — at that
+point, fall back to `python setup.py --from-scratch` (the full Lucille ingest) rather than
+trying to regenerate this dump; new one-off export tooling would need to be written fresh
+if a future need for it actually materializes.
 
 ## Files
 

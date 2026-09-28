@@ -2,15 +2,17 @@
 """Fast-path loader: bulk-load the committed precomputed dumps (data/precomputed/*.parquet)
 straight into OpenSearch instead of running the full Lucille ETL + Ollama embedding pass.
 
-This is the counterpart to scripts/export_precomputed_indices.py. The dumps are a full
-`_source` export of an index Lucille actually built (embeddings, attribute detection,
-seeded color taxonomy) — this script recreates each index's mapping fresh, then bulk-loads
-the exported documents verbatim. No Ollama call, no Lucille/Docker/Java involved.
+The dumps are a one-time, already-committed full `_source` export of an index Lucille
+actually built (embeddings, attribute detection, seeded color taxonomy) -- this script
+recreates each index's mapping fresh, then bulk-loads the exported documents verbatim.
+No Ollama call, no Lucille/Docker/Java involved. The export that produced these dumps was
+a one-off data-processing exercise against a static corpus and isn't expected to run again;
+see data/README.md.
 
 Refuses to load if data/precomputed/dump_metadata.json's products_index_mapping_hash
-doesn't match the current INDEX_MAPPING in retrieval/vector_store.py — a mapping change
-means the dump's document shape may no longer match, and re-exporting (via a full
-`--from-scratch` ingest) is required.
+doesn't match the current INDEX_MAPPING in retrieval/vector_store.py -- a mapping change
+means the dump's document shape may no longer match. There's no supported way to refresh
+the dump for a new mapping; fall back to `--from-scratch` (the full Lucille ingest) instead.
 
 Usage:
     PYTHONPATH=. python scripts/load_precomputed_indices.py [--reset-index]
@@ -61,10 +63,10 @@ def _check_mapping_hash(metadata: dict) -> None:
         raise SystemExit(
             f"Precomputed dump's products index mapping (hash {dumped}) doesn't match the "
             f"current INDEX_MAPPING (hash {current}) in retrieval/vector_store.py.\n"
-            "The mapping changed since the dump was exported — re-export it after a full "
-            "ingest:\n"
-            "  bash scripts/lucille_ingest.sh --reset-index --seed-taxonomy\n"
-            "  PYTHONPATH=. python scripts/export_precomputed_indices.py"
+            "The mapping changed since the dump was exported. There's no supported way to "
+            "refresh the dump for a new mapping (the one-time export tooling was retired) -- "
+            "run the full ingest instead:\n"
+            "  python setup.py --from-scratch"
         )
 
 
