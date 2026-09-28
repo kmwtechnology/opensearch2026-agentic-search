@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval fused via RRF, dynamic alpha per intent, cross-encoder reranking with a quality gate, real-time WebSocket streaming, and an agentic taxonomy self-correction loop. Runs **fully local** — Docker Compose + native Ollama for every model (chat and embeddings), no cloud API key — see "Deploy & CI reality" below.
+**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval fused via RRF, dynamic alpha per intent, cross-encoder reranking with a quality gate, real-time WebSocket streaming, and an agentic taxonomy self-correction loop. Runs **fully local** — Docker Compose + native Ollama for every model (chat and embeddings), no cloud API key. `make dev` (native backend+frontend) and `make demo` (backend+UI bundled in one Docker container, native Ollama only) are both first-class — see "Local dev lifecycle" and "Deploy & CI reality" below.
 
 ## New Session Checklist
 
@@ -33,8 +33,13 @@ cd langchain_agent   # required first — commands below assume this cwd
 
 # First-time setup / every-session startup (brings up Postgres + OpenSearch via
 # Docker, backend on :8000, frontend on :5173 — no manual `docker compose up` needed)
-./scripts/setup.sh          # or: make setup   (first time only: pulls Ollama models ~23 GB, then ~35-40 min of Lucille embedding)
-./scripts/start.sh          # or: make dev     (every session)
+./scripts/setup.sh          # or: make setup   (pulls Ollama models ~23 GB, then bulk-loads the
+                             #   precomputed index dump — ~1-2 min, not a re-embed; falls back to
+                             #   the full ~35-40 min Lucille ingest only if data/precomputed/ is
+                             #   missing, or force it with `python setup.py --from-scratch`)
+./scripts/start.sh          # or: make dev     (every session, native backend+frontend)
+make demo                   # fully-Dockerized backend+UI in one container (:8000) — needs only
+                             #   Docker + native Ollama, no local Python/Node; make demo-down to stop
 ./scripts/stop.sh           # or: make stop    (stops processes + containers, keeps volumes)
 ./scripts/teardown.sh       # or: make teardown (DESTRUCTIVE: removes .venv, node_modules, all Docker volumes)
 
@@ -84,6 +89,7 @@ Spoken triggers "start local dev" / "stop local dev" / "teardown local dev" map 
 - **start local dev** → `make dev`. Blocks forever (backend + frontend run in the foreground) — always launch it backgrounded and watch the log, never wait on it synchronously. Two-stage readiness: `Uvicorn running on http://127.0.0.1:8000` binds the port, but `Application startup complete` (after LLM/embeddings/reranker/vector-store init) is the real "ready for requests" signal; frontend readiness is `VITE vX ready in Yms`. Failure signatures: `Address already in use`, `EADDRINUSE`, `Connection refused`, `Traceback`.
 - **stop local dev** → `make stop`. Non-destructive — kills backend/frontend processes and stops the Docker containers, but keeps volumes (Postgres + OpenSearch data survive).
 - **teardown local dev** → `make teardown` (→ `scripts/teardown.sh`). DESTRUCTIVE and runs non-interactively (no prompt of its own) — deletes `.venv`, `web/node_modules`, all Docker volumes (Postgres + OpenSearch data), and logs. Confirm with the user before running this even though the script won't ask.
+- **run the demo in Docker** → `make demo` (builds + starts the `app` compose service on `:8000`; needs `make setup` to have run at least once). `make demo-down` stops it — **not** `docker compose --profile app down`, which tears down every service in the project (Postgres/OpenSearch too), not just `app`.
 
 ## Architecture
 
@@ -162,7 +168,7 @@ The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns
 
 ## Deploy & CI reality
 
-No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely from local Docker + `make dev`. `make check` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either). `make ci` alone is a faster no-live-services sub-check for iterative coding; `make check` = `ci` + `smoke` and is the actual thing to run before pushing.
+No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely locally, either native (`make dev`) or fully-Dockerized (`make demo`, everything but Ollama in one container). `make check` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either). `make ci` alone is a faster no-live-services sub-check for iterative coding; `make check` = `ci` + `smoke` and is the actual thing to run before pushing.
 
 ## Reference Docs
 
