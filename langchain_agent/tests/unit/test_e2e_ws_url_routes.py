@@ -3,9 +3,9 @@ to a real route on the FastAPI app.
 
 This catches the failure mode from PR-deploy 25118230913, where e2e smoke tests
 hit `/ws/chat/{thread_id}` (path-style) while the actual route is
-`/ws/chat?thread_id=...` (query-style). Cloud Run/Starlette returns HTTP 403
-for an unmatched WS path, which we previously only discovered against live
-Cloud Run. Now it fails locally in `make ci`.
+`/ws/chat?thread_id=...` (query-style). Starlette returns HTTP 403 for an
+unmatched WS path, which was previously only discovered against a live
+deployment. Now it fails locally in `make ci`.
 """
 
 from __future__ import annotations

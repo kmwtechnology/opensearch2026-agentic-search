@@ -1,9 +1,10 @@
 """
-Unit tests for api/middleware/client_ip.get_client_ip (issue #33).
+Unit tests for api/middleware/client_ip.get_client_ip (originally issue #33).
 
-Regression coverage for the Cloud Run proxy problem: slowapi's default
-get_remote_address keyed every caller on the load balancer's own address,
-collapsing all users into a single rate-limit bucket.
+This app runs with no reverse proxy in front of it, so get_client_ip trusts
+only the direct socket peer (request.client.host) and deliberately ignores
+X-Forwarded-For — trusting a client-supplied header with no proxy setting it
+would let any caller spoof its own address for rate-limiting and auth logs.
 """
 
 from unittest.mock import MagicMock
@@ -38,25 +39,17 @@ def _websocket(**kw) -> WebSocket:
 
 @pytest.mark.unit
 class TestGetClientIp:
-    def test_uses_first_x_forwarded_for_entry_behind_proxy(self):
-        # Cloud Run prod shape: real client first, proxy hop(s) after.
+    def test_ignores_x_forwarded_for_uses_direct_peer(self):
+        # No reverse proxy in front of this app -- a client-supplied
+        # X-Forwarded-For must NOT override the real socket peer.
         req = _request(
             headers={"X-Forwarded-For": "203.0.113.9, 169.254.169.126"},
-            client=("169.254.169.126", 40114),
+            client=("10.0.0.5", 4321),
         )
-        assert get_client_ip(req) == "203.0.113.9"
-
-    def test_strips_whitespace_around_forwarded_entry(self):
-        req = _request(headers={"X-Forwarded-For": "  203.0.113.9  ,10.0.0.1"})
-        assert get_client_ip(req) == "203.0.113.9"
-
-    def test_falls_back_to_peer_address_without_header(self):
-        # Local dev / direct connections: no proxy, no header.
-        req = _request(client=("10.0.0.5", 4321))
         assert get_client_ip(req) == "10.0.0.5"
 
-    def test_falls_back_to_peer_when_header_is_blank(self):
-        req = _request(headers={"X-Forwarded-For": "   "}, client=("10.0.0.5", 4321))
+    def test_falls_back_to_peer_address_without_header(self):
+        req = _request(client=("10.0.0.5", 4321))
         assert get_client_ip(req) == "10.0.0.5"
 
     def test_falls_back_to_loopback_when_no_client_at_all(self):
@@ -67,21 +60,17 @@ class TestGetClientIp:
     def test_works_for_websocket_connections(self):
         ws = _websocket(
             headers={"X-Forwarded-For": "198.51.100.7"},
-            client=("169.254.169.126", 1),
+            client=("10.0.0.9", 1),
         )
-        assert get_client_ip(ws) == "198.51.100.7"
+        assert get_client_ip(ws) == "10.0.0.9"
 
-    def test_two_proxied_callers_get_distinct_keys(self):
-        """The actual #33 failure mode: two different users behind the same
-        proxy must NOT share a rate-limit key."""
-        proxy = ("169.254.169.126", 40114)
-        a = _request(headers={"X-Forwarded-For": "203.0.113.1"}, client=proxy)
-        b = _request(headers={"X-Forwarded-For": "203.0.113.2"}, client=proxy)
+    def test_two_direct_callers_get_distinct_keys(self):
+        a = _request(client=("10.0.0.1", 40114))
+        b = _request(client=("10.0.0.2", 40114))
         assert get_client_ip(a) != get_client_ip(b)
 
     def test_tolerates_magicmock_requests_used_by_other_unit_tests(self):
-        # Other unit tests build MagicMock requests; headers.get returns a
-        # MagicMock (truthy, not a str) -- must fall through to client.host.
+        # Other unit tests build MagicMock requests for get_client_ip callers.
         req = MagicMock()
         req.client.host = "1.2.3.4"
         assert get_client_ip(req) == "1.2.3.4"

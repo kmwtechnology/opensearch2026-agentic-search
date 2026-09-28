@@ -48,12 +48,7 @@ def create_database():
 
     try:
         # Connect to the default postgres database to create our database
-        if POSTGRES_HOST.startswith("/cloudsql/"):
-            admin_conn_string = (
-                f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@/postgres?host={POSTGRES_HOST}"
-            )
-        else:
-            admin_conn_string = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/postgres"
+        admin_conn_string = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/postgres"
 
         with psycopg.connect(admin_conn_string) as conn:
             conn.autocommit = True

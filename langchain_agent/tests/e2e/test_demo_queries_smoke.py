@@ -25,7 +25,7 @@ That is the explicit guard against the original crash class.
 
 Drive locally:
 
-    CLOUD_RUN_URL=http://localhost:8000 \
+    DEPLOYMENT_URL=http://localhost:8000 \
       PYTHONPATH=. .venv/bin/pytest tests/e2e/test_demo_queries_smoke.py \
       -v -s --tb=short -m "e2e and slow" --timeout=300 --asyncio-mode=auto
 """
@@ -42,8 +42,8 @@ import websockets.asyncio.client as ws_client
 
 from .conftest import DEPLOYMENT_URL, auth_ws_headers
 
-# Single-message budget on Cloud Run is 16-25s (per memory_smoke_test_budget);
-# locally with cross-encoder warm + FETCH_K=40 we observe ~12-35s per turn.
+# Single-message budget locally (cross-encoder warm, FETCH_K=40, local Ollama
+# generation) is observed at ~12-35s per turn.
 PER_TURN_TIMEOUT_S = 90.0
 TWO_TURN_TIMEOUT_S = 180.0
 

@@ -16,7 +16,7 @@ import uuid
 
 import websockets.asyncio.client as ws_client
 
-URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
+URL = os.environ.get("DEPLOYMENT_URL", "http://localhost:8000")
 
 
 async def probe(message: str, second_message: str | None = None) -> None:

@@ -42,8 +42,7 @@ A separate `X-Admin-Token` mechanism (`ADMIN_TOKEN` env var, `verify_admin_token
 | `X-Admin-Token` | Admin token utility (`verify_admin_token`) — preserved for future automation, not currently wired into any route | Not currently required anywhere |
 
 **Allow-listed Origins:**
-- localhost: `http://localhost:8000`, `http://127.0.0.1:8000` (dev ports 8000–9000)
-- `https://*.run.app` — dormant Cloud Run pattern, kept in the allow-list but no deployment target exists today (issue #110/#113)
+- localhost/127.0.0.1 only, an explicit set of dev ports (5173, 5174, 3000, 8000, 8080) — see `api/middleware/origin_auth.py::get_allowed_origins()`
 - Disallowed Origins always return `403 Forbidden`
 
 ---

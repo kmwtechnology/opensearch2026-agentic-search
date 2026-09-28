@@ -12,13 +12,12 @@ itself for which of its entries actually do anything.
 
 ## Configuration Sections
 
-### LLM & Embeddings (`GOOGLE_API_KEY`, `LLM_*`, `EMBEDDINGS_*`)
-Google Gemini models for generation, classification, and embeddings.
-- `LLM_MODEL`: Main generation model (e.g., gemini-3-flash-preview)
+### LLM & Embeddings (`OLLAMA_HOST`, `LLM_*`, `EMBEDDINGS_*`)
+Local Ollama models for generation, classification, and embeddings — no cloud API key.
+- `LLM_MODEL`: Main generation model (e.g., qwen3.6:35b-a3b-q4_K_M)
 - `LLM_TEMPERATURE`: Controls output creativity (0.0=deterministic, 1.0=creative)
-- `EMBEDDINGS_MODEL`: Embedding model (e.g., models/gemini-embedding-001, 768-dim)
-- `RERANKER_MODEL`: Reranking model (e.g., gemini-3.1-flash-lite-preview)
-- `QUERY_EVAL_MODEL`: Query evaluation model (lightweight, fast)
+- `EMBEDDINGS_MODEL`: Embedding model (e.g., nomic-embed-text, 768-dim)
+- `QUERY_EVAL_MODEL`: Query evaluation model (defaults to `LLM_MODEL`)
 
 ### Database & Checkpoints (`POSTGRES_*`, `DATABASE_URL`, `DB_POOL_MAX_SIZE`)
 PostgreSQL stores LangGraph checkpoints for conversation memory and state persistence.
@@ -26,9 +25,9 @@ All fields optional (defaults provided); only `DATABASE_URL` is used if set.
 
 ### Vector Database (`OPENSEARCH_*`, `VECTOR_*`)
 OpenSearch cluster for hybrid search (HNSW knn_vector + BM25 lexical).
-- `OPENSEARCH_HOST/PORT`: Server location (local: localhost:9200, Cloud: external IP)
+- `OPENSEARCH_HOST/PORT`: Server location (local Docker Compose: localhost:9200)
 - `OPENSEARCH_INDEX_NAME`: Index containing ESCI products (agentic_hybrid_search_docs)
-- `VECTOR_DIMENSION`: Embedding dimension (768 for Gemini)
+- `VECTOR_DIMENSION`: Embedding dimension (768, matches nomic-embed-text)
 
 ### Retrieval & Reranking (`RETRIEVER_*`, `RERANKER_*`, `ENABLE_RERANKING`)
 Controls hybrid search balance and LLM-based relevance scoring.
@@ -67,10 +66,9 @@ In-memory cache for query embeddings (60-minute TTL). Reduces API calls for repe
 ## Getting Started
 
 1. Copy `.env.example` to `.env`
-2. Get a Google API key from https://aistudio.google.com/apikey
-3. Set `GOOGLE_API_KEY=your-key-here`
-4. For local dev: `docker compose up -d` starts PostgreSQL + OpenSearch
-5. Run `python3 setup.py` to validate config, create tables, ingest ESCI products
+2. Install Ollama natively (https://ollama.com) and pull `LLM_MODEL` + `EMBEDDINGS_MODEL`
+3. `docker compose up -d` starts PostgreSQL + OpenSearch
+4. Run `python3 setup.py` to validate config, create tables, ingest ESCI products
 
 All other variables have sensible defaults in this file.
 """
@@ -247,19 +245,10 @@ POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "langchain_agent")
+POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
+DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-# Cloud SQL uses Unix sockets at /cloudsql/PROJECT:REGION:INSTANCE
-# When detected, skip TCP port and use socket-based connection string
-if POSTGRES_HOST.startswith("/cloudsql/"):
-    POSTGRES_PORT = None
-    DATABASE_URL = (
-        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@/{POSTGRES_DB}?host={POSTGRES_HOST}"
-    )
-else:
-    POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
-    DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-
-# Server port (Cloud Run sets PORT env var)
+# Server port
 PORT = int(os.getenv("PORT", 8000))
 
 # API version -- single source of truth for both the FastAPI app's own
@@ -292,7 +281,7 @@ VECTOR_COLLECTION_NAME = "esci_products"
 # OPENSEARCH CONFIGURATION
 # ============================================================================
 
-OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "34.138.97.13")
+OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = int(os.getenv("OPENSEARCH_PORT", 9200))
 OPENSEARCH_USER = os.getenv("OPENSEARCH_USER", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "")

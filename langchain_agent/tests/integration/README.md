@@ -179,7 +179,7 @@ so they run without any corpus ingest. See `test_config_generator_live.py`.
 
 | Aspect | Integration | E2E |
 |--------|-------------|-----|
-| **Target** | Local backend `:8000` | Local backend `:8000` by default (or a remote URL via `CLOUD_RUN_URL`) |
+| **Target** | Local backend `:8000` | Local backend `:8000` by default (or a remote URL via `DEPLOYMENT_URL`) |
 | **Auth** | Same-origin checking only (no login gate) | Same-origin checking only (no login gate) |
 | **Markers** | `integration` | `e2e` |
 | **When** | Locally before push | Locally before push (smoke/regression coverage) |

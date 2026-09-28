@@ -66,17 +66,18 @@ async with websockets.connect(
 
 ### Allow-List Rules
 
-**Localhost (development):**
+**Localhost/127.0.0.1 only** — an explicit set of dev ports, no pattern matching:
 ```
-http://localhost:8000
-http://localhost:8001
+http://localhost:5173   (Vite frontend)
+http://localhost:5174   (Vite frontend, fallback port)
+http://localhost:3000
+http://localhost:8000   (backend dev / local e2e tests)
+http://localhost:8080
+http://127.0.0.1:5173
+http://127.0.0.1:5174
+http://127.0.0.1:3000
 http://127.0.0.1:8000
-http://127.0.0.1:5173  (Vite frontend)
-```
-
-**Cloud Run allow-list (dormant — no deployment target today, issue #110/#113):**
-```
-https://*.run.app  (kept in the allow-list pattern for if a hosted deployment is ever revisited)
+http://127.0.0.1:8080
 ```
 
 ### Origin Header
@@ -145,8 +146,6 @@ openssl rand -hex 32
 curl http://localhost:8000/api/suggest?q=wireless \
   -H "Origin: http://localhost:8000"
 ```
-
-For Cloud Run, Origin must be `https://<service_name>-<region>.run.app`.
 
 ### WebSocket closes with code 4003
 

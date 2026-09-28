@@ -6,7 +6,7 @@
  * query params.
  */
 
-// When frontend and API are on the same domain (Cloud Run, localhost),
+// When frontend and API are on the same domain (same-origin deploy, localhost),
 // use relative URLs (empty string) - browser will use the current origin automatically.
 // The browser automatically sends the Origin header, which the backend validates.
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''

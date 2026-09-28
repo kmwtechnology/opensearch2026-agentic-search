@@ -34,7 +34,6 @@ from api.middleware.client_ip import get_client_ip
 from api.routes import admin, chat, conversations, health, suggest
 from core.config import API_VERSION, ENABLE_ENRICHMENT_TOOL, RATE_LIMIT_ENABLED
 from core.logging_config import configure_logging, get_logger
-from observability.otel import setup_tracing, shutdown_tracing
 from pipeline.reindex_trigger import build_reindex_trigger
 
 # Configure structured logging
@@ -52,7 +51,7 @@ def _get_api_base_url() -> str:
     hostname = os.getenv("HOSTNAME", "localhost")
     if "localhost" in hostname or "127.0.0.1" in hostname:
         return "http://localhost:8000"
-    # Cloud Run or remote hostname
+    # Remote hostname
     return f"https://{hostname.split(':')[0]}"
 
 
@@ -72,10 +71,6 @@ async def lifespan(app: FastAPI):
     decorators with a modern async context manager pattern.
     """
     # Startup
-    # Before the agent's first LLM call, so every call is traced (no-op
-    # unless OTEL_EXPORTER_OTLP_ENDPOINT is set).
-    setup_tracing()
-
     if ENABLE_ENRICHMENT_TOOL:
         # Fail fast on REINDEX_TRIGGER misconfiguration (e.g. github mode with no
         # token) instead of discovering it on the first live enrichment.
@@ -84,15 +79,13 @@ async def lifespan(app: FastAPI):
     # Initialize the agent (LLM clients, graph, reranker) and wait for
     # warmup to complete *before* the ASGI server starts accepting
     # connections. Uvicorn doesn't begin serving until this lifespan
-    # startup event returns, so this blocks Cloud Run's startup probe from
-    # succeeding until the instance can actually serve a chat request --
-    # closing the race where a cold instance is marked ready (its container
-    # just needs to be listening on the port) and receives concurrent chat
-    # traffic while still loading the cross-encoder model in a background
-    # thread. That CPU-bound load can starve the event loop's ability to
-    # answer WebSocket keepalive pings on already-open connections, which
-    # was showing up as `1011 keepalive ping timeout` under concurrent
-    # load on cold deploys. See #23.
+    # startup event returns, so this closes the race where the process is
+    # listening on the port and receives concurrent chat traffic while
+    # still loading the cross-encoder model in a background thread. That
+    # CPU-bound load can starve the event loop's ability to answer
+    # WebSocket keepalive pings on already-open connections, which was
+    # showing up as `1011 keepalive ping timeout` under concurrent load on
+    # a cold start. See #23.
     await chat.manager.agent_service.ensure_initialized()
     await chat.manager.agent_service._wait_for_warmup()
 
@@ -112,7 +105,6 @@ async def lifespan(app: FastAPI):
         await chat.manager.shutdown()
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
-    shutdown_tracing()
     logger.info("api_shutdown_complete")
 
 

@@ -89,7 +89,7 @@ Expected: ~30–120 seconds, 0 failures.
 
 **When:** After adding a new flow (e.g., refinement intent, quality gate retry).
 
-**What:** Tests against a running local backend on :8000 by default (or a remote URL via `CLOUD_RUN_URL`).
+**What:** Tests against a running local backend on :8000 by default (or a remote URL via `DEPLOYMENT_URL`).
 
 **How:** Requires Docker services + local backend running.
 
@@ -107,7 +107,7 @@ Expected: 18 tests, well under a minute, 0 failures.
 
 **Against a remote backend** (if you ever need to point these somewhere other than local):
 ```bash
-CLOUD_RUN_URL=https://your-remote-backend.example.com \
+DEPLOYMENT_URL=https://your-remote-backend.example.com \
 PYTHONPATH=. pytest tests/e2e/ -v -m "e2e and slow" --timeout=120
 ```
 

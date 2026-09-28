@@ -12,7 +12,7 @@ to e.g. ``origin_headers``) so the many call sites across this test suite
 didn't need touching.
 
 Env vars consumed:
-* ``CLOUD_RUN_URL`` — base URL of the deployment under test (defaults to
+* ``DEPLOYMENT_URL`` — base URL of the deployment under test (defaults to
   http://localhost:8000 for local iteration).
 """
 
@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
+DEPLOYMENT_URL = os.environ.get("DEPLOYMENT_URL", "http://localhost:8000")
 ORIGIN_HEADER = DEPLOYMENT_URL
 
 

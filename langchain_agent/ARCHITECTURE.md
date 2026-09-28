@@ -1042,7 +1042,7 @@ Cached queries (60-min embedding cache) save ~2–3s.
 
 - [ ] Unit tests: `PYTHONPATH=. pytest tests/unit/ -v` (~0.5s, all mocked)
 - [ ] Integration tests: `PYTHONPATH=. pytest tests/integration/ -v` (needs Postgres + OpenSearch)
-- [ ] E2E tests: `PYTHONPATH=. pytest tests/e2e/ -v` (needs Cloud Run deployed)
+- [ ] E2E tests: `PYTHONPATH=. pytest tests/e2e/ -v` (needs the local backend running)
 - [ ] Manual: Query all 6 intents, verify correct α assigned, check observability panel
 - [ ] Manual: Trigger quality gate retry by searching for something obscure
 - [ ] Manual: Verify citations are valid Amazon URLs

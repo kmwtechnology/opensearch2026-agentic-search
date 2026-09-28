@@ -1601,8 +1601,8 @@ The following origins are allow-listed by default (⚠️ **DRIFT NOTE**: an ear
 - `http://localhost:3000` / `http://127.0.0.1:3000` (alt dev)
 - `http://localhost:8000` / `http://127.0.0.1:8000` (backend, local e2e tests)
 - `http://localhost:8080` / `http://127.0.0.1:8080` (dev server)
-- `https://*.a.run.app` (Cloud Run pattern, matched via regex, not an exact-match list entry; dormant, no active deployment target)
 
+This app is local-only — the allow-list is this explicit set, no pattern matching.
 For a complete and authoritative list, see `get_allowed_origins()` and `is_allowed_origin()` in `api/middleware/origin_auth.py`.
 
 #### Making Requests
@@ -1770,8 +1770,6 @@ Exceeding a limit returns `429 Too Many Requests` (handled by slowapi's default 
 ---
 
 ⚠️ **DRIFT:** `api/README.md` line 25 lists the chat endpoint as `POST /api/chat (WebSocket)`, but the actual route is `/ws/chat` (WebSocket, not POST).
-
-⚠️ **DRIFT:** Example code in `websocket.md` uses Cloud Run URLs (`wss://agentic-hybrid-search-XXXX.run.app`), but the only supported deployment target is localhost (`ws://localhost:8000/ws/chat`). Cloud Run is a dormant pattern with no active deployment (see issue #110/#113).
 
 ---
 
@@ -2169,7 +2167,7 @@ E2E tests drive a real running backend via HTTP and WebSocket to validate the co
 
 | Variable | Default | Purpose |
 | ---------- | --------- | --------- |
-| `CLOUD_RUN_URL` | `http://localhost:8000` | Backend URL under test |
+| `DEPLOYMENT_URL` | `http://localhost:8000` | Backend URL under test |
 | `TIMEOUT` | 30 | Pytest timeout in seconds |
 
 **Smoke test (fast, single-query regression):**
@@ -3001,11 +2999,10 @@ While compiling this manual, each chapter was checked against the project's curr
 | --- | --- | --- | --- |
 | 1 | `langchain_agent/README.md` (overview/tech-stack section, ~line 36-37) | Claims generation/classification models are "Gemini 3 Flash" / "Gemini 3.1 Flash Lite" | Actual models (per the same file's own Configuration section, root `README.md`, and `CLAUDE.md`) are **Gemini 2.5 Flash** (generation) and **Gemini 2.5 Flash-Lite** (classify/eval/judge) |
 | 2 | `langchain_agent/api/README.md` (~line 25) | Lists the chat endpoint as `POST /api/chat (WebSocket)` | The actual route is `/ws/chat` — a WebSocket endpoint, not a POST route |
-| 3 | `docs/integration/websocket.md` (example code) | Uses Cloud Run URLs (`wss://agentic-hybrid-search-XXXX.run.app`) | The only supported target is `ws://localhost:8000/ws/chat` — Cloud Run is a dormant, unused pattern (no deploy mechanism exists; see issues #110 and #113) |
-| 4 | `CLAUDE.md`'s pytest marker list | Includes obsolete markers (`performance`, `load`, `stress`, `profile`) | Those markers belong to test files removed 2026-09-15; the current active marker set is the one listed in the [Testing & Benchmarks](#testing--benchmarks) chapter, sourced from `tests/README.md` |
-| 5 | `docs/contributing/README.md` and `docs/contributing/pr-process.md` | Describe an older PR-based workflow (feature branch, draft PR, required reviewer, CI checks gating merge) | The repo switched to **"cowboy mode"** on 2026-09-15: commits go directly to `main`, no branch protection exists, there's no CI, and `make check` run locally is the only gate. A branch + PR is still allowed but is opt-in, not the default. See the [Contributing & Dev Workflow](#contributing--dev-workflow) chapter for the current process. |
-| 6 | `langchain_agent/web/src/components/README.md` (project structure listing) | Lists a `LoginScreen.tsx` component and describes `ConversationsSidebar` as including "logout" | There is **no login gate** in this app — it was removed entirely (issue #135); same-origin checking is the sole auth layer (see [Authentication & Authorization](#authentication--authorization) in the API chapter, and the "no login screen" notes in the Setup and Demo chapters). `LoginScreen.tsx` and any logout affordance are most likely vestigial/dead code left over from before that removal — worth confirming and deleting if so, rather than treating as a working feature. |
-| 7 | `langchain_agent/DEMO_QUERIES.md` | Describes example queries in a format the Demo-chapter source agent flagged as superseded | `langchain_agent/DEMO.md` (dated 2026-09-15) is the current, authoritative demo script — a **four-demo, nine-turn** scripted walkthrough (two main arcs plus two bonus scenes; see `web/src/demos/registry.ts`) driven by a **Next** button, not free-form querying. `DEMO_QUERIES.md` should be treated as historical/reference only. |
+| 3 | `CLAUDE.md`'s pytest marker list | Includes obsolete markers (`performance`, `load`, `stress`, `profile`) | Those markers belong to test files removed 2026-09-15; the current active marker set is the one listed in the [Testing & Benchmarks](#testing--benchmarks) chapter, sourced from `tests/README.md` |
+| 4 | `docs/contributing/README.md` and `docs/contributing/pr-process.md` | Describe an older PR-based workflow (feature branch, draft PR, required reviewer, CI checks gating merge) | The repo switched to **"cowboy mode"** on 2026-09-15: commits go directly to `main`, no branch protection exists, there's no CI, and `make check` run locally is the only gate. A branch + PR is still allowed but is opt-in, not the default. See the [Contributing & Dev Workflow](#contributing--dev-workflow) chapter for the current process. |
+| 5 | `langchain_agent/web/src/components/README.md` (project structure listing) | Lists a `LoginScreen.tsx` component and describes `ConversationsSidebar` as including "logout" | There is **no login gate** in this app — it was removed entirely (issue #135); same-origin checking is the sole auth layer (see [Authentication & Authorization](#authentication--authorization) in the API chapter, and the "no login screen" notes in the Setup and Demo chapters). `LoginScreen.tsx` and any logout affordance are most likely vestigial/dead code left over from before that removal — worth confirming and deleting if so, rather than treating as a working feature. |
+| 6 | `langchain_agent/DEMO_QUERIES.md` | Describes example queries in a format the Demo-chapter source agent flagged as superseded | `langchain_agent/DEMO.md` (dated 2026-09-15) is the current, authoritative demo script — a **four-demo, nine-turn** scripted walkthrough (two main arcs plus two bonus scenes; see `web/src/demos/registry.ts`) driven by a **Next** button, not free-form querying. `DEMO_QUERIES.md` should be treated as historical/reference only. |
 
 **How to use this table:** if you're the one who fixes stale docs, each row names the exact file and section to edit. None of these represent architecture or code that needs to change — only prose that hasn't caught up to it yet.
 

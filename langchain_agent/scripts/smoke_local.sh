@@ -80,7 +80,7 @@ else
 fi
 
 echo "Running smoke tests against $HEALTH_URL ..."
-CLOUD_RUN_URL=http://127.0.0.1:$PORT \
+DEPLOYMENT_URL=http://127.0.0.1:$PORT \
   PYTHONPATH=. \
   PYTHONUNBUFFERED=1 \
   "$VENV/pytest" \
