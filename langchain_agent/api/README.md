@@ -73,7 +73,7 @@ source .venv/bin/activate
 PYTHONPATH=. python -m uvicorn api.main:app --reload
 ```
 
-Starts on `:8000` with auto-reload on file changes.
+Starts on `:8080` with auto-reload on file changes (the demo container is published on `:8000`).
 
 ## Testing
 

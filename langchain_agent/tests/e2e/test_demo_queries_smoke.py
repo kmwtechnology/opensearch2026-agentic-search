@@ -25,7 +25,7 @@ That is the explicit guard against the original crash class.
 
 Drive locally:
 
-    DEPLOYMENT_URL=http://localhost:8000 \
+    DEPLOYMENT_URL=http://localhost:8080 \
       PYTHONPATH=. .venv/bin/pytest tests/e2e/test_demo_queries_smoke.py \
       -v -s --tb=short -m "e2e and slow" --timeout=300 --asyncio-mode=auto
 """

@@ -1,15 +1,15 @@
-# Agentic Hybrid Search — run from langchain_agent/. Six targets:
+# Agentic Hybrid Search — run from langchain_agent/. Five targets:
 #   doctor    check prerequisites (Docker, Ollama models, .venv, node_modules, LFS data)
 #   setup     first-time: Docker services, .venv, Ollama models, precomputed index load (~1-2 min)
-#   dev       Postgres+OpenSearch, backend :8000, frontend :5173 in the background (logs/)
-#   demo      backend+UI in one container on :8000 (Docker + native Ollama only)
+#   dev       everything, side by side: Postgres+OpenSearch, the native backend :8080 with the
+#             live-reloading Vite UI :5173, and the demo container :8000 (backend + built UI,
+#             rebuilt from the current tree on each start — later edits show on :5173 only)
 #   ci        THE pre-push gate: format/lint/types, unit tests, collect-only integration+e2e,
 #             frontend test/lint/tsc/build, then a live smoke round-trip (brings Docker up)
 #   teardown  DESTRUCTIVE: .venv, node_modules, Docker volumes, logs
 #
 # Not targets, on purpose:
-#   stop dev            ./scripts/stop.sh                  (processes + containers; data survives)
-#   stop demo           (cd .. && docker compose stop app)
+#   stop everything     ./scripts/stop.sh                  (processes + containers; data survives)
 #   re-arm the demo     ./scripts/reset_demo_taxonomy.sh   (or the UI's Restart button)
 #   unit tests only     PYTHONPATH=. .venv/bin/pytest tests/unit/
 #   auto-format         .venv/bin/black . && .venv/bin/isort .
@@ -18,7 +18,7 @@
 #                       (--hard-only instead of --fast for LLM intent classification)
 
 .DEFAULT_GOAL := doctor
-.PHONY: doctor setup dev demo ci teardown
+.PHONY: doctor setup dev ci teardown
 
 VENV := .venv/bin
 PY   := PYTHONPATH=. $(VENV)
@@ -32,18 +32,12 @@ setup:
 dev:
 	@bash scripts/start.sh
 
-# The "app" compose profile bundles backend + built UI in one container. Needs
-# one prior `make setup` (Postgres tables, OpenSearch data) and a native Ollama.
-# Stop a native `make dev` backend first — both want :8000.
-demo:
-	@cd .. && docker compose --profile app up -d --build
-	@echo "Visit http://localhost:8000"
-
 # No CI service exists; this is the only gate before a push. Static steps
 # first (fail fast, no services), then Docker comes up and smoke_local.sh runs
-# one search-intent WebSocket round-trip — it reuses a healthy backend on
-# :8000 or starts and stops its own. Integration/e2e are import-checked only;
-# `bash scripts/smoke_local.sh` runs the full e2e suite.
+# one search-intent WebSocket round-trip against the native backend on :8080 —
+# it reuses a healthy one (make dev) or starts and stops its own; it never
+# touches the demo container on :8000. Integration/e2e are import-checked
+# only; `bash scripts/smoke_local.sh` runs the full e2e suite.
 ci:
 	@echo "[ci] black --check / isort --check-only"
 	@$(VENV)/black --check .

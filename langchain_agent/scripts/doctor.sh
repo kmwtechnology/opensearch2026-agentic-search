@@ -133,7 +133,7 @@ if [ $FAILED -eq 0 ]; then
   echo -e "${GREEN}✅ System is healthy. Ready to develop!${NC}"
   echo ""
   echo "Next steps:"
-  echo "  • make dev   (backend http://localhost:8000, frontend http://localhost:5173)"
+  echo "  • make dev   (dev UI http://localhost:5173, backend :8080, demo container http://localhost:8000)"
   echo "  • Both:     make dev        (starts both, backend in background)"
   exit 0
 else

@@ -2,7 +2,7 @@
 FastAPI application with WebSocket support for real-time agent streaming.
 
 This is the main entry point for the LangChain Agent API.
-Run with: uvicorn api.main:app --reload --port 8000
+Run with: uvicorn api.main:app --reload --port 8080
 """
 
 import warnings
@@ -50,7 +50,7 @@ def _get_api_base_url() -> str:
     # Fallback: detect from hostname
     hostname = os.getenv("HOSTNAME", "localhost")
     if "localhost" in hostname or "127.0.0.1" in hostname:
-        return "http://localhost:8000"
+        return "http://localhost:8080"
     # Remote hostname
     return f"https://{hostname.split(':')[0]}"
 

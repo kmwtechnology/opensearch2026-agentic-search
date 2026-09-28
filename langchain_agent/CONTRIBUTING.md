@@ -471,7 +471,7 @@ PYTHONPATH=. pytest tests/e2e/ -v
 ```
 
 Test against a running local backend (`DEPLOYMENT_URL` env var points at
-whatever backend URL you're testing; defaults to `http://localhost:8000`).
+whatever backend URL you're testing; defaults to `http://localhost:8080`, the native `make dev` backend).
 
 ### Manual Testing Checklist
 

@@ -91,11 +91,11 @@ export function GuidePage() {
             <pre className="bg-[var(--color-stage-bg)] text-[var(--color-stage-ink)] p-3 rounded text-[1.375rem] overflow-x-auto">
               <code>cd langchain_agent{'\n'}make dev</code>
             </pre>
-            <p className="text-[1.375rem] text-gray-600">This starts the API (port 8000) and frontend (port 5173)</p>
+            <p className="text-[1.375rem] text-gray-600">This starts the dev UI (port 5173, live reload) with its API on port 8080, plus the demo container on port 8000</p>
 
             <h4 className="font-semibold text-gray-900 mt-4">2. Open the UI</h4>
             <p className="text-[1.375rem]">Visit <a href="http://localhost:5173" className="text-blue-600 hover:underline">http://localhost:5173</a></p>
-            <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-1">The UI automatically detects the API URL: localhost:5173 connects to http://localhost:8000.</p>
+            <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-1">The dev UI proxies API calls to http://localhost:8080; the demo at http://localhost:8000 is same-origin and reflects the code as of the last make dev.</p>
 
             <h4 className="font-semibold text-gray-900 mt-4">3. Run a demo</h4>
             <p className="text-[1.375rem] text-gray-600">Pick a demo from the header dropdown, then click Next to run its first turn.</p>
@@ -341,7 +341,7 @@ export function GuidePage() {
           <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mt-2 text-[1.375rem]">
             <p className="font-semibold text-amber-900">Ground-truth metrics:</p>
             <p className="text-amber-900 mt-1 text-[1.25rem]">
-              The full corpus — ~158,637 products and 97,345 judged queries — is bulk-loaded from a
+              The full corpus — ~158,637 products and 65,028 judged queries — is bulk-loaded from a
               committed, precomputed export as part of the standard <code className="bg-yellow-100 px-1">make setup</code> (see
               <code className="bg-yellow-100 px-1"> data/README.md</code>; there is no separate ingest step any more). Queries that match an ESCI
               query exactly (lowercased) trigger the BM25 → Hybrid → Reranked layout.

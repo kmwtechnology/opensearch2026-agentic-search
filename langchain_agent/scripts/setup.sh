@@ -107,8 +107,8 @@ REQUIREMENTS:
     Ollama running locally (no cloud API key is needed)
 
 NEXT STEPS after setup:
-    1. make dev (from langchain_agent/) — backend :8000 + frontend :5173
-    3. Visit http://localhost:5173
+    1. make dev (from langchain_agent/) — dev UI :5173 (backend :8080) + demo container :8000
+    2. Visit http://localhost:5173 (dev) or http://localhost:8000 (demo)
 
 For more information, see README.md
 
@@ -208,12 +208,13 @@ if ! curl -sf "${OLLAMA_HOST:-http://localhost:11434}/api/tags" > /dev/null; the
 fi
 echo "✓ Ollama running"
 
-# Backend (8000) / frontend (5173) are started natively by `make dev`, not by
+# Backend (8080) / frontend (5173) are started natively by `make dev`, not by
 # Docker Compose — something already bound to either port (a stale process
 # from a prior session, another project) fails later with a bare
 # "Address already in use" / EADDRINUSE. Warn now, non-fatally, with the PID
-# so it's a one-line fix instead of a mid-startup mystery.
-for port_check in "8000:backend" "5173:frontend"; do
+# so it's a one-line fix instead of a mid-startup mystery. (:8000 belongs to
+# the demo container and is Docker-managed.)
+for port_check in "8080:backend" "5173:frontend"; do
     port="${port_check%%:*}"; label="${port_check#*:}"
     pid="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -1)"
     if [ -n "$pid" ]; then
@@ -357,7 +358,7 @@ done
 if [ ! -f "$PROJECT_DIR/web/.env" ]; then
     echo "   Creating web/.env..."
     cat > "$PROJECT_DIR/web/.env" << EOF
-# Vite proxy in vite.config.ts routes /api and /ws to localhost:8000
+# Vite proxy in vite.config.ts routes /api and /ws to the native backend on localhost:8080
 # No VITE_API_URL needed for local dev (empty = relative URLs through proxy)
 EOF
     echo "   ✓ Frontend env configured"
@@ -525,10 +526,10 @@ echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "  1. cd langchain_agent && make dev   (backend :8000 + frontend :5173)"
-echo "  3. Visit http://localhost:5173"
+echo "  1. cd langchain_agent && make dev   (dev UI :5173 + backend :8080, demo container :8000)"
+echo "  2. Visit http://localhost:5173 (dev) or http://localhost:8000 (demo)"
 echo ""
 echo "Services running at:"
-echo "  • Backend API: http://localhost:8000"
-echo "  • Frontend: http://localhost:5173"
+echo "  • Dev UI: http://localhost:5173  (backend http://localhost:8080)"
+echo "  • Demo:   http://localhost:8000"
 echo "  • OpenSearch: http://localhost:9200"

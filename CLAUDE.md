@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval fused via RRF, dynamic alpha per intent, cross-encoder reranking with a quality gate, real-time WebSocket streaming, and an agentic taxonomy self-correction loop. Runs **fully local** — Docker Compose + native Ollama for every model (chat and embeddings), no cloud API key. `make dev` (native backend+frontend) and `make demo` (backend+UI bundled in one Docker container, native Ollama only) are both first-class — see "Local dev lifecycle" and "Deploy & CI reality" below.
+**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval fused via RRF, dynamic alpha per intent, cross-encoder reranking with a quality gate, real-time WebSocket streaming, and an agentic taxonomy self-correction loop. Runs **fully local** — Docker Compose + native Ollama for every model (chat and embeddings), no cloud API key. `make dev` starts everything side by side: the native backend (:8080) with the live-reloading Vite UI (:5173), and the demo container (:8000, backend + built UI, rebuilt from the tree on each start) — see "Local dev lifecycle" and "Deploy & CI reality" below.
 
 ## New Session Checklist
 
@@ -32,16 +32,16 @@ All backend commands run from `langchain_agent/` — there is no root-level `Mak
 cd langchain_agent   # required first — commands below assume this cwd
 
 # First-time setup / every-session startup (brings up Postgres + OpenSearch via
-# Docker, backend on :8000, frontend on :5173 — no manual `docker compose up` needed)
+# Docker, native backend on :8080 + Vite UI on :5173, and the demo container on
+# :8000 — no manual `docker compose up` needed)
 ./scripts/setup.sh          # or: make setup   (pulls Ollama models ~23 GB, then bulk-loads the
                              #   permanent precomputed index dump — ~1-2 min, no embedding, no
                              #   ingest pipeline. Fails with a `git lfs pull` message if
                              #   data/precomputed/ is missing. There is no rebuild path.)
-./scripts/start.sh          # or: make dev     (every session, native backend+frontend)
-make demo                   # fully-Dockerized backend+UI in one container (:8000) — needs only
-                             #   Docker + native Ollama, no local Python/Node. Stop it with
-                             #   `docker compose stop app` from the repo root.
-./scripts/stop.sh           # stops processes + containers, keeps volumes (no make target on purpose)
+./scripts/start.sh          # or: make dev — every session. Dev UI :5173 (live) → native backend :8080,
+                             #   plus the demo container :8000 (image rebuilt from the tree on each start;
+                             #   edits after that show on :5173 only until the next make dev)
+./scripts/stop.sh           # stops both backends, Vite, and the containers; keeps volumes (no make target)
 ./scripts/teardown.sh       # or: make teardown (DESTRUCTIVE: removes .venv, node_modules, all Docker volumes)
 
 # Tests (PYTHONPATH=. required)
@@ -57,9 +57,9 @@ PYTHONPATH=. pytest tests/unit/test_foo.py::test_bar -v   # single test
 
 make ci                # THE pre-push gate, ~1-2 min: black/isort/flake8/mypy, unit tests, collect-only
                         # integration/e2e, frontend test/lint/tsc/build, then `docker compose up -d --wait`
-                        # and one search-intent WebSocket round-trip against a live backend (starts one
-                        # if none is on :8000). No git hook runs this — do it by hand.
-# The Makefile has exactly six targets: doctor setup dev demo ci teardown. Everything else is a
+                        # and one search-intent WebSocket round-trip against the native backend on :8080
+                        # (starts one if none is there; never the demo on :8000). No git hook runs this.
+# The Makefile has exactly five targets: doctor setup dev ci teardown. Everything else is a
 # direct command, documented in the Makefile header:
 .venv/bin/black . && .venv/bin/isort .                    # auto-format
 PYTHONPATH=. .venv/bin/pytest tests/unit/                  # unit tests only (~30s)
@@ -67,7 +67,7 @@ bash scripts/smoke_local.sh                                # full e2e regression
 PYTHONPATH=. .venv/bin/python benchmarks/benchmark_esci.py --limit 5000 --fast   # ~35 min; --hard-only for LLM intent
 
 # Frontend (from langchain_agent/web/)
-npm install && npm run dev   # :5173, proxies API to :8000
+npm install && npm run dev   # :5173, proxies /api and /ws to the native backend on :8080
 npm run lint                 # eslint, --max-warnings 0
 npm run test                 # vitest run
 ```
@@ -78,10 +78,10 @@ npm run test                 # vitest run
 
 Spoken triggers "start local dev" / "stop local dev" / "teardown local dev" map 1:1 to these (all from `langchain_agent/`):
 
-- **start local dev** → `make dev` (→ `scripts/start.sh`). Brings up Postgres + OpenSearch with `docker compose up -d --wait`, then starts backend and frontend **in the background** with output in `logs/backend.log` / `logs/frontend.log`, and returns once `/api/health` answers — safe to run synchronously. In the backend log, `Uvicorn running on http://127.0.0.1:8000` binds the port but `Application startup complete` (after LLM/embeddings/reranker/vector-store init) is the real "ready" signal; frontend readiness is `VITE vX ready in Yms`. Failure signatures: `Address already in use`, `EADDRINUSE`, `Connection refused`, `Traceback`. There is no backend-only target; `PYTHONPATH=. .venv/bin/uvicorn api.main:app --reload --port 8000` is the one-liner.
-- **stop local dev** → `./scripts/stop.sh` (deliberately not a make target). Non-destructive — kills backend/frontend processes and stops the Docker containers, but keeps volumes (Postgres + OpenSearch data survive).
+- **start local dev** → `make dev` (→ `scripts/start.sh`). Brings up Postgres + OpenSearch with `docker compose up -d --wait`, starts the native backend on **:8080** and the Vite UI on **:5173** in the background (`logs/backend.log` / `logs/frontend.log`), waits for `:8080/api/health`, then rebuilds and starts the **demo container on :8000** (`docker compose --profile app up -d --build`, output in `logs/demo-build.log`; a demo build failure is a warning, not a dev failure). Returns when done — safe to run synchronously. In the backend log, `Uvicorn running on http://127.0.0.1:8080` binds the port but `Application startup complete` (after LLM/embeddings/reranker/vector-store init) is the real "ready" signal; frontend readiness is `VITE vX ready in Yms`. Failure signatures: `Address already in use`, `EADDRINUSE`, `Connection refused`, `Traceback`. Backend-only one-liner: `PYTHONPATH=. .venv/bin/uvicorn api.main:app --reload --port 8080`. **:8000 is always the demo image, frozen as of the last `make dev`** — point tests and curls at :8080 for the working tree.
+- **stop local dev** → `./scripts/stop.sh` (deliberately not a make target). Non-destructive — kills the native backend (:8080) and Vite (:5173), then `docker compose --profile app stop` (Postgres, OpenSearch, and the demo container); volumes survive. Never `lsof`-kill :8000 — that's Docker's port proxy, not a backend process.
 - **teardown local dev** → `make teardown` (→ `scripts/teardown.sh`). DESTRUCTIVE and runs non-interactively (no prompt of its own) — deletes `.venv`, `web/node_modules`, all Docker volumes (Postgres + OpenSearch data), and logs. Confirm with the user before running this even though the script won't ask.
-- **run the demo in Docker** → `make demo` (builds + starts the `app` compose service on `:8000`; needs `make setup` to have run at least once, and nothing native on :8000). Stop it with `docker compose stop app` from the repo root — **not** `docker compose --profile app down`, which tears down every service in the project (Postgres/OpenSearch too), not just `app`.
+- **the demo container** is part of `make dev`, not a separate target. To refresh its image after edits, run `make dev` again. To stop only it: `docker compose stop app` from the repo root — **not** `docker compose --profile app down`, which tears down every service in the project (Postgres/OpenSearch too), not just `app`.
 
 ## Architecture
 
@@ -160,7 +160,7 @@ The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns
 
 ## Deploy & CI reality
 
-No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely locally, either native (`make dev`) or fully-Dockerized (`make demo`, everything but Ollama in one container). `make ci` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either). It is one command with no fast/full split: static checks, unit tests, frontend build, then a live smoke round-trip (it brings Docker up itself).
+No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely locally — `make dev` runs the native dev stack (:5173/:8080) and the Dockerized demo image (:8000, everything but Ollama in one container) side by side. `make ci` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either). It is one command with no fast/full split: static checks, unit tests, frontend build, then a live smoke round-trip (it brings Docker up itself).
 
 ## Reference Docs
 

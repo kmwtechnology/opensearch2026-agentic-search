@@ -89,14 +89,14 @@ Expected: ~30–120 seconds, 0 failures.
 
 **When:** After adding a new flow (e.g., refinement intent, quality gate retry).
 
-**What:** Tests against a running local backend on :8000 by default (or a remote URL via `DEPLOYMENT_URL`).
+**What:** Tests against the native local backend on :8080 by default (or another URL via `DEPLOYMENT_URL`; :8000 is the demo image, which is stale by design).
 
 **How:** Requires Docker services + local backend running.
 
 ```bash
 # Terminal 1: Backend
 cd langchain_agent
-PYTHONPATH=. uvicorn api.main:app --reload --port 8000
+PYTHONPATH=. uvicorn api.main:app --reload --port 8080
 
 # Terminal 2: Run e2e tests
 cd langchain_agent
@@ -120,7 +120,7 @@ PYTHONPATH=. pytest tests/e2e/ -v -m "e2e and slow" --timeout=120
 **What:** A focused search-intent regression test against a running local backend (part of the broader suite in `tests/e2e/`). It is the last step of `make ci`; to run just it:
 
 ```bash
-bash scripts/smoke_local.sh -k test_search_intent_returns_results    # ~15s; needs Docker up, starts a backend if none is on :8000
+bash scripts/smoke_local.sh -k test_search_intent_returns_results    # ~15s; needs Docker up, starts a backend if none is on :8080
 ```
 
 There's no dedicated Make target for the full regression suite — run it directly when you want the deeper check (e.g. after a WebSocket/service-wiring change):
@@ -153,7 +153,7 @@ the only gate, one command, ~1-2 min (most of it the frontend's `npm install`/bu
 7. **Frontend type check** (tsc)
 8. **Frontend build** (vite)
 9. **Docker services up** (`docker compose up -d --wait`; Docker Desktop must be running)
-10. **Smoke test** (`scripts/smoke_local.sh -k test_search_intent_returns_results`, a real WebSocket round-trip; reuses a healthy backend on :8000 or starts and stops its own) — ~15s
+10. **Smoke test** (`scripts/smoke_local.sh -k test_search_intent_returns_results`, a real WebSocket round-trip; reuses a healthy native backend on :8080 or starts and stops its own; never the demo on :8000) — ~15s
 
 If any step fails, `make ci` exits non-zero at that step.
 
@@ -198,7 +198,7 @@ If you change database credentials in `.env`, update the test conftest too.
 ## E2E Test Requirements
 
 **Local (backend on localhost):**
-- Backend running on `:8000`
+- Native backend running on `:8080`
 - `docker compose up -d` running
 - No login step required — there is no login gate; same-origin checking is the only auth layer
 

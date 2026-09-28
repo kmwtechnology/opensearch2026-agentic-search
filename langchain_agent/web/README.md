@@ -3,7 +3,7 @@
 > **Parent**: [langchain_agent/README.md](../README.md)
 
 React 19 + TypeScript + Tailwind + Zustand single-page app. Built with Vite; proxies `/api`
-to the backend on `:8000` during development.
+to the native backend on `:8080` during development.
 
 ## Quick Start
 
@@ -60,7 +60,7 @@ Start with the components directory to understand the UI structure, then explore
 
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` | Vite dev server, auto-reload, proxy `/api` → `:8000` |
+| `npm run dev` | Vite dev server, auto-reload, proxy `/api` and `/ws` → `:8080` |
 | `npm run build` | TypeScript + Vite build → `dist/` |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest runner; 101 tests |
@@ -161,7 +161,7 @@ Environment variables (Vite requires `VITE_` prefix):
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
-| `VITE_API_URL` | Backend API endpoint | `http://localhost:8000/api` |
+| `VITE_API_URL` | Backend origin; leave unset (relative URLs via the Vite proxy / same-origin in the demo image) | `http://localhost:8080` |
 
 Set in `.env.local` (local) or via Docker build `--build-arg`.
 
@@ -169,8 +169,8 @@ Set in `.env.local` (local) or via Docker build `--build-arg`.
 
 **Can't connect to backend:**
 ```bash
-curl http://localhost:8000/api/health
-# Check that the backend is running on :8000
+curl http://localhost:8080/api/health
+# Check that the native backend is running on :8080 (:8000 is the demo container)
 ```
 
 **Vite build fails:**

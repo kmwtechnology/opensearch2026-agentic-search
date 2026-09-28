@@ -2,7 +2,8 @@
 # smoke_local.sh — run e2e smoke tests against a local backend.
 #
 # Behavior:
-#   - If backend is already running on :8000, reuse it.
+#   - If the native backend is already running on :8080 (make dev), reuse it.
+#     (:8000 is the demo container — a stale image — so it is never used here.)
 #   - Otherwise, start uvicorn in the background, wait for /api/health,
 #     run smoke tests, then clean up.
 #
@@ -19,8 +20,8 @@ set -euo pipefail
 REPO_ROOT=$(git rev-parse --show-toplevel)
 LANGCHAIN_DIR="$REPO_ROOT/langchain_agent"
 VENV="$LANGCHAIN_DIR/.venv/bin"
-HEALTH_URL="http://127.0.0.1:8000/api/health"
-PORT=8000
+HEALTH_URL="http://127.0.0.1:8080/api/health"
+PORT=8080
 
 cd "$LANGCHAIN_DIR"
 

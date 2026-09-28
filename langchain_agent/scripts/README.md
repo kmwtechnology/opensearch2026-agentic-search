@@ -14,7 +14,7 @@ deployment path anymore — the project is local-only as of issue #110/#113.
 | `setup.sh` | One-time: venv, Docker, DB init, bulk-load the precomputed corpus dump | First clone | 1–2 min (fails with a `git lfs pull` message if `data/precomputed/` is missing — there is no from-scratch fallback) |
 | `teardown.sh` | Clean up: services, volumes, `.venv`, `node_modules`, logs | End of session (optional) | 1–2 min |
 | **Local Development** |
-| `start.sh` | Start Docker, backend (:8000), frontend (:5173) | Session start | 10–15 s |
+| `start.sh` | Start Docker, native backend (:8080) + Vite (:5173), and rebuild/start the demo container (:8000) | Session start | 15 s–2 min (demo image build) |
 | `stop.sh` | Stop backend + frontend + Docker containers (volumes kept) | Session end | 5 s |
 | `logs.sh` | Tail backend/frontend logs | Debugging | — |
 | **CI/Manual Gates** |
@@ -96,7 +96,7 @@ Local smoke gates expect:
 
 **Port already in use:**
 ```bash
-lsof -ti :8000 | xargs kill -9
+lsof -ti :8080 | xargs kill -9
 lsof -ti :5173 | xargs kill -9
 ./scripts/start.sh
 ```
@@ -117,7 +117,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 **Frontend can't reach backend:**
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:8080/api/health
 ./scripts/logs.sh frontend
 ```
 

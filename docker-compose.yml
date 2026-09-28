@@ -47,13 +47,13 @@ services:
   # Fully-containerized backend + UI (built by langchain_agent/Dockerfile,
   # which bundles the compiled React frontend into the same FastAPI image --
   # one process, one origin, no separate frontend container). Gated behind
-  # the "app" profile so `docker compose up -d` (native `make dev`'s
-  # Postgres+OpenSearch) never builds/starts this by default. Use `make demo`
-  # (repo root: `docker compose --profile
-  # app up -d --build`) for the fully-Dockerized path -- needs only Docker
-  # and a native Ollama, no local Python/Node install. Ollama itself is
-  # NEVER containerized: on macOS only a native install gets Metal GPU
-  # access, and the 35B model is unusably slow on CPU.
+  # the "app" profile so a plain `docker compose up -d` (what `make ci` and
+  # setup use for Postgres+OpenSearch) never builds this. `make dev`
+  # (scripts/start.sh) rebuilds and starts it alongside the native dev stack:
+  # `docker compose --profile app up -d --build app`, published on host :8000
+  # while the native backend uses :8080. Ollama itself is NEVER containerized:
+  # on macOS only a native install gets Metal GPU access, and the 35B model is
+  # unusably slow on CPU.
   #
   # First-time data setup (creating the Postgres tables + OpenSearch index
   # and loading the product corpus) still requires a native `make setup`
@@ -76,6 +76,7 @@ services:
       # alias.
       - OLLAMA_HOST=http://host.docker.internal:11434
     ports:
+      # Demo on host :8000; the native `make dev` backend uses :8080, so both run at once.
       - "8000:8080"
     depends_on:
       postgres:

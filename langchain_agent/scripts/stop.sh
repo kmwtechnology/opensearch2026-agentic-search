@@ -17,12 +17,12 @@ PARENT_DIR="$(dirname "$PROJECT_DIR")"
 echo "Stopping backend..."
 
 # Primary: Kill by port (most reliable - always works if process is using the port)
-if lsof -i :8000 >/dev/null 2>&1; then
-    lsof -ti :8000 | xargs kill -TERM 2>/dev/null || true
+if lsof -i :8080 >/dev/null 2>&1; then
+    lsof -ti :8080 | xargs kill -TERM 2>/dev/null || true
     sleep 1
     # If still running after SIGTERM, use SIGKILL
-    if lsof -i :8000 >/dev/null 2>&1; then
-        lsof -ti :8000 | xargs kill -9 2>/dev/null || true
+    if lsof -i :8080 >/dev/null 2>&1; then
+        lsof -ti :8080 | xargs kill -9 2>/dev/null || true
     fi
 fi
 
@@ -57,13 +57,14 @@ echo "✓ Frontend stopped"
 
 echo ""
 
-# Stop Docker containers (PostgreSQL + OpenSearch, if running).
+# Stop Docker containers (PostgreSQL + OpenSearch + the demo app, if running).
 # `stop` (not `down`) so containers persist for a fast restart via start.sh —
 # `down` would destroy and recreate containers/network on every stop/start
 # cycle for no benefit, since volumes (the actual data) survive either way.
-echo "Stopping Docker containers (PostgreSQL + OpenSearch)..."
+# `--profile app` so the demo container is included.
+echo "Stopping Docker containers (PostgreSQL + OpenSearch + demo)..."
 cd "$PARENT_DIR" || exit 1
-docker compose stop > /dev/null 2>&1
+docker compose --profile app stop > /dev/null 2>&1
 echo "✓ Docker containers stopped"
 
 echo ""

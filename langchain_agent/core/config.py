@@ -233,8 +233,9 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "langchain_agent")
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
 DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-# Server port
-PORT = int(os.getenv("PORT", 8000))
+# Port the API listens on. Native `make dev` runs here; the demo container
+# listens on it too and is published on host :8000.
+PORT = int(os.getenv("PORT", 8080))
 
 # API version -- single source of truth for both the FastAPI app's own
 # `version=` (api/main.py, shows up in the OpenAPI spec/Swagger UI) and the

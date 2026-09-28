@@ -79,8 +79,10 @@ models (~23 GB):
    export (`data/precomputed/`, see `../data/README.md`) — no embedding, no
    ingest pipeline
 
-Backend FastAPI runs on `:8000`, React frontend on `:5173` (Vite proxies
-`/api` to the backend).
+`make dev` runs two things side by side, sharing Postgres/OpenSearch: the
+native FastAPI backend on `:8080` with the live-reloading React UI on `:5173`
+(Vite proxies `/api` and `/ws` to `:8080`), and the demo container on `:8000`
+(see below).
 
 There is no login gate — the UI opens straight to the chat, and every
 same-origin caller, including `/api/admin/*`, is unauthenticated. See
@@ -96,22 +98,19 @@ Stop or clean up local services:
 Removes running services, the Docker volumes, `.venv`, `node_modules`, and
 log files. Keeps `.env` by default (prompted separately).
 
-### Fully-Dockerized demo (no local Python/Node needed)
+### The demo container (:8000)
 
-After running `./scripts/setup.sh` at least once (creates `.env`, the
-Postgres tables, and the OpenSearch index/data), the backend + UI can run
-entirely in Docker instead of natively:
+`make dev` also rebuilds and starts the demo: `langchain_agent/Dockerfile`, a
+single image bundling the compiled React frontend and the FastAPI backend as
+one process on one origin, run as the `app` service in the root
+`docker-compose.yml` and published on <http://localhost:8000>. It is built
+from the working tree at the moment `make dev` runs and then stays frozen —
+edits show up live on `:5173`, and on `:8000` only after the next `make dev`
+(build output in `logs/demo-build.log`). `./scripts/stop.sh` stops it along
+with everything else; `docker compose stop app` (repo root) stops just it.
 
-```bash
-cd langchain_agent
-make demo                          # builds + starts the app container on http://localhost:8000
-(cd .. && docker compose stop app) # stops it (leaves Postgres/OpenSearch running)
-```
-
-This builds `langchain_agent/Dockerfile` — a single image bundling the
-compiled React frontend and the FastAPI backend as one process, one origin —
-and runs it via the `app` service in the root `docker-compose.yml` (gated
-behind the `app` profile, so plain `docker compose up -d` never builds it).
+The `app` service sits behind the `app` compose profile, so a plain
+`docker compose up -d` (what `make ci` runs) never builds it.
 Ollama is **never** containerized — only a native install gets Metal GPU
 access on macOS, and the 35B model is unusably slow on CPU — so a native
 Ollama must still be running; the container reaches it via
@@ -764,15 +763,15 @@ PYTHONPATH=. python setup.py
 curl http://localhost:11434/api/tags  # Ollama must be reachable
 ./scripts/logs.sh backend
 
-# If the port is stuck:
-lsof -ti :8000 | xargs kill -9
+# If the port is stuck (:8080 is the native backend; :8000 is Docker's — don't kill that):
+lsof -ti :8080 | xargs kill -9
 ./scripts/start.sh
 ```
 
 ### Frontend shows connection error
 
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:8080/api/health
 ./scripts/logs.sh frontend
 ```
 
@@ -804,7 +803,8 @@ Backend logs should show `LLM STREAMING STARTED` followed by
 ```bash
 docker compose ps                              # PostgreSQL + OpenSearch
 curl http://localhost:9200/_cluster/health     # OpenSearch
-curl http://localhost:8000/api/health          # Backend
+curl http://localhost:8080/api/health          # Native backend (make dev)
+curl http://localhost:8000/api/health          # Demo container
 ```
 
 ---

@@ -118,7 +118,7 @@ class TestRequiredEnvironmentVariables:
         int_configs = {
             "POSTGRES_PORT": "5432",
             "OPENSEARCH_PORT": "9200",
-            "PORT": "8000",
+            "PORT": "8080",
             "RETRIEVER_K": "10",
             "RETRIEVER_FETCH_K": "40",
             "VECTOR_DIMENSION": "768",
@@ -273,11 +273,11 @@ class TestPortConfiguration:
     """Test port configuration for API server."""
 
     def test_port_default_value(self):
-        """Test PORT env var defaults to 8000."""
-        port_str = os.getenv("PORT", "8000")
+        """Test PORT env var defaults to 8080."""
+        port_str = os.getenv("PORT", "8080")
         port = int(port_str)
 
-        assert port == 8000
+        assert port == 8080
 
     def test_port_can_be_overridden(self):
         """Test PORT can be set to different value."""
@@ -287,15 +287,14 @@ class TestPortConfiguration:
 
     def test_port_is_valid_range(self):
         """Test port is in valid range (1-65535)."""
-        port_str = os.getenv("PORT", "8000")
+        port_str = os.getenv("PORT", "8080")
         port = int(port_str)
 
         assert 1 <= port <= 65535
 
-    def test_cloud_run_port_override(self):
-        """Test Cloud Run's PORT environment variable handling."""
-        # Cloud Run sets PORT env var dynamically
-        port_str = os.getenv("PORT", "8000")
+    def test_port_override_from_env(self):
+        """Test PORT environment variable handling (containers set it dynamically)."""
+        port_str = os.getenv("PORT", "8080")
         port = int(port_str)
 
         # Should work with any valid port

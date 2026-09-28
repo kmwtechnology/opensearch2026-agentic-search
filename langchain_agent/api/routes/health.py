@@ -262,7 +262,8 @@ async def get_frontend_config(request: Request):
 
     # Determine API base URL
     # For an HTTPS same-origin deploy, use the origin URL
-    # In development, use localhost:8000
+    # In development the Vite UI proxies to the native backend on :8080, so
+    # an empty apiUrl (relative URLs) is correct there too.
     if origin and origin.startswith("https://"):
         api_url = origin
     else:

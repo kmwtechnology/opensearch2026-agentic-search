@@ -60,7 +60,7 @@ PYTHONPATH=. pytest tests/ -v
 ```bash
 PYTHONPATH=. pytest tests/unit/ -v             # ~0.5 s, no deps
 PYTHONPATH=. pytest tests/integration/ -v      # needs Postgres + OpenSearch + Ollama running
-PYTHONPATH=. pytest tests/e2e/ -v              # needs a running backend (DEPLOYMENT_URL defaults to localhost:8000); no credential required, same-origin checking is the only auth layer
+PYTHONPATH=. pytest tests/e2e/ -v              # needs a running backend (DEPLOYMENT_URL defaults to localhost:8080, the native backend — not the demo image on :8000); no credential required, same-origin checking is the only auth layer
 ```
 
 ### By file or pattern
@@ -177,7 +177,7 @@ layer and a same-origin caller needs no credentials at all.
 
 ```bash
 docker compose up -d                           # PostgreSQL + OpenSearch
-make dev                                       # backend on :8000 (backgrounded; logs/backend.log)
+make dev                                       # native backend on :8080 (backgrounded; logs/backend.log)
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
 
@@ -244,7 +244,7 @@ the backend if the test exercises the HTTP/WebSocket layer.
 ### E2E tests failing with 403
 
 Check `DEPLOYMENT_URL` (if set) has the correct scheme + host — it defaults
-to `http://localhost:8000`. There's no 401/login gate; a 403 means the
+to `http://localhost:8080`. There's no 401/login gate; a 403 means the
 `Origin` wasn't on the same-origin allow-list (`api/middleware/origin_auth.py`).
 
 ## Frontend Tests (Vitest)

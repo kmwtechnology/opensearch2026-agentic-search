@@ -38,7 +38,7 @@ def _fail_if_origin_blocked(exc: BaseException) -> None:
 
 
 # Configuration
-DEPLOYMENT_URL = os.environ.get("DEPLOYMENT_URL", "http://localhost:8000")
+DEPLOYMENT_URL = os.environ.get("DEPLOYMENT_URL", "http://localhost:8080")
 API_KEY = os.environ.get("API_KEY", "test-api-key")
 TIMEOUT = 30  # seconds
 # Cross-encoder model loads ~60s on first request; full pipeline round-trip needs ~90-120s

@@ -5,7 +5,7 @@
 
 E2E tests exercise a running backend end to end — health, auth, WebSocket
 streaming, and pipeline correctness across all 6 intents. They target
-`http://localhost:8000` by default (`DEPLOYMENT_URL` env var — set it to a
+`http://localhost:8080` (the native `make dev` backend) by default (`DEPLOYMENT_URL` env var — set it to a
 remote URL if you ever need to point these at something other than local).
 
 Four heavier suites (`test_real_world_scenarios.py`, `test_latency_profiling.py`,
@@ -118,7 +118,7 @@ PYTHONPATH=. pytest tests/e2e/ -m "not slow" -v
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DEPLOYMENT_URL` | `http://localhost:8000` | Backend URL under test |
+| `DEPLOYMENT_URL` | `http://localhost:8080` | Backend URL under test (`:8000` is the demo image — stale by design) |
 | `API_KEY` | `test-api-key` | Read by `test_deployment_smoke.py`, sent as `Authorization: Bearer`, which the backend no longer checks (the only auth layer is same-origin checking) |
 | `ADMIN_TOKEN` | (unset) | Not currently used by these tests — `verify_admin_token` exists as a preserved-but-unused utility, not wired into any route |
 | `TIMEOUT` | 30 | Pytest request timeout in seconds |
@@ -134,7 +134,7 @@ PYTHONPATH=. pytest tests/e2e/ -m "not slow" -v
 ## Troubleshooting
 
 **Connection refused** — verify the backend is up (`curl $DEPLOYMENT_URL/api/health`,
-default `http://localhost:8000`); start it via `make dev`.
+default `http://localhost:8080`); start it via `make dev`.
 
 **Tests timeout** — bump `TIMEOUT=60`; check `logs/backend.log` for errors.
 

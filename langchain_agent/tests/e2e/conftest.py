@@ -13,7 +13,8 @@ didn't need touching.
 
 Env vars consumed:
 * ``DEPLOYMENT_URL`` — base URL of the deployment under test (defaults to
-  http://localhost:8000 for local iteration).
+  http://localhost:8080, the native `make dev` backend; :8000 is the demo
+  container's stale image, so don't point these at it by default).
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-DEPLOYMENT_URL = os.environ.get("DEPLOYMENT_URL", "http://localhost:8000")
+DEPLOYMENT_URL = os.environ.get("DEPLOYMENT_URL", "http://localhost:8080")
 ORIGIN_HEADER = DEPLOYMENT_URL
 
 

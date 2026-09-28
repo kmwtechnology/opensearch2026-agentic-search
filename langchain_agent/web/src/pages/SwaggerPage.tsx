@@ -24,12 +24,10 @@ export function SwaggerPage() {
       }
 
       if (!apiUrl) {
-        const hostname = window.location.hostname
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          apiUrl = `http://localhost:8000`
-        } else {
-          apiUrl = window.location.origin
-        }
+        // Vite dev server (:5173) talks to the native backend on :8080;
+        // anywhere else (the demo container) the API is same-origin.
+        apiUrl =
+          window.location.port === '5173' ? 'http://localhost:8080' : window.location.origin
       }
 
       setSwaggerUrl(`${apiUrl}/swagger`)

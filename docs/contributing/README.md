@@ -26,7 +26,7 @@ cp .env.example .env
 
 **Start development servers:**
 ```bash
-./scripts/start.sh    # Backend :8000 + Frontend :5173
+make dev              # Dev UI :5173 (backend :8080) + demo container :8000
 ```
 
 **Stop servers:**

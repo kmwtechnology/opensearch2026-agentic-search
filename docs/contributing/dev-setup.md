@@ -8,7 +8,7 @@ Get the project running on your machine for development.
 
 ## What You're Setting Up
 
-- **Backend**: FastAPI server on `localhost:8000` (Python 3.14+, .venv)
+- **Backend**: FastAPI server on `localhost:8080` (Python 3.14+, .venv); the Dockerized demo image is published on `localhost:8000`
 - **Frontend**: React + Vite dev server on `localhost:5173` (Node.js 24+)
 - **Services**: PostgreSQL (checkpoints) + OpenSearch (search index) in Docker
 - **Data**: full ESCI product corpus (158,637 products), bulk-loaded from a committed precomputed export — no live ingest pipeline (see `data/README.md`)
@@ -119,7 +119,7 @@ After setup completes, start the development servers:
 
 You'll see output like:
 ```
-✓ Backend running on http://localhost:8000
+✓ Backend running on http://localhost:8080
 ✓ Frontend running on http://localhost:5173
 ```
 
@@ -135,7 +135,7 @@ Then:
 make dev        # same as ./scripts/start.sh
 ```
 
-Starts the Docker containers (Postgres, OpenSearch) if they aren't up, waits for their healthchecks, then starts the backend and frontend in the background with output in `logs/backend.log` and `logs/frontend.log`. Need just the backend? `PYTHONPATH=. .venv/bin/uvicorn api.main:app --reload --port 8000`.
+Starts the Docker containers (Postgres, OpenSearch) if they aren't up, waits for their healthchecks, starts the native backend (:8080) and the Vite UI (:5173) in the background with output in `logs/backend.log` and `logs/frontend.log`, then rebuilds and starts the demo container on :8000 (`logs/demo-build.log`). Dev and demo run side by side: :5173 shows your edits live; :8000 shows the tree as of this start and stays that way until the next `make dev`. Need just the backend? `PYTHONPATH=. .venv/bin/uvicorn api.main:app --reload --port 8080`.
 
 ---
 
@@ -223,14 +223,13 @@ make ci          # the pre-push gate: format, flake8, mypy, unit tests, frontend
 
 ## Makefile Quick Reference
 
-The Makefile has exactly six targets (bare `make` runs `doctor`):
+The Makefile has exactly five targets (bare `make` runs `doctor`):
 
 | Target | What It Does | When to Use |
 |--------|--------------|-------------|
 | `make doctor` | Verify setup health (Docker, Ollama models, .venv, node_modules, LFS data) | After setup, or when something's off |
 | `make setup` | First-time setup: Docker services, .venv, models, precomputed index load | Fresh clone |
-| `make dev` | Start Docker services, then backend + frontend in the background | Daily development |
-| `make demo` | Backend + UI in one Docker container on :8000 | Presenting |
+| `make dev` | Docker services, native backend :8080 + Vite :5173, and the demo container :8000 (rebuilt) | Daily development and presenting |
 | `make ci` | **The pre-push gate**: lint, unit tests, frontend build, live smoke test | Before every push |
 | `make teardown` | DESTRUCTIVE: remove .venv, node_modules, Docker volumes | Clean slate |
 
@@ -261,22 +260,24 @@ PYTHONPATH=. pytest tests/unit/
 
 ---
 
-### Port 8000 already in use
+### Port 8080 or 5173 already in use
 
-**Cause:** Leftover backend process from a previous run.
+**Cause:** Leftover native backend (:8080) or Vite (:5173) process from a previous run.
 
 **Fix:**
 ```bash
 ./scripts/stop.sh
 # Then retry:
-./scripts/start.sh
+make dev
 ```
 
 Or manually kill:
 ```bash
-lsof -i :8000  # Find the process ID
+lsof -i :8080  # Find the process ID
 kill -9 <PID>
 ```
+
+Port **8000** belongs to the demo container and is held by Docker's port proxy — don't `kill` what's listening there; use `docker compose stop app` from the repo root instead.
 
 ---
 

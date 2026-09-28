@@ -1,8 +1,13 @@
 #!/bin/bash
 # Agentic Hybrid Search Start Script
-# Starts backend API and frontend development server
+# Starts everything: Postgres + OpenSearch (Docker), the native backend on
+# :8080 with the Vite UI on :5173 (live-reloading dev), and the demo
+# container on :8000 (backend + built UI, rebuilt from the current tree).
+# Dev and demo share the data services and run side by side.
 
 set -e  # Exit on error
+
+BACKEND_PORT=8080
 
 
 echo "🚀 Starting Agentic Hybrid Search..."
@@ -57,7 +62,7 @@ fi
 
 # Start backend with proper PYTHONPATH
 export PYTHONPATH="$PROJECT_DIR:$PYTHONPATH"
-uvicorn api.main:app --reload --port 8000 > "$PROJECT_DIR/logs/backend.log" 2>&1 &
+uvicorn api.main:app --reload --port "$BACKEND_PORT" > "$PROJECT_DIR/logs/backend.log" 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > "$PROJECT_DIR/.backend.pid"
 echo "✓ Backend started (PID: $BACKEND_PID)"
@@ -65,7 +70,7 @@ echo "✓ Backend started (PID: $BACKEND_PID)"
 # Wait for backend to be ready
 echo "⏳ Waiting for backend to be ready..."
 for i in {1..30}; do
-    if curl -s http://localhost:8000/api/health > /dev/null 2>&1; then
+    if curl -s "http://localhost:$BACKEND_PORT/api/health" > /dev/null 2>&1; then
         echo "✓ Backend is ready"
         break
     fi
@@ -99,12 +104,26 @@ echo "✓ Frontend started (PID: $FRONTEND_PID)"
 cd "$PROJECT_DIR"
 
 echo ""
+
+# Demo container: backend + built UI in one image, published on :8000. Built
+# from the current tree, so it reflects the code as of this start — edits
+# after this show up on :5173 only, until the next start rebuilds the image.
+echo "📦 Building and starting the demo container (logs/demo-build.log)..."
+if docker compose -f "$PARENT_DIR/docker-compose.yml" --profile app up -d --build app \
+    > "$PROJECT_DIR/logs/demo-build.log" 2>&1; then
+    echo "✓ Demo container started — ready once http://localhost:8000/api/health answers (seconds to ~1 min for model init)"
+else
+    echo "⚠ Demo container failed to build/start — dev stack is up regardless. Last lines:"
+    tail -20 "$PROJECT_DIR/logs/demo-build.log" | sed 's/^/    /'
+fi
+
+echo ""
 echo "✅ All services running!"
 echo ""
 echo "📍 Access Services:"
-echo "  Frontend:                http://localhost:5173"
-echo "  Backend:                 http://localhost:8000"
-echo "  API Docs (Swagger UI):   http://localhost:8000/swagger"
+echo "  Dev UI (live reload):    http://localhost:5173   (proxies to the backend below)"
+echo "  Dev backend:             http://localhost:$BACKEND_PORT   (Swagger: /swagger)"
+echo "  Demo (Docker image):     http://localhost:8000   (rebuilt on each start)"
 echo ""
 echo "📊 Data Services:"
 echo "  PostgreSQL:  localhost:5432"

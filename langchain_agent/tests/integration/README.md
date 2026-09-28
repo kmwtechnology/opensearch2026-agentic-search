@@ -39,7 +39,7 @@ PYTHONPATH=. pytest tests/integration/ -m "integration and not slow" -v
 
 2. **Backend running (for WebSocket tests):**
    ```bash
-   make dev                # backend on :8000 (backgrounded; logs/backend.log)
+   make dev                # native backend on :8080 (backgrounded; logs/backend.log)
    ```
 
 3. **Ollama:**
@@ -115,7 +115,7 @@ PGPASSWORD=postgres psql -h localhost -U postgres -d langchain_agent -c 'SELECT 
 Backend not running, or the request's `Origin` header doesn't match the allow-list
 (there is no login gate — same-origin checking is the only auth layer):
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:8080/api/health
 grep -A5 "def get_allowed_origins" ../../api/middleware/origin_auth.py
 ```
 
@@ -179,7 +179,7 @@ so they run without touching the real corpus. See `test_attribute_mapping_store.
 
 | Aspect | Integration | E2E |
 |--------|-------------|-----|
-| **Target** | Local backend `:8000` | Local backend `:8000` by default (or a remote URL via `DEPLOYMENT_URL`) |
+| **Target** | Local backend `:8080` | Local backend `:8080` by default (or a remote URL via `DEPLOYMENT_URL`) |
 | **Auth** | Same-origin checking only (no login gate) | Same-origin checking only (no login gate) |
 | **Markers** | `integration` | `e2e` |
 | **When** | Locally before push | Locally before push (smoke/regression coverage) |
