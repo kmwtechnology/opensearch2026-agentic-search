@@ -15,10 +15,10 @@ DEMO_QUERIES.md scenarios complete cleanly:
 
   1. α-Shift Wins — single turn, expects ``quality_gate`` event with a
      retry, then ``agent_complete``.
-  2. Refinement Keeps Context — two turns, expects ``intent_classified``
+  2. Refinement Keeps Context — two turns, expects ``intent_classification``
      with ``intent='refinement'`` on turn 2.
   3. Query Rewrite Wins — two turns, expects ``query_expansion`` event
-     and ``intent_classified`` with ``intent='follow_up'`` on turn 2.
+     and ``intent_classification`` with ``intent='follow_up'`` on turn 2.
 
 Each scenario asserts no ``agent_error`` event was emitted at any point.
 That is the explicit guard against the original crash class.
@@ -48,9 +48,14 @@ PER_TURN_TIMEOUT_S = 90.0
 TWO_TURN_TIMEOUT_S = 180.0
 
 
-def _ws_url() -> str:
+def _ws_url(thread_id: str) -> str:
+    # thread_id must match what _drive_turn sends in the chat_message payload:
+    # ConnectionManager.emit_event routes by the connection's registered
+    # thread_id (set from this query param, or a random one if omitted), so a
+    # mismatch here means every event after connection_established is
+    # silently dropped -- no error, the socket just goes quiet until timeout.
     base = DEPLOYMENT_URL.replace("http://", "ws://").replace("https://", "wss://")
-    return f"{base}/ws/chat"
+    return f"{base}/ws/chat?thread_id={thread_id}"
 
 
 async def _drain_until_welcome(websocket: Any, timeout_s: float = 10.0) -> None:
@@ -124,9 +129,9 @@ def _summarize(events: List[Dict[str, Any]]) -> str:
     lines = []
     for e in events:
         t = e.get("type", "?")
-        if t == "intent_classified":
+        if t == "intent_classification":
             lines.append(
-                f"  intent_classified intent={e.get('intent')} confidence={e.get('confidence')}"
+                f"  intent_classification intent={e.get('intent')} confidence={e.get('confidence')}"
             )
         elif t == "opensearch_query":
             lines.append(
@@ -182,7 +187,7 @@ class TestDemoQueriesSmoke:
     async def test_demo1_alpha_shift_wins(self) -> None:
         thread_id = f"demo1-{uuid.uuid4().hex[:8]}"
         async with ws_client.connect(
-            _ws_url(),
+            _ws_url(thread_id),
             additional_headers=auth_ws_headers(),
         ) as websocket:
             await _drain_until_welcome(websocket)
@@ -205,7 +210,7 @@ class TestDemoQueriesSmoke:
     async def test_demo2_refinement_keeps_context(self) -> None:
         thread_id = f"demo2-{uuid.uuid4().hex[:8]}"
         async with ws_client.connect(
-            _ws_url(),
+            _ws_url(thread_id),
             additional_headers=auth_ws_headers(),
         ) as websocket:
             await _drain_until_welcome(websocket)
@@ -226,8 +231,8 @@ class TestDemoQueriesSmoke:
 
         # Turn-2 intent must classify as refinement for the demo's
         # "two filter groups" payoff to fire.
-        intents = [e for e in t2_events if e.get("type") == "intent_classified"]
-        assert intents, f"[demo2-turn2] no intent_classified event.\n{_summarize(t2_events)}"
+        intents = [e for e in t2_events if e.get("type") == "intent_classification"]
+        assert intents, f"[demo2-turn2] no intent_classification event.\n{_summarize(t2_events)}"
         intent_value = intents[0].get("intent")
         assert intent_value == "refinement", (
             f"[demo2-turn2] expected intent='refinement', got {intent_value!r}.\n"
@@ -237,7 +242,7 @@ class TestDemoQueriesSmoke:
     async def test_demo3_query_rewrite_wins(self) -> None:
         thread_id = f"demo3-{uuid.uuid4().hex[:8]}"
         async with ws_client.connect(
-            _ws_url(),
+            _ws_url(thread_id),
             additional_headers=auth_ws_headers(),
         ) as websocket:
             await _drain_until_welcome(websocket)
@@ -263,8 +268,8 @@ class TestDemoQueriesSmoke:
         )
         # Intent should be follow_up (not refinement) so the demo shows
         # expansion alone, no product_id filter.
-        intents = [e for e in t2_events if e.get("type") == "intent_classified"]
-        assert intents, f"[demo3-turn2] no intent_classified event.\n{_summarize(t2_events)}"
+        intents = [e for e in t2_events if e.get("type") == "intent_classification"]
+        assert intents, f"[demo3-turn2] no intent_classification event.\n{_summarize(t2_events)}"
         intent_value = intents[0].get("intent")
         assert intent_value == "follow_up", (
             f"[demo3-turn2] expected intent='follow_up', got {intent_value!r}. "
