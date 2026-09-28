@@ -55,6 +55,7 @@ from api.schemas.events import (
     SummaryEvent,
     ToolCallEvent,
 )
+from api.services.checkpoint_messages import load_message_count
 
 # Convenience aliases — match the names used in our local helper to avoid
 # colliding with the relevancy_metrics dataclasses we also import below.
@@ -177,32 +178,7 @@ class ObservableAgentService:
             Number of previous human/AI messages in the conversation
         """
         try:
-            pool = self._agent.async_pool
-            async with pool.connection() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        """
-                        SELECT blob, type FROM checkpoint_blobs
-                        WHERE thread_id = %s AND channel = 'messages'
-                        ORDER BY version DESC LIMIT 1
-                    """,
-                        (thread_id,),
-                    )
-                    blob_row = await cur.fetchone()
-                    if blob_row and blob_row[0]:
-                        from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-
-                        serializer = JsonPlusSerializer()
-                        messages = serializer.loads_typed((blob_row[1], blob_row[0]))
-                        # Count human and AI messages
-                        return len(
-                            [
-                                m
-                                for m in messages
-                                if hasattr(m, "type") and m.type in ("human", "ai")
-                            ]
-                        )
-            return 0
+            return await load_message_count(self._agent.async_pool, thread_id)
         except Exception:
             return 0
 
@@ -600,8 +576,11 @@ class ObservableAgentService:
         The retriever_node runs synchronously and can't directly emit async events,
         so it queues them for later emission.
         """
-        while self._agent.event_queue:
-            event = self._agent.event_queue.pop(0)
+        # Snapshot-and-clear instead of repeated pop(0), which is O(n) per
+        # call on a plain list and made the whole drain O(n^2).
+        queued_events = self._agent.event_queue
+        self._agent.event_queue = []
+        for event in queued_events:
             await emit(event)
 
     async def _astream_graph(
@@ -731,7 +710,7 @@ class ObservableAgentService:
                         await emit(
                             NodeStartEvent(
                                 node=event_name,
-                                input_summary=self._summarize_input(event_name, {}),
+                                input_summary=self._summarize_input(event_name),
                             )
                         )
 
@@ -884,12 +863,9 @@ class ObservableAgentService:
                         )
                     )
 
-        except Exception as e:
+        except Exception:
             # Log error and re-raise to trigger AgentErrorEvent in process_message
-            import traceback
-
-            print(f"Error in astream_events: {e}")
-            traceback.print_exc()
+            logger.exception("Error in astream_events")
             raise
         finally:
             enrichment_events.reset_publisher(publisher_token)
@@ -1183,7 +1159,7 @@ class ObservableAgentService:
         else:
             return "semantic-heavy"
 
-    def _summarize_input(self, node_name: str, output: Dict[str, Any]) -> str:
+    def _summarize_input(self, node_name: str) -> str:
         """Generate a brief summary of node input."""
         if node_name == "query_evaluator":
             return "Evaluating query type for optimal search strategy"
@@ -1278,7 +1254,7 @@ class ObservableAgentService:
                 # - Closing database connection pool
                 self._agent.cleanup()
                 self._agent = None
-            except Exception as e:
-                print(f"Error during agent cleanup: {e}")
+            except Exception:
+                logger.exception("Error during agent cleanup")
             finally:
                 self._initialized = False

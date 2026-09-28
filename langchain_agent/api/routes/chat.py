@@ -3,7 +3,6 @@ WebSocket endpoint for real-time chat with agent observability.
 """
 
 import asyncio
-import re
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -25,16 +24,33 @@ from api.schemas.events import (
     BaseEvent,
     ConnectionEstablished,
 )
+from api.schemas.validation import validate_message_content_value, validate_thread_id_value
+from api.services.checkpoint_messages import load_message_count
 from core.config import RATE_LIMIT_CHAT
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Thread ID pattern: starts with letter, alphanumeric with underscores/hyphens, max 64 chars
-THREAD_ID_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
-
 # Initialize limiter (will use app.state.limiter)
 limiter = Limiter(key_func=get_client_ip)
+
+# Known per-message optimization toggle keys. We accept only this allowlist so
+# a hostile client can't inflate checkpoint state with arbitrary JSON. Unknown
+# keys are dropped silently. Mirror this list in optimizationsStore.ts.
+_ALLOWED_OPTIMIZATIONS = frozenset(
+    {
+        "hybrid",
+        "fuzzy",
+        "synonyms",
+        "phonetic",
+        "phrase_boost",
+        "field_boost",
+        "typeahead",
+        "reranking",
+        "llm",
+        "llm_judge",
+    }
+)
 
 router = APIRouter()
 
@@ -200,20 +216,12 @@ class ChatMessage(BaseModel):
     def validate_thread_id(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        if not THREAD_ID_PATTERN.match(v):
-            raise ValueError(
-                "thread_id must start with a letter and contain only "
-                "alphanumeric characters, underscores, or hyphens (max 64 chars)"
-            )
-        return v
+        return validate_thread_id_value(v)
 
     @field_validator("message")
     @classmethod
     def validate_message_content(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("message cannot be empty or whitespace only")
-        return v
+        return validate_message_content_value(v)
 
 
 # ============================================================================
@@ -306,41 +314,8 @@ async def websocket_chat(websocket: WebSocket):
             if manager.agent_service and manager.agent_service._agent
             else None
         )
-
         if pool:
-            async with pool.connection() as conn:
-                async with conn.cursor() as cur:
-                    # Query checkpoint_blobs for existing messages
-                    await cur.execute(
-                        """
-                        SELECT blob, type
-                        FROM checkpoint_blobs
-                        WHERE thread_id = %s
-                          AND channel = 'messages'
-                        ORDER BY version DESC
-                        LIMIT 1
-                    """,
-                        (thread_id,),
-                    )
-
-                    blob_row = await cur.fetchone()
-
-                    if blob_row and blob_row[0]:
-                        from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-
-                        blob, blob_type = blob_row
-                        serializer = JsonPlusSerializer()
-                        raw_messages = serializer.loads_typed((blob_type, blob))
-
-                        # Count human and AI messages with content
-                        existing_count = sum(
-                            1
-                            for msg in raw_messages
-                            if hasattr(msg, "type")
-                            and msg.type in ("human", "ai")
-                            and hasattr(msg, "content")
-                            and msg.content
-                        )
+            existing_count = await load_message_count(pool, thread_id)
     except Exception as e:
         logger.warning("message_count_load_error", thread_id=thread_id, error=str(e))
 
@@ -373,24 +348,8 @@ async def websocket_chat(websocket: WebSocket):
             if data.get("type") == "chat_message":
                 message = data.get("message", "").strip()
                 msg_thread_id = data.get("thread_id", thread_id)
-                # Validate the per-message optimization toggles. We accept only
-                # the known allowlist of keys so a hostile client can't inflate
-                # checkpoint state with arbitrary JSON. Unknown keys are dropped
-                # silently. Mirror this list in optimizationsStore.ts.
-                _ALLOWED_OPTIMIZATIONS = frozenset(
-                    {
-                        "hybrid",
-                        "fuzzy",
-                        "synonyms",
-                        "phonetic",
-                        "phrase_boost",
-                        "field_boost",
-                        "typeahead",
-                        "reranking",
-                        "llm",
-                        "llm_judge",
-                    }
-                )
+                # Validate the per-message optimization toggles against the
+                # module-level allowlist above.
                 raw_optimizations = data.get("optimizations")
                 msg_optimizations: Optional[Dict[str, bool]] = None
                 if isinstance(raw_optimizations, dict):
@@ -478,20 +437,12 @@ class ChatRequest(BaseModel):
     def validate_thread_id(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        if not THREAD_ID_PATTERN.match(v):
-            raise ValueError(
-                "thread_id must start with a letter and contain only "
-                "alphanumeric characters, underscores, or hyphens (max 64 chars)"
-            )
-        return v
+        return validate_thread_id_value(v)
 
     @field_validator("message")
     @classmethod
     def validate_message_content(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("message cannot be empty or whitespace only")
-        return v
+        return validate_message_content_value(v)
 
 
 class Citation(BaseModel):
@@ -654,4 +605,4 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
             citations=citations,
         )
     except Exception as e:
-        raise Exception(f"Agent error: {e}")
+        raise Exception(f"Agent error: {e}") from e

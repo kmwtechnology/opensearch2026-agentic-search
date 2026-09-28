@@ -10,7 +10,6 @@ tests/e2e/test_deployment_smoke.py, and remain a supported REST API for
 anyone resuming a conversation by thread_id outside the demo UI (issue #105).
 """
 
-import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -27,11 +26,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import verify_same_origin
+from api.schemas.validation import THREAD_ID_PATTERN
 from core.config import DATABASE_URL, RATE_LIMIT_CONVERSATIONS
 from core.logging_config import get_logger
-
-# Thread ID validation pattern (alphanumeric, underscore, hyphen, 1-64 chars)
-THREAD_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
 def validate_thread_id(thread_id: str) -> str:
@@ -50,7 +47,8 @@ def validate_thread_id(thread_id: str) -> str:
     if not thread_id or not THREAD_ID_PATTERN.match(thread_id):
         raise HTTPException(
             status_code=400,
-            detail="Invalid thread_id format. Must be 1-64 alphanumeric characters, underscores, or hyphens.",
+            detail="Invalid thread_id format. Must start with a letter and contain only "
+            "alphanumeric characters, underscores, or hyphens (max 64 chars).",
         )
     return thread_id
 

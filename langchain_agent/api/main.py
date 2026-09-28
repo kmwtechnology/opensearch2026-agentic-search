@@ -31,6 +31,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from api.middleware.client_ip import get_client_ip
+from api.middleware.origin_auth import get_allowed_origins
 from api.routes import admin, chat, conversations, health, suggest
 from core.config import API_VERSION, ENABLE_ENRICHMENT_TOOL, RATE_LIMIT_ENABLED
 from core.logging_config import configure_logging, get_logger
@@ -173,8 +174,7 @@ app = FastAPI(
         "retriever sent. `query_type` ∈ {`hybrid`, `bm25_baseline`, `quality_gate_retry`} "
         "tags each event so the observability panel can render an eye-icon viewer per query.\n"
         "- **Real-time streaming**: token-by-token output over WebSocket\n\n"
-        "**Authentication:** Same-origin check (localhost dev ports + Cloud Run URL) "
-        "on every route."
+        "**Authentication:** Same-origin check (localhost dev ports) on every route."
     ),
     version=API_VERSION,
     docs_url=None,  # served by the custom route below (#103)
@@ -263,13 +263,12 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS configuration
-# Accept localhost for development plus this service's Cloud Run URL
-cors_origins = [
-    "http://localhost:5173",  # Vite dev server
-    "http://localhost:3000",  # Alternative dev port
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:3000",
-]
+# Reuses the same allow-list api/middleware/origin_auth.py's verify_same_origin
+# enforces -- these used to be two independently-maintained origin lists (this
+# one had its own hardcoded Cloud Run allowance, `get_allowed_origins()` had a
+# separate one) that had already drifted apart (this one was missing the
+# :5174/:8000/:8080 dev origins the other allows).
+cors_origins = get_allowed_origins()
 
 # Add explicitly configured origins (e.g., custom domains)
 if os.environ.get("CORS_ORIGINS"):
@@ -278,16 +277,12 @@ if os.environ.get("CORS_ORIGINS"):
     ]
     cors_origins.extend(configured_origins)
 
-# Determine this service's URL for Cloud Run
-# The frontend will request from the same origin, so we need to allow it
-# This is set dynamically via the /api/config endpoint at runtime
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_origin_regex=r"https://.*\.a\.run\.app",  # Accept all Cloud Run URLs
 )
 
 # Register REST routes
