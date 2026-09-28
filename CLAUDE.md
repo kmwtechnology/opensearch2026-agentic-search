@@ -177,4 +177,4 @@ Project memory (ongoing decisions, known gotchas, architecture context beyond wh
 ~/.claude/projects/-Users-kevin-github-kmwtechnology-opensearch2026-agentic-search/memory/MEMORY.md
 ```
 
-This memory index was just reset (2026-09-15) — expect it to be sparse until it rebuilds over future sessions.
+Rebuilt from a 2026-09-15 reset; check it before starting non-trivial work in this repo.
