@@ -42,7 +42,6 @@ if a future need for it actually materializes.
 |------|---------|----------|--------|
 | `esci_products.parquet` | 158,637 products | `product_id` (ASIN), `product_title`, `product_description`, `product_bullet_point`, `product_brand`, `product_color`, `product_locale`, `product_image_url` | Every judged product of the ESCI US `test` + `small_version` queries, built by `scripts/build_product_sample.py` (#147). 95.5% have a real SQID image URL |
 | `esci_judgments_aggregated.parquet` | 97,345 queries | `query_id`, `query`, `locale`, `split`, `small_version`, `judgments_json` (relevance: `E`→4.0, `S`→1.0, `C`→0.1, `I`→0.0) | Amazon ESCI, pre-aggregated by query (`scripts/prepare_judgments_parquet.py`) |
-| `esci_products_smoke.parquet` | 1,921 products | same as `esci_products.parquet` | `build_product_sample.py --max-products 2000`: a small sample for fast local ingest tests |
 
 ### Why query-first
 
@@ -81,7 +80,6 @@ Then, from `langchain_agent/`:
 ```bash
 PYTHONPATH=. python scripts/build_product_sample.py --dry-run          # counts + demo preconditions only
 PYTHONPATH=. python scripts/build_product_sample.py                    # writes data/esci_products.parquet
-PYTHONPATH=. python scripts/build_product_sample.py --max-products 2000 --output ../data/esci_products_smoke.parquet
 ```
 
 Null text fields are written as `""`. When a field is null, Lucille's
