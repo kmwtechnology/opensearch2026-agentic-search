@@ -68,9 +68,6 @@ This product includes software developed by other parties:
 - python-dotenv (<https://github.com/theskumar/python-dotenv>)
   Licensed under the BSD License
 
-- itsdangerous (<https://github.com/pallets/itsdangerous>)
-  Licensed under the BSD License
-
 ## Infrastructure
 
 - OpenSearch (<https://github.com/opensearch-project/OpenSearch>)

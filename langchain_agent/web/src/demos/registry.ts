@@ -1,8 +1,7 @@
 /**
  * The demo script, as data (#103).
  *
- * TWO main arcs, matching the two halves of the talk's thesis (see
- * docs/presentation/Agentic Search Presentation Outline.md §1), plus two
+ * TWO main arcs, matching the two halves of the talk's thesis, plus two
  * optional bonus scenes (ground-truth judgments, schema evolution — #114,
  * #142) that don't fit either arc's pacing but are worth showing if there's
  * time:
@@ -12,7 +11,7 @@
  *      turns, rewrite vague follow-ups, and retry once when confidence is low.
  *      This is the part most agentic-search systems already do.
  *
- *   2. Classification & Ingestion — the agent recognises that the CATALOG is wrong,
+ *   2. Classification & Correction — the agent recognises that the CATALOG is wrong,
  *      not the query, and fixes it: correcting a shipped mis-mapping and
  *      triggering a real scoped re-tag of the catalog, live. The talk's
  *      centerpiece.
@@ -215,9 +214,9 @@ export const DEMOS: Demo[] = [
   },
   {
     id: 'taxonomy-ingestion',
-    title: 'Classification & Ingestion',
+    title: 'Classification & Correction',
     needsArming: true,
-    subtitle: 'One bad tag, fixed live. Post re-ingestion search: "show me tan boots".',
+    subtitle: 'One bad tag, fixed live. Search again after the correction: "show me tan boots".',
     turns: [
       {
         query: 'show me tan boots',

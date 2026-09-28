@@ -101,7 +101,6 @@ export interface NarratorLine {
   variant?: string
   docsProcessed?: number
   durationSeconds?: number
-  reindexRunUrl?: string
   reindexMode?: string
   error?: string
   /** Optional bar rendered under the sentence. */
@@ -308,7 +307,6 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
     correctedFrom: e.corrected_from,
     docsProcessed: e.docs_processed,
     durationSeconds: e.duration_seconds,
-    reindexRunUrl: e.reindex_run_url,
     reindexMode: e.reindex_mode,
     error: e.error,
     weight: 'moment' as const,
@@ -357,9 +355,7 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
           ? ` Re-checked the ${e.docs_scanned.toLocaleString()} products that mention it; re-tagged ${e.docs_processed.toLocaleString()} in ${e.duration_seconds.toFixed(1)}s.`
           : e.docs_processed && e.duration_seconds
           ? ` Rebuilt ${e.docs_processed.toLocaleString()} products in ${e.duration_seconds.toFixed(1)}s.`
-          : e.reindex_run_url
-            ? ' Handed off to the cloud build — it finishes out of band.'
-            : ''
+          : ''
       return {
         ...base,
         label: e.corrected_from ? 'Correction Applied' : 'Catalog Learned',

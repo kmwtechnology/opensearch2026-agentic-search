@@ -54,7 +54,7 @@ def _make_store() -> OpenSearchVectorStore:
 
 
 class TestBuildMultiMatchDefaults:
-    """All flags default to True when key is missing (except phonetic defaults False)."""
+    """All flags default to True when key is missing."""
 
     @pytest.mark.parametrize("opts", [None, {}, {"unknown_flag": True}])
     def test_full_field_set_with_fuzziness(self, opts):
@@ -97,14 +97,6 @@ class TestBuildMultiMatchIndividualFlags:
         # Fuzzy still active by default
         assert clause["fuzziness"] == "AUTO"
 
-    def test_phonetic_off_drops_phonetic_fields(self):
-        clause = _multi_match({"phonetic": False})
-        assert "title_phonetic^1.5" not in clause["fields"]
-        assert "brand_phonetic^1.5" not in clause["fields"]
-        # Other fields still present
-        assert "title^3.0" in clause["fields"]
-        assert "title_phrase^2.5" in clause["fields"]
-
     def test_phrase_boost_off_drops_title_phrase(self):
         clause = _multi_match({"phrase_boost": False})
         assert not any(f.startswith("title_phrase") for f in clause["fields"])
@@ -146,7 +138,6 @@ class TestBuildMultiMatchCombinations:
             {
                 "fuzzy": False,
                 "synonyms": False,
-                "phonetic": False,
                 "phrase_boost": False,
                 "field_boost": False,
             }
@@ -165,8 +156,8 @@ class TestBuildMultiMatchCombinations:
             "product_waterproof.heavy",
         ]
 
-    def test_phonetic_and_phrase_off_keeps_field_boosts(self):
-        clause = _multi_match({"phonetic": False, "phrase_boost": False})
+    def test_phrase_off_keeps_field_boosts(self):
+        clause = _multi_match({"phrase_boost": False})
         assert clause["fields"] == [
             "chunk_text",
             "title^3.0",
@@ -188,12 +179,6 @@ class TestBuildMultiMatchCombinations:
         # Fuzzy still on
         assert clause["fuzziness"] == "AUTO"
 
-    def test_phonetic_off_by_default(self):
-        """Phonetic disabled by default (removed analysis-phonetic plugin)."""
-        clause = _multi_match(None)
-        assert "title_phonetic" not in clause["fields"]
-        assert "brand_phonetic" not in clause["fields"]
-
 
 class TestBuildMultiMatchInvariants:
     """Properties that should hold across every toggle combination."""
@@ -204,13 +189,11 @@ class TestBuildMultiMatchInvariants:
             None,
             {"fuzzy": False},
             {"synonyms": False},
-            {"phonetic": False},
             {"phrase_boost": False},
             {"field_boost": False},
             {
                 "fuzzy": False,
                 "synonyms": False,
-                "phonetic": False,
                 "phrase_boost": False,
                 "field_boost": False,
             },
@@ -228,7 +211,6 @@ class TestBuildMultiMatchInvariants:
             None,
             {"fuzzy": False},
             {"synonyms": False},
-            {"phonetic": False},
             {"phrase_boost": False},
             {"field_boost": False},
         ],
@@ -361,7 +343,7 @@ class TestDSLForwarding:
         clause = body["query"]["bool"]["must"][0]["multi_match"]
         assert clause["analyzer"] == "standard"
 
-    def test_rrf_text_subquery_drops_phonetic_when_phonetic_off(self):
+    def test_rrf_text_subquery_honors_fuzzy_off(self):
         store = _make_store()
         # Two calls: vector + text. Inspect the second.
         store._hybrid_search_rrf(
@@ -370,13 +352,12 @@ class TestDSLForwarding:
             k=4,
             fetch_k=20,
             alpha=0.5,
-            optimizations={"phonetic": False},
+            optimizations={"fuzzy": False},
         )
         # Second search call is the text body.
         text_body = store.client.search.call_args_list[1].kwargs["body"]
         clause = text_body["query"]["bool"]["must"][0]["multi_match"]
-        for f in clause["fields"]:
-            assert "phonetic" not in f
+        assert "fuzziness" not in clause
 
 
 # ---------------------------------------------------------------------------
@@ -630,12 +611,12 @@ class TestOptimizationsKeyContract:
                 "hybrid": True,
                 "fuzzy": False,
                 "synonyms": True,
-                "phonetic": False,
                 "phrase_boost": True,
                 "field_boost": False,
                 "typeahead": True,
                 "reranking": False,
                 "llm": False,
+                "llm_judge": True,
             },
         )
         assert msg.optimizations is not None
@@ -662,12 +643,12 @@ class TestRetrieverForwarding:
             k=4,
             fetch_k=20,
             alpha=0.35,
-            optimizations={"fuzzy": False, "phonetic": False},
+            optimizations={"fuzzy": False, "synonyms": False},
         )
         retriever.invoke("q")
 
         kwargs = vector_store.hybrid_search.call_args.kwargs
-        assert kwargs["optimizations"] == {"fuzzy": False, "phonetic": False}
+        assert kwargs["optimizations"] == {"fuzzy": False, "synonyms": False}
         assert kwargs["alpha"] == 0.35
 
     def test_as_retriever_threads_optimizations_through_search_kwargs(self):

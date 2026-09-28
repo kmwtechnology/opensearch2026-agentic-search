@@ -130,14 +130,12 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-# Claude Code — note: CLAUDE.md and .claude/memory/ are tracked; local state in .claude/state/ is ignored
+# Claude Code local state
 .claude/state/
 
 # esci directory — raw ESCI dataset (external, not tracked). Anchored (leading /)
 # to keep this scoped to the repo-root dataset checkout.
 /esci/
 
-/log/
-langchain_agent/log/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock

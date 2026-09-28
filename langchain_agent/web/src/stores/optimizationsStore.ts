@@ -12,7 +12,6 @@ export type OptimizationKey =
   | 'hybrid'
   | 'fuzzy'
   | 'synonyms'
-  | 'phonetic'
   | 'phrase_boost'
   | 'field_boost'
   | 'typeahead'
@@ -26,7 +25,6 @@ const DEFAULT_OPTIMIZATIONS: Optimizations = {
   hybrid: true,
   fuzzy: true,
   synonyms: true,
-  phonetic: true,
   phrase_boost: true,
   field_boost: true,
   typeahead: true,
@@ -40,7 +38,6 @@ interface OptimizationsState {
   optimizations: Optimizations
   toggle: (key: OptimizationKey) => void
   setAll: (value: boolean) => void
-  reset: () => void
 }
 
 export const useOptimizationsStore = create<OptimizationsState>()(
@@ -61,14 +58,13 @@ export const useOptimizationsStore = create<OptimizationsState>()(
             {} as Optimizations
           ),
         }),
-      reset: () => set({ optimizations: { ...DEFAULT_OPTIMIZATIONS } }),
     }),
     {
       name: 'search-optimizations',
-      // Bump on additive flag changes:
+      // Bump on flag changes:
       //   v2 added `reranking`; v3 added `llm`; v4 added `llm_judge`;
-      //   v5 flipped llm_judge default to true.
-      version: 5,
+      //   v5 flipped llm_judge default to true; v6 dropped `phonetic`.
+      version: 6,
       // Merge persisted state with current defaults so newly added flags
       // appear enabled instead of `undefined`, and unknown keys from older
       // schemas are dropped (we only keep keys that exist in the defaults).

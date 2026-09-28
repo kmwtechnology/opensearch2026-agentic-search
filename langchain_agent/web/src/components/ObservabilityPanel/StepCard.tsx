@@ -47,8 +47,7 @@ const nodeConfig: Record<
     bgColor: 'bg-white border-[#5B21B6]', accent: '#5B21B6',
   },
   reranker: {
-    // Overridden below once we know the actual reranker_type for this step
-    // (#87) — this is only the fallback before that event arrives.
+    // Becomes 'Cross-Encoder Reranker' once the reranker_result event arrives.
     label: 'Reranker',
     color: 'text-[#3730A3]',
     bgColor: 'bg-white border-[#3730A3]', accent: '#3730A3',
@@ -83,21 +82,15 @@ export function StepCard({ step, index }: StepCardProps) {
         bgColor: 'bg-white border-[var(--color-stage-border)]', accent: 'var(--color-stage-border)',
       }
 
-  // The reranker's label depends on which reranker actually ran this turn —
-  // never assume an LLM-based reranker when the (default, and only, since
-  // #148) local cross-encoder is configured (#87). Spread into a fresh object
-  // rather than mutating
-  // baseConfig, which for known nodes is a direct reference into the
-  // shared, module-level nodeConfig map.
+  // Spread into a fresh object rather than mutating baseConfig, which for
+  // known nodes is a direct reference into the shared nodeConfig map.
   let config = baseConfig
   if (!enrichmentEvent && step.node === 'reranker') {
     const rerankerResultEvent = step.events.find(
       (e): e is RerankerResultEvent => e.type === 'reranker_result'
     )
-    if (rerankerResultEvent?.reranker_type === 'cross-encoder') {
+    if (rerankerResultEvent) {
       config = { ...baseConfig, label: 'Cross-Encoder Reranker' }
-    } else if (rerankerResultEvent?.reranker_type) {
-      config = { ...baseConfig, label: 'LLM Reranker' }
     }
   }
 

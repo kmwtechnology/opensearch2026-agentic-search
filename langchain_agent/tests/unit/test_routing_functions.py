@@ -51,23 +51,6 @@ class TestRouteAfterIntent:
 
 
 # ---------------------------------------------------------------------------
-# _route_after_query_evaluator
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestRouteAfterQueryEvaluator:
-    @pytest.fixture(autouse=True)
-    def _setup(self, bare_agent):
-        self.agent = bare_agent
-
-    def test_always_returns_retriever(self):
-        for intent in ("search", "comparison", "attribute_filter", "follow_up", "summary"):
-            state = {"intent": intent, "messages": []}
-            assert self.agent._route_after_query_evaluator(state) == "retriever"
-
-
-# ---------------------------------------------------------------------------
 # _route_after_summary
 # ---------------------------------------------------------------------------
 

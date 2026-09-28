@@ -1,6 +1,6 @@
 #!/bin/bash
 # Agentic Hybrid Search Setup Script
-# One-time setup: configure environment, start Docker services, ingest ESCI products
+# One-time setup: configure environment, start Docker services, load the precomputed corpus
 # shellcheck disable=SC2027,SC2086,SC2154,SC2289,SC1078,SC1079,SC1088,SC1036,SC2140
 
 set -e  # Exit on error
@@ -62,7 +62,7 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     cat << EOF
 Usage: ./scripts/setup.sh [OPTIONS]
 
-One-time setup for local development: configures environment, starts Docker services, and ingests ESCI products.
+One-time setup for local development: configures environment, starts Docker services, and loads the precomputed corpus.
 
 OPTIONS:
     -h, --help          Show this help message and exit
@@ -70,26 +70,24 @@ OPTIONS:
 
 REQUIREMENTS:
     - Docker (for PostgreSQL + OpenSearch containers)
-    - Python 3.13+ (creates .venv at project root if missing)
+    - Python 3.14+ (creates .venv at project root if missing)
     - Node.js 24+ (for frontend; 24.21.0 or later)
     - Ollama, running natively (https://ollama.com) — every model is local;
       setup pulls qwen3.6:35b-a3b-q4_K_M (~23 GB) and nomic-embed-text if missing
-    - ~26 GB disk space (models ~23 GB, product parquet + Docker volumes)
-    - Internet access (Git LFS pull for the committed product parquet; Ollama model pulls)
+    - ~26 GB disk space (models ~23 GB, precomputed corpus + Docker volumes)
+    - Internet access (Git LFS pull for the committed corpus dump; Ollama model pulls)
 
 WHAT THIS SCRIPT DOES:
-    1. Checks prerequisites (Docker, Python 3.13+, Node.js 24+)
-    2. Verifies data/esci_products.parquet (committed via Git LFS; `git lfs pull`
-       if missing) — only clones the raw amazon-science/esci-data repo as a
-       last-resort fallback for regenerating that parquet from scratch
+    1. Checks prerequisites (Docker, Python 3.14+, Node.js 24+)
+    2. Verifies the precomputed corpus dump in data/precomputed/ (committed via
+       Git LFS; runs `git lfs pull` if the files are still LFS pointers)
     3. Creates Python virtual environment at project root (if not present)
     4. Creates .env file from .env.example (if not present)
-    5. Creates frontend .env configuration
-    6. Installs Python dependencies in root .venv
-    7. Installs Node.js frontend dependencies
-    8. Starts PostgreSQL and OpenSearch containers
-    9. Initializes database and OpenSearch index
-    10. Loads ~158K ESCI products + judgments + color taxonomy into OpenSearch.
+    5. Installs Python dependencies in root .venv
+    6. Installs Node.js frontend dependencies
+    7. Starts PostgreSQL and OpenSearch containers
+    8. Initializes database and OpenSearch index
+    9. Loads ~158K ESCI products + judgments + color taxonomy into OpenSearch.
         Bulk-loads the permanent precomputed dump at data/precomputed/
         (~1-2 min; embeddings + attribute detection + seeded color taxonomy
         were already run once and committed via Git LFS — no Ollama call,
@@ -162,18 +160,18 @@ echo "✓ git-lfs found"
 
 if ! command -v python3 &> /dev/null; then
     echo "❌ Python 3 not found"
-    echo "   Please install Python 3.13+ from https://www.python.org/"
+    echo "   Please install Python 3.14+ from https://www.python.org/"
     exit 1
 fi
 
-# Check Python version (must be 3.13+)
+# Check Python version (must be 3.14+)
 PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
 PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
 PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
 
-if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 13 ]; }; then
+if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 14 ]; }; then
     echo "❌ Python version too old: $PYTHON_VERSION"
-    echo "   Required: Python 3.13+"
+    echo "   Required: Python 3.14+"
     exit 1
 fi
 echo "✓ Python $PYTHON_VERSION found"
@@ -233,109 +231,52 @@ if [ $CHECK_ONLY -eq 1 ]; then
     exit 0
 fi
 
-# 2. Ensure the product/judgment parquets are present
-# These are committed to the repo via Git LFS (data/esci_products.parquet,
-# data/esci_judgments_aggregated.parquet) — ingest reads them directly and
-# never touches the raw ESCI dataset repo. Only fall back to cloning
-# amazon-science/esci-data if the committed parquet is missing (e.g. LFS
-# wasn't pulled, or someone wants to regenerate the sample from scratch —
-# see data/README.md "Regenerating the products parquet").
-start_step "Checking for product data"
-log "Step 2: Checking for product data..."
-echo "📦 Checking for product data..."
+# 2. Ensure the precomputed corpus dump is present. It is committed via Git LFS
+# (data/precomputed/); the products index, judgments and color taxonomy are all
+# bulk-loaded from it by setup.py. There is no rebuild path -- if it's missing
+# the only fix is `git lfs pull`.
+start_step "Checking for the precomputed corpus dump"
+log "Step 2: Checking for the precomputed corpus dump..."
+echo "📦 Checking for the precomputed corpus dump..."
 
-SAMPLE_FILE="$PARENT_DIR/data/esci_products.parquet"
+DUMP_DIR="$PARENT_DIR/data/precomputed"
+DUMP_FILE="$DUMP_DIR/products_dump.parquet"
 
 # An un-smudged LFS file is a small text pointer ("version https://git-lfs...")
-# rather than real parquet bytes — treat that the same as "missing" so we
-# fall into the `git lfs pull` retry below instead of failing confusingly deep
-# inside pyarrow later.
+# rather than real parquet bytes -- treat that the same as "missing".
 is_real_parquet() {
     [ -f "$1" ] && [ "$(head -c 7 "$1" 2>/dev/null)" != "version" ]
 }
 
-if is_real_parquet "$SAMPLE_FILE"; then
-    FILE_SIZE=$(du -h "$SAMPLE_FILE" | cut -f1)
-    log "✓ Committed products parquet found ($FILE_SIZE) — skipping ESCI dataset clone"
-    echo "✓ Committed products parquet found ($FILE_SIZE) — skipping ESCI dataset clone"
-else
-    log "   ❌ data/esci_products.parquet missing or is an un-pulled LFS pointer — attempting 'git lfs pull'"
-    echo "   ❌ data/esci_products.parquet missing or is an un-pulled LFS pointer — attempting 'git lfs pull'"
+if ! is_real_parquet "$DUMP_FILE" || [ ! -f "$DUMP_DIR/dump_metadata.json" ]; then
+    log "   data/precomputed/ missing or still LFS pointers — running 'git lfs pull'"
+    echo "   data/precomputed/ missing or still LFS pointers — running 'git lfs pull'"
     (cd "$PARENT_DIR" && git lfs pull) || true
+fi
 
-    if is_real_parquet "$SAMPLE_FILE"; then
-        FILE_SIZE=$(du -h "$SAMPLE_FILE" | cut -f1)
-        log "✓ Products parquet pulled from LFS ($FILE_SIZE)"
-        echo "✓ Products parquet pulled from LFS ($FILE_SIZE)"
-    else
-        log "   ❌ Still missing after 'git lfs pull'. Falling back to cloning the raw ESCI dataset (~1.5 GB)"
-        echo "   ❌ Still missing after 'git lfs pull'. Falling back to cloning the raw ESCI dataset (~1.5 GB)"
-        echo "      This regenerates data/esci_products.parquet — see data/README.md 'Regenerating the products parquet'"
-
-        ESCI_REPO_DIR="$PARENT_DIR/esci"
-        ESCI_FILE="$ESCI_REPO_DIR/shopping_queries_dataset/shopping_queries_dataset_products.parquet"
-
-        if [ ! -d "$ESCI_REPO_DIR" ]; then
-            log "   🌐 Cloning ESCI dataset from GitHub (~1.5 GB)... this is a one-time download (2-5 min)"
-            echo "   🌐 Cloning ESCI dataset from GitHub (~1.5 GB)... this is a one-time download (2-5 min)"
-            if git clone https://github.com/amazon-science/esci-data.git "$ESCI_REPO_DIR"; then
-                log "   ✓ ESCI dataset cloned successfully"
-                echo "   ✓ ESCI dataset cloned successfully"
-            else
-                log "   ❌ Failed to clone ESCI dataset"
-                echo "   ❌ Failed to clone ESCI dataset"
-                echo "      GitHub: https://github.com/amazon-science/esci-data"
-                echo "      Manual download: Extract shopping_queries_dataset/ to ../esci/"
-                exit 1
-            fi
-        else
-            log "✓ ESCI dataset directory exists"
-            echo "✓ ESCI dataset directory exists"
-        fi
-
-        if [ -f "$ESCI_FILE" ]; then
-            FILE_SIZE=$(du -h "$ESCI_FILE" | cut -f1)
-            log "✓ ESCI dataset file found ($FILE_SIZE)"
-            echo "✓ ESCI dataset file found ($FILE_SIZE)"
-        else
-            log "❌ ESCI dataset parquet file not found at: $ESCI_FILE"
-            echo "❌ ESCI dataset parquet file not found at:"
-            echo "   $ESCI_FILE"
-            echo "   Ensure shopping_queries_dataset_products.parquet is in: $ESCI_REPO_DIR/shopping_queries_dataset/"
-            exit 1
-        fi
-
-        echo "   ⚠ Run 'PYTHONPATH=. python scripts/build_product_sample.py' from langchain_agent/ to build data/esci_products.parquet, then re-run setup.sh"
-        exit 1
-    fi
+if is_real_parquet "$DUMP_FILE" && [ -f "$DUMP_DIR/dump_metadata.json" ]; then
+    FILE_SIZE=$(du -h "$DUMP_FILE" | cut -f1)
+    log "✓ Precomputed corpus dump present ($FILE_SIZE)"
+    echo "✓ Precomputed corpus dump present ($FILE_SIZE)"
+else
+    echo "❌ data/precomputed/ is still missing after 'git lfs pull'."
+    echo "   The corpus is a permanent one-time export; there is no way to rebuild it locally."
+    echo "   Check that git-lfs is installed and you have access to the repo's LFS objects."
+    exit 1
 fi
 
 end_step
 echo ""
 
-# 3. Generate API key if .env doesn't exist
+# 3. Create .env from the example if missing
 start_step "Configuring environment"
 echo "📝 Configuring environment..."
 
 if [ ! -f "$PROJECT_DIR/.env" ]; then
-    echo "   Creating .env file..."
     cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
-
-    # Generate API key
-    API_KEY=$(openssl rand -hex 32)
-
-    # Use sed to replace the placeholders (works on both macOS and Linux).
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "s/your-secure-api-key-here/$API_KEY/" "$PROJECT_DIR/.env"
-    else
-        sed -i "s/your-secure-api-key-here/$API_KEY/" "$PROJECT_DIR/.env"
-    fi
-
-    echo "   ✓ Generated API_KEY"
+    echo "   ✓ Created .env from .env.example"
 else
-    # Extract existing API_KEY
-    API_KEY=$(grep "^API_KEY=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
-    echo "   ✓ Using existing API_KEY"
+    echo "   ✓ Using existing .env"
 fi
 
 # Pull the local models if missing (idempotent; the chat model is ~23 GB, so
@@ -353,18 +294,6 @@ for model in "$(env_model LLM_MODEL qwen3.6:35b-a3b-q4_K_M)" "$(env_model EMBEDD
         ollama pull "$model"
     fi
 done
-
-# 3. Create frontend .env (if missing)
-if [ ! -f "$PROJECT_DIR/web/.env" ]; then
-    echo "   Creating web/.env..."
-    cat > "$PROJECT_DIR/web/.env" << EOF
-# Vite proxy in vite.config.ts routes /api and /ws to the native backend on localhost:8080
-# No VITE_API_URL needed for local dev (empty = relative URLs through proxy)
-EOF
-    echo "   ✓ Frontend env configured"
-else
-    echo "   ✓ Frontend env exists"
-fi
 
 end_step
 echo ""
@@ -488,11 +417,10 @@ cd "$PROJECT_DIR"
 end_step
 echo ""
 
-# 7. Initialize database, OpenSearch index, and ingest ESCI products
-# setup.py handles everything: DB init, index creation, API validation, and product ingestion
-start_step "Initializing database, OpenSearch, and ingesting products"
-log "Step 7: Initializing database, OpenSearch, and ingesting products..."
-echo "💾 Initializing database, OpenSearch, and ingesting products..."
+# 7. Initialize database and OpenSearch index, then bulk-load the precomputed corpus
+start_step "Initializing database, OpenSearch, and loading the corpus"
+log "Step 7: Initializing database, OpenSearch, and loading the corpus..."
+echo "💾 Initializing database, OpenSearch, and loading the corpus..."
 
 # shellcheck source=/dev/null
 source "$PROJECT_DIR/.venv/bin/activate"
@@ -504,12 +432,6 @@ PYTHONPATH=. python setup.py 2>&1 | tee -a logs/setup.log
 
 if [ "${PIPESTATUS[0]}" -eq 0 ]; then
     echo ""
-    SAMPLE_FILE="$PARENT_DIR/data/esci_products.parquet"
-    if [ -f "$SAMPLE_FILE" ]; then
-        SAMPLE_SIZE=$(du -h "$SAMPLE_FILE" | cut -f1)
-        log "✓ Products parquet: $SAMPLE_SIZE"
-        echo "✓ Products parquet: $SAMPLE_SIZE"
-    fi
     log "✓ Database initialization complete"
     echo "✓ Database initialization complete"
     end_step

@@ -1,7 +1,7 @@
 /**
  * SearchOptimizationDetails - Displays and toggles the search optimizations
- * applied at retrieval time (hybrid search, fuzzy, synonyms, phonetic, phrase
- * boost, field boost, typeahead). State is held in `optimizationsStore` and
+ * applied at retrieval time (hybrid search, fuzzy, synonyms, phrase boost,
+ * field boost, typeahead). State is held in `optimizationsStore` and
  * sent to the backend with each chat message.
  */
 
@@ -40,12 +40,6 @@ const OPTIMIZATIONS: OptimizationDef[] = [
     name: 'Synonym Expansion',
     description: 'Expands queries (e.g., "headphones" → "earphones/earbuds")',
     icon: '🔗',
-  },
-  {
-    key: 'phonetic',
-    name: 'Phonetic Matching',
-    description: 'Finds phonetically similar terms (e.g., "Sennheiser")',
-    icon: '🔊',
   },
   {
     key: 'phrase_boost',

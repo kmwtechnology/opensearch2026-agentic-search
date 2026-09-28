@@ -46,7 +46,7 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
   const rerankerResultEvent = (rerankerStep?.events ?? []).find(
     (e): e is RerankerResultEvent => e.type === 'reranker_result'
   )
-  const rerankerType = rerankerResultEvent?.reranker_type
+  const hasRerankerResult = Boolean(rerankerResultEvent)
 
   // Toggle document expansion
   const toggleDocExpansion = (index: number) => {
@@ -372,15 +372,10 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
       <div className="text-[1.25rem] text-[var(--color-stage-ink-soft)] border-t border-[var(--color-stage-border)] pt-3">
         <p>
           <strong>Hybrid search</strong> combines BM25 (keyword) and vector similarity.
-          {rerankerType === 'cross-encoder' ? (
+          {hasRerankerResult ? (
             <>
               {' '}The <strong>reranker</strong> (local cross-encoder) then scores
               each document for relevance offline, with no added API latency.
-            </>
-          ) : rerankerType ? (
-            <>
-              {' '}The <strong>reranker</strong> (LLM) then scores each document
-              for relevance using LLM-based semantic scoring.
             </>
           ) : (
             <> The <strong>reranker</strong> then scores each document for relevance.</>

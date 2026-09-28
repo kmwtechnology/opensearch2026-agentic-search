@@ -64,10 +64,3 @@ export async function apiPost(endpoint: string, body?: unknown): Promise<Respons
     body: body ? JSON.stringify(body) : undefined,
   })
 }
-
-/**
- * DELETE request with authentication.
- */
-export async function apiDelete(endpoint: string): Promise<Response> {
-  return apiFetch(endpoint, { method: 'DELETE' })
-}

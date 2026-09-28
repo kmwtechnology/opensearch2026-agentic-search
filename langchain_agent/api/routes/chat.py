@@ -42,7 +42,6 @@ _ALLOWED_OPTIMIZATIONS = frozenset(
         "hybrid",
         "fuzzy",
         "synonyms",
-        "phonetic",
         "phrase_boost",
         "field_boost",
         "typeahead",
@@ -215,8 +214,8 @@ class ChatMessage(BaseModel):
     optimizations: Optional[Dict[str, bool]] = Field(
         None,
         description=(
-            "Per-feature search optimization toggles. Ten recognized keys: "
-            "hybrid, fuzzy, synonyms, phonetic, phrase_boost, field_boost, typeahead, "
+            "Per-feature search optimization toggles. Nine recognized keys: "
+            "hybrid, fuzzy, synonyms, phrase_boost, field_boost, typeahead, "
             "reranking, llm, llm_judge. Missing keys default to true (enabled). Skipped "
             "stages are collapsed out of the observability panel and the Pipeline Quality "
             "Summary's per-stage metrics."

@@ -393,16 +393,6 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         # (search, comparison, attribute_filter, follow_up)
         return "other"  # Maps to "query_evaluator" node
 
-    def _route_after_query_evaluator(self, state: CustomAgentState) -> str:
-        """Route after query evaluator to retriever.
-
-        Query evaluator only runs for intents that need search (question, follow_up, task).
-        Summary intents skip query_evaluator entirely (routed directly to summary node).
-        Clarify intents skip both query_evaluator and go straight to agent.
-        Config/doc requests skip query_evaluator entirely.
-        """
-        return "retriever"
-
     def _route_after_summary(self, state: CustomAgentState) -> str:
         """Route after summary node.
 

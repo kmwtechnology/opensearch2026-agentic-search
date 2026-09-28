@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 """
-Unified Setup Script for E-Commerce Search Agent
-Initializes PostgreSQL database, loads ESCI product data, and validates the local Ollama models.
-This is the single entry point for complete system setup from scratch
-
-Usage:
-    python setup.py                    # Full setup with ESCI products
-    python setup.py --skip-docs        # Setup without loading products
+Setup: initializes the PostgreSQL checkpoint tables, the OpenSearch index and
+search pipeline, validates the local Ollama models, and bulk-loads the
+precomputed corpus dump. Invoked by scripts/setup.sh; takes no arguments.
 """
 
-import argparse
 import os
 import sys
 from pathlib import Path
@@ -227,114 +222,84 @@ def validate_ollama_models():
 
 def main():
     """Run complete setup process"""
-    parser = argparse.ArgumentParser(description="Setup LangChain Agent")
-    parser.add_argument(
-        "--skip-docs", action="store_true", help="Skip document loading (database setup only)"
-    )
-    parser.add_argument(
-        "--skip-models", action="store_true", help="Skip local Ollama model validation"
-    )
-    parser.add_argument(
-        "--reset-index",
-        action="store_true",
-        help="Delete the existing OpenSearch index before creating a new one (forces re-index with new mapping)",
-    )
-    parser.add_argument(
-        "--skip-db",
-        action="store_true",
-        help="Skip PostgreSQL setup (OpenSearch index + search pipeline only). Used on CI runners that have no Postgres.",
-    )
-    args = parser.parse_args()
-
     print("\n" + "=" * 70)
     print("E-COMMERCE SEARCH AGENT - COMPLETE SETUP")
     print("=" * 70)
     print("\nThis script will:")
-    if not args.skip_db:
-        print("  1. Create PostgreSQL database (for checkpoints)")
+    print("  1. Create PostgreSQL database (for checkpoints)")
     print("  2. Create OpenSearch index (for products)")
     print("  3. Create search pipeline (for hybrid search)")
-    if not args.skip_models:
-        print("  4. Validate local Ollama models")
-    if not args.skip_docs:
-        print("  5. Load ESCI e-commerce products")
+    print("  4. Validate local Ollama models")
+    print("  5. Load the precomputed ESCI corpus")
     print("\n" + "=" * 70)
 
     try:
-        # Step 1: PostgreSQL Setup (checkpoints only) — skipped on CI runners
-        if not args.skip_db:
-            create_database()
-            verify_connection()
-            init_checkpoint_tables()
-            init_metadata_table()
+        create_database()
+        verify_connection()
+        init_checkpoint_tables()
+        init_metadata_table()
 
-        # Step 2-3: OpenSearch Setup (documents + search)
-        create_opensearch_index(reset=args.reset_index)
+        create_opensearch_index(reset=False)
         create_search_pipeline()
 
-        # Step 2: local model validation (optional)
-        if not args.skip_models:
-            validate_ollama_models()
+        validate_ollama_models()
 
-        # Step 3: Product + Judgment Data Loading
         docs_ingest_failed = False
         precomputed_dump = (
             Path(__file__).parent.parent / "data" / "precomputed" / "dump_metadata.json"
         )
 
-        if not args.skip_docs:
-            if not precomputed_dump.exists():
-                print("\n" + "=" * 70)
-                print("✗ SETUP INCOMPLETE — data/precomputed/ is missing")
-                print("=" * 70)
-                print(
-                    "\nThe product corpus is a permanent, one-time export committed to this "
-                    "repo via Git LFS. It is not rebuilt locally — there is no ingest "
-                    "pipeline for it any more (see data/README.md)."
-                )
-                print("\nMost likely cause: Git LFS objects were never pulled. Run:")
-                print("  git lfs pull")
-                print("\nThen re-run setup.")
-                print("\n" + "=" * 70)
-                return 1
-
-            print("\n[6/7] Loading precomputed products, judgments, and attribute taxonomy...")
+        if not precomputed_dump.exists():
+            print("\n" + "=" * 70)
+            print("✗ SETUP INCOMPLETE — data/precomputed/ is missing")
+            print("=" * 70)
             print(
-                "      Bulk-loading data/precomputed/*.parquet — embeddings and attribute "
-                "detection were already run once and committed (Git LFS). No Ollama call, "
-                "no re-embedding needed."
+                "\nThe product corpus is a permanent, one-time export committed to this "
+                "repo via Git LFS. It is not rebuilt locally — there is no ingest "
+                "pipeline for it any more (see data/README.md)."
             )
-            try:
-                import subprocess
+            print("\nMost likely cause: Git LFS objects were never pulled. Run:")
+            print("  git lfs pull")
+            print("\nThen re-run setup.")
+            print("\n" + "=" * 70)
+            return 1
 
-                loader_script = Path(__file__).parent / "scripts" / "load_precomputed_indices.py"
-                python = Path(__file__).parent / ".venv" / "bin" / "python"
-                if not python.exists():
-                    python = Path(sys.executable)
-                subprocess.run(
-                    [str(python), str(loader_script)],
-                    cwd=str(Path(__file__).parent),
-                    check=True,
-                    env={**os.environ, "PYTHONPATH": "."},
-                )
-                print(
-                    "      ✓ Products, judgments, and attribute taxonomy loaded from precomputed dump"
-                )
-            except subprocess.CalledProcessError as e:
-                docs_ingest_failed = True
-                print(f"      ✗ Precomputed load failed (exit {e.returncode})")
-                print(
-                    "      Retry manually: PYTHONPATH=. python langchain_agent/scripts/load_precomputed_indices.py"
-                )
+        print("\n[5/5] Loading precomputed products, judgments, and attribute taxonomy...")
+        print(
+            "      Bulk-loading data/precomputed/*.parquet — embeddings and attribute "
+            "detection were already run once and committed (Git LFS). No Ollama call, "
+            "no re-embedding needed."
+        )
+        try:
+            import subprocess
 
-        # A failed ingest means zero (or stale) products are indexed — that's not
-        # a state to report as "SETUP COMPLETE". Fail loud instead of continuing
-        # past it; --skip-docs remains the way to deliberately opt out of ingest.
+            loader_script = Path(__file__).parent / "scripts" / "load_precomputed_indices.py"
+            python = Path(__file__).parent / ".venv" / "bin" / "python"
+            if not python.exists():
+                python = Path(sys.executable)
+            subprocess.run(
+                [str(python), str(loader_script)],
+                cwd=str(Path(__file__).parent),
+                check=True,
+                env={**os.environ, "PYTHONPATH": "."},
+            )
+            print(
+                "      ✓ Products, judgments, and attribute taxonomy loaded from precomputed dump"
+            )
+        except subprocess.CalledProcessError as e:
+            docs_ingest_failed = True
+            print(f"      ✗ Precomputed load failed (exit {e.returncode})")
+            print(
+                "      Retry manually: PYTHONPATH=. python langchain_agent/scripts/load_precomputed_indices.py"
+            )
+
+        # A failed load means zero (or stale) products are indexed — that's not
+        # a state to report as "SETUP COMPLETE". Fail loud instead.
         if docs_ingest_failed:
             print("\n" + "=" * 70)
             print("✗ SETUP INCOMPLETE — precomputed load failed, no products indexed")
             print("=" * 70)
-            print("\nDatabase, OpenSearch index, and API key setup succeeded above.")
+            print("\nDatabase and OpenSearch index setup succeeded above.")
             print("Fix the load issue and retry:")
             print(
                 "  PYTHONPATH=. python langchain_agent/scripts/load_precomputed_indices.py --reset-index"

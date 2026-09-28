@@ -10,7 +10,7 @@
 #
 # Default is the FAST path: flip the mapping row and re-tag only the products
 # actually listed as tan. Milliseconds. Pass --full to re-run the scoped
-# Python re-tag against every tan-listed candidate instead (~20s), for when
+# Python re-tag against every product whose text mentions tan (~8s), for when
 # the index may have drifted for reasons beyond this demo.
 #
 # The Restart button in the UI calls the same code path via
@@ -25,7 +25,7 @@ cd "$(dirname "$0")/.."
 FULL="False"
 if [ "${1:-}" = "--full" ]; then
   FULL="True"
-  echo "==> Full reset: mapping + complete re-ingest (~20s)"
+  echo "==> Full reset: mapping + scoped re-tag of every tan-mentioning product (~8s)"
 else
   echo "==> Fast reset: mapping + re-tag tan-listed products"
 fi

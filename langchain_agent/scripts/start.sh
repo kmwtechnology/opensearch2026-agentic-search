@@ -76,7 +76,7 @@ for i in {1..30}; do
     fi
     if [ "$i" -eq 30 ]; then
         echo "❌ Backend failed to start"
-        echo "   Check logs: ./scripts/logs.sh backend"
+        echo "   Check logs: tail -f logs/backend.log"
         exit 1
     fi
     sleep 1
@@ -129,12 +129,7 @@ echo "📊 Data Services:"
 echo "  PostgreSQL:  localhost:5432"
 echo "  OpenSearch:  localhost:9200"
 echo ""
-echo "📋 Logs:"
-echo "  Backend:   ./scripts/logs.sh backend"
-echo "  Frontend:  ./scripts/logs.sh frontend"
-echo "  All:       ./scripts/logs.sh all"
+echo "📋 Logs:      tail -f logs/backend.log   (or logs/frontend.log, logs/demo-build.log)"
 echo ""
-echo "⚙️  Commands:"
-echo "  Stop services:        ./scripts/stop.sh"
-echo "  View all logs:        ./scripts/logs.sh all"
+echo "⚙️  Stop:      ./scripts/stop.sh"
 echo ""

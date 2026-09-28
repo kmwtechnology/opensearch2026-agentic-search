@@ -129,8 +129,8 @@ class CustomAgentState(TypedDict, total=False):
     quality_gate_status: Optional[str]
 
     # Per-message search optimization toggles (frontend-controlled).
-    # Recognized keys: hybrid, fuzzy, synonyms, phonetic, phrase_boost,
-    # field_boost, typeahead, reranking, llm. Missing keys default to True.
+    # Recognized keys: hybrid, fuzzy, synonyms, phrase_boost, field_boost,
+    # typeahead, reranking, llm, llm_judge. Missing keys default to True.
     optimizations: Dict[str, bool]
 
     # ------------------------------------------------------------------
@@ -151,7 +151,7 @@ class CustomAgentState(TypedDict, total=False):
     # Stock/vanilla BM25 reference. Ignores all optimization toggles —
     # standard analyzer, title + chunk_text only. Always present, gives
     # the Pipeline Quality Summary card a fixed anchor for measuring the
-    # value of fuzzy/synonyms/phonetic/etc.
+    # value of fuzzy/synonyms/etc.
     stock_bm25_documents: List[Document]
     # ESCI ground-truth judgments for the user's query, looked up from
     # the esci_judgments index. None when the query is novel; the UI

@@ -2,13 +2,13 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useOptimizationsStore, type OptimizationKey, type Optimizations } from '../optimizationsStore'
 
 const ALL_KEYS: OptimizationKey[] = [
-  'hybrid', 'fuzzy', 'synonyms', 'phonetic',
+  'hybrid', 'fuzzy', 'synonyms',
   'phrase_boost', 'field_boost', 'typeahead',
   'reranking', 'llm', 'llm_judge',
 ]
 
 const DEFAULT_OPTIMIZATIONS: Optimizations = {
-  hybrid: true, fuzzy: true, synonyms: true, phonetic: true,
+  hybrid: true, fuzzy: true, synonyms: true,
   phrase_boost: true, field_boost: true, typeahead: true,
   reranking: true, llm: true, llm_judge: true,
 }
@@ -26,9 +26,9 @@ describe('optimizationsStore', () => {
       }
     })
 
-    it('has exactly 10 keys', () => {
+    it('has exactly 9 keys', () => {
       const { optimizations } = useOptimizationsStore.getState()
-      expect(Object.keys(optimizations)).toHaveLength(10)
+      expect(Object.keys(optimizations)).toHaveLength(9)
     })
   })
 
@@ -77,25 +77,4 @@ describe('optimizationsStore', () => {
     })
   })
 
-  describe('reset', () => {
-    it('restores defaults after toggle', () => {
-      const { toggle, reset } = useOptimizationsStore.getState()
-      toggle('fuzzy')
-      toggle('phonetic')
-      reset()
-      const { optimizations } = useOptimizationsStore.getState()
-      expect(optimizations.fuzzy).toBe(true)
-      expect(optimizations.phonetic).toBe(true)
-    })
-
-    it('restores defaults after setAll(false)', () => {
-      const { setAll, reset } = useOptimizationsStore.getState()
-      setAll(false)
-      reset()
-      const { optimizations } = useOptimizationsStore.getState()
-      for (const key of ALL_KEYS) {
-        expect(optimizations[key]).toBe(true)
-      }
-    })
-  })
 })

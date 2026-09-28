@@ -50,20 +50,14 @@ venv.bak/
 .env.*.local
 
 # Database
-postgres_data/
 *.db
 *.sqlite
 *.sqlite3
-chroma.sqlite3
-chroma_db/
 
 # Logs
 *.log
 logs/
 *.pot
-
-# HuggingFace Cache (optional - comment out if you want to cache models)
-.cache/huggingface/
 
 # Testing
 .pytest_cache/
@@ -77,7 +71,6 @@ htmlcov/
 dmypy.json
 
 # Project-specific
-langchain_agent/__pycache__/
 *.pyc
 .claude/
 

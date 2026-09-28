@@ -14,7 +14,6 @@ Real-time visualization of the LangGraph RAG pipeline: event stream, per-node me
 | `PipelineSummaryCard.tsx` | NDCG/MRR/Recall metrics + lift-per-100ms (emitted after `agent_complete`) |
 | `SearchOptimizationDetails.tsx` | Hybrid BM25 + Reranked comparison cards with lift indicators |
 | `HistoricalSnapshotCard.tsx` | Checkpoint snapshot view (if saved to LangGraph) |
-| `RawEventInspector.tsx` | Raw event JSON dump for debugging |
 | `DslViewerModal.tsx` | Full OpenSearch DSL query display (hybrid / BM25 baseline / quality-gate retry) |
 
 ## Subdirectories

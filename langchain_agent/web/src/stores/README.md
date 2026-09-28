@@ -10,7 +10,7 @@ Zustand state management stores for global UI and application state.
 |-------|---------|-----------|-------------|
 | **chatStore** | Messages, conversation, streaming | `threadId`, `messages[]`, `isProcessing`, `streamingContent` | `addMessage()`, `setThreadId()`, `updateMessageStatus()` |
 | **observabilityStore** | Event stream, pipeline timeline | `events[]`, `activeStep`, `snapshots[]` | `addEvent()`, `setActiveStep()`, `saveSnapshot()` |
-| **optimizationsStore** | UI search-optimization toggles | `optimizations` (a `Record<OptimizationKey, boolean>` — `hybrid`, `fuzzy`, `synonyms`, `phonetic`, `phrase_boost`, `field_boost`, `typeahead`, `reranking`, `llm`, `llm_judge`) | `toggle(key)`, `setAll(value)`, `reset()` |
+| **optimizationsStore** | UI search-optimization toggles | `optimizations` (a `Record<OptimizationKey, boolean>` — `hybrid`, `fuzzy`, `synonyms`, `phrase_boost`, `field_boost`, `typeahead`, `reranking`, `llm`, `llm_judge`) | `toggle(key)`, `setAll(value)` |
 
 ## Store Files
 
@@ -75,7 +75,7 @@ interface ObservabilityState {
 
 ```typescript
 type OptimizationKey =
-  | 'hybrid' | 'fuzzy' | 'synonyms' | 'phonetic' | 'phrase_boost'
+  | 'hybrid' | 'fuzzy' | 'synonyms' | 'phrase_boost'
   | 'field_boost' | 'typeahead' | 'reranking' | 'llm' | 'llm_judge'
 
 interface OptimizationsState {

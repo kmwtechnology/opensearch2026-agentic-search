@@ -929,30 +929,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 if url in citations_dict:
                     citations_dict[url][1].append(i)
                     continue
-                # Use title first, fallback to extracted title from filename or path
-                label = doc.metadata.get("title")
-                if not label:
-                    # Try to extract a readable title from filename/path
-                    label = self._extract_title_from_path(
-                        doc.metadata.get("source", doc.metadata.get("filename", ""))
-                    )
-                # If still no label, extract class/method name from source path
-                if not label and "source" in doc.metadata:
-                    source = doc.metadata["source"]
-                    if source.endswith(".html"):
-                        # Java documentation - extract class name
-                        label = source.split("/")[-1].replace(".html", "")
-                    elif source.endswith(".md"):
-                        # Markdown - extract from path
-                        parts = source.rstrip("/").split("/")
-                        # Use filename, but improve readability
-                        filename = parts[-1].replace(".md", "").replace(".mdx", "")
-                        if filename.lower() != "readme":
-                            label = filename.replace("_", " ").replace("-", " ").title()
-                        elif len(parts) > 1:
-                            label = parts[-2].replace("_", " ").replace("-", " ").title()
-                if not label:
-                    label = "Documentation"
+                label = doc.metadata.get("title") or "(untitled product)"
                 citations_dict[url] = (
                     label,
                     [i],
@@ -1283,7 +1260,6 @@ so briefly."""
             corrected_from=enrichment_result.corrected_from,
             error=enrichment_result.reindex_error,
             reindex_mode=enrichment_result.reindex_mode,
-            reindex_run_url=enrichment_result.reindex_run_url,
             duration_seconds=(
                 enrichment_result.duration_seconds if enrichment_result.reindex_success else None
             ),
@@ -2243,58 +2219,6 @@ Respond with JSON only. No other text."""
         if isinstance(message, SystemMessage):
             return "System"
         return "Message"
-
-    def _extract_title_from_path(self, path: str) -> str:
-        """
-        Extract a readable title from a file path.
-
-        Examples:
-        - src/oss/python/concepts/langchain.md → "LangChain Concepts"
-        - src/oss/python/integrations/llms/moonshot.mdx → "Moonshot LLM Integration"
-        - docs/how-to/vector_stores.md → "Vector Stores How-To"
-        """
-        if not path:
-            return ""
-
-        # Extract filename without extension
-        import os
-
-        filename = os.path.splitext(os.path.basename(path))[0]
-
-        # Skip common non-document filenames
-        if filename in ("index", "readme", "_", "__"):
-            return ""
-
-        # Convert snake_case/kebab-case to Title Case
-        title = filename.replace("_", " ").replace("-", " ")
-
-        # Add context from parent directories if helpful
-        parts = path.split("/")
-        if len(parts) >= 2:
-            parent_dir = parts[-2].lower()
-            # Add doc type suffix from path
-            if parent_dir in ("concepts", "conceptual"):
-                title = f"{title.title()} Concepts"
-            elif parent_dir in ("how-to", "how_to"):
-                title = f"{title.title()} How-To"
-            elif parent_dir == "tutorials":
-                title = f"{title.title()} Tutorial"
-            elif parent_dir in ("quickstart", "getting-started", "getting_started"):
-                title = f"{title.title()} Quickstart"
-            elif parent_dir == "integrations":
-                title = f"{title.title()} Integration"
-            elif parent_dir == "llms":
-                title = f"{title.title()} LLM"
-            elif parent_dir == "tools":
-                title = f"{title.title()} Tool"
-            elif parent_dir == "chat_models":
-                title = f"{title.title()} Chat Model"
-            else:
-                title = title.title()
-        else:
-            title = title.title()
-
-        return title
 
     def _stream_llm_response_simple(self, messages: Sequence[BaseMessage]) -> AIMessage:
         """

@@ -137,13 +137,6 @@ export function EnrichmentMoment({ line, startedAt }: Props) {
         </div>
       )}
 
-      {/* The cloud fallback. Locally this never appears. */}
-      {line.enrichment === 'complete' && !line.docsProcessed && line.reindexRunUrl && (
-        <p className="text-[length:var(--text-stage-body)] font-medium text-[var(--color-stage-ink-muted)]">
-          The cloud build reports no completion signal back to the app. Build:{' '}
-          <span className="font-mono break-all">{line.reindexRunUrl}</span>
-        </p>
-      )}
     </div>
   )
 }

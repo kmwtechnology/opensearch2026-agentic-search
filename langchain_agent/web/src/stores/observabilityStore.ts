@@ -79,7 +79,6 @@ interface ObservabilityState {
 
   // UI state
   expandedSteps: Set<string>
-  expandedEvents: Set<string>
 
   // Actions
   startExecution: () => void
@@ -88,7 +87,6 @@ interface ObservabilityState {
   startNode: (node: NodeName, summary?: string) => void
   endNode: (node: NodeName, durationMs: number, summary?: string) => void
   toggleStepExpanded: (stepId: string) => void
-  toggleEventExpanded: (eventId: string) => void
   clearState: () => void
   hydrateSnapshot: (snapshot: ObservabilitySnapshot | null) => void
 }
@@ -115,7 +113,6 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
   rerankerProgressMessage: null,
   rerankerProgress: 0,
   expandedSteps: new Set(),
-  expandedEvents: new Set(),
 
   // Actions
   startExecution: () => set({
@@ -313,16 +310,6 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     return { expandedSteps }
   }),
 
-  toggleEventExpanded: (eventId) => set((state) => {
-    const expandedEvents = new Set(state.expandedEvents)
-    if (expandedEvents.has(eventId)) {
-      expandedEvents.delete(eventId)
-    } else {
-      expandedEvents.add(eventId)
-    }
-    return { expandedEvents }
-  }),
-
   clearState: () => set({
     isExecuting: false,
     currentNode: null,
@@ -341,7 +328,6 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     searchStatus: 'idle',
     rerankerStatus: 'idle',
     expandedSteps: new Set(),
-    expandedEvents: new Set(),
   }),
 
   hydrateSnapshot: (snapshot) => set({ historicalSnapshot: snapshot }),

@@ -26,7 +26,6 @@ const INITIAL_OBS = {
   rerankerProgressMessage: null,
   rerankerProgress: 0,
   expandedSteps: new Set<string>(),
-  expandedEvents: new Set<string>(),
 }
 
 beforeEach(() => {

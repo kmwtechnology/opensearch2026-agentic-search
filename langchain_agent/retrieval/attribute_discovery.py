@@ -1,25 +1,16 @@
 """
-Attribute discovery service — attribute-agnostic bulk and single-term
-classification for building/growing OS-backed attribute taxonomies
-(see attribute_mapping_store.py).
+Attribute classification for the OS-backed attribute taxonomies (see
+attribute_mapping_store.py): single_term_classify maps one unmapped term to
+its best-fit canonical bucket, dictionary match first with an optional LLM
+fallback for novel terms. Used live by the agent enrichment tool when a query
+mentions an attribute value that isn't in the taxonomy yet.
 
-Two modes:
-  - bulk_discover: scan raw text samples for known variant terms, used once
-    to bootstrap a new attribute's taxonomy (e.g. product_color) from the
-    real dataset.
-  - single_term_classify: classify one unmapped term to its best-fit
-    canonical bucket, dictionary match first with an optional LLM fallback
-    for novel terms. Used live by the agent enrichment tool when a query
-    mentions an attribute value that isn't in the taxonomy yet.
-
-The canonical seed dictionaries here (e.g. WATERPROOF_CANONICALS) are a
-bootstrapping starting point for the discovery algorithm, not the taxonomy
-itself — the OpenSearch-backed mapping store is the actual source of truth
-once bulk_discover's output has been written there via
-AttributeMappingStore.seed_from_discovery().
+The canonical seed dictionaries here (e.g. WATERPROOF_CANONICALS) are the
+bounded set of buckets a term may be classified into, not the taxonomy
+itself — the OpenSearch-backed mapping store (loaded from the committed
+data/precomputed dump) is the source of truth.
 """
 
-import re
 from typing import Callable, Dict, List, Optional
 
 # Seed vocabulary for the waterproof attribute type. Deliberately a single
@@ -36,12 +27,9 @@ WATERPROOF_CANONICALS: Dict[str, List[str]] = {
     "waterproof": [],
 }
 
-# Seed vocabulary for color discovery. Carried over from the retired
-# color_mappings.json (used, until this rework, as the migrated taxonomy
-# source of record for the old AttributeNormalizerStage) — here it's
-# downgraded to exactly what WATERPROOF_CANONICALS already is: a bootstrap
-# seed for bulk_discover, not the taxonomy itself. Color's real taxonomy is
-# rebuilt from scratch by discovery against chunk_text.
+# Seed vocabulary for color: the canonical buckets and their common variants.
+# Like WATERPROOF_CANONICALS, a classification seed, not the taxonomy itself —
+# the live color taxonomy lives in the OpenSearch mapping store.
 COLOR_CANONICALS: Dict[str, List[str]] = {
     "black": ["black", "jet", "charcoal", "ebony", "onyx"],
     "white": ["white", "ivory", "cream", "off-white", "ecru", "beige", "bone"],
@@ -89,42 +77,6 @@ COLOR_CANONICALS: Dict[str, List[str]] = {
     "natural": ["natural", "wood", "natural wood", "unfinished", "raw"],
     "mixed": ["assorted", "mixed", "various", "pattern"],
 }
-
-
-def bulk_discover(
-    texts: List[str],
-    canonical_seeds: Dict[str, List[str]],
-    existing_lookup: Optional[Dict[str, str]] = None,
-) -> Dict[str, str]:
-    """
-    Scan raw text for seed variant terms, returning every variant found at
-    least once in the text, mapped to its canonical bucket.
-
-    Args:
-        texts: raw product text (titles, descriptions, bullet points, etc.)
-        canonical_seeds: {canonical: [variant, ...]} starting vocabulary
-        existing_lookup: variants to skip (already mapped elsewhere)
-
-    Returns:
-        {variant (lowercase): canonical} for every seed variant that
-        actually appears in the text and isn't already mapped
-    """
-    existing_lookup = existing_lookup or {}
-    discovered: Dict[str, str] = {}
-
-    for canonical, variants in canonical_seeds.items():
-        for variant in variants:
-            variant_lower = variant.lower()
-            if variant_lower in existing_lookup:
-                continue
-
-            pattern = re.compile(r"\b" + re.escape(variant_lower) + r"\b", re.IGNORECASE)
-            for text in texts:
-                if text and pattern.search(text):
-                    discovered[variant_lower] = canonical
-                    break
-
-    return discovered
 
 
 def single_term_classify(

@@ -108,7 +108,7 @@ const STAGE_LABEL: Record<LatencyStage['stage'], string> = {
 
 // Subset of optimization keys that reshape the BM25 multi_match query.
 // When any of these are off, "Your BM25" reflects a degraded build vs Stock.
-const BM25_TUNING_KEYS = ['fuzzy', 'synonyms', 'phonetic', 'phrase_boost', 'field_boost'] as const
+const BM25_TUNING_KEYS = ['fuzzy', 'synonyms', 'phrase_boost', 'field_boost'] as const
 
 const VERDICT_TONE: Record<GenerationVerdict, { chip: string; label: string }> = {
   llm_better: {

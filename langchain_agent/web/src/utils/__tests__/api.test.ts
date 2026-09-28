@@ -1,9 +1,9 @@
 /**
- * Tests for api.ts — apiFetch, apiGet, apiPost, apiDelete
+ * Tests for api.ts — apiFetch, apiGet, apiPost
  */
 
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
-import { apiFetch, apiGet, apiPost, apiDelete } from '../api'
+import { apiFetch, apiGet, apiPost } from '../api'
 
 const mockFetch = vi.fn()
 
@@ -109,26 +109,6 @@ describe('apiPost', () => {
 
   it('sends no body when body is undefined', async () => {
     await apiPost('/api/admin/demo-reset', undefined)
-    const [, options] = mockFetch.mock.calls[0]
-    expect(options.body).toBeUndefined()
-  })
-})
-
-describe('apiDelete', () => {
-  it('uses DELETE method', async () => {
-    await apiDelete('/api/conversations/thread-1')
-    const [, options] = mockFetch.mock.calls[0]
-    expect(options.method).toBe('DELETE')
-  })
-
-  it('passes the correct URL', async () => {
-    await apiDelete('/api/conversations/thread-1')
-    const [url] = mockFetch.mock.calls[0]
-    expect(url).toBe('/api/conversations/thread-1')
-  })
-
-  it('does not send a request body', async () => {
-    await apiDelete('/api/conversations/thread-1')
     const [, options] = mockFetch.mock.calls[0]
     expect(options.body).toBeUndefined()
   })

@@ -159,8 +159,6 @@ __all__ = [
     "LOG_INCLUDE_TIMESTAMP",
     # Checkpoint Optimization
     "CHECKPOINT_SELECTIVE_SERIALIZATION",
-    "CHECKPOINT_KEEP_VERSIONS",
-    "CHECKPOINT_COMPACTION_DAYS",
     # Agentic Enrichment Flywheel
     "ENABLE_ENRICHMENT_TOOL",
 ]
@@ -462,12 +460,6 @@ LOG_INCLUDE_TIMESTAMP = True
 # Reduces checkpoint size by ~10x by excluding retrieved_documents and document_grades
 # These fields are regenerated on retrieval, not needed for conversation continuity
 CHECKPOINT_SELECTIVE_SERIALIZATION = True
-
-# Number of recent checkpoint versions to keep per thread during compaction
-CHECKPOINT_KEEP_VERSIONS = 3
-
-# Compact checkpoints older than this many days
-CHECKPOINT_COMPACTION_DAYS = 7
 
 # ============================================================================
 # AGENTIC ENRICHMENT FLYWHEEL (DEMO-SPECIFIC)

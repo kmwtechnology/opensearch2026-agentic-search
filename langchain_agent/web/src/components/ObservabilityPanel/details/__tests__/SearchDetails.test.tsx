@@ -27,7 +27,6 @@ const INITIAL_OBS = {
   rerankerProgressMessage: null,
   rerankerProgress: 0,
   expandedSteps: new Set<string>(),
-  expandedEvents: new Set<string>(),
 }
 
 beforeEach(() => {
@@ -194,13 +193,6 @@ describe('SearchDetails (reranker mode)', () => {
         render(<SearchDetails mode="reranker" />)
         expect(screen.getByText(/local cross-encoder/i)).toBeInTheDocument()
         expect(screen.queryByText(/\(LLM\)/i)).not.toBeInTheDocument()
-      })
-
-      it('describes LLM-based scoring for any non-cross-encoder reranker_type', () => {
-        useObservabilityStore.setState({ steps: stepWithRerankerType('llm') as any })
-        render(<SearchDetails mode="reranker" />)
-        expect(screen.getByText(/\(LLM\)/i)).toBeInTheDocument()
-        expect(screen.getByText(/LLM-based semantic scoring/i)).toBeInTheDocument()
       })
 
       it('falls back to a neutral description when no reranker_result event is present', () => {

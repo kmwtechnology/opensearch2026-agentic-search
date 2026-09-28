@@ -99,49 +99,14 @@ class TestAttributeTypeIsolation:
         assert waterproof_lookup == {"weatherproof": "waterproof"}
 
 
-class TestBulkOperations:
-    def test_migrate_from_dict_adds_all_variants_and_is_immediately_queryable(self, store):
-        mapping_dict = {
-            "red": ["red", "crimson", "scarlet"],
-            "blue": ["blue", "navy", "cyan"],
-        }
-        count = store.migrate_from_dict("color", mapping_dict)
-        assert count == 6
-
-        lookup = store.get_lookup_table("color")
-        assert lookup["crimson"] == "red"
-        assert lookup["navy"] == "blue"
-        assert len(lookup) == 6
-
-    def test_migrate_from_dict_is_idempotent_on_rerun(self, store):
-        mapping_dict = {"red": ["red", "crimson"]}
-        first_count = store.migrate_from_dict("color", mapping_dict)
-        second_count = store.migrate_from_dict("color", mapping_dict)
-        assert first_count == 2
-        assert second_count == 0
-
-    def test_seed_from_discovery_adds_variant_canonical_pairs(self, store):
-        discovered = {
-            "weatherproof": "waterproof",
-            "splash proof": "waterproof",
-            "water resistant": "water-resistant",
-        }
-        count = store.seed_from_discovery("waterproof", discovered)
-        assert count == 3
-
-        lookup = store.get_lookup_table("waterproof")
-        assert lookup["splash proof"] == "waterproof"
-        assert lookup["water resistant"] == "water-resistant"
-
-
 class TestLiveFlywheelScenario:
     """Simulates the exact live-demo path: agent discovers a gap, writes it,
     and must be able to read it back immediately (no eventual-consistency lag)
     since the very next step is a scoped update_by_query against the new term."""
 
     def test_write_then_immediate_lookup_supports_synchronous_flywheel(self, store):
-        # Seed the initial taxonomy (bulk, as if from Phase A bootstrap)
-        store.seed_from_discovery("waterproof", {"waterproof": "waterproof"})
+        # Seed the initial taxonomy row
+        store.add_mapping("waterproof", "waterproof", "waterproof", source="seed")
 
         # Live agent turn: a gap term appears, agent classifies + writes it
         store.add_mapping("waterproof", "weatherproof", "waterproof", source="agent")

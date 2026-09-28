@@ -15,7 +15,6 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
-import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -39,20 +38,6 @@ from core.logging_config import configure_logging, get_logger
 # Configure structured logging
 configure_logging()
 logger = get_logger(__name__)
-
-
-def _get_api_base_url() -> str:
-    """Get API base URL for logging, detecting environment automatically."""
-    # Try to use VITE_API_URL from environment (set by frontend build)
-    api_url = os.getenv("VITE_API_URL", "").strip()
-    if api_url:
-        return api_url
-    # Fallback: detect from hostname
-    hostname = os.getenv("HOSTNAME", "localhost")
-    if "localhost" in hostname or "127.0.0.1" in hostname:
-        return "http://localhost:8080"
-    # Remote hostname
-    return f"https://{hostname.split(':')[0]}"
 
 
 # Initialize rate limiter
@@ -83,13 +68,7 @@ async def lifespan(app: FastAPI):
     await chat.manager.agent_service.ensure_initialized()
     await chat.manager.agent_service._wait_for_warmup()
 
-    base_url = _get_api_base_url()
-    logger.info(
-        "api_started",
-        rest_api=f"{base_url}/api",
-        websocket=base_url.replace("http", "ws") + "/ws/chat",
-        docs=f"{base_url}/swagger",
-    )
+    logger.info("api_started", rest_api="/api", websocket="/ws/chat", docs="/swagger")
 
     yield  # Application runs here
 
@@ -154,8 +133,8 @@ app = FastAPI(
         "re-weighted alpha, which alone was measured to not move the reranker's score)\n"
         "- **Typeahead autocomplete**: `/api/suggest` edge-ngram prefix matching with "
         "spell correction and distance-1 fuzzy fallback\n"
-        "- **BM25 optimizations**: synonyms, phrase boosting, field boosting, phonetic matching\n"
-        "- **Per-query optimization toggles**: 10 flags (hybrid, fuzzy, synonyms, phonetic, "
+        "- **BM25 optimizations**: synonyms, phrase boosting, field boosting, bounded fuzziness\n"
+        "- **Per-query optimization toggles**: 9 flags (hybrid, fuzzy, synonyms, "
         "phrase_boost, field_boost, typeahead, reranking, llm, llm_judge) sent on every WebSocket chat "
         "message; the pipeline collapses skipped stages out of the observability panel.\n"
         "- **Pipeline Quality Summary**: end-of-pipeline `PipelineSummaryEvent` carrying "
@@ -262,13 +241,6 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # separate one) that had already drifted apart (this one was missing the
 # :5174/:8000/:8080 dev origins the other allows).
 cors_origins = get_allowed_origins()
-
-# Add explicitly configured origins (e.g., custom domains)
-if os.environ.get("CORS_ORIGINS"):
-    configured_origins = [
-        o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()
-    ]
-    cors_origins.extend(configured_origins)
 
 app.add_middleware(
     CORSMiddleware,

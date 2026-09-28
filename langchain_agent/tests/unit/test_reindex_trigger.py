@@ -12,11 +12,8 @@ from pipeline.reindex_trigger import (
 
 
 class TestBuildReindexTrigger:
-    def test_always_returns_scoped(self):
+    def test_returns_scoped(self):
         assert isinstance(build_reindex_trigger(), ScopedRetagTrigger)
-        assert isinstance(build_reindex_trigger("scoped"), ScopedRetagTrigger)
-        # mode argument is accepted for call-site compatibility but ignored.
-        assert isinstance(build_reindex_trigger("anything"), ScopedRetagTrigger)
 
 
 class TestScopedRetagTrigger:

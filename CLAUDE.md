@@ -117,7 +117,7 @@ Six intent classes (`search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 ### Error hierarchy
 
-All custom exceptions (`core/exceptions.py`) inherit from `AgenticHybridSearchError` (message, optional `details`, `recoverable` flag) — catch that one type to handle any agent-related error uniformly. Subclasses: `ConfigurationError`, `DatabaseError`, `OpenSearchError`, `LLMError`, `RetrievalError`, `LinkVerificationError`, `StreamingError`, `StateError`, `RerankerLLMError`, `RerankerValidationError`, `SearchValidationError`, `SearchFailureError`, `EmbeddingError`, `SearchTimeoutError`, `AgentError`, `AgentTimeoutError`, `RerankerError`.
+All custom exceptions (`core/exceptions.py`) inherit from `AgenticHybridSearchError` (message, optional `details`, `recoverable` flag) — catch that one type to handle any agent-related error uniformly. Subclasses (only the ones production code raises): `LLMError`, `SearchValidationError`, `SearchFailureError`, `EmbeddingError`, `SearchTimeoutError`.
 
 ### Auth model
 

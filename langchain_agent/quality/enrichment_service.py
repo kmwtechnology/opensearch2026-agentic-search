@@ -24,7 +24,7 @@ import logging
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional
 
-from pipeline.reindex_trigger import ReindexTrigger, build_reindex_trigger
+from pipeline.reindex_trigger import ScopedRetagTrigger, build_reindex_trigger
 from retrieval.attribute_discovery import (
     COLOR_CANONICALS,
     WATERPROOF_CANONICALS,
@@ -57,7 +57,6 @@ class EnrichmentResult:
     docs_scanned: int = 0  # scoped mode: products re-detected (text mentions the variant)
     duration_seconds: float = 0.0
     reindex_mode: str = "scoped"
-    reindex_run_url: Optional[str] = None  # unused by the local trigger; kept for schema compat
     reindex_error: Optional[str] = None  # short detail when reindex_success is False
     # Set when this replaced an existing (wrong) mapping rather than adding a
     # new one — e.g. correcting the shipped "tan"->"yellow" mis-mapping to
@@ -72,7 +71,7 @@ def enrich_attribute(
     llm_classify_fn: Optional[Callable[[str, list], Optional[str]]] = None,
     store: Optional[AttributeMappingStore] = None,
     explicit_canonical: Optional[str] = None,
-    trigger: Optional[ReindexTrigger] = None,
+    trigger: Optional[ScopedRetagTrigger] = None,
 ) -> EnrichmentResult:
     """
     Classify a new attribute variant, write it to the mapping store, ensure
@@ -88,7 +87,8 @@ def enrich_attribute(
         explicit_canonical: skip classification entirely and use this
             canonical directly (e.g. admin/ops use). Still validated against
             the attribute type's canonical buckets.
-        trigger: ReindexTrigger to run after the mapping is written
+        trigger: reindex trigger to run after the mapping is written (tests
+            inject a stand-in with the same ``.trigger()`` shape)
             (built via build_reindex_trigger() if None).
 
     Returns:
@@ -188,7 +188,6 @@ def enrich_attribute(
         docs_scanned=outcome.docs_scanned,
         duration_seconds=outcome.duration_seconds,
         reindex_mode=outcome.mode,
-        reindex_run_url=outcome.run_url,
         reindex_error=outcome.error,
         corrected_from=existing_canonical,
     )

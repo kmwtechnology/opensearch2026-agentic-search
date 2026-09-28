@@ -48,19 +48,24 @@ fi
 
 if command -v git-lfs > /dev/null 2>&1; then
   check_pass "git-lfs installed"
-  if [ -f "../data/esci_products.parquet" ] && [ "$(head -c 7 ../data/esci_products.parquet 2>/dev/null)" = "version" ]; then
-    check_fail "data/esci_products.parquet is an un-pulled LFS pointer — run 'git lfs pull'"
+  DUMP="../data/precomputed/products_dump.parquet"
+  if [ ! -f "$DUMP" ]; then
+    check_fail "data/precomputed/products_dump.parquet missing — run 'git lfs pull'"
+  elif [ "$(head -c 7 "$DUMP" 2>/dev/null)" = "version" ]; then
+    check_fail "data/precomputed/products_dump.parquet is an un-pulled LFS pointer — run 'git lfs pull'"
+  else
+    check_pass "precomputed corpus dump present"
   fi
 else
   check_fail "git-lfs not installed — 'brew install git-lfs && git lfs install', then 'git lfs pull'"
 fi
 
-# 2. Python version (require 3.13+)
+# 2. Python version (require 3.14+)
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
-if [[ "$PYTHON_VERSION" =~ ^3\.1[3-9] ]] || [[ "$PYTHON_VERSION" =~ ^3\.[2-9][0-9] ]]; then
-  check_pass "Python 3.13+ ($PYTHON_VERSION)"
+if [[ "$PYTHON_VERSION" =~ ^3\.1[4-9] ]] || [[ "$PYTHON_VERSION" =~ ^3\.[2-9][0-9] ]]; then
+  check_pass "Python 3.14+ ($PYTHON_VERSION)"
 else
-  check_fail "Python 3.13+ required (found $PYTHON_VERSION) — see CLAUDE.md for setup"
+  check_fail "Python 3.14+ required (found $PYTHON_VERSION) — see CLAUDE.md for setup"
 fi
 
 # 3. Node version (require 24+)

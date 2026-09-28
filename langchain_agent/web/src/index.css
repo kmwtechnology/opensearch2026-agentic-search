@@ -25,18 +25,11 @@
   --color-stage-border: #ddd9d0;
   --color-stage-border-soft: #e8e4dc;
 
-  --color-node-intent: #065f46;
-  --color-node-intent-tint: #ecfdf5;
   --color-node-evaluator: #1e40af;
   --color-node-evaluator-tint: #eff6ff;
   --color-node-retriever: #5b21b6;
   --color-node-retriever-tint: #f5f3ff;
-  --color-node-reranker: #3730a3;
-  --color-node-reranker-tint: #eef2ff;
   --color-node-gate: #9a3412;
-  --color-node-gate-tint: #fff7ed;
-  --color-node-agent: #155e75;
-  --color-node-agent-tint: #ecfeff;
 
   /* Type scale. The floor is 20px — anything smaller is unreadable at
    * projection distance, which is why the old text-[10px] metrics had to go. */
@@ -46,7 +39,6 @@
   --text-stage-lead: 2.125rem;    /* 34px — newest narrator line */
   --text-stage-title: 2.75rem;    /* 44px — demo title */
 
-  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   --animate-slide-in: slideIn 0.3s ease-out;
   /* Narrator panel motion (#130) — each pipeline stage builds into place
    * rather than popping in statically, and the taxonomy-correction card gets
@@ -119,19 +111,6 @@
     font-size: 1.25rem;
   }
 
-  /* Screen reader only text */
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border-width: 0;
-  }
-
   /* Custom scrollbar styling */
   ::-webkit-scrollbar {
     @apply w-2;
@@ -166,20 +145,6 @@
     border-color: var(--color-node-evaluator);
   }
 
-  .node-badge-complete {
-    @apply border-2;
-    background-color: var(--color-node-intent-tint);
-    color: var(--color-node-intent);
-    border-color: var(--color-node-intent);
-  }
-
-  .node-badge-error {
-    @apply border-2;
-    background-color: #FEF2F2;
-    color: #991B1B;
-    border-color: #991B1B;
-  }
-
   /* Score bar visualization — PROJECTOR OPTIMIZED */
   .score-bar {
     @apply h-3 rounded-full overflow-hidden;
@@ -188,23 +153,6 @@
 
   .score-bar-fill {
     @apply h-full rounded-full transition-all duration-300;
-  }
-
-  /* Card styles for observability panel — PROJECTOR OPTIMIZED */
-  .obs-card {
-    @apply border rounded-lg p-4;
-    background-color: var(--color-stage-surface);
-    border-color: var(--color-stage-border);
-  }
-
-  .obs-card-header {
-    @apply flex items-center justify-between mb-3;
-  }
-
-  .obs-card-title {
-    @apply font-semibold;
-    font-size: var(--text-stage-body);
-    color: var(--color-stage-ink);
   }
 
   /* Chat message styles */
@@ -359,17 +307,6 @@
   .markdown-content hr {
     @apply my-4 border-t;
     border-color: var(--color-stage-border);
-  }
-
-  /* Pulse animation for active nodes */
-  .node-active {
-    @apply relative;
-  }
-
-  .node-active::before {
-    content: '';
-    @apply absolute inset-0 rounded-lg animate-pulse-slow;
-    background: linear-gradient(90deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1));
   }
 }
 

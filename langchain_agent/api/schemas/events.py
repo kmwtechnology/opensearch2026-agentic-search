@@ -597,15 +597,10 @@ class EnrichmentTriggeredEvent(BaseEvent):
     corrected_from: Optional[str] = None
     # Why a "failed" or "declined" event happened, in presentable prose.
     error: Optional[str] = None
-    # "local" (blocking subprocess, real completion signal) or "github"
-    # (fire-and-forget workflow dispatch — no completion signal ever arrives,
-    # so a "started" event is followed by a terminal event carrying only the
-    # run URL).
+    # Always "scoped" (pipeline/scoped_retag.py) — the only reindex mode.
     reindex_mode: Optional[str] = None
-    reindex_run_url: Optional[str] = None
     # Measured, real numbers from the completed reindex — None on every
-    # non-"complete" status, and on a "complete" from a github-mode dispatch
-    # which never learns them (#80).
+    # non-"complete" status.
     duration_seconds: Optional[float] = None
     # Products whose tags changed. With the default scoped re-tag (#147) only
     # products whose text mentions the variant are re-detected at all --

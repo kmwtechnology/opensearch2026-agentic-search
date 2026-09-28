@@ -234,10 +234,8 @@ export interface EnrichmentTriggeredEvent extends BaseEvent {
   corrected_from?: string
   // Why a 'failed' or 'declined' event happened, in presentable prose.
   error?: string
-  // 'local' (blocking subprocess, real completion signal) or 'github'
-  // (fire-and-forget dispatch — no completion signal, run URL only).
+  // Always 'scoped' (pipeline/scoped_retag.py is the only re-tag path).
   reindex_mode?: string
-  reindex_run_url?: string
   // Real measured numbers; present only on a 'complete'. docs_processed is
   // how many products' tags changed; docs_scanned (scoped mode, the default)
   // is how many products mention the term and were re-detected at all.

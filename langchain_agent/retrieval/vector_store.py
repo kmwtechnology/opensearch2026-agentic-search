@@ -498,7 +498,7 @@ class OpenSearchVectorStore:
         """
         Build a multi_match clause that respects per-feature optimization toggles.
 
-        Toggle semantics (default True when key missing, except phonetic which defaults False):
+        Toggle semantics (default True when key missing):
           - phrase_boost: include `title_phrase` field
           - field_boost: keep per-field `^N` weights; when False, all fields equal
           - fuzzy: include `"fuzziness": "AUTO"` on the multi_match
@@ -513,7 +513,6 @@ class OpenSearchVectorStore:
         # Truncate query to prevent maxClauseCount errors (issue #85)
         query = OpenSearchVectorStore._truncate_query_terms(query)
         opts = optimizations or {}
-        phonetic = opts.get("phonetic", False)
         phrase_boost = opts.get("phrase_boost", True)
         field_boost = opts.get("field_boost", True)
         fuzzy = opts.get("fuzzy", True)
@@ -533,13 +532,6 @@ class OpenSearchVectorStore:
                 ("product_waterproof", 2.0),
             ]
         )
-        if phonetic:
-            candidate_fields.extend(
-                [
-                    ("title_phonetic", 1.5),
-                    ("brand_phonetic", 1.5),
-                ]
-            )
         # Add .heavy sub-fields for recall insurance (snowball stemmer, low weight)
         candidate_fields.extend(
             [

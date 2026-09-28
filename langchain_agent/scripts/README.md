@@ -16,14 +16,12 @@ deployment path anymore — the project is local-only as of issue #110/#113.
 | **Local Development** |
 | `start.sh` | Start Docker, native backend (:8080) + Vite (:5173), and rebuild/start the demo container (:8000) | Session start | 15 s–2 min (demo image build) |
 | `stop.sh` | Stop backend + frontend + Docker containers (volumes kept) | Session end | 5 s |
-| `logs.sh` | Tail backend/frontend logs | Debugging | — |
 | **CI/Manual Gates** |
 | `pre-commit.sh` | Black + isort + flake8 on staged `.py` files | Installed as `.git/hooks/pre-commit` by `setup.sh` — runs automatically on `git commit` | ~2 s |
 | **Utilities** |
 | `load_precomputed_indices.py` | Bulk-load `data/precomputed/*.parquet` straight into OpenSearch (no Ollama, no ingest pipeline) — what `setup.sh`/`setup.py` call every time | First clone / re-provisioning a cluster | ~1-2 min |
 | `prepare_judgments_parquet.py` | Historical: pre-aggregate ESCI judgments (used to originally build the corpus; not part of any live workflow today) | Reference only | 2–3 min |
 | `build_product_sample.py` | Historical: build the ESCI product sample parquet the corpus was originally ingested from (#147); not part of any live workflow today | Reference only | — |
-| `probe_demo_query.py` | Standalone demo query tester; useful for debugging retriever/reranker | Ad hoc testing | — |
 | `reset_demo_taxonomy.sh` | Reset the live attribute-mapping store back to seed state for the demo | Demo reset | — |
 
 There is no local ingest pipeline any more — see `data/README.md`. Attribute detection
@@ -118,7 +116,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 **Frontend can't reach backend:**
 ```bash
 curl http://localhost:8080/api/health
-./scripts/logs.sh frontend
+tail -f logs/frontend.log
 ```
 
 ## References

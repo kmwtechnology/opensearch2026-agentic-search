@@ -5,7 +5,6 @@ import pytest
 from retrieval.attribute_discovery import (
     COLOR_CANONICALS,
     WATERPROOF_CANONICALS,
-    bulk_discover,
     single_term_classify,
 )
 
@@ -17,55 +16,6 @@ def seeds():
         "cotton": ["cotton", "100% cotton"],
         "metal": ["stainless steel", "aluminum"],
     }
-
-
-class TestBulkDiscover:
-    def test_finds_variants_present_in_text(self, seeds):
-        texts = [
-            "Genuine Leather Wallet, handmade",
-            "100% Cotton T-Shirt",
-            "Stainless Steel Water Bottle",
-        ]
-        result = bulk_discover(texts, seeds)
-
-        assert result["genuine leather"] == "leather"
-        assert result["100% cotton"] == "cotton"
-        assert result["stainless steel"] == "metal"
-
-    def test_does_not_find_absent_variants(self, seeds):
-        texts = ["Plastic Phone Case"]
-        result = bulk_discover(texts, seeds)
-        assert result == {}
-
-    def test_respects_word_boundaries(self, seeds):
-        # "cotton" should not match inside an unrelated compound word
-        texts = ["Cottonwood Tree Ornament"]
-        result = bulk_discover(texts, seeds)
-        assert "cotton" not in result
-
-    def test_case_insensitive_matching(self, seeds):
-        texts = ["LEATHER Boots"]
-        result = bulk_discover(texts, seeds)
-        assert result.get("leather") == "leather"
-
-    def test_skips_variants_already_in_existing_lookup(self, seeds):
-        texts = ["Genuine Leather Wallet"]
-        existing = {"genuine leather": "leather"}
-        result = bulk_discover(texts, seeds, existing_lookup=existing)
-        assert "genuine leather" not in result
-
-    def test_multiple_texts_only_needs_one_match(self, seeds):
-        texts = ["Plastic Case", "Aluminum Frame", "Wood Base"]
-        result = bulk_discover(texts, seeds)
-        assert result.get("aluminum") == "metal"
-
-    def test_handles_none_and_empty_text_entries(self, seeds):
-        texts = [None, "", "Cowhide Boots"]
-        result = bulk_discover(texts, seeds)
-        assert result.get("cowhide") == "leather"
-
-    def test_empty_texts_list_returns_empty(self, seeds):
-        assert bulk_discover([], seeds) == {}
 
 
 class TestSingleTermClassify:
@@ -84,14 +34,6 @@ class TestSingleTermClassify:
         # "vegan leather" contains the known variant "leather"
         result = single_term_classify("vegan leather", seeds)
         assert result == "leather"
-
-    def test_substring_match_variant_contains_term(self, seeds):
-        # "leather" is a substring of the known variant "genuine leather"
-        result = single_term_classify("genuine", seeds)
-        # "genuine" alone isn't a strong material signal on its own in this
-        # seed set, so this documents the actual (loose) matching behavior
-        # rather than asserting a specific bucket.
-        assert result in (None, "leather")
 
     def test_unclassifiable_returns_none_without_llm_fallback(self, seeds):
         assert single_term_classify("chartreuse polka dots", seeds) is None
@@ -152,8 +94,6 @@ class TestColorCanonicals:
         for expected in ["black", "white", "blue", "red", "gray"]:
             assert expected in COLOR_CANONICALS
 
-    def test_bulk_discover_works_with_color_seeds(self):
-        texts = ["Charcoal Wool Sweater", "Navy Blue Cotton Shirt"]
-        result = bulk_discover(texts, COLOR_CANONICALS)
-        assert result.get("charcoal") == "black"
-        assert result.get("navy") == "blue"
+    def test_known_variants_classify_to_their_bucket(self):
+        assert single_term_classify("charcoal", COLOR_CANONICALS) == "black"
+        assert single_term_classify("navy", COLOR_CANONICALS) == "blue"

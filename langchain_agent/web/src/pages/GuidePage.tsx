@@ -72,8 +72,8 @@ export function GuidePage() {
               <li>✓ Natural language product search</li>
               <li>✓ Product comparison and attribute filtering</li>
               <li>✓ Real-time streaming responses with citations</li>
-              <li>✓ Conversation memory and resumption</li>
-              <li>✓ Per-query search optimization toggles (10 flags) — hybrid, fuzzy, synonyms, phonetic, phrase_boost, field_boost, typeahead, reranking, llm, llm_judge</li>
+              <li>✓ Conversation memory within a session (Postgres-checkpointed turns; no saved-conversations list)</li>
+              <li>✓ Per-query search optimization toggles (9 flags) — hybrid, fuzzy, synonyms, phrase_boost, field_boost, typeahead, reranking, llm, llm_judge</li>
               <li>✓ Pipeline Quality Summary card — offline NDCG/MRR/Recall@20/Precision@10 vs an ESCI ground-truth baseline, with latency cost-benefit framing. Renders in two places: a card in the Details panel, and a "Ground Truth" tab in the Narrator panel</li>
               <li>✓ Full pipeline observability with real-time events</li>
             </ul>
@@ -177,7 +177,7 @@ export function GuidePage() {
           </div>
 
           <div className="border-l-4 border-rose-500 pl-4">
-            <h4 className="font-semibold text-gray-900">Classification &amp; Ingestion</h4>
+            <h4 className="font-semibold text-gray-900">Classification &amp; Correction</h4>
             <p className="text-[1.375rem] text-gray-600">
               One bad catalog tag, fixed live, then proven fixed by searching again. This demo re-arms itself
               automatically each time you open it, since the fix it demonstrates consumes the very bug it's
@@ -278,7 +278,6 @@ export function GuidePage() {
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">hybrid</code> — vector + BM25 fusion. Off ⇒ pure BM25.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">fuzzy</code> — adds <code>fuzziness: AUTO</code> to multi_match.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">synonyms</code> — query-time synonym expansion via the <code>english_analyzer</code>.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">phonetic</code> — adds <code>title_phonetic</code> / <code>brand_phonetic</code> fields.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">phrase_boost</code> — adds the <code>title_phrase</code> field with a 2.5× boost.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">field_boost</code> — keeps per-field <code>^N</code> weights. Off ⇒ all fields equal.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">typeahead</code> — frontend autocomplete suggestions.</div>

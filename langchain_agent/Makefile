@@ -14,8 +14,6 @@
 #   unit tests only     PYTHONPATH=. .venv/bin/pytest tests/unit/
 #   auto-format         .venv/bin/black . && .venv/bin/isort .
 #   full e2e suite      bash scripts/smoke_local.sh
-#   benchmark           PYTHONPATH=. .venv/bin/python benchmarks/benchmark_esci.py --limit 5000 --fast
-#                       (--hard-only instead of --fast for LLM intent classification)
 
 .DEFAULT_GOAL := doctor
 .PHONY: doctor setup dev ci teardown

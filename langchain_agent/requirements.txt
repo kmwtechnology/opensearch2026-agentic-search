@@ -16,21 +16,12 @@ pydantic>=2.10.0
 # Security and rate limiting
 slowapi>=0.1.9
 python-dotenv>=1.0.0
-# Required by Starlette SessionMiddleware (signed cookie used by login gate).
-itsdangerous>=2.2.0
-
-# Retry logic
-tenacity>=8.2.0
 
 # Structured logging
 structlog>=24.0.0
 
-# Data processing (for ESCI product ingestion)
-pandas>=2.0.0
+# Parquet loader for the precomputed corpus dump
 pyarrow>=10.0.0
 
 # Cross-encoder reranker (fast local relevance scoring)
 sentence-transformers>=3.0.0,<7.0.0
-
-# LangSmith observability (optional - for tracing and debugging)
-langsmith>=0.1.0

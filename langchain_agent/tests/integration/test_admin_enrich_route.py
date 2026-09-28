@@ -55,7 +55,6 @@ def test_successful_enrichment_returns_200(mock_enrich, client) -> None:
         "docs_processed": 9618,
         "duration_seconds": 18.3,
         "reindex_mode": "scoped",
-        "reindex_run_url": None,
         "reindex_error": None,
     }
     mock_enrich.assert_called_once_with("waterproof", "weatherproof", explicit_canonical=None)

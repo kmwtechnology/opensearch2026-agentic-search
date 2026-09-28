@@ -19,7 +19,6 @@ const INITIAL_STATE = {
   rerankerProgressMessage: null,
   rerankerProgress: 0,
   expandedSteps: new Set<string>(),
-  expandedEvents: new Set<string>(),
 }
 
 beforeEach(() => {
@@ -192,19 +191,6 @@ describe('observabilityStore', () => {
       useObservabilityStore.getState().toggleStepExpanded('step-1')
       useObservabilityStore.getState().toggleStepExpanded('step-1')
       expect(useObservabilityStore.getState().expandedSteps.has('step-1')).toBe(false)
-    })
-  })
-
-  describe('toggleEventExpanded', () => {
-    it('adds eventId to expandedEvents when not present', () => {
-      useObservabilityStore.getState().toggleEventExpanded('event-1')
-      expect(useObservabilityStore.getState().expandedEvents.has('event-1')).toBe(true)
-    })
-
-    it('removes eventId from expandedEvents when already present', () => {
-      useObservabilityStore.getState().toggleEventExpanded('event-1')
-      useObservabilityStore.getState().toggleEventExpanded('event-1')
-      expect(useObservabilityStore.getState().expandedEvents.has('event-1')).toBe(false)
     })
   })
 

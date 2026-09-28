@@ -11,12 +11,9 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional, Protocol, Sequence
+from typing import Optional, Sequence
 
 logger = logging.getLogger(__name__)
-
-LANGCHAIN_AGENT_DIR = Path(__file__).parent.parent
 
 
 @dataclass
@@ -27,16 +24,7 @@ class ReindexOutcome:
     docs_processed: int = 0  # products whose tags changed
     docs_scanned: int = 0  # candidate products re-detected
     duration_seconds: float = 0.0
-    run_url: Optional[str] = None  # unused; kept for schema compat
     error: Optional[str] = None  # short, user-safe detail when success is False
-
-
-class ReindexTrigger(Protocol):
-    mode: str
-
-    def trigger(
-        self, attribute_type: Optional[str] = None, variants: Sequence[str] = ()
-    ) -> ReindexOutcome: ...
 
 
 # Guards every write that re-tags the products index -- two re-tags must
@@ -45,7 +33,7 @@ _LOCAL_REINDEX_LOCK = threading.Lock()
 
 
 class ScopedRetagTrigger:
-    """Re-tag only the products a mapping change can affect (the default)."""
+    """Re-tag only the products a mapping change can affect."""
 
     mode = "scoped"
 
@@ -103,7 +91,6 @@ class ScopedRetagTrigger:
         )
 
 
-def build_reindex_trigger(mode: Optional[str] = None) -> ReindexTrigger:
-    """Construct the reindex trigger. `mode` is accepted for call-site/API
-    compatibility but ignored -- ``scoped`` is the only mode there is."""
+def build_reindex_trigger() -> ScopedRetagTrigger:
+    """Construct the reindex trigger; ``scoped`` is the only mode there is."""
     return ScopedRetagTrigger()

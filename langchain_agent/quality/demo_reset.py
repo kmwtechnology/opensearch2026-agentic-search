@@ -95,7 +95,7 @@ def _reset_color_demo(full_reindex: bool) -> Dict[str, Any]:
 
         # "Full" means a real re-detection of the demo's variant against the
         # restored mapping, not the fast path's surgical flip.
-        outcome = build_reindex_trigger("scoped").trigger(DEMO_ATTRIBUTE_TYPE, [DEMO_VARIANT])
+        outcome = build_reindex_trigger().trigger(DEMO_ATTRIBUTE_TYPE, [DEMO_VARIANT])
         logger.info(
             "Demo reset (full): reindex success=%s docs=%s", outcome.success, outcome.docs_processed
         )

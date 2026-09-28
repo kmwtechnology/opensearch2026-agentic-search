@@ -49,9 +49,6 @@ class EnrichmentResponse(BaseModel):
         "scoped",
         description="Which reindex mechanism ran: always 'scoped' (pipeline/scoped_retag.py)",
     )
-    reindex_run_url: Optional[str] = Field(
-        None, description="Unused by the scoped trigger; kept for schema compat"
-    )
     reindex_error: Optional[str] = Field(
         None, description="Short failure detail when reindex_success is False"
     )
