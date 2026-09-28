@@ -217,7 +217,7 @@ export function SearchOptimizationDetails() {
             <ul className="list-disc list-inside text-gray-600 mt-1 space-y-1">
               <li>Misspelled terms (e.g., "sonie" for Sony)</li>
               <li>Product alternatives (e.g., "earbuds" for headphones)</li>
-              <li>Phonetic variants (e.g., "Sennheiser")</li>
+              <li>Multi-word product names (phrase boosting)</li>
             </ul>
           </div>
         </div>
