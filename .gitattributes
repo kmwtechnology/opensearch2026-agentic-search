@@ -3,3 +3,4 @@
 
 # Precomputed data files (shipped with repo, binary parquet), tracked via Git LFS
 data/*.parquet filter=lfs diff=lfs merge=lfs -text
+data/precomputed/*.parquet filter=lfs diff=lfs merge=lfs -text

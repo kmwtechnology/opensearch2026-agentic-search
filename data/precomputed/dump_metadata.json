@@ -1,0 +1,11 @@
+{
+  "exported_at": "2026-09-28T17:18:36.314548+00:00",
+  "source_commit": "f1d981078c9469dae290a627d17d7ebdc20570ca",
+  "embeddings_model": "nomic-embed-text",
+  "products_index_mapping_hash": "250eb3639abdb20b",
+  "counts": {
+    "products": 158637,
+    "attribute_mappings": 103,
+    "judgments": 65028
+  }
+}

@@ -8,6 +8,39 @@ Lucille embeds every product at ingest time with a local Ollama model
 (`OllamaEmbedStage`, `nomic-embed-text`, 768-dim; see #148), so no cloud
 embedding API is involved anywhere.
 
+## `precomputed/` — fast-path index dumps
+
+This dataset doesn't change, so re-running the ~35-40 min Ollama embedding +
+attribute-detection pass on every fresh `make setup` is wasted work. `data/precomputed/`
+holds a full `_source` export (embeddings, `product_*_primary`/`_secondary` attribute tags,
+seeded color taxonomy) of an index a real Lucille ingest already built:
+
+| File | Contents |
+|------|----------|
+| `products_dump.parquet` | Full `_source` of every doc in the products index, including the 768-dim `embedding` vector |
+| `attribute_mappings_dump.parquet` | The `agentic_hybrid_search_attribute_mappings` store (seeded color; **zero** waterproof entries — see CLAUDE.md) |
+| `judgments_dump.parquet` | The `esci_judgments` index (already filtered to products present in the corpus) |
+| `dump_metadata.json` | Source commit, `EMBEDDINGS_MODEL`, a hash of `INDEX_MAPPING`, and expected doc counts — the loader refuses to load a dump whose mapping hash doesn't match the current `INDEX_MAPPING` |
+
+`setup.py` uses this by default (`scripts/load_precomputed_indices.py`, a plain bulk load —
+no Ollama, no Lucille/Docker/Java) and falls back automatically to the full Lucille ingest if
+this directory is missing. Force the full ingest with `python setup.py --from-scratch`.
+
+**Regenerating this dump** (after changing the embedding model, `INDEX_MAPPING`, or attribute
+detection logic): run a full ingest via `python setup.py --from-scratch` (or `bash
+scripts/lucille_ingest.sh --reset-index --seed-taxonomy`) against an otherwise-untouched
+cluster — **do not use the chat app first**, since one enrichment-tool turn (a waterproof
+variant, a color correction) would get baked into the committed seed. Then:
+
+```bash
+PYTHONPATH=. python scripts/export_precomputed_indices.py
+PYTHONPATH=. python scripts/verify_precomputed_load.py capture > /tmp/baseline.json
+# reset the indices, then:
+PYTHONPATH=. python scripts/load_precomputed_indices.py --reset-index
+PYTHONPATH=. python scripts/verify_precomputed_load.py compare /tmp/baseline.json
+PYTHONPATH=. python scripts/check_retag_parity.py
+```
+
 ## Files
 
 | File | Records | Contents | Origin |

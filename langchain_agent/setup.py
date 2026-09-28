@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -248,6 +249,15 @@ def main():
         action="store_true",
         help="Skip PostgreSQL setup (OpenSearch index + search pipeline only). Used by lucille_ingest.sh --reset-index on CI runners that have no Postgres.",
     )
+    parser.add_argument(
+        "--from-scratch",
+        action="store_true",
+        help=(
+            "Skip the fast precomputed-dump load (data/precomputed/) and run the full "
+            "Lucille ETL + Ollama embedding pass instead (~35-40 min). Use this after "
+            "changing the embedding model, the index mapping, or attribute detection logic."
+        ),
+    )
     args = parser.parse_args()
 
     print("\n" + "=" * 70)
@@ -280,13 +290,55 @@ def main():
         if not args.skip_models:
             validate_ollama_models()
 
-        # Step 3: Product + Judgment Data Loading via Lucille ETL
+        # Step 3: Product + Judgment Data Loading
         docs_ingest_failed = False
-        if not args.skip_docs:
-            print("\n[6/7] Loading ESCI products and judgments via Lucille ETL...")
+        precomputed_dump = (
+            Path(__file__).parent.parent / "data" / "precomputed" / "dump_metadata.json"
+        )
+        use_precomputed = not args.from_scratch and precomputed_dump.exists()
+
+        if not args.skip_docs and use_precomputed:
+            print("\n[6/7] Loading precomputed products, judgments, and attribute taxonomy...")
             print(
-                "      Runs via Docker by default (no local Java/Maven needed). Embeddings are precomputed — no API calls needed."
+                "      Bulk-loading data/precomputed/*.parquet — embeddings and attribute "
+                "detection were already run once and committed (Git LFS). No Ollama call, "
+                "no Lucille/Docker/Java needed. Pass --from-scratch to re-run the full "
+                "~35-40 min ingest instead."
             )
+            try:
+                import subprocess
+
+                loader_script = Path(__file__).parent / "scripts" / "load_precomputed_indices.py"
+                python = Path(__file__).parent / ".venv" / "bin" / "python"
+                if not python.exists():
+                    python = Path(sys.executable)
+                subprocess.run(
+                    [str(python), str(loader_script)],
+                    cwd=str(Path(__file__).parent),
+                    check=True,
+                    env={**os.environ, "PYTHONPATH": "."},
+                )
+                print(
+                    "      ✓ Products, judgments, and attribute taxonomy loaded from precomputed dump"
+                )
+            except subprocess.CalledProcessError as e:
+                docs_ingest_failed = True
+                print(f"      ✗ Precomputed load failed (exit {e.returncode})")
+                print(
+                    "      Retry manually: PYTHONPATH=. python langchain_agent/scripts/load_precomputed_indices.py"
+                )
+                print("      Or run the full ingest instead: python setup.py --from-scratch")
+        elif not args.skip_docs:
+            print("\n[6/7] Loading ESCI products and judgments via Lucille ETL...")
+            if args.from_scratch:
+                print(
+                    "      --from-scratch requested — running the full ~35-40 min embedding pass."
+                )
+            else:
+                print(
+                    "      No precomputed dump found at data/precomputed/ — falling back to the full ingest."
+                )
+            print("      Runs via Docker by default (no local Java/Maven needed).")
             print("      Seeding color taxonomy (discovery pass, then a products pass)...")
             try:
                 import subprocess
@@ -364,7 +416,7 @@ def main():
         print("1. PostgreSQL: Ensure Docker container is running")
         print("   docker compose up -d")
         print("2. Ollama: ensure it is running and the models are pulled (scripts/doctor.sh)")
-        print("3. ESCI Dataset: Ensure files are present in ../esci/shopping_queries_dataset/")
+        print("3. Product data: Ensure data/esci_products.parquet exists (git lfs pull)")
         print("4. Connection: Verify config.py settings")
         print("\n" + "=" * 70)
         return 1
