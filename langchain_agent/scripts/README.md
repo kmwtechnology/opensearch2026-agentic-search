@@ -11,7 +11,7 @@ deployment path anymore — the project is local-only as of issue #110/#113.
 | Script | Purpose | When | Time |
 |--------|---------|------|------|
 | **Setup & Teardown** |
-| `setup.sh` | One-time: venv, Docker, DB init, Lucille ingest | First clone | 10–20 min |
+| `setup.sh` | One-time: venv, Docker, DB init, bulk-load the precomputed corpus dump | First clone | 1–2 min (fails with a `git lfs pull` message if `data/precomputed/` is missing — there is no from-scratch fallback) |
 | `teardown.sh` | Clean up: services, volumes, `.venv`, `node_modules`, logs | End of session (optional) | 1–2 min |
 | **Local Development** |
 | `start.sh` | Start Docker, backend (:8000), frontend (:5173) | Session start | 10–15 s |
@@ -19,20 +19,27 @@ deployment path anymore — the project is local-only as of issue #110/#113.
 | `logs.sh` | Tail backend/frontend logs | Debugging | — |
 | **CI/Manual Gates** |
 | `pre-commit.sh` | Black + isort + flake8 on staged `.py` files | Installed as `.git/hooks/pre-commit` by `setup.sh` — runs automatically on `git commit` | ~2 s |
-| `lucille_ingest.sh` | ESCI re-ingestion (builds Lucille on first run, reads `data/*.parquet`, embeds via Ollama) | Manual re-ingest | ~35-40 min full products (`--skip-products` for judgments-only, much faster) |
 | **Utilities** |
-| `prepare_judgments_parquet.py` | Pre-aggregate ESCI judgments (one-time or on sample change) | Data ops | 2–3 min |
-| `rebuild_attribute_taxonomies.py` | Wipe and rebuild the color attribute taxonomy from scratch via discovery against real `chunk_text` (writes to OpenSearch, not a committed file). Also what `lucille_ingest.sh --seed-taxonomy` / `make seed-taxonomy` run between the two products passes. Deliberately does NOT touch "waterproof" — that type starts empty and is grown entirely by the live enrichment flywheel | Data ops (once per cluster whose mapping store is empty, or to reset color to seed state; the live enrichment flywheel grows both taxonomies incrementally otherwise) | ~1 min |
+| `load_precomputed_indices.py` | Bulk-load `data/precomputed/*.parquet` straight into OpenSearch (no Ollama, no ingest pipeline) — what `setup.sh`/`setup.py` call every time | First clone / re-provisioning a cluster | ~1-2 min |
+| `prepare_judgments_parquet.py` | Historical: pre-aggregate ESCI judgments (used to originally build the corpus; not part of any live workflow today) | Reference only | 2–3 min |
+| `build_product_sample.py` | Historical: build the ESCI product sample parquet the corpus was originally ingested from (#147); not part of any live workflow today | Reference only | — |
 | `probe_demo_query.py` | Standalone demo query tester; useful for debugging retriever/reranker | Ad hoc testing | — |
+| `reset_demo_taxonomy.sh` | Reset the live attribute-mapping store back to seed state for the demo | Demo reset | — |
 
-`../config_generator.py` (not a standalone script — invoked by `lucille_ingest.sh`) regenerates `lucille-esci/conf/products.generated.conf` from whatever attribute types are currently registered in OpenSearch, immediately before every ingest run. See `ARCHITECTURE.md`'s "Attribute Detection" and "Enrichment Flywheel" sections for the full mechanism — `AttributeNormalizerStage.java`/`enrich_attribute_normalization.py`/`analyze_color_attributes.py`/`color_mappings.json` described in older docs are retired; detection now happens during ingest via the generic `AttributeDetectorStage.java`, sourced from OpenSearch, not a post-ingest Python pass over a committed JSON file.
+There is no local ingest pipeline any more — see `data/README.md`. Attribute detection
+(`product_<type>_primary`/`_secondary` keyword fields) is baked into the precomputed
+corpus dump; live growth/correction happens entirely through the enrichment flywheel's
+scoped re-tag (`pipeline/scoped_retag.py`), not through any script here. See
+`ARCHITECTURE.md`'s "Attribute Detection" and "Enrichment Flywheel" sections for the
+full mechanism.
 
 ## Execution Order
 
 1. **First time:**
    ```bash
    cp .env.example .env          # Ollama must be installed and running
-   ./scripts/setup.sh            # Creates .venv, pulls Ollama models, starts Docker, ingests ESCI
+   ./scripts/setup.sh            # Creates .venv, pulls Ollama models, starts Docker,
+                                  #   bulk-loads the precomputed corpus dump
    ```
 
 2. **Each session:**
@@ -47,10 +54,9 @@ deployment path anymore — the project is local-only as of issue #110/#113.
    ./scripts/teardown.sh         # Removes everything except .env
    ```
 
-4. **Re-ingest ESCI (manual):**
-   ```bash
-   bash ./scripts/lucille_ingest.sh
-   ```
+There is no re-ingest step — the corpus is a permanent, one-time export
+(`data/precomputed/`, see `data/README.md`). Re-running `setup.sh`/`make setup`
+reloads the same dump.
 
 ## Git Hooks
 
@@ -118,4 +124,5 @@ curl http://localhost:8000/api/health
 ## References
 
 - [setup.sh](setup.sh) — inline comments describe each step
-- [lucille_ingest.sh](lucille_ingest.sh) — ESCI ingest orchestration
+- [load_precomputed_indices.py](load_precomputed_indices.py) — corpus load orchestration
+- [../data/README.md](../data/README.md) — the precomputed corpus, and why there's no ingest pipeline

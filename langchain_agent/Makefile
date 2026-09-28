@@ -1,4 +1,4 @@
-.PHONY: help doctor setup reindex reindex-products seed-taxonomy demo-reset test lint format-fix clean run stop teardown dev dev-api dev-web demo demo-down install-web ci ci-format ci-test ci-frontend ci-tools benchmark-esci benchmark-esci-fast smoke check clean-db
+.PHONY: help doctor setup demo-reset test lint format-fix clean run stop teardown dev dev-api dev-web demo demo-down install-web ci ci-format ci-test ci-frontend ci-tools benchmark-esci benchmark-esci-fast smoke check clean-db
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -11,10 +11,7 @@ help:
 	@echo "  make setup              - Run complete system setup (Docker + database, models, data)"
 	@echo "  make install-web        - Install web UI dependencies (npm install)"
 	@echo ""
-	@echo "Data (Lucille ETL):"
-	@echo "  make reindex            - Full local reindex: products + judgments (bash scripts/lucille_ingest.sh)"
-	@echo "  make reindex-products   - Products only (--skip-judgments), what the enrichment flywheel runs"
-	@echo "  make seed-taxonomy      - Rediscover color/material taxonomy + products pass (DESTRUCTIVE: wipes agent-learned mappings)"
+	@echo "Data:"
 	@echo "  make demo-reset         - Re-arm the taxonomy demo (restore tan->yellow + reindex). Run BETWEEN rehearsals."
 	@echo ""
 	@echo "Testing & Pre-push Gate (local only -- no GitHub Actions, issue #113):"
@@ -47,21 +44,11 @@ help:
 doctor:
 	@bash scripts/doctor.sh
 
-reindex:
-	@bash scripts/lucille_ingest.sh
-
-reindex-products:
-	@bash scripts/lucille_ingest.sh --skip-judgments
-
 setup:
 	@bash scripts/setup.sh
 
 demo-reset:
 	@bash scripts/reset_demo_taxonomy.sh
-
-seed-taxonomy:
-	@echo "Rediscovering color/material taxonomy from scratch (wipes agent-learned mappings), then re-running products..."
-	bash scripts/lucille_ingest.sh --seed-taxonomy --skip-judgments
 
 test:
 	@echo "Running unit tests (no services required)..."

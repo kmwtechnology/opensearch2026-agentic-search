@@ -9,9 +9,9 @@
 # It does not error, it just quietly stops demonstrating anything.
 #
 # Default is the FAST path: flip the mapping row and re-tag only the products
-# actually listed as tan. Milliseconds. Pass --full to re-run the real Lucille
-# ingest over all 9,618 products instead (~20s), for when the index may have
-# drifted for reasons beyond this demo.
+# actually listed as tan. Milliseconds. Pass --full to re-run the scoped
+# Python re-tag against every tan-listed candidate instead (~20s), for when
+# the index may have drifted for reasons beyond this demo.
 #
 # The Restart button in the UI calls the same code path via
 # POST /api/admin/demo-reset.

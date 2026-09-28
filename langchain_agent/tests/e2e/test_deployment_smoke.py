@@ -94,7 +94,7 @@ class TestDeploymentHealth:
         assert "vector_store" in data, "Missing 'vector_store' field"
         assert isinstance(data["vector_store"], bool), "vector_store field should be boolean"
         if not data["vector_store"]:
-            pytest.skip("OpenSearch not yet initialized (run scripts/lucille_ingest.sh)")
+            pytest.skip("OpenSearch not yet initialized (run make setup)")
 
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -124,7 +124,7 @@ class TestDeploymentHealth:
         assert "document_count" in data, "Missing 'document_count' field"
         assert isinstance(data["document_count"], int), "document_count should be integer"
         if data["document_count"] == 0:
-            pytest.skip("No products indexed yet (run scripts/lucille_ingest.sh)")
+            pytest.skip("No products indexed yet (run make setup)")
 
 
 class TestAuthentication:

@@ -48,18 +48,6 @@ fi
 echo "✓ OpenSearch is ready"
 echo ""
 
-# Optional: Re-ingest product data
-if [ "$1" == "--update-docs" ]; then
-    echo "📚 Re-ingesting ESCI product data via Lucille ETL..."
-    if bash "$SCRIPT_DIR/lucille_ingest.sh" > "$PROJECT_DIR/logs/docs-update.log" 2>&1; then
-        echo "✓ Product data updated"
-    else
-        echo "⚠ Lucille ingest had issues — see logs/docs-update.log"
-        echo "  Check the log above, then retry: bash $SCRIPT_DIR/lucille_ingest.sh"
-    fi
-    echo ""
-fi
-
 # Check if virtual environment exists
 if [ ! -d "$PROJECT_DIR/.venv" ]; then
     echo "❌ Virtual environment not found"

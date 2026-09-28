@@ -56,10 +56,3 @@ def test_async_query_gets_query_prefix_only(emb):
 def test_async_documents_get_document_prefix(emb):
     asyncio.run(emb.aembed_documents(["boots"]))
     assert emb._async_client.inputs == [[DOCUMENT_PREFIX + "boots"]]
-
-
-def test_document_prefix_matches_lucille_ingest():
-    """The ingest-side prefix (Lucille conf) and the query side must agree."""
-    from config_generator import DOCUMENT_PREFIX as INGEST_PREFIX
-
-    assert DOCUMENT_PREFIX == INGEST_PREFIX

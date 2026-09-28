@@ -1,7 +1,7 @@
 """
 Second-opinion LLM judge for trigger_enrichment: before the agent's own
 tool-call decision is allowed to write a taxonomy mapping and trigger a
-real Lucille reindex, an independent model evaluates whether the proposed
+scoped re-tag, an independent model evaluates whether the proposed
 change would genuinely, meaningfully improve search quality for real
 shoppers -- not just whether the first call's choice of canonical bucket
 is semantically defensible (it already checked that).

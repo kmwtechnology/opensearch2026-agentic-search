@@ -133,26 +133,10 @@ cython_debug/
 # Claude Code — note: CLAUDE.md and .claude/memory/ are tracked; local state in .claude/state/ is ignored
 .claude/state/
 
-# esci directory — raw ESCI dataset (external, not tracked). Anchored (leading
-# /) so it doesn't also swallow langchain_agent/lucille-esci/src/main/java/com/kmwllc/esci/
-# — an unanchored pattern silently untracked our custom Lucille stage source
-# tree from PR #6 onward (AttributeNormalizerStage.java was never committed).
+# esci directory — raw ESCI dataset (external, not tracked). Anchored (leading /)
+# to keep this scoped to the repo-root dataset checkout.
 /esci/
 
-# Lucille ETL source tree now lives in an external checkout
-# (default ~/github/kmwtechnology/lucille, override via LUCILLE_DIR).
-# The in-repo config module is at langchain_agent/lucille-esci/.
-# Keep ignoring a repo-root lucille/ as a guard against accidental in-repo
-# clones. Anchored (leading /) so it doesn't also swallow docker/lucille/.
-/lucille/
-langchain_agent/lucille-esci/target/
-# Generated products pipeline config (config_generator.py) — regenerated
-# fresh before every Lucille run from the OS-backed attribute mapping store,
-# never hand-edited or committed. Precisely scoped filename (not a wildcard)
-# so this can never repeat the AttributeNormalizerStage.java incident above.
-langchain_agent/lucille-esci/conf/products.generated.conf
-# Native-path Lucille runtime logs (com.kmwllc.lucille*.log, heartbeat.log,
-# failed-documents.jsonl), written to the CWD when running the Runner directly.
 /log/
 langchain_agent/log/
 .claude/settings.local.json

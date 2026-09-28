@@ -281,9 +281,9 @@ both methods without needing probability calibration.
 products — a scoped re-tag (`pipeline/scoped_retag.py`) re-detects the
 attribute only on products whose text mentions the changed variant and
 bulk-updates just those, with no re-embedding. It's a real re-detection
-against live OpenSearch, not a cached swap; a full Lucille reindex remains
-available (`REINDEX_TRIGGER=local`) but takes 30+ minutes on the full
-~158K-product catalog, too slow to run live.
+against live OpenSearch, not a cached swap. There is no full-catalog
+reindex mode any more — the corpus is a permanent precomputed export with
+no rebuild path (see `data/README.md`).
 
 **Why didn't the quality gate catch the bug itself?** Because it is not a
 failure by any tracked metric — it is a wrong-but-confident result, scoring 0.56

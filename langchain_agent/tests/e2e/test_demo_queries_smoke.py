@@ -47,9 +47,9 @@ from .conftest import DEPLOYMENT_URL, auth_rest_headers, auth_ws_headers
 # generation) is observed at ~12-35s per turn.
 PER_TURN_TIMEOUT_S = 90.0
 TWO_TURN_TIMEOUT_S = 180.0
-# The two self-correcting/growing demos add a real Lucille reindex (~20s,
-# scoped re-tag) on top of the usual intent->retrieve->rerank->generate
-# pipeline, plus a second LLM call to approve the enrichment tool call.
+# The two self-correcting/growing demos add a scoped re-tag on top of the
+# usual intent->retrieve->rerank->generate pipeline, plus a second LLM call
+# to approve the enrichment tool call.
 ENRICHMENT_TURN_TIMEOUT_S = 150.0
 
 
@@ -434,9 +434,9 @@ class TestScriptedDemos:
     async def test_demo_taxonomy_ingestion(self) -> None:
         """registry.ts id='taxonomy-ingestion'. Self-consuming: re-arms
         before and after. Turn 2 disputes a real shipped mis-tag (tan ->
-        yellow) and triggers a live scoped Lucille re-tag; turn 3 is a NEW
-        conversation (same-thread would rewrite the query down a lexical
-        path instead of re-querying the corrected field)."""
+        yellow) and triggers a live scoped re-tag (pipeline/scoped_retag.py);
+        turn 3 is a NEW conversation (same-thread would rewrite the query
+        down a lexical path instead of re-querying the corrected field)."""
         await _reset_demo_taxonomy()
         try:
             thread_id_1 = f"taxonomy-ingestion-{uuid.uuid4().hex[:8]}"

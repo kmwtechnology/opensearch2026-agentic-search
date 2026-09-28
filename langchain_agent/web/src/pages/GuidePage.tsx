@@ -193,8 +193,8 @@ export function GuidePage() {
               <li>
                 <code className="bg-gray-100 px-1">that's not tan, that's tagged yellow which is wrong</code> —
                 the correction is detected, a second model approves the change, and every product whose text
-                mentions &ldquo;tan&rdquo; is re-detected against the corrected taxonomy, live in the index — the
-                same detection logic the Lucille ingest runs, scoped to the products the change can affect.
+                mentions &ldquo;tan&rdquo; is re-detected against the corrected taxonomy, live in the index — a
+                scoped re-tag (pipeline/scoped_retag.py) over just the products the change can affect.
               </li>
               <li>
                 <code className="bg-gray-100 px-1">show me tan boots</code> — the same query, asked again in a
@@ -339,13 +339,12 @@ export function GuidePage() {
           </p>
 
           <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mt-2 text-[1.375rem]">
-            <p className="font-semibold text-amber-900">Enable ground-truth metrics:</p>
-            <p className="text-amber-900 mt-1">The ESCI judgments are ingested via Lucille ETL as part of the standard setup:</p>
-            <pre className="bg-[var(--color-stage-bg)] text-[var(--color-stage-ink)] p-2 rounded text-[1.25rem] overflow-x-auto mt-1">
-              <code>bash scripts/lucille_ingest.sh</code>
-            </pre>
+            <p className="font-semibold text-amber-900">Ground-truth metrics:</p>
             <p className="text-amber-900 mt-1 text-[1.25rem]">
-              ~158,637 products (every judged product of the ESCI test queries, embedded by Lucille through the local Ollama model) and 65,028 judged queries are ingested locally via Lucille (~20 judged products per test query). After ingestion, queries that match an ESCI query exactly (lowercased) trigger the BM25 → Hybrid → Reranked layout. Use <code className="bg-yellow-100 px-1">--skip-judgments</code> flag to skip this step.
+              The full corpus — ~158,637 products and 97,345 judged queries — is bulk-loaded from a
+              committed, precomputed export as part of the standard <code className="bg-yellow-100 px-1">make setup</code> (see
+              <code className="bg-yellow-100 px-1"> data/README.md</code>; there is no separate ingest step any more). Queries that match an ESCI
+              query exactly (lowercased) trigger the BM25 → Hybrid → Reranked layout.
             </p>
           </div>
         </div>
@@ -450,8 +449,8 @@ export function GuidePage() {
                 <p className="text-gray-600">LangGraph + LangChain</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-[1.25rem]">
-                <p className="font-mono text-gray-900">Ingest Pipeline</p>
-                <p className="text-gray-600">Lucille (KMW's own Java/Maven ETL framework)</p>
+                <p className="font-mono text-gray-900">Corpus</p>
+                <p className="text-gray-600">Precomputed export, bulk-loaded (no live ingest pipeline)</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-[1.25rem]">
                 <p className="font-mono text-gray-900">Frontend</p>
@@ -545,7 +544,7 @@ export function GuidePage() {
           <h4 className="font-semibold text-gray-900 mt-4">Resources & Configuration</h4>
           <div className="text-[1.375rem] text-gray-700 space-y-1">
             <p><strong>API Docs:</strong> <a href="/swagger" className="text-blue-600 hover:underline">Interactive Swagger UI at /swagger</a></p>
-            <p><strong>Key commands:</strong> <code className="bg-gray-100 px-1">make dev</code> (start), <code className="bg-gray-100 px-1">make ci</code> (lint/type/test), <code className="bg-gray-100 px-1">make smoke</code> (verify), <code className="bg-gray-100 px-1">bash scripts/lucille_ingest.sh</code> (ingest)</p>
+            <p><strong>Key commands:</strong> <code className="bg-gray-100 px-1">make dev</code> (start), <code className="bg-gray-100 px-1">make ci</code> (lint/type/test), <code className="bg-gray-100 px-1">make smoke</code> (verify), <code className="bg-gray-100 px-1">make setup</code> (bulk-load the precomputed corpus)</p>
             <p><strong>Config:</strong> See <code className="bg-gray-100 px-1">langchain_agent/.env.example</code> for all environment variables and <code className="bg-gray-100 px-1">CLAUDE.md</code> for the detailed project guide.</p>
           </div>
         </div>

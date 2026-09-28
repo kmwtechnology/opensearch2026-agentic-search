@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Fast-path loader: bulk-load the committed precomputed dumps (data/precomputed/*.parquet)
-straight into OpenSearch instead of running the full Lucille ETL + Ollama embedding pass.
+"""Loader: bulk-load the committed precomputed dumps (data/precomputed/*.parquet)
+straight into OpenSearch. This is the only way the corpus gets into OpenSearch --
+there is no ingest pipeline in this repo any more.
 
-The dumps are a one-time, already-committed full `_source` export of an index Lucille
-actually built (embeddings, attribute detection, seeded color taxonomy) -- this script
-recreates each index's mapping fresh, then bulk-loads the exported documents verbatim.
-No Ollama call, no Lucille/Docker/Java involved. The export that produced these dumps was
-a one-off data-processing exercise against a static corpus and isn't expected to run again;
-see data/README.md.
+The dumps are a one-time, already-committed full `_source` export of the index as it
+existed after its original ingest and taxonomy seeding (embeddings, attribute detection,
+seeded color taxonomy) -- this script recreates each index's mapping fresh, then
+bulk-loads the exported documents verbatim. No Ollama call, no ingest pipeline of any
+kind involved. The export that produced these dumps was a one-off data-processing
+exercise against a static corpus and isn't expected to run again; see data/README.md.
 
 Refuses to load if data/precomputed/dump_metadata.json's products_index_mapping_hash
 doesn't match the current INDEX_MAPPING in retrieval/vector_store.py -- a mapping change
 means the dump's document shape may no longer match. There's no supported way to refresh
-the dump for a new mapping; fall back to `--from-scratch` (the full Lucille ingest) instead.
+the dump for a new mapping and no `--from-scratch` fallback; new one-off tooling would
+need to be written to rebuild the corpus (see data/README.md).
 
 Usage:
     PYTHONPATH=. python scripts/load_precomputed_indices.py [--reset-index]
@@ -36,7 +38,7 @@ REPO_DIR = Path(__file__).resolve().parent.parent.parent
 DUMP_DIR = REPO_DIR / "data" / "precomputed"
 JUDGMENTS_INDEX_NAME = "esci_judgments"
 JUDGMENTS_MAPPING_PATH = (
-    Path(__file__).resolve().parent.parent / "lucille-esci" / "mapping" / "judgments_mapping.json"
+    Path(__file__).resolve().parent.parent / "mapping" / "judgments_mapping.json"
 )
 
 BULK_CHUNK_SIZE = 2000
@@ -50,8 +52,9 @@ def _load_metadata() -> dict:
     metadata_path = DUMP_DIR / "dump_metadata.json"
     if not metadata_path.exists():
         raise SystemExit(
-            f"No precomputed dump found at {DUMP_DIR}. Run a full ingest instead:\n"
-            "  bash scripts/lucille_ingest.sh --reset-index --seed-taxonomy"
+            f"No precomputed dump found at {DUMP_DIR}. This dump is committed via Git LFS -- "
+            "pull it instead of trying to rebuild it:\n"
+            "  git lfs pull"
         )
     return json.loads(metadata_path.read_text())
 
@@ -64,9 +67,9 @@ def _check_mapping_hash(metadata: dict) -> None:
             f"Precomputed dump's products index mapping (hash {dumped}) doesn't match the "
             f"current INDEX_MAPPING (hash {current}) in retrieval/vector_store.py.\n"
             "The mapping changed since the dump was exported. There's no supported way to "
-            "refresh the dump for a new mapping (the one-time export tooling was retired) -- "
-            "run the full ingest instead:\n"
-            "  python setup.py --from-scratch"
+            "refresh the dump for a new mapping (the one-time export tooling was retired, "
+            "and there is no ingest pipeline any more) -- see data/README.md; new one-off "
+            "tooling would need to be written to rebuild the corpus from scratch."
         )
 
 

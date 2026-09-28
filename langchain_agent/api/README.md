@@ -61,7 +61,7 @@ ADMIN_TOKEN                # Automation token for X-Admin-Token header (32+ char
 CORS_ORIGINS               # Comma-separated allow-list; empty for local dev
 ENABLE_ENRICHMENT_TOOL     # Default false. Gates the agent's trigger_enrichment
                             # tool AND POST /api/admin/enrich (403 when unset).
-                            # Both trigger a real Lucille reindex — see
+                            # Both trigger a real scoped re-tag — see
                             # ARCHITECTURE.md's "Enrichment Flywheel" section.
 ```
 

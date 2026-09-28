@@ -572,8 +572,8 @@ function FootnoteText({ summary }: { summary: PipelineSummaryEvent }) {
   }
   return (
     <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] leading-snug">
-      Confidence is a heuristic over reranker scores when no ground truth exists. Ingest ESCI
-      judgments (<code>bash scripts/lucille_ingest.sh</code>) to enable NDCG/MRR/Recall@20.
+      Confidence is a heuristic over reranker scores when no ground truth exists. NDCG/MRR/
+      Recall@20 only apply to queries that exactly match one of the ~97K judged ESCI queries.
     </p>
   )
 }

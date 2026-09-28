@@ -242,16 +242,7 @@ def main():
     parser.add_argument(
         "--skip-db",
         action="store_true",
-        help="Skip PostgreSQL setup (OpenSearch index + search pipeline only). Used by lucille_ingest.sh --reset-index on CI runners that have no Postgres.",
-    )
-    parser.add_argument(
-        "--from-scratch",
-        action="store_true",
-        help=(
-            "Skip the fast precomputed-dump load (data/precomputed/) and run the full "
-            "Lucille ETL + Ollama embedding pass instead (~35-40 min). Use this after "
-            "changing the embedding model, the index mapping, or attribute detection logic."
-        ),
+        help="Skip PostgreSQL setup (OpenSearch index + search pipeline only). Used on CI runners that have no Postgres.",
     )
     args = parser.parse_args()
 
@@ -290,15 +281,28 @@ def main():
         precomputed_dump = (
             Path(__file__).parent.parent / "data" / "precomputed" / "dump_metadata.json"
         )
-        use_precomputed = not args.from_scratch and precomputed_dump.exists()
 
-        if not args.skip_docs and use_precomputed:
+        if not args.skip_docs:
+            if not precomputed_dump.exists():
+                print("\n" + "=" * 70)
+                print("✗ SETUP INCOMPLETE — data/precomputed/ is missing")
+                print("=" * 70)
+                print(
+                    "\nThe product corpus is a permanent, one-time export committed to this "
+                    "repo via Git LFS. It is not rebuilt locally — there is no ingest "
+                    "pipeline for it any more (see data/README.md)."
+                )
+                print("\nMost likely cause: Git LFS objects were never pulled. Run:")
+                print("  git lfs pull")
+                print("\nThen re-run setup.")
+                print("\n" + "=" * 70)
+                return 1
+
             print("\n[6/7] Loading precomputed products, judgments, and attribute taxonomy...")
             print(
                 "      Bulk-loading data/precomputed/*.parquet — embeddings and attribute "
                 "detection were already run once and committed (Git LFS). No Ollama call, "
-                "no Lucille/Docker/Java needed. Pass --from-scratch to re-run the full "
-                "~35-40 min ingest instead."
+                "no re-embedding needed."
             )
             try:
                 import subprocess
@@ -322,70 +326,19 @@ def main():
                 print(
                     "      Retry manually: PYTHONPATH=. python langchain_agent/scripts/load_precomputed_indices.py"
                 )
-                print("      Or run the full ingest instead: python setup.py --from-scratch")
-        elif not args.skip_docs:
-            print("\n[6/7] Loading ESCI products and judgments via Lucille ETL...")
-            if args.from_scratch:
-                print(
-                    "      --from-scratch requested — running the full ~35-40 min embedding pass."
-                )
-            else:
-                print(
-                    "      No precomputed dump found at data/precomputed/ — falling back to the full ingest."
-                )
-            print("      Runs via Docker by default (no local Java/Maven needed).")
-            print("      Seeding color taxonomy (discovery pass, then a products pass)...")
-            try:
-                import subprocess
-
-                lucille_script = Path(__file__).parent / "scripts" / "lucille_ingest.sh"
-                lucille_args = [str(lucille_script)]
-                if args.reset_index:
-                    lucille_args.append("--reset-index")
-                # setup.py only runs on first-time setup, so this is always a
-                # fresh cluster with an empty taxonomy store (see CLAUDE.md: "A
-                # fresh cluster's taxonomy store is empty and nothing seeds it
-                # implicitly"). Mandatory, not optional: without it, every
-                # color attribute_filter query returns zero results until
-                # someone happens to run `make seed-taxonomy` by hand. The
-                # "waterproof" attribute type is deliberately NOT seeded here —
-                # it starts empty and is grown entirely by the live enrichment
-                # flywheel (see attribute_discovery.py's WATERPROOF_CANONICALS
-                # comment).
-                lucille_args.append("--seed-taxonomy")
-                result = subprocess.run(
-                    lucille_args,
-                    cwd=str(Path(__file__).parent),
-                    check=True,
-                )
-                print("      ✓ Products and judgments loaded via Lucille ETL")
-            except subprocess.CalledProcessError as e:
-                docs_ingest_failed = True
-                print(f"      ✗ Lucille ingest failed (exit {e.returncode})")
-                print("      Check prerequisites: docker -v (default path), or")
-                print(
-                    "      java -version (21+) and mvn -version (3.8+) if LUCILLE_USE_DOCKER=false"
-                )
-                print(
-                    "      Retry manually: bash langchain_agent/scripts/lucille_ingest.sh --seed-taxonomy"
-                )
-            except FileNotFoundError:
-                docs_ingest_failed = True
-                print("      ✗ lucille_ingest.sh not found — Lucille ingest skipped")
-                print(
-                    "      Run manually: bash langchain_agent/scripts/lucille_ingest.sh --seed-taxonomy"
-                )
 
         # A failed ingest means zero (or stale) products are indexed — that's not
         # a state to report as "SETUP COMPLETE". Fail loud instead of continuing
         # past it; --skip-docs remains the way to deliberately opt out of ingest.
         if docs_ingest_failed:
             print("\n" + "=" * 70)
-            print("✗ SETUP INCOMPLETE — Lucille ingest failed, no products indexed")
+            print("✗ SETUP INCOMPLETE — precomputed load failed, no products indexed")
             print("=" * 70)
             print("\nDatabase, OpenSearch index, and API key setup succeeded above.")
-            print("Fix the ingest issue and retry:")
-            print("  bash langchain_agent/scripts/lucille_ingest.sh --reset-index --seed-taxonomy")
+            print("Fix the load issue and retry:")
+            print(
+                "  PYTHONPATH=. python langchain_agent/scripts/load_precomputed_indices.py --reset-index"
+            )
             print("\n" + "=" * 70)
             return 1
 
@@ -411,7 +364,7 @@ def main():
         print("1. PostgreSQL: Ensure Docker container is running")
         print("   docker compose up -d")
         print("2. Ollama: ensure it is running and the models are pulled (scripts/doctor.sh)")
-        print("3. Product data: Ensure data/esci_products.parquet exists (git lfs pull)")
+        print("3. Product data: Ensure data/precomputed/ is populated (git lfs pull)")
         print("4. Connection: Verify config.py settings")
         print("\n" + "=" * 70)
         return 1

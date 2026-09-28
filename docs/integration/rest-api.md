@@ -109,8 +109,8 @@ Diagnostic-only: probes the live index for a query (`q`, default `"sony"`) acros
 
 ### Enrich Attribute Taxonomy
 
-Grows the live color/waterproof taxonomy with a new variant term and, by
-default (`REINDEX_TRIGGER=scoped`), triggers a scoped re-tag of just the
+Grows the live color/waterproof taxonomy with a new variant term and
+triggers a scoped re-tag (the only reindex mode there is) of just the
 products whose text mentions the changed variant — no full reindex, no
 re-embedding, measured live at well under a second to a few seconds — the
 same mechanism the agent's own `trigger_enrichment` tool uses when it

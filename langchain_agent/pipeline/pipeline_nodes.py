@@ -718,11 +718,12 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         This exists purely to keep the event loop free. LangGraph's
         RunnableCallable.ainvoke short-circuits with
         ``if not self.afunc: return self.invoke(...)``, so a sync-only node
-        runs ON the loop thread — and agent_node can block for ~20s when the
-        taxonomy-correction path triggers a real Lucille reindex
-        (LocalReindexTrigger.trigger runs subprocess.run inline). While the
-        loop is blocked no WebSocket frame can leave the server, which is why
-        the re-index window used to be completely silent in the UI (#103).
+        runs ON the loop thread — and agent_node can block briefly when the
+        taxonomy-correction path triggers a scoped re-tag
+        (ScopedRetagTrigger.trigger runs synchronous OpenSearch calls inline).
+        While the loop is blocked no WebSocket frame can leave the server,
+        which is why the re-tag window used to be completely silent in the
+        UI (#103).
         Handing the body to a worker thread lets the enrichment lifecycle
         events emitted from inside it actually reach the browser as they
         happen.
@@ -2758,7 +2759,7 @@ Original query: {query}
             ]
             if prior_product_ids:
                 # Constrain to the prior turn's products by DOCUMENT ID, not by
-                # a product_id field in _source. The products Lucille pipeline
+                # a product_id field in _source. The products index build
                 # sets idField: "product_id", so that value becomes OpenSearch's
                 # _id and is never written into _source — the mapping declares
                 # product_id as a keyword, but every document's value is null.

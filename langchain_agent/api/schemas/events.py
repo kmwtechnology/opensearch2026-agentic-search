@@ -574,8 +574,8 @@ class DocumentReplacementEvent(BaseEvent):
 
 class EnrichmentTriggeredEvent(BaseEvent):
     """Emitted when the agent's trigger_enrichment tool fires — a color or
-    waterproof taxonomy gap was detected and a real Lucille reindex was
-    triggered live. Richer than the generic ToolCallEvent (which this
+    waterproof taxonomy gap was detected and a scoped re-tag was triggered
+    live. Richer than the generic ToolCallEvent (which this
     doesn't fire, since the enrichment tool loop is a manual two-call
     binding inside agent_node, not a ToolNode-executed call the standard
     astream_events tool-start/tool-call machinery would see)."""

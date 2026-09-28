@@ -201,12 +201,13 @@ INDEX_MAPPING = {
                     "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
                 },
             },
-            # Normalized attribute filter fields, populated at ingest time by
-            # the generic Lucille AttributeDetectorStage (one class,
-            # parameterized per attribute_type — see config_generator.py).
-            # Declared explicitly here (unlike product_color_primary/
-            # product_brand_normalized, which land via dynamic mapping today)
-            # so a fresh index always has these as keyword from the start.
+            # Normalized attribute filter fields, populated once at the
+            # corpus's original build time and preserved verbatim in the
+            # committed precomputed dump (pipeline/scoped_retag.py handles
+            # every live change afterward). Declared explicitly here (unlike
+            # product_color_primary/product_brand_normalized, which land via
+            # dynamic mapping today) so a fresh index always has these as
+            # keyword from the start.
             "product_waterproof_primary": {"type": "keyword"},
             "product_waterproof_secondary": {"type": "keyword"},
             "product_locale": {"type": "keyword"},
@@ -1075,13 +1076,13 @@ class OpenSearchVectorStore:
         """
         src = hit["_source"]
         score = retrieval_score if retrieval_score is not None else hit.get("_score")
-        # product_id: the products Lucille pipeline sets `idField: "product_id"`
-        # (see lucille-esci/conf/products.generated.conf), which consumes that
-        # parquet column as the OpenSearch document _id -- it is never also
-        # written back out as its own `product_id` field in _source. hit["_id"]
-        # (== _source.id, both always the product's ASIN) is the actual source
-        # of truth; src.get("product_id") is kept only as a defensive fallback
-        # for indices built by some other, non-Lucille ingest path.
+        # product_id: the corpus's original build set the parquet's product_id
+        # column as the OpenSearch document _id -- it is never also written
+        # back out as its own `product_id` field in _source, and every doc in
+        # the committed precomputed dump preserves that shape verbatim.
+        # hit["_id"] (== _source.id, both always the product's ASIN) is the
+        # actual source of truth; src.get("product_id") is kept only as a
+        # defensive fallback.
         product_id = hit.get("_id") or src.get("id") or src.get("product_id", "")
         metadata = {
             "source": src.get("source", ""),

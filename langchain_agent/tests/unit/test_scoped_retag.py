@@ -1,8 +1,9 @@
 """Unit tests for pipeline/scoped_retag.py (#147).
 
-The detection cases are ported one-for-one from the Java stage's own suite
-(lucille-esci/.../AttributeDetectorStageTest.java) -- the scoped re-tag is only
-correct if it tags a product exactly as a full Lucille run would.
+The detection cases are ported one-for-one from the since-removed Java stage's
+own suite (lucille-esci/.../AttributeDetectorStageTest.java) -- the scoped
+re-tag is only correct if it tags a product exactly as a full Lucille run
+would have.
 """
 
 from unittest.mock import MagicMock

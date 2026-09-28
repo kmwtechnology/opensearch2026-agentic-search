@@ -2,18 +2,19 @@
 
 > **Parent**: [README.md](../README.md)
 
-Product and judgment parquets committed to the repo (Git LFS) and read by
-`langchain_agent/scripts/lucille_ingest.sh`. They hold **text only**, with no vectors.
-Lucille embeds every product at ingest time with a local Ollama model
-(`OllamaEmbedStage`, `nomic-embed-text`, 768-dim; see #148), so no cloud
-embedding API is involved anywhere.
+This repo has no local ingest pipeline any more. Everything the app reads —
+embeddings, attribute tags, the seeded color taxonomy, judgments — is a
+permanent, one-time export already committed via Git LFS in
+`data/precomputed/`, bulk-loaded verbatim by every `make setup`. There is no
+`--from-scratch` flag, no rebuild path, and no cloud embedding API involved
+anywhere.
 
-## `precomputed/` — fast-path index dumps
+## `precomputed/` — the only index source
 
-This dataset doesn't change, so re-running the ~35-40 min Ollama embedding +
-attribute-detection pass on every fresh `make setup` is wasted work. `data/precomputed/`
-holds a full `_source` export (embeddings, `product_*_primary`/`_secondary` attribute tags,
-seeded color taxonomy) of an index a real Lucille ingest already built:
+`data/precomputed/` holds a full `_source` export (embeddings, `product_*_primary`/
+`_secondary` attribute tags, seeded color taxonomy) of the products, judgments, and
+attribute-mapping indices as they existed after the corpus's original ingest and
+taxonomy seeding:
 
 | File | Contents |
 |------|----------|
@@ -22,19 +23,20 @@ seeded color taxonomy) of an index a real Lucille ingest already built:
 | `judgments_dump.parquet` | The `esci_judgments` index (already filtered to products present in the corpus) |
 | `dump_metadata.json` | Source commit, `EMBEDDINGS_MODEL`, a hash of `INDEX_MAPPING`, and expected doc counts — the loader refuses to load a dump whose mapping hash doesn't match the current `INDEX_MAPPING` |
 
-`setup.py` uses this by default (`scripts/load_precomputed_indices.py`, a plain bulk load —
-no Ollama, no Lucille/Docker/Java) and falls back automatically to the full Lucille ingest if
-this directory is missing. Force the full ingest with `python setup.py --from-scratch`.
+`setup.py` always uses this (`scripts/load_precomputed_indices.py`, a plain bulk load —
+no Ollama, no embedding, no ingest pipeline of any kind). If this directory is missing
+(Git LFS objects not pulled), setup fails immediately with a `git lfs pull` message —
+there is no fallback.
 
-**This was a one-time export**, run once against the corpus described above and committed.
-The corpus is static and isn't expected to change, so this isn't meant to run again — the
-export/verify tooling that produced it (`scripts/export_precomputed_indices.py`,
-`scripts/verify_precomputed_load.py`) was retired after use. If the embedding model,
-`INDEX_MAPPING`, or attribute detection logic ever changes for real, `load_precomputed_indices.py`
-will refuse to load the now-mismatched dump (it checks a hash of `INDEX_MAPPING`) — at that
-point, fall back to `python setup.py --from-scratch` (the full Lucille ingest) rather than
-trying to regenerate this dump; new one-off export tooling would need to be written fresh
-if a future need for it actually materializes.
+**This was a one-time export**, run once and committed. The corpus is static and isn't
+expected to change, so this isn't meant to run again — the export/verify tooling that
+produced it (`scripts/export_precomputed_indices.py`, `scripts/verify_precomputed_load.py`)
+was retired after use, and the ingest pipeline that originally built the source index
+(a Java/Lucille ETL) was removed from this repo entirely once its one-time job was done.
+If the embedding model, `INDEX_MAPPING`, or attribute detection logic ever changes for
+real, `load_precomputed_indices.py` will refuse to load the now-mismatched dump (it checks
+a hash of `INDEX_MAPPING`) — at that point, new one-off tooling would need to be written
+fresh to rebuild the corpus; there is nothing to fall back to.
 
 ## Files
 
@@ -42,6 +44,13 @@ if a future need for it actually materializes.
 |------|---------|----------|--------|
 | `esci_products.parquet` | 158,637 products | `product_id` (ASIN), `product_title`, `product_description`, `product_bullet_point`, `product_brand`, `product_color`, `product_locale`, `product_image_url` | Every judged product of the ESCI US `test` + `small_version` queries, built by `scripts/build_product_sample.py` (#147). 95.5% have a real SQID image URL |
 | `esci_judgments_aggregated.parquet` | 97,345 queries | `query_id`, `query`, `locale`, `split`, `small_version`, `judgments_json` (relevance: `E`→4.0, `S`→1.0, `C`→0.1, `I`→0.0) | Amazon ESCI, pre-aggregated by query (`scripts/prepare_judgments_parquet.py`) |
+
+These two are the **historical source inputs** that were fed to the (now-removed) ingest
+pipeline to build the index that `data/precomputed/` is exported from. Nothing in this repo
+reads them any more — they're kept only as provenance / for the unlikely case that new
+ingest tooling ever needs to be written from scratch. `scripts/build_product_sample.py` and
+`scripts/prepare_judgments_parquet.py` (which produce them) are likewise kept only as
+reference for how the corpus was originally built, not as part of any live workflow.
 
 ### Why query-first
 
@@ -53,17 +62,16 @@ corpus. The ESCI test/small subset is also exactly the one
 [SQID](https://github.com/Crossing-Minds/shopping-queries-image-dataset)
 scraped image URLs for.
 
-## How They're Used
+## How They Were Used (historical)
 
-`scripts/lucille_ingest.sh` reads both files:
-- **Products**: Lucille builds `chunk_text` (title + description + bullets),
-  embeds it through Ollama, runs attribute detection, and indexes into
-  `OPENSEARCH_INDEX_NAME`. The full corpus takes ~35-40 min, almost all of it embedding.
+The now-removed ingest pipeline read both files:
+- **Products**: built `chunk_text` (title + description + bullets), embedded it through
+  Ollama, ran attribute detection, and indexed into `OPENSEARCH_INDEX_NAME`.
 - **Judgments**: indexed into `esci_judgments` (created from
-  `lucille-esci/mapping/judgments_mapping.json`), filtered to queries with at
+  `langchain_agent/mapping/judgments_mapping.json`), filtered to queries with at
   least one product in the products index. `OpenSearchVectorStore.lookup_judgments(query)`
-  uses it for ground-truth metrics. After the products index changes, refresh
-  only the judgments with `bash scripts/lucille_ingest.sh --skip-products`.
+  uses that index for ground-truth metrics today — that part is still live, it's just
+  loaded from `data/precomputed/judgments_dump.parquet` now, not built from this file.
 
 ## Regenerating the products parquet
 
@@ -82,35 +90,31 @@ PYTHONPATH=. python scripts/build_product_sample.py --dry-run          # counts 
 PYTHONPATH=. python scripts/build_product_sample.py                    # writes data/esci_products.parquet
 ```
 
-Null text fields are written as `""`. When a field is null, Lucille's
-`Concatenate` stage leaves a literal `{product_description}` placeholder in
-`chunk_text`, which is how the old sample ended up with that string in 45% of
-its products.
+Null text fields are written as `""`. A naive `chunk_text` build leaves a literal
+`{product_description}` placeholder when a field is null, which is how the old
+sample ended up with that string in 45% of its products.
 
 ### Judgments
 
 ```bash
 PYTHONPATH=. python scripts/prepare_judgments_parquet.py --locale us --force
-bash scripts/lucille_ingest.sh --skip-products
 ```
 
 ## Storage Notes
 
 - **Size**: products ~125 MB (text only); judgments ~23 MB.
 - **Versioning**: Git LFS tracks `data/*.parquet`; `git lfs install` is required locally.
-- **Changing the embedding model** means a full re-ingest. The index mapping
-  pins 768 dimensions, and Lucille and the query side must use the same model
-  (`EMBEDDINGS_MODEL`).
+- **Changing the embedding model** would require rebuilding the corpus from scratch with
+  new tooling — there is no ingest path in this repo any more. The index mapping pins
+  768 dimensions, and the query side (`EMBEDDINGS_MODEL`) must match whatever the corpus
+  was actually embedded with.
 
 ## Troubleshooting
 
-**Lucille ingest fails with "file not found":** run `git lfs pull`.
-
-**Ingest stops at "Ollama embedding model ... not available":** start Ollama and
-`ollama pull nomic-embed-text`. The Docker Lucille path reaches the host's
-Ollama via `host.docker.internal` automatically.
+**`make setup` fails with "data/precomputed/ is missing":** run `git lfs pull`.
 
 **Judgment lookups always miss:** check that `esci_judgments` exists and was
-created from `judgments_mapping.json`. Its `query.keyword` has a lowercase
-normalizer, and a dynamically-mapped index lacks it, so mixed-case queries miss.
-Misses are graceful; the observability panel falls back to the confidence proxy.
+created from `langchain_agent/mapping/judgments_mapping.json`. Its `query.keyword`
+has a lowercase normalizer, and a dynamically-mapped index lacks it, so mixed-case
+queries miss. Misses are graceful; the observability panel falls back to the
+confidence proxy.

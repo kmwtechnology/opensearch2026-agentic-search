@@ -33,9 +33,8 @@ from slowapi.errors import RateLimitExceeded
 from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import get_allowed_origins
 from api.routes import admin, chat, conversations, health, suggest
-from core.config import API_VERSION, ENABLE_ENRICHMENT_TOOL, RATE_LIMIT_ENABLED
+from core.config import API_VERSION, RATE_LIMIT_ENABLED
 from core.logging_config import configure_logging, get_logger
-from pipeline.reindex_trigger import build_reindex_trigger
 
 # Configure structured logging
 configure_logging()
@@ -71,12 +70,6 @@ async def lifespan(app: FastAPI):
     Replaces deprecated @app.on_event("startup") and @app.on_event("shutdown")
     decorators with a modern async context manager pattern.
     """
-    # Startup
-    if ENABLE_ENRICHMENT_TOOL:
-        # Fail fast on REINDEX_TRIGGER misconfiguration (e.g. github mode with no
-        # token) instead of discovering it on the first live enrichment.
-        build_reindex_trigger()
-
     # Initialize the agent (LLM clients, graph, reranker) and wait for
     # warmup to complete *before* the ASGI server starts accepting
     # connections. Uvicorn doesn't begin serving until this lifespan
@@ -133,8 +126,8 @@ tags_metadata = [
         "name": "admin",
         "description": (
             "Operational endpoints for index health and diagnostics (same-origin only). "
-            "Reindexing is handled externally: `bash scripts/lucille_ingest.sh`. "
-            "No in-container ingest."
+            "Reindexing is a scoped, in-process re-tag (pipeline/scoped_retag.py) "
+            "triggered by the enrichment flywheel — no external ingest pipeline."
         ),
     },
     {

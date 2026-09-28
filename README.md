@@ -22,16 +22,16 @@ Runs PostgreSQL and OpenSearch in Docker, the FastAPI backend on
 - Docker Desktop
 - Python 3.14+
 - Node.js 24+
-
-Java 21+ and Maven are only needed if you opt out of the default
-Docker-based Lucille ETL ingest (`LUCILLE_USE_DOCKER=false`).
+- [Git LFS](https://git-lfs.com/) (`git lfs install`) — the product corpus
+  ships as a committed export, pulled via LFS
 
 ### Setup
 
 ```bash
 cd langchain_agent
 cp .env.example .env
-./scripts/setup.sh    # One-time setup: pulls Ollama models (~23 GB), then ~35-40 min of Lucille embedding
+./scripts/setup.sh    # One-time setup: pulls Ollama models (~23 GB), then a ~1-2 min
+                       # bulk-load of the committed precomputed corpus (no embedding)
 ./scripts/start.sh    # Start backend + frontend → http://localhost:5173
 ```
 
@@ -71,10 +71,10 @@ A conversational RAG agent powered by a local Ollama LLM for e-commerce product 
   three-section UI (Did you mean? / Suggestions / Recent Searches)
 - **Admin diagnostics** — `GET /api/admin/health` reports index health and
   doc count; `GET /api/admin/diagnose` probes field-level hit counts.
-  Same-origin checking is the only auth layer (no login gate). Routine
-  full re-indexing is triggered via `scripts/lucille_ingest.sh`;
-  `POST /api/admin/enrich` also triggers a real reindex directly, as part
-  of the taxonomy growth & correction mechanism below;
+  Same-origin checking is the only auth layer (no login gate). There is no
+  full re-indexing path (the corpus is a permanent precomputed export, see
+  `data/README.md`); `POST /api/admin/enrich` triggers a scoped re-tag
+  directly, as part of the taxonomy growth & correction mechanism below;
   `POST /api/admin/demo-reset` re-arms the taxonomy demo by restoring the
   tan→yellow mis-tag defect so it can be demonstrated again
 - **Agentic taxonomy growth & correction** — the agent can grow *or fix*
@@ -83,12 +83,11 @@ A conversational RAG agent powered by a local Ollama LLM for e-commerce product 
   and a term already mapped to the *wrong* bucket can be corrected when a
   shopper disputes it (e.g. the shipped taxonomy maps "tan" to "yellow"
   instead of "brown"), invisible to automated quality gates since the wrong
-  result still scores above threshold. By default (`REINDEX_TRIGGER=scoped`)
-  this re-detects the attribute only on products whose text mentions the
-  changed variant and bulk-updates just those (well under a second to a few
-  seconds, no re-embedding); a full Lucille reindex remains available via
-  `REINDEX_TRIGGER=local` but takes 30+ minutes — see
-  `langchain_agent/ARCHITECTURE.md` and `langchain_agent/DEMO.md`
+  result still scores above threshold. This re-detects the attribute only on
+  products whose text mentions the changed variant and bulk-updates just
+  those (well under a second to a few seconds, no re-embedding) — the only
+  reindex mode there is — see `langchain_agent/ARCHITECTURE.md` and
+  `langchain_agent/DEMO.md`
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
   boosting, and field boosting, displayed in the observability panel's
   "Search Optimizations" card
@@ -366,7 +365,6 @@ opensearch2026-agentic-search/
 │   ├── main.py                   # EcommerceSearchAgent: setup, graph wiring, lifecycle (~600 lines)
 │   ├── cli.py                    # Interactive terminal REPL (dev only)
 │   ├── setup.py                  # DB + index init; invoked by scripts/setup.sh
-│   ├── config_generator.py       # Regenerates the Lucille products.conf from OpenSearch
 │   ├── core/                     # agent_state (CustomAgentState), config, exceptions, logging_config
 │   ├── pipeline/                 # pipeline_nodes (the 8 LangGraph nodes), conversation_management, reindex_trigger
 │   ├── retrieval/                # vector_store (RRF fusion), reranker, attribute_*, link_verifier, doc_replacer
@@ -378,10 +376,9 @@ opensearch2026-agentic-search/
 │   ├── api/                      # FastAPI backend — see api/README.md
 │   ├── web/                      # React frontend — see web/README.md
 │   ├── scripts/                  # Lifecycle scripts — see scripts/README.md
-│   ├── lucille-esci/             # Lucille ETL config — see lucille-esci/README.md
 │   ├── tests/                    # unit, integration, e2e suites
 │   └── Dockerfile                # Multi-stage build (Node + Python)
-└── esci/                         # Amazon ESCI dataset (created by setup; gitignored)
+└── data/                         # Committed corpus (Git LFS) — see data/README.md
 ```
 
 ## Documentation Map
@@ -396,7 +393,7 @@ opensearch2026-agentic-search/
 | [langchain_agent/api/README.md](langchain_agent/api/README.md) | FastAPI backend layers (routes, middleware, schemas, services) | Backend devs |
 | [langchain_agent/scripts/README.md](langchain_agent/scripts/README.md) | Lifecycle scripts (setup, dev, CI hooks) | All devs |
 | [langchain_agent/web/README.md](langchain_agent/web/README.md) | React frontend (components, stores, hooks, testing) | Frontend devs |
-| [langchain_agent/lucille-esci/README.md](langchain_agent/lucille-esci/README.md) | Lucille ETL config for ESCI ingest | Data/DevOps engineers |
+| [data/README.md](data/README.md) | The committed precomputed corpus and its provenance | Data/DevOps engineers |
 | [langchain_agent/tests/README.md](langchain_agent/tests/README.md) | Test suite overview (unit, integration, e2e) | Test developers |
 | [langchain_agent/tests/integration/README.md](langchain_agent/tests/integration/README.md) | Integration tests (multi-component, live services) | Backend/test devs |
 | [langchain_agent/tests/e2e/README.md](langchain_agent/tests/e2e/README.md) | End-to-end tests (local backend by default) | QA/test devs |
@@ -447,21 +444,22 @@ cp .env.example .env
 ./scripts/teardown.sh       # Full cleanup
 ```
 
-**Prerequisites:** Docker Desktop, Python 3.14+, Node.js 24+, [Ollama](https://ollama.com/)
-installed and running (`setup.sh` pulls the required models, ~23 GB), and
-disk for the ESCI dataset plus Docker volumes. (Java 21+/Maven only needed
-for `LUCILLE_USE_DOCKER=false`.)
+**Prerequisites:** Docker Desktop, Python 3.14+, Node.js 24+, Git LFS,
+[Ollama](https://ollama.com/) installed and running (`setup.sh` pulls the
+required models, ~23 GB), and disk for the committed corpus plus Docker
+volumes.
 
 There is no CI/CD pipeline and no deploy step (issue #110/#113) — `make check`
 run locally is the only gate before merging to `main`.
 
 ### ESCI data ships in `data/`
 
-`data/esci_products.parquet` (158,637 products, text only — embeddings are
-generated at ingest time by Lucille via Ollama) and
-`data/esci_judgments_aggregated.parquet` are committed to the repo and read
-directly by `scripts/lucille_ingest.sh`. The Docker image does not bundle
-these — ingest runs from a workstation, not inside the container.
+The actual corpus the app loads is `data/precomputed/` — a permanent,
+already-embedded, already-tagged export bulk-loaded verbatim by every
+`make setup` (see `data/README.md`). `data/esci_products.parquet` (158,637
+products, text only) and `data/esci_judgments_aggregated.parquet` are the
+historical source inputs that built it; nothing reads them at runtime any
+more. There is no ingest pipeline in this repo — the corpus is static.
 
 ## Performance
 

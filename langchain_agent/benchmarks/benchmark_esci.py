@@ -132,17 +132,18 @@ class ESCIBenchmark:
         allowed: Optional[Set[str]] = None
         if test_only:
             filters.append({"term": {"split": "test"}})
-            # small_version can't be filtered in the index: Lucille's parquet
-            # connector drops boolean columns, so it never reaches
-            # esci_judgments. Take the test/small query set from the same
-            # committed parquet the corpus was built from instead.
+            # small_version can't be filtered in the index: the original
+            # ingest's parquet connector dropped boolean columns, so it never
+            # reached esci_judgments. Take the test/small query set from the
+            # same committed parquet the corpus was built from instead.
             allowed = self._test_small_queries()
         body = {
             "query": {"bool": {"filter": filters}},
             "size": 1000,
             "_source": ["query"],
-            # _id, not query_id: Lucille consumes query_id as the document
-            # _id, so the field is never in _source and can't page search_after.
+            # _id, not query_id: the original ingest consumed query_id as the
+            # document _id, so the field is never in _source and can't page
+            # search_after.
             "sort": [{"_id": "asc"}],
         }
 

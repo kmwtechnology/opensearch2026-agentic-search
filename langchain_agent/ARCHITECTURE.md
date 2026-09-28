@@ -470,28 +470,27 @@ UI-assist path.
 
 ## Re-Indexing
 
-The canonical re-indexing mechanism is **`scripts/lucille_ingest.sh`**, which
-runs Lucille ETL via Docker (or natively) to ingest ESCI products and
-judgments into the local OpenSearch cluster. A full products ingest embeds
-all ~158K products through Ollama (~35-40 minutes on an M4 Max);
-`--skip-products` refreshes only judgments.
+There is no full re-indexing mechanism in this repo. The products, judgments,
+and attribute-taxonomy indices are all loaded from a single permanent,
+one-time export committed via Git LFS (`data/precomputed/`), bulk-loaded
+verbatim by `scripts/load_precomputed_indices.py` on every `make setup`. The
+corpus is static and isn't expected to change; if it ever needs to, new
+ingest tooling would need to be written fresh — see `data/README.md`.
 
-**Flags**:
-- `--reset-index` (default: off) — drop and recreate the products index before ingest
-- `--skip-judgments` (default: off, i.e. judgments run) — skip the judgments ingest
-- `--seed-taxonomy` — rediscover the color attribute taxonomy (destructive to agent-learned color mappings; see `make seed-taxonomy`). Does not touch "waterproof" — see `scripts/rebuild_attribute_taxonomies.py`
+The only thing that ever mutates the live products index after that initial
+load is a **scoped re-tag** (`pipeline/scoped_retag.py`), which re-detects
+one changed attribute on only the products whose text mentions it — see
+"Taxonomy Growth & Correction" below.
 
 **For details**, see:
-- `langchain_agent/scripts/lucille_ingest.sh` — orchestrates the Lucille container
-- `data/README.md` — data format and file descriptions
+- `data/README.md` — data format, file descriptions, and the precomputed dump
 
 **Admin API** (`api/routes/admin.py`):
 - `GET /api/admin/health` — index document count, service status
 - `GET /api/admin/diagnose` — field-level hit counts and mapping inspection
 - `POST /api/admin/enrich` — grow or correct the color/waterproof taxonomy
-  and trigger a scoped re-tag by default (`REINDEX_TRIGGER=scoped`); see
-  "Taxonomy Growth & Correction" below (gated by `ENABLE_ENRICHMENT_TOOL`,
-  default off)
+  and trigger a scoped re-tag; see "Taxonomy Growth & Correction" below
+  (gated by `ENABLE_ENRICHMENT_TOOL`, default off)
 - Protected by same-origin check only (no login gate)
 
 ---
@@ -665,61 +664,33 @@ variants, and a genuinely new variant term (a color word, or a
 waterproofing synonym the taxonomy hasn't seen yet) to be teachable without
 a code deploy.
 
-**Solution:** Detection happens **during Lucille ingest**, not as a
-post-ingest pass, driven by a taxonomy stored in OpenSearch — not a
-committed file:
+**Solution, historically:** the corpus's original ingest pipeline (since
+removed — this repo has no ingest pipeline any more) detected attributes
+once, driven by a taxonomy stored in OpenSearch, and wrote:
 
-1. **`AttributeDetectorStage.java`** — one generic, parameterized Lucille
-   stage (config param: `attributeType`). Scans `chunk_text`
-   (title + description + bullet points) for known variants via a
-   longest-match-first, word-boundary regex built from the taxonomy, and
-   writes `product_<type>` (raw match, dual-mapped text field) and
-   `product_<type>_primary`/`_secondary` (canonical, keyword). The pipeline
-   config carries one distinct stage instance per attribute type currently
-   registered (`detectColor`, `detectWaterproof`) — both share the one Java
-   class; a new attribute type gets a new stage instance automatically (see
-   "Config Generation" below), zero new Java code.
-   Sources its variant→canonical lookup from OpenSearch at `start()`
-   (`agentic_hybrid_search_attribute_mappings` index, via
-   `AttributeMappingStore` on the Python side) — no bundled-file fallback.
-   Connects through Lucille's own `OpenSearchUtils` client, reusing the
-   indexer's `opensearch` block (URL + basic-auth userinfo,
-   `acceptInvalidCert`) via HOCON merge with only `index` overridden. A
-   failed load is a hard `StageException` that fails the ingest — the stage
-   is only generated when its type is registered in the store, so an
-   unreachable/unauthorized store is a real error, and degrading silently
-   is how the hosted index ended up with zero color/material fields
-   (#71, #72). A fresh cluster's store is empty: seed color once with
-   `lucille_ingest.sh --seed-taxonomy` (`make seed-taxonomy`, or
-   `seed_taxonomy=true` on the reindex workflow) — "waterproof" is
-   deliberately NOT seeded this way; it starts with zero variants and is
-   grown entirely by the live enrichment flywheel below (see
-   `attribute_discovery.py`'s `WATERPROOF_CANONICALS`).
-2. **`BrandNormalizerStage.java`** — a small, separate, fixed transform
-   (case folding, generic-placeholder consolidation like "Unknown"/"N/A").
-   Not a discovered taxonomy, no OpenSearch dependency, always present.
-3. **Output fields** (added to every document): `product_color_primary`/
-   `_secondary`, `product_waterproof_primary`/`_secondary` (both keyword, for
-   exact filtering), `product_brand_normalized` (keyword).
+- `product_<type>` (raw matched text, dual-mapped text field) and
+  `product_<type>_primary`/`_secondary` (canonical, keyword) — via a
+  longest-match-first, word-boundary regex scan of `chunk_text`
+  (title + description + bullet points) against the registered taxonomy.
+- `product_brand_normalized` (keyword) — a small, separate, fixed transform
+  (case folding, generic-placeholder consolidation like "Unknown"/"N/A").
+  Not a discovered taxonomy.
 
-**Impact** (measured against the current discovery-built color taxonomy —
+That result is preserved verbatim in the committed `data/precomputed/` dump
+and loaded by every `make setup` — there is no code in this repo that
+performs a corpus-wide detection pass any more. `pipeline/scoped_retag.py`
+is a Python port of that original detection algorithm (see its docstring for
+the exact regex/canonicalization rules), used only for the live,
+already-tagged-corpus case: re-tagging the handful of products a taxonomy
+change affects (see "Taxonomy Growth & Correction" below).
+
+**Impact** (measured against the shipped discovery-built color taxonomy —
 102 color variants): `product_color_primary` populated on 70.5% of
 products, `product_brand_normalized` on 96.4%. Deterministic detection
-(rules-only regex match, no AI calls at ingest time) — reproducible,
-auditable. Raw fields preserved — no data loss. `product_waterproof_primary`
-coverage depends entirely on what the live enrichment flywheel has taught
-the catalog in a given session — zero on a freshly seeded cluster, by
-design.
-
-**Config Generation** (`config_generator.py`) — `products.conf` is no
-longer a static committed file. `generate_products_conf()` renders the
-full Lucille HOCON pipeline (fixed prelude/epilogue + one
-`AttributeDetectorStage` block per attribute type currently registered in
-OpenSearch) to `lucille-esci/conf/products.generated.conf`
-(gitignored). `scripts/lucille_ingest.sh` regenerates this file
-immediately before every run, so a reindex always reflects whatever
-attribute types exist in OpenSearch *at that moment* — including one the
-live enrichment flywheel (below) just registered.
+(rules-only regex match, no AI involved) — reproducible, auditable. Raw
+fields preserved — no data loss. `product_waterproof_primary` coverage
+depends entirely on what the live enrichment flywheel has taught the
+catalog in a given session — zero on a freshly loaded corpus, by design.
 
 ### Taxonomy Growth & Correction — Agent-Triggered
 
@@ -729,7 +700,7 @@ live enrichment flywheel (below) just registered.
    manual data migration. `waterproof` is this mechanism's dedicated
    growth demo: `WATERPROOF_CANONICALS` (`retrieval/attribute_discovery.py`)
    ships with a registered canonical bucket but **zero** seed variants, so
-   on a freshly seeded cluster "waterproof hiking boots" is a genuine,
+   on a freshly loaded corpus "waterproof hiking boots" is a genuine,
    reproducible gap every time — not a term that merely happens to be
    missing.
 2. **Correction** — a variant can be *in* the taxonomy but mapped to the
@@ -831,16 +802,12 @@ explicit action) bypasses this gate.
 **Shared write path** (both gap and correction, `enrich_attribute`):
 classify (or use the LLM-supplied canonical directly) → write the
 mapping to OpenSearch → trigger a reindex through
-`pipeline/reindex_trigger.py`. By default (`REINDEX_TRIGGER=scoped`),
-`pipeline/scoped_retag.py` re-detects the attribute only on the products
-whose text mentions the changed variant and bulk-updates just those — no
-re-embedding, measured live at under a second (tan→brown correction:
-905 products re-checked, 679 re-tagged) to a few seconds (waterproof
-growth: 7,441 products tagged in ~8s). `REINDEX_TRIGGER=local` remains
-available for a genuine full Lucille reindex (`LocalReindexTrigger` runs
-`scripts/lucille_ingest.sh --skip-judgments` as a subprocess and waits,
-30+ minutes for the full ~158K-product catalog) — `make reindex` /
-`make reindex-products` are the human-facing entry points to that script.
+`pipeline/reindex_trigger.py`. `pipeline/scoped_retag.py` re-detects the
+attribute only on the products whose text mentions the changed variant and
+bulk-updates just those — no re-embedding, measured live at under a second
+(tan→brown correction: 905 products re-checked, 679 re-tagged) to a few
+seconds (waterproof growth: 7,441 products tagged in ~8s). This is the only
+reindex mode there is — there is no full-catalog rebuild path in this repo.
 
 `EnrichmentResult.reindex_mode` / `reindex_run_url` / `reindex_error`
 carry the outcome; the agent tool phrases its reply accordingly
@@ -978,25 +945,23 @@ For long conversations, context window fills up:
 
 ### Adding a New Attribute Type (beyond color/waterproof)
 
-The detection stage and config generation are already generic — a third
-type needs no new Java code and no hand-edited Lucille config:
+There is no supported live workflow for this any more — it depended on a
+corpus-wide detection pass (the removed ingest pipeline) that no longer
+exists in this repo. A genuinely new type today can only start the way
+`waterproof` does: registered with **zero** seed variants and grown entirely
+from the live enrichment flywheel (no pre-existing coverage across the
+corpus, since nothing can retroactively tag the ~158K products that predate
+the new type). If a type needs real corpus-wide seed coverage from day one,
+that would require writing new one-off tooling from scratch (bulk-detect
+against the committed corpus's `chunk_text` and re-export the precomputed
+dump) — the same category of throwaway tooling this repo's
+`scripts/export_precomputed_indices.py`/`verify_precomputed_load.py` used to
+be, before they were retired after a single use.
 
 1. Add a canonical seed vocabulary (`_CANONICAL_SEEDS_BY_TYPE` in
-   `retrieval/attribute_discovery.py`), then seed the taxonomy via
-   `AttributeMappingStore.seed_from_discovery(...)` (or
-   `bulk_discover` against real `chunk_text` for a from-scratch build) —
-   or leave the seed dict's variant list empty, like `WATERPROOF_CANONICALS`,
-   if you want the type to start with a genuine gap and grow entirely from
-   the live flywheel instead. The next `lucille_ingest.sh` run picks it up
-   automatically — `config_generator.py` queries OpenSearch for registered
-   attribute types and emits a new `AttributeDetectorStage` block for it,
-   sharing the indexer's `opensearch` block (URL, auth,
-   `acceptInvalidCert`) via HOCON merge. For color the seed is already
-   wired: `lucille_ingest.sh --seed-taxonomy` (`make seed-taxonomy`;
-   `seed_taxonomy=true` on the reindex workflow) runs
-   `scripts/rebuild_attribute_taxonomies.py` between two products passes —
-   add a new type's canonicals there only if it should be part of that
-   bulk-discovery seed (waterproof deliberately isn't).
+   `retrieval/attribute_discovery.py`) — leave the variant list empty, like
+   `WATERPROOF_CANONICALS`, so the type starts with a genuine gap and grows
+   entirely from the live flywheel.
 2. Add a filter block to `_extract_attributes()` in `pipeline/pipeline_nodes.py` for the new
    type — decide up front whether it needs color/waterproof's hard-filter
    semantics (rare/exact terms, safe to hard-exclude on) or the generic

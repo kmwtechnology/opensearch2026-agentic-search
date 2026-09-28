@@ -26,7 +26,7 @@ services:
     environment:
       - discovery.type=single-node
       # Security plugin is off for the local demo, so no admin password is
-      # set or needed: the app and Lucille connect over plain http://localhost:9200
+      # set or needed: the app connects over plain http://localhost:9200
       # (OPENSEARCH_USER/OPENSEARCH_PASSWORD in langchain_agent/.env stay empty).
       - DISABLE_SECURITY_PLUGIN=true
       # 2g, up from 512m, for the ~158K-product corpus (#147): ~500 MB of
@@ -44,49 +44,12 @@ services:
       timeout: 10s
       retries: 10
 
-  # One-shot ingestion job, not a persistent service — gated behind the
-  # "ingest" profile so `docker compose up -d` never starts it. Invoked by
-  # scripts/lucille_ingest.sh via `docker compose run --rm lucille`, once for
-  # products and once for judgments, with env vars set per invocation.
-  # Always built locally from docker/lucille/Dockerfile — no CI/GHCR path.
-  lucille:
-    build:
-      context: .
-      dockerfile: docker/lucille/Dockerfile
-      args:
-        LUCILLE_VERSION: ${LUCILLE_VERSION:-0.11.1}
-        # Docker Hub tag + digest, NOT the same as LUCILLE_VERSION above — see
-        # the namespace note at the top of docker/lucille/Dockerfile. Digest
-        # pins the exact image content so every local build uses the
-        # identical base regardless of any future retag upstream. Keep both
-        # defaults in sync with langchain_agent/.env.example.
-        LUCILLE_DOCKER_TAG: ${LUCILLE_DOCKER_TAG:-0.11.1.0}
-        LUCILLE_DOCKER_DIGEST: ${LUCILLE_DOCKER_DIGEST:-sha256:cefa9a3b2b9ed4c3cdf92da9abb93da37dc8ba392cc64ef39b81e02387f81073}
-    container_name: langchain-lucille
-    profiles: ["ingest"]
-    environment:
-      - LUCILLE_CONF
-      - LUCILLE_OPTS
-      - JAVA_OPTS
-      - OPENSEARCH_URL
-      - OPENSEARCH_INDEX
-      - OPENSEARCH_VERIFY_CERTS
-      - PARQUET_PATH
-      - JUDGMENTS_PARQUET_PATH
-    volumes:
-      - ./langchain_agent/lucille-esci/conf:/lucille/conf:ro
-      - ./data:/lucille/data:ro
-      - ./langchain_agent/logs:/lucille/log
-    depends_on:
-      opensearch:
-        condition: service_healthy
-
   # Fully-containerized backend + UI (built by langchain_agent/Dockerfile,
   # which bundles the compiled React frontend into the same FastAPI image --
   # one process, one origin, no separate frontend container). Gated behind
-  # the "app" profile, like `lucille` is behind "ingest", so `docker compose
-  # up -d` (native `make dev`'s Postgres+OpenSearch) never builds/starts
-  # this by default. Use `make demo` (repo root: `docker compose --profile
+  # the "app" profile so `docker compose up -d` (native `make dev`'s
+  # Postgres+OpenSearch) never builds/starts this by default. Use `make demo`
+  # (repo root: `docker compose --profile
   # app up -d --build`) for the fully-Dockerized path -- needs only Docker
   # and a native Ollama, no local Python/Node install. Ollama itself is
   # NEVER containerized: on macOS only a native install gets Metal GPU
@@ -110,7 +73,7 @@ services:
       - OPENSEARCH_HOST=opensearch
       - POSTGRES_HOST=postgres
       # Ollama runs natively on the host, reached via Docker Desktop's host
-      # alias (matches how scripts/lucille_ingest.sh reaches it).
+      # alias.
       - OLLAMA_HOST=http://host.docker.internal:11434
     ports:
       - "8000:8080"

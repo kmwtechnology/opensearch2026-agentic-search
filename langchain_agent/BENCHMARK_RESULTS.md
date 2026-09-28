@@ -51,18 +51,18 @@ curl -s http://localhost:9200/_cluster/health | python -m json.tool
 # Should return "status": "yellow" or "green"
 ```
 
-### 3. Ingest products and judgments (one-time via Lucille ETL)
+### 3. Load products and judgments
 
 ```bash
 cd langchain_agent
-bash scripts/lucille_ingest.sh
+PYTHONPATH=. python scripts/load_precomputed_indices.py
 ```
 
-Expected: ~35-40 minutes, almost all of it Lucille embedding every product through local Ollama (`nomic-embed-text`). Reads `data/esci_products.parquet` (text only) and `data/esci_judgments_aggregated.parquet`. Produces:
+Expected: ~1-2 minutes, a plain bulk load from the committed `data/precomputed/` export — no embedding, no ingest pipeline. Produces:
 - 158,637 products indexed to `agentic_hybrid_search_docs`: every judged product of the ESCI US test/small queries
 - 65,028 queries in `esci_judgments` (queries with no product in the index are dropped)
 
-**Note:** The older Python scripts (`ingest_esci_products.py`, `ingest_esci_judgments.py`) were removed in PR #48. Lucille ETL is now the only supported ingest path.
+**Note:** this repo has no ingest pipeline any more — the corpus is a permanent one-time export (see `data/README.md`). The Java/Lucille ETL that originally built it, and the older Python scripts it replaced (`ingest_esci_products.py`, `ingest_esci_judgments.py`, removed in PR #48), are both gone.
 
 Verify:
 
@@ -248,7 +248,7 @@ NDCG@10 0.3897). Different corpus, embedding model and query set.
 
 - [ ] ESCI dataset cloned to `../esci/`
 - [ ] Services running: `docker compose up -d`
-- [ ] Products + judgments ingested: `bash scripts/lucille_ingest.sh` (Lucille ETL; the older standalone `ingest_esci_*.py` scripts were removed in PR #48)
+- [ ] Products + judgments loaded: `PYTHONPATH=. python scripts/load_precomputed_indices.py` (bulk load from the committed `data/precomputed/` export; there is no ingest pipeline any more)
 - [ ] Verify OpenSearch: `curl http://localhost:9200/esci_judgments/_count`
 - [ ] Dry-run: `python benchmarks/benchmark_esci.py --limit 2 --fast`
 - [ ] Full run: `make benchmark-esci-fast` (~35 min)

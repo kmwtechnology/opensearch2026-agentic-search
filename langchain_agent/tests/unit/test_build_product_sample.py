@@ -88,7 +88,7 @@ class TestProductText:
 
 class TestLoadProducts:
     def test_null_text_fields_become_empty_strings(self, tmp_path, monkeypatch):
-        """Null text would leave "{product_description}" in Lucille's chunk_text."""
+        """Null text would leave a literal "{product_description}" in chunk_text."""
         import build_product_sample as b
 
         raw = tmp_path / "products.parquet"

@@ -142,8 +142,9 @@ default `http://localhost:8000`); start it via `./scripts/start.sh` or `make dev
 test origin (`api/middleware/origin_auth.py`).
 
 **Data tests fail** — check document count
-(`curl $DEPLOYMENT_URL/api/health | grep document_count`); re-ingest via
-`scripts/lucille_ingest.sh` if empty, then verify via `GET /api/admin/health`.
+(`curl $DEPLOYMENT_URL/api/health | grep document_count`); reload the
+precomputed corpus via `make setup` if empty (see `data/README.md` —
+there is no live ingest pipeline), then verify via `GET /api/admin/health`.
 
 ## See Also
 

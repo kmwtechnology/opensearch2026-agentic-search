@@ -11,9 +11,9 @@ Get the project running on your machine for development.
 - **Backend**: FastAPI server on `localhost:8000` (Python 3.14+, .venv)
 - **Frontend**: React + Vite dev server on `localhost:5173` (Node.js 24+)
 - **Services**: PostgreSQL (checkpoints) + OpenSearch (search index) in Docker
-- **Data**: full ESCI product corpus (158,637 products), embedded at ingest time via Lucille + Ollama
+- **Data**: full ESCI product corpus (158,637 products), bulk-loaded from a committed precomputed export — no live ingest pipeline (see `data/README.md`)
 
-**One-time setup:** first-time setup, including the full ~158K-product ingest, takes roughly 35-40 minutes on an M4 Max  
+**One-time setup:** first-time setup, including bulk-loading the precomputed corpus, takes roughly 1-2 minutes (plus Ollama model pulls)  
 **Daily workflow:** `./scripts/start.sh` or `make dev`
 
 ---
@@ -27,8 +27,6 @@ Verify each tool is installed. The **Why** column explains what it's used for.
 | **Docker Desktop** | 4.x | Runs PostgreSQL + OpenSearch containers locally | `docker --version` |
 | **Python** | 3.14+ | Backend venv (setup.sh creates it) | `python3 --version` |
 | **Node.js** | 24+ | React frontend and Vite dev server | `node --version` |
-| **Java** | 21+ | Lucille ETL for product ingestion (only needed if `LUCILLE_USE_DOCKER=false`) | `java -version` |
-| **Maven** | 3.8+ | Build tool for Lucille ETL (only needed if `LUCILLE_USE_DOCKER=false`) | `mvn --version` |
 | **Ollama** | — | Local LLM (`qwen3.6:35b-a3b-q4_K_M`) and embeddings (`nomic-embed-text`); no cloud API key | Get from [ollama.com](https://ollama.com/) |
 
 ### Installing Prerequisites
@@ -39,8 +37,6 @@ brew install docker
 brew install python@3.14
 brew install node
 brew install ollama
-brew install openjdk@21  # only needed for LUCILLE_USE_DOCKER=false
-brew install maven       # only needed for LUCILLE_USE_DOCKER=false
 ```
 
 **Ubuntu/Debian:**
@@ -99,7 +95,7 @@ This script handles all initialization in 6 phases:
 | 3: Python venv | Creates `.venv`, installs dependencies (pip install) | 3–5 min |
 | 4: Node deps | Installs frontend packages (npm install) | 1–2 min |
 | 5: Docker up | Starts Postgres, OpenSearch containers | ~30s |
-| 6: Ingest | Initializes DB + indexes the full ESCI product corpus (158,637 products), embedded via Lucille + Ollama | ~35-40 min |
+| 6: Load corpus | Initializes DB + bulk-loads the full ESCI product corpus (158,637 products) from a committed precomputed export | ~1-2 min |
 
 **At the end**, the script prints the app URLs. There is no login gate — the app is open to any same-origin caller, so you'll go straight from setup to using the app with no login step.
 
@@ -328,14 +324,13 @@ POSTGRES_PORT=5433
 
 ---
 
-### setup.sh fails at Lucille ETL step
+### setup.sh fails at the corpus load step
 
-**Cause:** Java or Maven not installed.
+**Cause:** `data/precomputed/` is missing (Git LFS objects not pulled).
 
 **Fix:**
 ```bash
-brew install openjdk@21
-brew install maven
+git lfs pull
 # Then re-run:
 ./scripts/setup.sh
 ```
@@ -344,12 +339,12 @@ brew install maven
 
 ### OpenSearch returns 0 results
 
-**Cause:** Lucille ETL ingest failed or was skipped.
+**Cause:** the precomputed corpus load failed or was skipped.
 
-**Fix:** Re-run the ingest:
+**Fix:** Re-run the load:
 ```bash
 cd langchain_agent
-bash scripts/lucille_ingest.sh --reset-index
+PYTHONPATH=. python scripts/load_precomputed_indices.py --reset-index
 ```
 
 Wait 5–10 seconds, then try a search again.

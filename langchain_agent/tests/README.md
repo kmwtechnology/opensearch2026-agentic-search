@@ -29,7 +29,6 @@ tests/
 │   ├── test_admin_enrich_route.py
 │   ├── test_agent_response.py
 │   ├── test_attribute_mapping_store.py
-│   ├── test_config_generator_live.py
 │   ├── test_conversations.py
 │   ├── test_edge_cases.py
 │   ├── test_enrichment_service.py

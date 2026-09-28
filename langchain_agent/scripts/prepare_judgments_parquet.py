@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Pre-aggregate ESCI judgments for Lucille ingest.
+Pre-aggregate ESCI judgments.
 
 Reads the raw 2.6M-row shopping_queries_dataset_examples.parquet (one row per
 query+product pair) and produces a 97k-row esci_judgments_aggregated.parquet
 (one row per unique query).
 
 The `judgments_json` column stores a JSON object {"judgments": [...]} that
-Lucille's ParseJson stage expands into the nested `judgments` field required
-by the esci_judgments OpenSearch index.
+expands into the nested `judgments` field required by the esci_judgments
+OpenSearch index.
 
 Output: esci/shopping_queries_dataset/esci_judgments_aggregated.parquet
 
@@ -73,7 +73,7 @@ def aggregate(locale: str = "us") -> pd.DataFrame:
                 "small_version": bool(int(first.small_version)),
                 "large_version": bool(int(first.large_version)),
                 "num_judgments": len(judgments),
-                # JSON object wrapper so Lucille's ParseJson stage can extract
+                # JSON object wrapper so a ParseJson-style stage can extract
                 # the array without needing jsonFieldPaths config
                 "judgments_json": json.dumps({"judgments": judgments}),
             }

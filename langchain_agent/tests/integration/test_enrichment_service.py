@@ -2,15 +2,15 @@
 Integration tests for enrichment_service.enrich_attribute — the generic
 (color/waterproof/any future type) synchronous flow the live agent enrichment
 tool calls: classify -> write mapping -> ensure index fields -> trigger a
-real Lucille reindex (which regenerates products.generated.conf itself).
+scoped re-tag (pipeline/scoped_retag.py).
 
-Most tests mock the reindex subprocess call (subprocess.run) so they stay
-fast and don't require a full ~20s Lucille run for every assertion — the
+Most tests inject a fake ReindexTrigger (via enrich_attribute's `trigger=`
+param) so they stay fast and don't touch the real product index — the
 classification/mapping/mapping-field logic is what's under test there. One
-test (TestRealReindexEndToEnd) exercises the actual subprocess trigger
-end-to-end and is slow (~20s) by nature; it uses a disposable test attribute
-type/variant, cleaned up after, so it never touches real color/waterproof
-data or the demo's reserved gap terms.
+test (TestRealReindexEndToEnd) exercises the actual ScopedRetagTrigger
+end-to-end against the live index and is slow by nature; it uses a
+disposable test attribute type/variant, cleaned up after, so it never
+touches real color/waterproof data or the demo's reserved gap terms.
 
 Uses a dedicated test index for the attribute mapping store so these tests
 never touch real taxonomy data.
@@ -18,12 +18,11 @@ never touch real taxonomy data.
 Requires a live local OpenSearch (docker compose up -d).
 """
 
-import subprocess
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from pipeline import reindex_trigger
+from pipeline.reindex_trigger import ReindexOutcome
 from quality import enrichment_service
 from retrieval import attribute_mapping_store as store_module
 from retrieval.attribute_mapping_store import AttributeMappingStore
@@ -50,44 +49,47 @@ def store(monkeypatch):
     store_module._clear_lookup_cache()
 
 
-def _mock_successful_subprocess():
-    result = MagicMock()
-    result.returncode = 0
-    result.stdout = "esciProductsConnector: complete. 9618 docs succeeded. 0 docs failed."
-    result.stderr = ""
-    return result
+def _fake_trigger(success: bool = True, docs_processed: int = 31, docs_scanned: int = 274):
+    """A ReindexTrigger stand-in that never touches OpenSearch -- injected via
+    enrich_attribute's `trigger=` param so these tests can't accidentally
+    write to the real product index."""
+    trigger = MagicMock()
+    trigger.trigger.return_value = ReindexOutcome(
+        triggered=True,
+        success=success,
+        mode="scoped",
+        docs_processed=docs_processed if success else 0,
+        docs_scanned=docs_scanned if success else 0,
+        error=None if success else "scoped re-tag failed",
+    )
+    return trigger
 
 
 class TestEnrichAttributeClassification:
-    """Classification/mapping logic, subprocess mocked."""
+    """Classification/mapping logic, reindex trigger faked."""
 
-    @patch("subprocess.run")
-    def test_dictionary_match_succeeds_without_llm(self, mock_run, store):
-        mock_run.return_value = _mock_successful_subprocess()
-
+    def test_dictionary_match_succeeds_without_llm(self, store):
         # "chrome" is a real COLOR_CANONICALS variant (under the "gray"
         # bucket) — proves static dictionary matching without needing
         # llm_classify_fn or explicit_canonical.
-        result = enrichment_service.enrich_attribute("color", "chrome", store=store)
+        result = enrichment_service.enrich_attribute(
+            "color", "chrome", store=store, trigger=_fake_trigger()
+        )
 
         assert result.success is True
         assert result.canonical == "gray"
         assert result.reindex_success is True
-        assert result.docs_processed == 9618
+        assert result.docs_processed == 31
 
-    @patch("subprocess.run")
-    def test_color_attribute_type_works_too(self, mock_run, store):
-        mock_run.return_value = _mock_successful_subprocess()
-
-        result = enrichment_service.enrich_attribute("color", "charcoal", store=store)
+    def test_color_attribute_type_works_too(self, store):
+        result = enrichment_service.enrich_attribute(
+            "color", "charcoal", store=store, trigger=_fake_trigger()
+        )
 
         assert result.success is True
         assert result.canonical == "black"
 
-    @patch("subprocess.run")
-    def test_llm_fallback_invoked_for_novel_term(self, mock_run, store):
-        mock_run.return_value = _mock_successful_subprocess()
-
+    def test_llm_fallback_invoked_for_novel_term(self, store):
         # WATERPROOF_CANONICALS ships with zero seed variants by design (see
         # attribute_discovery.py), so ANY term -- even "weatherproof" itself
         # -- structurally cannot dictionary-match and must go through the
@@ -98,7 +100,11 @@ class TestEnrichAttributeClassification:
             return "waterproof"
 
         result = enrichment_service.enrich_attribute(
-            "waterproof", "weatherproof", llm_classify_fn=fake_llm, store=store
+            "waterproof",
+            "weatherproof",
+            llm_classify_fn=fake_llm,
+            store=store,
+            trigger=_fake_trigger(),
         )
 
         assert result.success is True
@@ -144,17 +150,15 @@ class TestEnrichAttributeClassification:
         assert result.reindex_triggered is False
         assert result.corrected_from is None
 
-    @patch("subprocess.run")
-    def test_explicit_canonical_differing_from_existing_corrects_the_mapping(self, mock_run, store):
+    def test_explicit_canonical_differing_from_existing_corrects_the_mapping(self, store):
         """The real bug this exists for: 'tan' was mis-seeded to 'yellow'.
         Supplying a different explicit_canonical overwrites the wrong
         mapping instead of bouncing off the 'already mapped' guard --
         without this, a wrong mapping could never be corrected."""
-        mock_run.return_value = _mock_successful_subprocess()
         store.add_mapping("color", "tan", "yellow", source="seed")
 
         result = enrichment_service.enrich_attribute(
-            "color", "tan", store=store, explicit_canonical="brown"
+            "color", "tan", store=store, explicit_canonical="brown", trigger=_fake_trigger()
         )
 
         assert result.success is True
@@ -164,15 +168,16 @@ class TestEnrichAttributeClassification:
         # The store itself must reflect the correction, not just the result.
         assert store.get_lookup_table("color")["tan"] == "brown"
 
-    @patch("subprocess.run")
-    def test_fresh_mapping_has_no_corrected_from(self, mock_run, store):
+    def test_fresh_mapping_has_no_corrected_from(self, store):
         """A genuinely new (not previously mapped) variant is an addition,
         not a correction -- corrected_from must stay None so callers don't
         say "corrected" for something that was never wrong."""
-        mock_run.return_value = _mock_successful_subprocess()
-
         result = enrichment_service.enrich_attribute(
-            "waterproof", "weatherproof", store=store, explicit_canonical="waterproof"
+            "waterproof",
+            "weatherproof",
+            store=store,
+            explicit_canonical="waterproof",
+            trigger=_fake_trigger(),
         )
 
         assert result.success is True
@@ -183,10 +188,7 @@ class TestEnrichAttributeClassification:
         assert result.success is False
         assert result.reason == "empty term"
 
-    @patch("subprocess.run")
-    def test_explicit_canonical_bypasses_classification(self, mock_run, store):
-        mock_run.return_value = _mock_successful_subprocess()
-
+    def test_explicit_canonical_bypasses_classification(self, store):
         def failing_classify(term, canonicals):
             raise AssertionError("classification should be skipped when explicit_canonical is set")
 
@@ -196,6 +198,7 @@ class TestEnrichAttributeClassification:
             llm_classify_fn=failing_classify,
             store=store,
             explicit_canonical="waterproof",
+            trigger=_fake_trigger(),
         )
 
         assert result.success is True
@@ -209,32 +212,31 @@ class TestEnrichAttributeClassification:
         assert result.success is False
         assert "not a known canonical" in result.reason
 
-    @patch("subprocess.run")
-    def test_writes_mapping_before_triggering_reindex(self, mock_run, store):
-        mock_run.return_value = _mock_successful_subprocess()
-
+    def test_writes_mapping_before_triggering_reindex(self, store):
+        fake = _fake_trigger()
         enrichment_service.enrich_attribute(
-            "waterproof", "weatherproof", store=store, explicit_canonical="waterproof"
+            "waterproof",
+            "weatherproof",
+            store=store,
+            explicit_canonical="waterproof",
+            trigger=fake,
         )
 
         lookup = store.get_lookup_table("waterproof")
         assert lookup.get("weatherproof") == "waterproof"
-        mock_run.assert_called_once()
+        fake.trigger.assert_called_once()
 
 
 class TestReindexFailureHandling:
-    @patch("subprocess.run")
-    def test_nonzero_exit_code_reports_reindex_failure_not_overall_failure(self, mock_run, store):
+    def test_failed_reindex_reports_reindex_failure_not_overall_failure(self, store):
         """Mapping was still written (real taxonomy growth) even if the
         triggered reindex itself failed — success=True, reindex_success=False."""
-        result = MagicMock()
-        result.returncode = 1
-        result.stdout = ""
-        result.stderr = "some lucille error"
-        mock_run.return_value = result
-
         outcome = enrichment_service.enrich_attribute(
-            "waterproof", "weatherproof", store=store, explicit_canonical="waterproof"
+            "waterproof",
+            "weatherproof",
+            store=store,
+            explicit_canonical="waterproof",
+            trigger=_fake_trigger(success=False),
         )
 
         assert outcome.success is True  # mapping write succeeded
@@ -244,17 +246,6 @@ class TestReindexFailureHandling:
 
         # Mapping was still persisted despite the reindex failure
         assert store.get_lookup_table("waterproof").get("weatherproof") == "waterproof"
-
-    @patch("subprocess.run")
-    def test_timeout_reports_reindex_failure(self, mock_run, store):
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="lucille_ingest.sh", timeout=180)
-
-        outcome = enrichment_service.enrich_attribute(
-            "waterproof", "weatherproof", store=store, explicit_canonical="waterproof"
-        )
-
-        assert outcome.success is True
-        assert outcome.reindex_success is False
 
 
 _MINIMAL_ANALYSIS_SETTINGS = {
@@ -278,7 +269,8 @@ class TestEnsureAttributeFieldsMapped:
         store.client.indices.delete(index=test_docs_index, ignore=[404])
         store.client.indices.create(index=test_docs_index, body=_MINIMAL_ANALYSIS_SETTINGS)
 
-        with patch("core.config.OPENSEARCH_INDEX_NAME", test_docs_index):
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("core.config.OPENSEARCH_INDEX_NAME", test_docs_index)
             enrichment_service._ensure_attribute_fields_mapped(store, "pattern")
 
             mapping = store.client.indices.get_mapping(index=test_docs_index)
@@ -297,53 +289,41 @@ class TestEnsureAttributeFieldsMapped:
             body={"mappings": {"properties": {"product_waterproof_primary": {"type": "keyword"}}}},
         )
 
-        with patch("core.config.OPENSEARCH_INDEX_NAME", test_docs_index):
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("core.config.OPENSEARCH_INDEX_NAME", test_docs_index)
             # Should not raise, should not error on an existing field
             enrichment_service._ensure_attribute_fields_mapped(store, "waterproof")
 
         store.client.indices.delete(index=test_docs_index, ignore=[404])
 
 
-class TestParseDocsSucceeded:
-    def test_parses_real_lucille_output(self):
-        output = (
-            "esciProductsConnector: complete. 9618 docs succeeded. 0 docs failed. 0 docs dropped."
-        )
-        assert reindex_trigger._parse_docs_succeeded(output) == 9618
-
-    def test_returns_zero_when_no_match(self):
-        assert reindex_trigger._parse_docs_succeeded("some unrelated output") == 0
-
-
 class TestRealReindexEndToEnd:
-    """The one test that triggers an actual Lucille reindex (~20s). Uses a
-    disposable attribute type + variant so it never touches real color/
-    waterproof taxonomy or the demo's reserved live-gap term.
-
-    Note: the reindex subprocess is a separate Python process — it doesn't
-    see the store fixture's monkeypatched test index, so it regenerates
-    products.generated.conf from and reindexes against the REAL production
-    attribute types/index. That's fine here: this test validates the
-    subprocess-orchestration mechanism (wait, capture output, parse doc
-    count, measure duration), not that the disposable type is reflected in
-    that specific run."""
+    """The one test that triggers an actual scoped re-tag (pipeline/
+    scoped_retag.py) against the live product index. Uses a disposable
+    attribute type + a variant that matches nothing real, so it never
+    touches real color/waterproof taxonomy or the demo's reserved live-gap
+    term, and never mutates any real product."""
 
     @pytest.mark.slow
-    def test_real_reindex_completes_and_reports_docs_processed(self, store):
+    def test_real_reindex_completes_and_reports_zero_candidates(self, store):
         # Register a throwaway attribute type's canonical seed just for this
         # test, since enrich_attribute validates against known types.
         enrichment_service._CANONICAL_SEEDS_BY_TYPE["_test_only"] = {
-            "test_bucket": ["zzz_test_variant"]
+            "test_bucket": ["zzz_test_variant_no_product_mentions_this"]
         }
         try:
             result = enrichment_service.enrich_attribute(
-                "_test_only", "zzz_test_variant", store=store
+                "_test_only", "zzz_test_variant_no_product_mentions_this", store=store
             )
 
             assert result.success is True
             assert result.reindex_triggered is True
             assert result.reindex_success is True
-            assert result.docs_processed > 9000  # full catalog reindexed
-            assert result.duration_seconds > 0
+            # Nothing in the real catalog mentions this made-up term, so the
+            # scoped candidate query finds (and updates) nothing -- this
+            # still proves the real ScopedRetagTrigger path runs end-to-end
+            # against live OpenSearch without mutating any real product.
+            assert result.docs_processed == 0
+            assert result.duration_seconds >= 0
         finally:
             del enrichment_service._CANONICAL_SEEDS_BY_TYPE["_test_only"]

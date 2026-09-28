@@ -7,7 +7,7 @@ Replaces bundled JSON files (color_mappings.json); allows agent-driven taxonomy 
 import threading
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import NotFoundError
@@ -114,31 +114,6 @@ class AttributeMappingStore:
         with _lookup_cache_lock:
             _lookup_cache[cache_key] = (lookup, time.monotonic() + _LOOKUP_CACHE_TTL_SECONDS)
         return lookup
-
-    def get_all_attribute_types(self) -> List[str]:
-        """List every distinct attribute_type registered in the store.
-
-        Used by config_generator.py to discover which text-detected
-        attribute types (waterproof, and any future ones) need a Lucille
-        stage generated for the next full reindex — including types the
-        live agent has registered that no static config ever mentioned.
-
-        Returns:
-            Sorted list of attribute_type values, e.g. ["color", "waterproof"]
-        """
-        try:
-            response = self.client.search(
-                index=INDEX_NAME,
-                body={
-                    "size": 0,
-                    "aggs": {"types": {"terms": {"field": "attribute_type", "size": 1000}}},
-                },
-            )
-        except NotFoundError:
-            return []
-
-        buckets = response.get("aggregations", {}).get("types", {}).get("buckets", [])
-        return sorted(bucket["key"] for bucket in buckets)
 
     def add_mapping(
         self,

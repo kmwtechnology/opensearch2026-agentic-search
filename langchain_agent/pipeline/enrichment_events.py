@@ -5,10 +5,10 @@ Why this exists
 ---------------
 The enrichment lifecycle is the only part of the pipeline whose interesting
 moments happen *inside* a single node rather than between nodes. A taxonomy
-correction runs a real Lucille re-index that takes ~20s, and the observability
-layer's normal mechanism — reading a node's completed output state in
-``observable_agent`` — can only ever describe that after it is over. That is
-why the re-index window used to be entirely silent in the UI.
+correction runs a scoped re-tag, and the observability layer's normal
+mechanism — reading a node's completed output state in ``observable_agent``
+— can only ever describe that after it is over. That is why the re-tag
+window used to be entirely silent in the UI.
 
 So ``_try_enrichment_tool`` publishes its own lifecycle events as they happen,
 through this module. It is deliberately tiny and deliberately optional:

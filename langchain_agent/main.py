@@ -14,8 +14,9 @@ A production-grade LangGraph pipeline for e-commerce product discovery:
 Powered by:
 - LLM: local Ollama (qwen3.6:35b-a3b) for generation, classify/eval, and judge
 - Rerank: local cross-encoder (ms-marco-MiniLM-L-12-v2)
-- Embeddings: local Ollama nomic-embed-text (768-dim); documents are embedded
-  at ingest by Lucille, queries here (retrieval/embeddings.py)
+- Embeddings: local Ollama nomic-embed-text (768-dim); documents were
+  embedded once when the corpus was built (data/precomputed/), queries here
+  (retrieval/embeddings.py)
 - Vector Store: OpenSearch 2.19.1 with HNSW knn + BM25
 - Database: PostgreSQL for LangGraph checkpoints
 - Framework: LangGraph (graph-based pipeline, not ReAct tool-binding)
@@ -188,9 +189,10 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         1. Any Ollama model: set `LLM_MODEL` / `QUERY_EVAL_MODEL` / `JUDGE_MODEL` in `.env`
         2. A different provider: change `core/llm.py::build_chat_model` (every chat
            caller goes through it) and `retrieval/embeddings.py::build_embeddings`
-        3. A different embedding model also means re-ingesting: Lucille embeds the
-           corpus with the same model (`OllamaEmbedStage`), and the index mapping
-           pins the vector dimension
+        3. A different embedding model means the committed corpus (data/precomputed/)
+           no longer matches -- there is no local re-ingest path any more (see
+           data/README.md); this would need new one-off tooling written fresh, plus
+           an index mapping change since the vector dimension is pinned
 
     ## Implementation Notes
 

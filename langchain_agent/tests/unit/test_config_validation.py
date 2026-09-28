@@ -186,12 +186,6 @@ class TestModelNameConfiguration:
             finally:
                 importlib.reload(config)
 
-    def test_query_side_embedding_model_matches_lucille_conf(self):
-        """Lucille reads ${EMBEDDINGS_MODEL} too -- both sides must use one model."""
-        from config_generator import generate_products_conf
-
-        assert "modelName: ${EMBEDDINGS_MODEL}" in generate_products_conf([])
-
     def test_keep_alive_parses_ollama_durations(self):
         from core.config import _duration_seconds
 

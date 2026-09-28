@@ -46,11 +46,11 @@ class EnrichmentResponse(BaseModel):
     docs_processed: int = Field(0, description="Documents processed by the triggered reindex")
     duration_seconds: float = Field(0.0, description="Wall-clock time of the triggered reindex")
     reindex_mode: str = Field(
-        "local",
-        description="Which reindex mechanism ran: always 'local' (Lucille subprocess, synchronous)",
+        "scoped",
+        description="Which reindex mechanism ran: always 'scoped' (pipeline/scoped_retag.py)",
     )
     reindex_run_url: Optional[str] = Field(
-        None, description="Unused by the local trigger; kept for schema compat"
+        None, description="Unused by the scoped trigger; kept for schema compat"
     )
     reindex_error: Optional[str] = Field(
         None, description="Short failure detail when reindex_success is False"

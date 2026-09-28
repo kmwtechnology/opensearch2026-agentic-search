@@ -90,17 +90,14 @@ WHAT THIS SCRIPT DOES:
     8. Starts PostgreSQL and OpenSearch containers
     9. Initializes database and OpenSearch index
     10. Loads ~158K ESCI products + judgments + color taxonomy into OpenSearch.
-        Default (fast, ~1-2 min): bulk-loads the precomputed dump at
-        data/precomputed/ (embeddings + attribute detection already run once
-        and committed via Git LFS — no Ollama call, no Lucille/Docker/Java).
-        Falls back automatically to the full Lucille ETL ingest (~25-40 min,
-        embeds every product live via local Ollama, includes a mandatory
-        color taxonomy discovery + reindex pass) if no precomputed dump is
-        present. Force the full ingest with: python setup.py --from-scratch
-        (a fresh cluster's taxonomy store is otherwise empty, so every
-        color attribute_filter query would return zero results). The
-        "waterproof" type is deliberately NOT seeded either way — it starts
-        empty and grows entirely from the live enrichment flywheel.
+        Bulk-loads the permanent precomputed dump at data/precomputed/
+        (~1-2 min; embeddings + attribute detection + seeded color taxonomy
+        were already run once and committed via Git LFS — no Ollama call,
+        no ingest pipeline runs locally any more). If data/precomputed/ is
+        missing (Git LFS objects not pulled), setup fails with a clear
+        `git lfs pull` message instead of falling back to anything. The
+        "waterproof" type is deliberately NOT seeded — it starts empty and
+        grows entirely from the live enrichment flywheel.
 
 SERVICES STARTED:
     - PostgreSQL (checkpoint storage) → localhost:5432
@@ -154,8 +151,8 @@ echo "✓ Docker Compose v2 found"
 
 # git-lfs: without it, `git clone`/`git pull` silently leaves data/*.parquet
 # as tiny ~130-byte pointer stubs instead of the real files — everything
-# downstream (pyarrow, Lucille) then fails with a confusing parse error
-# instead of this clear one.
+# downstream (pyarrow) then fails with a confusing parse error instead of
+# this clear one.
 if ! command -v git-lfs &> /dev/null; then
     log "❌ git-lfs not found"
     echo "❌ git-lfs not found — required to pull the committed data/*.parquet files"
@@ -197,36 +194,6 @@ if [ "$NODE_MAJOR" -lt 24 ]; then
     exit 1
 fi
 echo "✓ Node.js $NODE_VERSION found"
-
-# Lucille ETL ingest (called by setup.py) runs via Docker by default
-# (LUCILLE_USE_DOCKER, see lucille_ingest.sh) — Docker was already checked
-# above, so Java/Maven aren't needed. Only enforce them when the native path
-# is explicitly requested.
-if [ "${LUCILLE_USE_DOCKER:-true}" = "false" ]; then
-    if ! command -v java &> /dev/null; then
-        echo "❌ Java not found"
-        echo "   Java 21+ is required for the native Lucille ETL path (LUCILLE_USE_DOCKER=false)."
-        echo "   Install with: brew install openjdk@21"
-        exit 1
-    fi
-    JAVA_VER=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}' | cut -d. -f1)
-    if [ "${JAVA_VER:-0}" -lt 21 ]; then
-        echo "❌ Java version too old: $JAVA_VER (need 21+)"
-        echo "   Install with: brew install openjdk@21"
-        exit 1
-    fi
-    echo "✓ Java $JAVA_VER found"
-
-    if ! command -v mvn &> /dev/null; then
-        echo "❌ Maven not found"
-        echo "   Maven 3.8+ is required for the native Lucille ETL path (LUCILLE_USE_DOCKER=false)."
-        echo "   Install with: brew install maven"
-        exit 1
-    fi
-    echo "✓ Maven found"
-else
-    echo "✓ Lucille ETL will run via Docker (no local Java/Maven needed)"
-fi
 
 # Ollama: every model runs locally (#148). Must be native on the host, not in
 # Docker -- on macOS only a native install gets the Metal GPU.
@@ -282,7 +249,7 @@ SAMPLE_FILE="$PARENT_DIR/data/esci_products.parquet"
 # An un-smudged LFS file is a small text pointer ("version https://git-lfs...")
 # rather than real parquet bytes — treat that the same as "missing" so we
 # fall into the `git lfs pull` retry below instead of failing confusingly deep
-# inside Lucille/pyarrow later.
+# inside pyarrow later.
 is_real_parquet() {
     [ -f "$1" ] && [ "$(head -c 7 "$1" 2>/dev/null)" != "version" ]
 }

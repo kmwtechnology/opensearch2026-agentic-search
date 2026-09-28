@@ -4,8 +4,7 @@ calls when a query mentions a color or waterproof term that isn't in its
 taxonomy yet. Generic over attribute_type (color, waterproof, or any future
 type), not waterproof-specific.
 
-Flow (real, not mocked — measured ~17-20s locally, fast enough for a live
-on-stage trigger):
+Flow (real, not mocked — seconds, fast enough for a live on-stage trigger):
   1. Classify the gap term against the attribute type's canonical buckets
      (attribute_discovery.single_term_classify, with an optional LLM
      fallback for terms that don't dictionary-match), or accept an
@@ -15,16 +14,10 @@ on-stage trigger):
   3. Ensure the OpenSearch index mapping has product_<attribute_type>
      (dual-mapped text) + product_<attribute_type>_primary/_secondary
      (keyword) fields — additive, only when the attribute type is new.
-  4. Trigger a REAL full catalog reindex through reindex_trigger, which runs
-     scripts/lucille_ingest.sh as a subprocess and waits (~20s).
-     scripts/lucille_ingest.sh regenerates products.generated.conf
-     (config_generator.py) itself as part of every ingest run -- this
-     service never writes that file directly, since it lives alongside
-     the Lucille ETL source.
-
-This supersedes an earlier scoped update_by_query design — a real reindex
-was measured fast enough (~17-20s) to run live, so there's no need for a
-narrower, faster-but-less-authentic patch mechanism.
+  4. Trigger a scoped re-tag through reindex_trigger.build_reindex_trigger(),
+     which re-detects the changed attribute on only the products whose text
+     mentions the changed variant(s) (pipeline/scoped_retag.py) and writes
+     back what changed. No re-embedding, no full-corpus pass.
 """
 
 import logging
@@ -83,7 +76,7 @@ def enrich_attribute(
 ) -> EnrichmentResult:
     """
     Classify a new attribute variant, write it to the mapping store, ensure
-    the index mapping supports it, and trigger a real Lucille reindex.
+    the index mapping supports it, and trigger a scoped re-tag.
 
     Args:
         attribute_type: "color", "waterproof", or any future registered type
@@ -96,12 +89,12 @@ def enrich_attribute(
             canonical directly (e.g. admin/ops use). Still validated against
             the attribute type's canonical buckets.
         trigger: ReindexTrigger to run after the mapping is written
-            (built from config.REINDEX_TRIGGER if None).
+            (built via build_reindex_trigger() if None).
 
     Returns:
         EnrichmentResult — success=False with a `reason` if the attribute
         type is unknown, the term can't be classified, or it's already mapped.
-        reindex_success reflects whether the triggered Lucille run completed
+        reindex_success reflects whether the triggered scoped re-tag completed
         cleanly; a classification/mapping success with a failed reindex is
         still success=True (the taxonomy grew) but reindex_success=False.
     """

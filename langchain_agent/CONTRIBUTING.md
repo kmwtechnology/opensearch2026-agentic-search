@@ -305,9 +305,11 @@ def build_embeddings() -> OpenAIEmbeddings:
     return OpenAIEmbeddings(model=EMBEDDINGS_MODEL)
 ```
 
-Lucille's `OllamaEmbedStage` (ingest-time embedding) needs the equivalent
-swap too, or the corpus and query-time embeddings won't be in the same
-vector space.
+The committed corpus (`data/precomputed/`) was embedded once with the old
+provider — swapping providers means those vectors and any new query-time
+embeddings are no longer in the same space. There is no local re-embedding
+path any more; a real provider swap needs new ingest tooling written from
+scratch.
 
 ### Step 5: Test
 
@@ -324,23 +326,23 @@ PYTHONPATH=. python3 setup.py  # Validate the new provider connects
 **Scenario**: Add a third detected/filterable product attribute (e.g. `size`,
 `pattern`) to the taxonomy-driven attribute detection + enrichment flywheel.
 
-The detection stage and Lucille config generation are already generic —
-this needs **no new Java code and no hand-edited pipeline config**:
+There is no supported live workflow for giving a new type real corpus-wide
+coverage — that depended on a corpus-wide detection pass, which lived in a
+Java/Lucille ingest pipeline this repo no longer has. A new type today can
+only start the way `waterproof` does: zero seed variants, grown entirely
+from the live enrichment flywheel. Real day-one coverage across the ~158K
+existing products would need new one-off tooling written from scratch
+(bulk-detect against the committed corpus's `chunk_text`, re-export the
+precomputed dump) — the same category of throwaway tooling
+`scripts/export_precomputed_indices.py`/`verify_precomputed_load.py` used
+to be, retired after their one use.
 
 ### Step 1: Seed the taxonomy
 
 Add a canonical seed vocabulary entry to `_CANONICAL_SEEDS_BY_TYPE` in
-`retrieval/attribute_discovery.py`, then seed it into OpenSearch — either
-`AttributeMappingStore.seed_from_discovery(...)` for a small hand-curated
-set, or `bulk_discover(...)` against real `chunk_text` for a from-scratch
-build (see `scripts/rebuild_attribute_taxonomies.py` for the pattern) — or
-leave the variant list empty, like `WATERPROOF_CANONICALS`, if the type
-should start with a genuine gap and grow entirely from the live flywheel
-instead. For color specifically, bulk seeding is already wired end-to-end:
-`make seed-taxonomy` locally runs discovery between two products passes
-(`lucille_ingest.sh --seed-taxonomy`). Extend
-`rebuild_attribute_taxonomies.py` with the new type's canonicals only if
-it should be part of that bulk-discovery seed.
+`retrieval/attribute_discovery.py` — leave the variant list empty, like
+`WATERPROOF_CANONICALS`, so the type starts with a genuine gap and grows
+entirely from the live flywheel.
 
 ### Step 2: Wire query-time filtering
 
@@ -364,10 +366,6 @@ round-trip per query for a small, known set of attribute types.
 
 ```bash
 PYTHONPATH=. pytest tests/unit/test_attribute_discovery.py -v
-PYTHONPATH=. pytest tests/integration/test_config_generator_live.py -v
-bash scripts/lucille_ingest.sh --skip-judgments   # confirm the new
-                                                    # detectX stage appears
-                                                    # in products.generated.conf
 ```
 
 The `trigger_enrichment` tool and `POST /api/admin/enrich` already accept
@@ -548,8 +546,8 @@ ModuleNotFoundError: No module named 'config'
 Always set `PYTHONPATH=.` when running scripts:
 
 ```bash
-bash scripts/lucille_ingest.sh
 PYTHONPATH=. pytest tests/
+PYTHONPATH=. python setup.py
 ```
 
 ### WebSocket Event Deserialization Fails

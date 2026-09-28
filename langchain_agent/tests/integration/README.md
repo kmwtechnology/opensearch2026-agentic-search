@@ -141,7 +141,7 @@ Typical run time: 5–60 seconds depending on which tests are selected.
 
 Long-running tests (marked `@pytest.mark.slow`):
 - `test_enrichment_service.py::TestRealReindexEndToEnd` — triggers a real
-  ~20 s Lucille reindex over the full ESCI corpus
+  scoped re-tag (`pipeline/scoped_retag.py`) against the live product index
 
 For rapid iteration, skip slow tests:
 ```bash
@@ -163,7 +163,7 @@ PYTHONPATH=. pytest tests/integration/ -v
 
 Tests needing seeded taxonomy data point the mapping store at a throwaway index
 via `monkeypatch.setattr(store_module, "INDEX_NAME", ...)` and seed it themselves,
-so they run without any corpus ingest. See `test_config_generator_live.py`.
+so they run without touching the real corpus. See `test_attribute_mapping_store.py`.
 
 ## Difference from Unit Tests
 

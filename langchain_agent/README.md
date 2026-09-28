@@ -57,10 +57,6 @@ node --version        # Node.js 24+
 missing models (~23 GB on first run); `scripts/doctor.sh` re-checks
 reachability and that the configured models are pulled.
 
-Lucille ETL ingest runs via Docker by default (`LUCILLE_USE_DOCKER=true`) —
-no local Java/Maven needed. Set `LUCILLE_USE_DOCKER=false` to use the native
-path instead (requires Java 21+ and Maven: `brew install openjdk@21 maven`).
-
 ### Local Development With Docker
 
 ```bash
@@ -70,16 +66,18 @@ cp .env.example .env
 ./scripts/start.sh
 ```
 
-First-time setup, including pulling Ollama models and the full ~158K-product
-ingest, takes roughly 35-40 minutes on an M4 Max:
+First-time setup takes roughly a couple minutes, dominated by pulling Ollama
+models (~23 GB):
 
 1. Creates `.env` from `.env.example` (set `ADMIN_TOKEN` yourself if you want automation access to `/api/admin/*`)
 2. Creates `.venv`, installs Python + frontend dependencies
 3. Checks Ollama is installed/running and pulls any missing models
 4. Starts PostgreSQL and OpenSearch via Docker
 5. Initializes the checkpoint DB and OpenSearch index
-6. Ingests the full ESCI product corpus (158,637 products, embedded through
-   Ollama at ingest time) and judgments (65,028 queries) via [Lucille ETL](lucille-esci/)
+6. Bulk-loads the full ESCI product corpus (158,637 products, already
+   embedded) and judgments (65,028 queries) from the committed precomputed
+   export (`data/precomputed/`, see `../data/README.md`) — no embedding, no
+   ingest pipeline
 
 Backend FastAPI runs on `:8000`, React frontend on `:5173` (Vite proxies
 `/api` to the backend).
@@ -218,12 +216,12 @@ curl http://localhost:8000/api/admin/health \
   -H "X-Admin-Token: your_admin_token_here"
 ```
 
-There is no in-container full-ingest endpoint. A full re-ingest happens via
-`scripts/lucille_ingest.sh`; `POST /api/admin/enrich` triggers a scoped
-re-detection/re-tag (`REINDEX_TRIGGER=scoped`, the default) as a side effect
-of adding/correcting one taxonomy mapping — only products whose text
-mentions the changed variant are re-checked and updated, no re-embedding.
-Verify the result via `GET /api/admin/health`.
+There is no full-ingest endpoint or full-reindex path at all — the corpus is
+a permanent precomputed export (see `data/README.md`). `POST /api/admin/enrich`
+triggers a scoped re-detection/re-tag as a side effect of adding/correcting
+one taxonomy mapping — only products whose text mentions the changed variant
+are re-checked and updated, no re-embedding. Verify the result via
+`GET /api/admin/health`.
 
 #### Conversations observability — `GET /api/conversations/{thread_id}/observability`
 
@@ -439,21 +437,18 @@ measured live) — see "Agentic Taxonomy Growth & Correction" below and
 rely on same-origin checking only (no login gate); `X-Admin-Token` support
 exists in `api/middleware/admin_auth.py` but isn't wired into these routes.
 
-Routine full re-ingestion (not tied to a specific taxonomy change) is done
-via `bash scripts/lucille_ingest.sh` rather than an HTTP endpoint — it
-reindexes both products and judgments by default; pass `--skip-judgments`
-to reindex products only.
+There is no routine full re-ingestion — the corpus is a permanent
+precomputed export with no rebuild path (see `data/README.md`).
 
 ### Agentic Taxonomy Growth & Correction
 
 The agent can grow *or fix* its own catalog taxonomy live via one shared
 tool, `trigger_enrichment(attribute_type, variant, canonical)`, gated by
 `ENABLE_ENRICHMENT_TOOL` (default off). Calling it writes the mapping to
-OpenSearch and, by default (`REINDEX_TRIGGER=scoped`), re-detects the
-attribute only on the products whose text mentions the changed variant and
-bulk-updates just those (`pipeline/scoped_retag.py`) — no re-embedding, no
-full reindex. `REINDEX_TRIGGER=local` remains available for a genuine full
-Lucille reindex but takes 30+ minutes.
+OpenSearch and re-detects the attribute only on the products whose text
+mentions the changed variant, bulk-updating just those
+(`pipeline/scoped_retag.py`) — no re-embedding, no full reindex. This is
+the only reindex mode there is.
 
 **Gap** (a term the taxonomy has never seen): when `attribute_filter`
 intent extracts a color or waterproof term the taxonomy doesn't recognize
@@ -568,29 +563,22 @@ TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
 
 ## Development
 
-### Re-ingest ESCI data (Lucille ETL — default)
+### Loading ESCI data
 
-The standard ingest path uses [Lucille](lucille-esci/) — a Java ETL framework
-that reads parquet files, embeds each document through Ollama's
-`nomic-embed-text` at ingest time (`OllamaEmbedStage`), and bulk-indexes into
-OpenSearch.
+There is no ingest pipeline in this repo. Every index (products, judgments,
+attribute taxonomy) loads from a single permanent, one-time export committed
+via Git LFS — see `data/README.md` for the full story, including why, and
+what would need to be written fresh if the corpus ever genuinely needed to
+change.
 
 ```bash
-# Re-run the full ingest (products + judgments)
-bash scripts/lucille_ingest.sh
-
-# Pre-aggregate only (skip if esci_judgments_aggregated.parquet already exists)
-python scripts/prepare_judgments_parquet.py --locale us --force
+# Bulk-load from the committed export (what every `make setup` does)
+PYTHONPATH=. python scripts/load_precomputed_indices.py
 ```
 
-Config lives in `lucille-esci/conf/` (HOCON). The script auto-builds the Maven
-module on first run and skips the build when no source files changed.
-
-The full corpus ships at `data/esci_products.parquet` (158,637 products,
-text only — no precomputed vectors; read by Lucille). Lucille is the
-**only** supported ingest mechanism — the Python ingest scripts
-(`ingest_esci_products.py`, `ingest_esci_judgments.py`) were removed in PR
-#48.
+`data/esci_products.parquet` and `data/esci_judgments_aggregated.parquet`
+are the historical source inputs that originally built the corpus; nothing
+reads them at runtime.
 
 ESCI labels are mapped to numeric relevance: `E=4.0`, `S=1.0`, `C=0.1`,
 `I=0.0`. Lookups from `OpenSearchVectorStore.lookup_judgments(query)` are
@@ -701,10 +689,7 @@ langchain_agent/
 │       ├── pages/         # Page components
 │       ├── types/         # TypeScript types (events.ts MUST sync with api/schemas/events.py)
 │       └── utils/         # Utilities
-├── lucille-esci/          # Lucille ETL config — see lucille-esci/README.md
-│   ├── conf/              # HOCON pipeline configs (products, judgments)
-│   ├── mapping/           # OpenSearch field mappings and analyzers
-│   └── pom.xml            # Maven coordinates
+├── mapping/               # OpenSearch index mapping templates (judgments_mapping.json)
 ├── tests/                 # Test suite — see tests/README.md
 │   ├── unit/              # Fast, no external services (~0.5s, 612 tests)
 │   ├── integration/       # Multi-component, live services — see tests/integration/README.md
@@ -713,8 +698,7 @@ langchain_agent/
 │  # --- Entry points (stay at root: invoked by path from shell scripts/CI) ---
 ├── main.py                # EcommerceSearchAgent: setup, graph wiring, routers, lifecycle (~600 lines)
 ├── cli.py                 # Interactive terminal REPL (dev only; `make run`)
-├── setup.py               # DB + index init; also calls lucille_ingest.sh for ESCI data
-├── config_generator.py    # Regenerates lucille-esci/conf/products.generated.conf from OpenSearch
+├── setup.py               # DB + index init; bulk-loads data/precomputed/ for ESCI data
 │
 │  # --- Packages ---
 ├── core/
@@ -725,7 +709,7 @@ langchain_agent/
 ├── pipeline/
 │   ├── pipeline_nodes.py  # PipelineNodesMixin: the 8 LangGraph nodes + helpers (~3,000 lines)
 │   ├── conversation_management.py  # ConversationManagementMixin: threads, titles, summarize/compact
-│   └── reindex_trigger.py # local Lucille subprocess trigger
+│   └── reindex_trigger.py # scoped re-tag trigger (pipeline/scoped_retag.py)
 ├── retrieval/
 │   ├── vector_store.py    # OpenSearchVectorStore + retriever (RRF)
 │   ├── reranker.py        # CrossEncoderReranker (only reranker)

@@ -48,13 +48,6 @@ Catches cases where initial alpha was poorly calibrated.
 ### Link Verification & Caching (`ENABLE_LINK_VERIFICATION`, `LINK_CACHE_TTL_MINUTES`)
 Validates product URLs before including in citations. 60-minute TTL cache reduces API calls.
 
-### ESCI Dataset (`ESCI_*`, `CHUNKING_STRATEGY`)
-Amazon Shopping Queries Dataset configuration.
-- `ESCI_DATASET_DIR`: Path to parquet files (~1.8M products, ~1GB)
-- `ESCI_PRODUCT_LOCALE`: Filter by region (default: "us")
-- `ESCI_INGEST_LIMIT`: Sample size for ingestion (default: 10000)
-- `CHUNKING_STRATEGY`: "none" for whole products (default), "fixed" for chunks
-
 ### Context Management (`ENABLE_COMPACTION`, `MAX_CONTEXT_TOKENS`)
 Conversation memory management for long chat sessions.
 - Compaction trims older messages when context exceeds `MAX_CONTEXT_TOKENS`
@@ -74,7 +67,6 @@ All other variables have sensible defaults in this file.
 """
 
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
@@ -148,11 +140,6 @@ __all__ = [
     "MIN_VALID_DOCUMENTS",
     # Project paths
     "BASE_DIR",
-    # ESCI e-commerce dataset configuration
-    "ESCI_DATASET_DIR",
-    "ESCI_PRODUCT_LOCALE",
-    "ESCI_INGEST_LIMIT",
-    "CHUNKING_STRATEGY",
     "SEARCH_DEFAULTS",
     # Sample data
     "DEFAULT_THREAD_ID",
@@ -188,8 +175,6 @@ __all__ = [
     "CHECKPOINT_COMPACTION_DAYS",
     # Agentic Enrichment Flywheel
     "ENABLE_ENRICHMENT_TOOL",
-    "REINDEX_TRIGGER",
-    "REINDEX_LOCAL_TIMEOUT_SECONDS",
 ]
 
 # ============================================================================
@@ -197,8 +182,8 @@ __all__ = [
 # ============================================================================
 
 # Everything runs on a local Ollama server (native on the host for Metal GPU
-# access): generation, classify/eval/judge, and query embeddings. Documents are
-# embedded at ingest by Lucille's OllamaEmbedStage against the same server.
+# access): generation, classify/eval/judge, and query embeddings. Documents
+# were embedded once when the corpus was built, against the same server.
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
 
@@ -231,7 +216,7 @@ OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "32768"))
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen3.6:35b-a3b-q4_K_M")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", 0))
 
-# Query embeddings. Must be the model Lucille embedded the corpus with, and
+# Query embeddings. Must be the model the corpus was embedded with, and
 # 768-dim to match the index mapping. nomic-embed-text is asymmetric -- the
 # search_query:/search_document: prefixes are applied in retrieval/embeddings.py.
 EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "nomic-embed-text")
@@ -436,32 +421,6 @@ MIN_VALID_DOCUMENTS = int(os.getenv("MIN_VALID_DOCUMENTS", "10"))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ============================================================================
-# ESCI E-COMMERCE DATASET CONFIGURATION
-# ============================================================================
-
-# Path to ESCI dataset directory
-ESCI_DATASET_DIR = os.getenv(
-    "ESCI_DATASET_DIR", str(Path(BASE_DIR).parent / "esci" / "shopping_queries_dataset")
-)
-
-# Product locale for filtering (e.g., "us" for English US)
-ESCI_PRODUCT_LOCALE = os.getenv("ESCI_PRODUCT_LOCALE", "us")
-
-# Default number of products to ingest (can be overridden with --limit flag)
-ESCI_INGEST_LIMIT = int(os.getenv("ESCI_INGEST_LIMIT", "10000"))
-
-# ============================================================================
-# CHUNKING STRATEGY (per-collection)
-# ============================================================================
-# Products are short (50-500 words) and should be indexed as whole units.
-# New collections can override with {"enabled": True, "chunk_size": 1000, "chunk_overlap": 200}.
-CHUNKING_STRATEGY = {
-    "esci_products": {
-        "enabled": False,
-    },
-}
-
-# ============================================================================
 # SEARCH DEFAULTS (per-collection)
 # ============================================================================
 # Products need higher semantic weight (α=0.65) for similarity matching.
@@ -602,11 +561,3 @@ INTERNAL_LLM_TAG = "internal_deliberation"
 # thread, where the LangChain callback cannot reach the astream_events iterator
 # reliably, which is why it was moved onto the bridge in the first place.
 ANSWER_STREAM_TAG = "answer_stream"
-
-# How enrich_attribute applies a new mapping to the catalog (see
-# pipeline/reindex_trigger.py): "scoped" (default) re-tags only the products
-# whose text mentions the changed variant -- seconds; "local" re-runs the
-# full Lucille ingest, which re-embeds all ~158K products (30+ min).
-REINDEX_TRIGGER = os.getenv("REINDEX_TRIGGER", "scoped").strip().lower()
-# Only the "local" (full Lucille) mode uses this; sized for a full re-embed.
-REINDEX_LOCAL_TIMEOUT_SECONDS = int(os.getenv("REINDEX_LOCAL_TIMEOUT_SECONDS", "5400"))

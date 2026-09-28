@@ -25,9 +25,10 @@ Inputs (external, gitignored under ``<repo>/esci/``):
 * ``data/esci_judgments_aggregated.parquet`` -- committed; supplies the
   query -> judged-products mapping, so the 2.6M-row examples file isn't needed.
 
-The output is **text only** -- no vectors. Lucille embeds ``chunk_text`` at
-ingest with a local Ollama model (``OllamaEmbedStage``, #148), so nothing here
-calls a model and the committed parquet stays small.
+The output is **text only** -- no vectors. Nothing here calls a model, so the
+committed parquet stays small; embedding happened once, historically, via a
+local Ollama model against ``chunk_text`` (#148), and that result is what's
+preserved in the committed ``data/precomputed/`` dump today.
 
 Usage::
 
@@ -121,10 +122,10 @@ def load_products(ids: Set[str]) -> pd.DataFrame:
     df = df[(df["product_locale"] == LOCALE) & (df["product_id"].isin(ids))].copy()
     df = df.drop_duplicates(subset="product_id")
     df["text"] = df.apply(product_text, axis=1)
-    # Lucille's Concatenate (buildChunkText) leaves a literal "{product_description}"
-    # placeholder in chunk_text when the field is null -- the old sample shipped
-    # that in 45% of products, polluting both BM25 and the embeddings. An empty
-    # string substitutes cleanly (RemoveEmptyFields drops it afterwards).
+    # A naive chunk_text build leaves a literal "{product_description}"
+    # placeholder when the field is null -- the old sample shipped that in
+    # 45% of products, polluting both BM25 and the embeddings. An empty
+    # string substitutes cleanly instead.
     df[list(TEXT_COLUMNS)] = df[list(TEXT_COLUMNS)].fillna("")
     return df[df["text"].str.len() >= MIN_TEXT_LENGTH].reset_index(drop=True)
 

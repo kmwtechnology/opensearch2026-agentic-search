@@ -2,8 +2,9 @@
 Admin routes for operational tasks: health checks, index diagnostics, and
 the live taxonomy enrichment flywheel.
 
-Re-indexing is handled externally by ``lucille_ingest.sh``. There is no
-in-container ingest path.
+There is no full re-index path. The only live catalog mutation is a scoped
+re-tag (pipeline/scoped_retag.py), triggered via the enrichment flywheel
+below.
 
 Protected by same-origin check only (``verify_same_origin``) — this is a
 demo box, and that's what lets the header's Restart button call
@@ -161,11 +162,10 @@ def _admin_health_sync() -> dict:
 async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentResponse:
     """
     Enrich a color or waterproof taxonomy with a new variant term: write the
-    mapping, ensure the index has the right fields, regenerate the Lucille
-    config, and trigger a real full reindex. This is the same
-    discover -> write -> reindex mechanism the live agent enrichment tool
-    uses (enrichment_service.enrich_attribute), exposed here so it can be
-    exercised and verified independently of the LLM loop.
+    mapping, ensure the index has the right fields, and trigger a scoped
+    re-tag. This is the same discover -> write -> reindex mechanism the live
+    agent enrichment tool uses (enrichment_service.enrich_attribute), exposed
+    here so it can be exercised and verified independently of the LLM loop.
 
     **Authentication:** Same-origin only (see module docstring).
 
@@ -207,9 +207,9 @@ async def enrich(request: Request, body: EnrichmentRequest) -> EnrichmentRespons
 
 
 def _enrich_sync(attribute_type: str, variant: str, canonical: Optional[str]):
-    """enrich_attribute triggers a real catalog reindex -- a Lucille subprocess
-    measured at ~17-20s (see reindex_trigger.py). Called directly on the event
-    loop this would freeze every in-flight WebSocket chat stream for the whole
+    """enrich_attribute triggers a scoped re-tag -- synchronous OpenSearch
+    calls (see reindex_trigger.py). Called directly on the event loop this
+    would still block every in-flight WebSocket chat stream for the
     duration; run_in_threadpool (see #25) keeps it off the loop. The live
     agent's own trigger_enrichment tool call is unaffected by this bug --
     it already runs inside a LangGraph node, which astream_events dispatches

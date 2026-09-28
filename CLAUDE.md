@@ -34,20 +34,14 @@ cd langchain_agent   # required first — commands below assume this cwd
 # First-time setup / every-session startup (brings up Postgres + OpenSearch via
 # Docker, backend on :8000, frontend on :5173 — no manual `docker compose up` needed)
 ./scripts/setup.sh          # or: make setup   (pulls Ollama models ~23 GB, then bulk-loads the
-                             #   precomputed index dump — ~1-2 min, not a re-embed; falls back to
-                             #   the full ~35-40 min Lucille ingest only if data/precomputed/ is
-                             #   missing, or force it with `python setup.py --from-scratch`)
+                             #   permanent precomputed index dump — ~1-2 min, no embedding, no
+                             #   ingest pipeline. Fails with a `git lfs pull` message if
+                             #   data/precomputed/ is missing. There is no rebuild path.)
 ./scripts/start.sh          # or: make dev     (every session, native backend+frontend)
 make demo                   # fully-Dockerized backend+UI in one container (:8000) — needs only
                              #   Docker + native Ollama, no local Python/Node; make demo-down to stop
 ./scripts/stop.sh           # or: make stop    (stops processes + containers, keeps volumes)
 ./scripts/teardown.sh       # or: make teardown (DESTRUCTIVE: removes .venv, node_modules, all Docker volumes)
-
-# ESCI ingestion via Lucille ETL
-bash scripts/lucille_ingest.sh    # products + judgments, Docker-based; Lucille embeds all ~158K products via Ollama (~35-40 min)
-bash scripts/lucille_ingest.sh --skip-products   # judgments only (after the products index changes)
-make seed-taxonomy                # rediscover color taxonomy — DESTRUCTIVE, needed once per fresh cluster (waterproof grows separately, live)
-make reindex / make reindex-products
 
 # Tests (PYTHONPATH=. required)
 PYTHONPATH=. pytest tests/unit/                  # ~0.5s, no services required
@@ -108,7 +102,7 @@ Six intent classes (`search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 ### Module layout (post issue #91 reorg)
 
-`main.py` defines `EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin)`; the mixins live in `pipeline/pipeline_nodes.py` (all node implementations) and `pipeline/conversation_management.py`. `cli.py`, `setup.py`, and `config_generator.py` stay at root (invoked by path from shell scripts). Everything else is grouped by concern:
+`main.py` defines `EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin)`; the mixins live in `pipeline/pipeline_nodes.py` (all node implementations) and `pipeline/conversation_management.py`. `cli.py` and `setup.py` stay at root (invoked by path from shell scripts). Everything else is grouped by concern:
 
 - `core/` — `agent_state.py` (the `CustomAgentState` TypedDict), `config.py`, `exceptions.py`, `logging_config.py`
 - `pipeline/` — node implementations, conversation management, enrichment events, `reindex_trigger.py`
@@ -133,9 +127,9 @@ Same-origin checking (`api/middleware/origin_auth.py`, `verify_same_origin`) is 
 
 ### Attribute detection & agentic taxonomy growth/correction
 
-Color/waterproof attribute detection runs in the Lucille ETL via `AttributeDetectorStage` (one generic Java stage, `langchain_agent/lucille-esci/src/main/java`, parameterized per attribute type), writing `product_<type>_primary`/`_secondary` keyword fields. The taxonomy itself lives in OpenSearch (not a committed file) — rules-based, auditable, no AI at ingest time. A fresh cluster's taxonomy store is empty; `scripts/setup.sh` seeds color unconditionally on first-time setup, but `make seed-taxonomy` is the manual re-seed entry point later (destructive to any agent-learned color mappings). `waterproof` (issue #142) is deliberately NOT seeded either way — `WATERPROOF_CANONICALS` ships with zero variant terms on purpose, so it starts as a genuine gap and grows entirely from the live flywheel below. The stage hard-fails the ingest if the taxonomy lookup can't load — never soft-fail a store lookup in a custom Lucille stage.
+Color/waterproof attribute detection happened once, historically, when the corpus's source index was originally built, writing `product_<type>_primary`/`_secondary` keyword fields — that result is preserved verbatim in the committed `data/precomputed/` dump and loaded by every `make setup`. There is no ingest-time detection pipeline in this repo any more. The taxonomy itself lives in OpenSearch (not a committed file, though its content is seeded from the precomputed `attribute_mappings_dump.parquet`) — rules-based, auditable, no AI involved. `waterproof` (issue #142) is deliberately NOT seeded — `WATERPROOF_CANONICALS` ships with zero variant terms on purpose, so it starts as a genuine gap and grows entirely from the live flywheel below.
 
-Beyond ingest-time detection, the agent can grow *or fix* the live taxonomy at runtime via one tool, `trigger_enrichment(attribute_type, variant, canonical)` (gated by `ENABLE_ENRICHMENT_TOOL`, default off in code but `true` in this repo's local `.env`), which writes the mapping to OpenSearch and applies it through `pipeline/reindex_trigger.py`. The default `REINDEX_TRIGGER=scoped` re-detects the attribute on only the products whose text mentions the changed variant (`pipeline/scoped_retag.py`, a line-for-line port of `AttributeDetectorStage`; seconds, e.g. tan→brown re-tagged 679 of 905 candidates in <1s), because a full Lucille run now re-embeds ~158K products (30+ min) and is kept only as `REINDEX_TRIGGER=local`. Scoped candidates come from the `chunk_text.words` subfield (ASCII-word tokenizer mirroring Java's `\b`); `scripts/check_retag_parity.py` proves detection parity and candidate recall against a real index — rerun it after changing either side. Both color's and waterproof's unresolved-term filter are hard exact-match filters, so both reliably trigger the growth path live through chat (this used to differ — `material` had a soft fallback + was subject to filter relaxation, so it only ever triggered via `/api/admin/enrich`; `material` was removed in favor of `waterproof` for exactly this reason). The correction case — a shopper disputes an existing wrong tag — is caught by `_detect_correction_signal`/`_try_correction_tool` in `agent_node` on `refinement`/`follow_up` turns; this matters architecturally because a wrong-but-mapped result still **passes** the quality gate, so it's invisible to any automated check. Full detail in `langchain_agent/ARCHITECTURE.md`'s "Taxonomy Growth & Correction" section.
+Beyond that one-time historical tagging, the agent can grow *or fix* the live taxonomy at runtime via one tool, `trigger_enrichment(attribute_type, variant, canonical)` (gated by `ENABLE_ENRICHMENT_TOOL`, default off in code but `true` in this repo's local `.env`), which writes the mapping to OpenSearch and applies it through `pipeline/reindex_trigger.py`. This always re-detects the attribute on only the products whose text mentions the changed variant (`pipeline/scoped_retag.py`; seconds, e.g. tan→brown re-tagged 679 of 905 candidates in <1s) — there is no full-reindex mode any more; `pipeline/scoped_retag.py`'s detection logic is the only attribute-detection code in the repo, and it must exactly match how the original corpus was tagged (its docstring documents the algorithm precisely for that reason). Scoped candidates come from the `chunk_text.words` subfield (ASCII-word tokenizer). Both color's and waterproof's unresolved-term filter are hard exact-match filters, so both reliably trigger the growth path live through chat (this used to differ — `material` had a soft fallback + was subject to filter relaxation, so it only ever triggered via `/api/admin/enrich`; `material` was removed in favor of `waterproof` for exactly this reason). The correction case — a shopper disputes an existing wrong tag — is caught by `_detect_correction_signal`/`_try_correction_tool` in `agent_node` on `refinement`/`follow_up` turns; this matters architecturally because a wrong-but-mapped result still **passes** the quality gate, so it's invisible to any automated check. Full detail in `langchain_agent/ARCHITECTURE.md`'s "Taxonomy Growth & Correction" section.
 
 ### Event sync
 
@@ -157,7 +151,7 @@ The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns
 |---|---|
 | LLM (all calls) | `qwen3.6:35b-a3b-q4_K_M` via local Ollama (`core/llm.py::build_chat_model`; `reasoning=False`, explicit `num_ctx`) |
 | Reranker | Local cross-encoder (`ms-marco-MiniLM-L-12-v2`) — the only reranker |
-| Embeddings | `nomic-embed-text` via local Ollama (768-dim; `search_document:` at ingest by Lucille's `OllamaEmbedStage`, `search_query:` at query time via `retrieval/embeddings.py`) |
+| Embeddings | `nomic-embed-text` via local Ollama (768-dim; `search_document:` when the corpus was originally embedded, `search_query:` at query time via `retrieval/embeddings.py`) |
 | Corpus | 158,637 ESCI US test/small products (query-first, every query fully judged), 95.5% with a SQID image URL |
 | Agent framework | LangGraph + LangChain |
 | Vector DB | OpenSearch (HNSW knn + BM25) |

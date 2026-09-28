@@ -1,12 +1,13 @@
 """
 Query-side embeddings: local Ollama, with nomic-embed-text's task prefixes (#148).
 
-Documents are embedded at ingest by Lucille's ``OllamaEmbedStage`` with the
-``search_document: `` prefix (see ``config_generator.DOCUMENT_PREFIX``). A
-query must be embedded by the same model with the matching ``search_query: ``
-prefix -- nomic-embed-text is asymmetric, and a bare query lands in a
-different part of the space, which quietly weakens kNN recall.
-LangChain's ``OllamaEmbeddings`` adds no prefixes, hence this subclass.
+Every document in the committed precomputed corpus (data/precomputed/) was
+embedded with the ``search_document: `` prefix (DOCUMENT_PREFIX below) at the
+time it was built. A query must be embedded by the same model with the
+matching ``search_query: `` prefix -- nomic-embed-text is asymmetric, and a
+bare query lands in a different part of the space, which quietly weakens kNN
+recall. LangChain's ``OllamaEmbeddings`` adds no prefixes, hence this
+subclass.
 """
 
 from typing import List
@@ -16,7 +17,7 @@ from langchain_ollama import OllamaEmbeddings
 from core.config import EMBEDDINGS_MODEL, OLLAMA_HOST, OLLAMA_KEEP_ALIVE
 
 QUERY_PREFIX = "search_query: "
-# Must match config_generator.DOCUMENT_PREFIX (what Lucille prepends at ingest).
+# Must match what the precomputed corpus was embedded with (see data/README.md).
 DOCUMENT_PREFIX = "search_document: "
 
 

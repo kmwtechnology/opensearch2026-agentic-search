@@ -14,7 +14,8 @@
  *
  *   2. Classification & Ingestion — the agent recognises that the CATALOG is wrong,
  *      not the query, and fixes it: correcting a shipped mis-mapping and
- *      triggering a real Lucille re-index, live. The talk's centerpiece.
+ *      triggering a real scoped re-tag of the catalog, live. The talk's
+ *      centerpiece.
  *
  * The bonus "Schema Evolution" scene is this same taxonomy-growth machinery's
  * OTHER shape: not correcting a wrong mapping, but growing a filter dimension
@@ -227,7 +228,7 @@ export const DEMOS: Demo[] = [
       {
         query: "that's not tan, that's tagged yellow which is wrong",
         watchFor:
-          'Correction detected, a second model approves the change, then a real Lucille re-index of 9,618 products. Watch the elapsed counter — this is the ingest pipeline running, not a cached swap.',
+          'Correction detected, a second model approves the change, then a real scoped re-tag of the products whose text mentions the changed variant. Watch the elapsed counter — this is the re-tag running live, not a cached swap.',
         note: 'Exact verified string. The phrase "that\'s not" is what trips the correction detector.',
       },
       {
@@ -247,9 +248,9 @@ export const DEMOS: Demo[] = [
     /*
      * Issue #142. Arc 2 (above) shows the agent fixing a WRONG mapping —
      * this shows it growing a filter dimension that never existed at all.
-     * "waterproof" is a real, generic attribute type end-to-end (Java
-     * AttributeDetectorStage, config_generator.py, AttributeMappingStore),
-     * not staged data: WATERPROOF_CANONICALS (attribute_discovery.py) ships
+     * "waterproof" is a real, generic attribute type end-to-end
+     * (pipeline/scoped_retag.py, AttributeMappingStore), not staged data:
+     * WATERPROOF_CANONICALS (attribute_discovery.py) ships
      * with a registered "waterproof" bucket but ZERO seed variants, on
      * purpose, so a freshly-armed cluster's first turn below is a genuine
      * zero-result gap every time, not a coincidence.
@@ -279,7 +280,7 @@ export const DEMOS: Demo[] = [
       {
         query: 'Show me waterproof boots',
         watchFor:
-          'Zero results — "waterproof" hard-filters against product_waterproof_primary, which is empty on a freshly-armed cluster: the feature is genuinely unindexed, not merely absent from this one query. Watch for the agent to notice the gap and grow the taxonomy itself, unprompted: trigger_enrichment fires, a second model approves it, then a real ~20s Lucille reindex of all 9,618 products — same elapsed-counter card as Arc 2, but nobody asked for this fix.',
+          'Zero results — "waterproof" hard-filters against product_waterproof_primary, which is empty on a freshly-armed cluster: the feature is genuinely unindexed, not merely absent from this one query. Watch for the agent to notice the gap and grow the taxonomy itself, unprompted: trigger_enrichment fires, a second model approves it, then a real scoped re-tag of the products whose text mentions the changed variant — same elapsed-counter card as Arc 2, but nobody asked for this fix.',
         note: 'Requires ENABLE_ENRICHMENT_TOOL=true (already set in .env for local dev). If the model declines to call the tool this run, the turn just shows the gap — re-run it.',
       },
       {

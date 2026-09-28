@@ -26,9 +26,12 @@ presenter is clicking about between rehearsals:
 * **fast** (default) — flip the mapping row and re-tag only the handful of
   products whose listed color is "tan", with one ``_update_by_query``.
   Milliseconds. This is a surgical undo of what the demo did, not a rebuild.
-* **full** — flip the mapping row and re-run the real Lucille ingest over all
-  9,618 products, exactly as the demo itself does. ~20s. Use it when the index
-  may have drifted for reasons beyond this demo.
+* **full** — flip the mapping row and re-run the scoped Python re-tag
+  (``pipeline/scoped_retag.py``) against every "tan"-listed candidate the
+  index actually has, instead of the fast path's narrower direct write. Use
+  it when the index may have drifted for reasons beyond this demo. There is
+  no corpus-wide rebuild path any more (#147/#148's precomputed dump is the
+  only source of the corpus and is never regenerated locally).
 
 The waterproof demo only has a fast path: delete its mapping row(s) and
 strip the field back off any products it tagged, both scoped ``_by_query``
@@ -91,8 +94,7 @@ def _reset_color_demo(full_reindex: bool) -> Dict[str, Any]:
         from pipeline.reindex_trigger import build_reindex_trigger
 
         # "Full" means a real re-detection of the demo's variant against the
-        # restored mapping, not the fast path's surgical flip. A literal full
-        # Lucille run re-embeds ~158K products (30+ min) -- see #147.
+        # restored mapping, not the fast path's surgical flip.
         outcome = build_reindex_trigger("scoped").trigger(DEMO_ATTRIBUTE_TYPE, [DEMO_VARIANT])
         logger.info(
             "Demo reset (full): reindex success=%s docs=%s", outcome.success, outcome.docs_processed
