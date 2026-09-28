@@ -621,7 +621,6 @@ scenarios.
 ### Lint / format / types
 
 ```bash
-make lint            # flake8 + mypy
 make format-fix      # black + isort (run before every commit)
 make ci              # fast local gate: black/isort check + flake8 + mypy + unit tests + frontend
 make check           # ci + smoke — run this before every push
@@ -691,13 +690,13 @@ langchain_agent/
 │       └── utils/         # Utilities
 ├── mapping/               # OpenSearch index mapping templates (judgments_mapping.json)
 ├── tests/                 # Test suite — see tests/README.md
-│   ├── unit/              # Fast, no external services (~0.5s, 612 tests)
+│   ├── unit/              # Fast, no external services (`make test`)
 │   ├── integration/       # Multi-component, live services — see tests/integration/README.md
 │   └── e2e/               # Local backend checks by default — see tests/e2e/README.md
 │
 │  # --- Entry points (stay at root: invoked by path from shell scripts/CI) ---
 ├── main.py                # EcommerceSearchAgent: setup, graph wiring, routers, lifecycle (~600 lines)
-├── cli.py                 # Interactive terminal REPL (dev only; `make run`)
+├── cli.py                 # Interactive terminal REPL (dev only; `PYTHONPATH=. python main.py`)
 ├── setup.py               # DB + index init; bulk-loads data/precomputed/ for ESCI data
 │
 │  # --- Packages ---
@@ -729,7 +728,7 @@ langchain_agent/
 │   ├── checkpoint_maintenance.py  # Checkpoint GC
 │   └── checkpoint_optimizer.py    # Checkpoint tuning
 ├── benchmarks/
-│   ├── benchmark_esci.py     # ESCI relevancy benchmark (`make benchmark-esci`)
+│   ├── benchmark_esci.py     # ESCI relevancy benchmark (`make benchmark`)
 │   └── benchmark_search.py   # Latency benchmarks
 ├── Dockerfile             # Multi-stage (Node + Python)
 ├── Makefile

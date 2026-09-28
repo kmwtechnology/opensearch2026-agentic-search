@@ -177,7 +177,7 @@ layer and a same-origin caller needs no credentials at all.
 
 ```bash
 docker compose up -d                           # PostgreSQL + OpenSearch
-make dev-api                                   # backend on :8000
+make dev                                       # backend on :8000 (backgrounded; logs/backend.log)
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
 

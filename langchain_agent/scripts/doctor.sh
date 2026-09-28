@@ -121,7 +121,7 @@ fi
 if [ -d "web/node_modules" ]; then
   check_pass "npm dependencies installed (web/node_modules)"
 else
-  check_fail "npm dependencies missing — run 'make install-web' or 'npm install' in web/"
+  check_fail "npm dependencies missing — run 'npm install' in web/ (make setup does this)"
 fi
 
 echo ""
@@ -133,8 +133,7 @@ if [ $FAILED -eq 0 ]; then
   echo -e "${GREEN}✅ System is healthy. Ready to develop!${NC}"
   echo ""
   echo "Next steps:"
-  echo "  • Backend:  make dev-api    (http://localhost:8000)"
-  echo "  • Frontend: make dev-web    (http://localhost:5173)"
+  echo "  • make dev   (backend http://localhost:8000, frontend http://localhost:5173)"
   echo "  • Both:     make dev        (starts both, backend in background)"
   exit 0
 else

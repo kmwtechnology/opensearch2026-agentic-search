@@ -17,10 +17,10 @@ Requires:
 
 Usage:
     # Fast reproducible run (no LLM intent classification)
-    make benchmark-esci-fast
+    make benchmark
 
     # Full adaptive run with LLM intent classification
-    make benchmark-esci
+    make benchmark FULL=1
 
     # Dry-run on 2 queries
     PYTHONPATH=. python benchmark_esci.py --limit 2 --fast

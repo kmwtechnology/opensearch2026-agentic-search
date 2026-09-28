@@ -54,19 +54,15 @@ PYTHONPATH=. pytest tests/ -m phase1             # by marker (see pytest.ini for
                                                   #  quality_gate)
 PYTHONPATH=. pytest tests/unit/test_foo.py::test_bar -v   # single test
 
-make check             # THE pre-push gate — run before every push/PR merge: ci + smoke
-make ci                # fast static sub-check (no live services): black/isort --check + flake8
-                        # + mypy main.py + pytest unit + collect-only integration/e2e + frontend
+make test              # unit tests only (~30s, no services)
+make ci                # static gate (no live services): black/isort/flake8/mypy + unit tests
+                        # + collect-only integration/e2e + frontend test/lint/tsc/build
+make smoke             # ~15s search-intent WebSocket round-trip; needs Docker + backend
+make check             # THE pre-push gate: ci + smoke — no git hook runs this, do it by hand
 make format-fix        # black + isort, fixes in place
-
-# Benchmarks (requires docker compose up -d)
-make benchmark-esci-fast   # ~35 min, deterministic (no LLM), 5000 fully judged test queries
-make benchmark-esci        # full adaptive (LLM intent classification via Ollama)
-
-# Smoke test (run standalone, or via `make check` above — no git hook triggers this)
-make smoke           # ~13-20s, search-intent smoke, needs Docker + backend
-# Full regression suite (no dedicated Make target — run directly when wanted):
-bash scripts/smoke_local.sh   # ~90s, all e2e+slow scenarios
+make benchmark         # ESCI benchmark, 5000 queries, deterministic (~35 min); FULL=1 adds LLM intent
+bash scripts/smoke_local.sh   # full e2e regression suite (~90s); deliberately no Make target
+# `make` alone lists every target — the Makefile's `##` comments are the help text.
 
 # Frontend (from langchain_agent/web/)
 npm install && npm run dev   # :5173, proxies API to :8000
@@ -74,13 +70,13 @@ npm run lint                 # eslint, --max-warnings 0
 npm run test                 # vitest run
 ```
 
-**Local git hooks**: `.git/hooks/pre-commit` (installed by `scripts/setup.sh` from `scripts/pre-commit.sh`) runs black/isort/flake8 on *staged* `.py` files only — mirrors `ci-format`/`lint`. `.git/hooks/pre-push` is Git LFS's own hook only; nothing there runs tests. Run `make check` by hand before pushing.
+**Local git hooks**: `.git/hooks/pre-commit` (installed by `scripts/setup.sh` from `scripts/pre-commit.sh`) runs black/isort/flake8 on *staged* `.py` files only — mirrors `make ci`'s format/lint steps. `.git/hooks/pre-push` is Git LFS's own hook only; nothing there runs tests. Run `make check` by hand before pushing.
 
 ### Local dev lifecycle
 
 Spoken triggers "start local dev" / "stop local dev" / "teardown local dev" map 1:1 to these (all from `langchain_agent/`):
 
-- **start local dev** → `make dev`. Blocks forever (backend + frontend run in the foreground) — always launch it backgrounded and watch the log, never wait on it synchronously. Two-stage readiness: `Uvicorn running on http://127.0.0.1:8000` binds the port, but `Application startup complete` (after LLM/embeddings/reranker/vector-store init) is the real "ready for requests" signal; frontend readiness is `VITE vX ready in Yms`. Failure signatures: `Address already in use`, `EADDRINUSE`, `Connection refused`, `Traceback`.
+- **start local dev** → `make dev` (→ `scripts/start.sh`). Brings up Postgres + OpenSearch with `docker compose up -d --wait`, then starts backend and frontend **in the background** with output in `logs/backend.log` / `logs/frontend.log`, and returns once `/api/health` answers — safe to run synchronously. In the backend log, `Uvicorn running on http://127.0.0.1:8000` binds the port but `Application startup complete` (after LLM/embeddings/reranker/vector-store init) is the real "ready" signal; frontend readiness is `VITE vX ready in Yms`. Failure signatures: `Address already in use`, `EADDRINUSE`, `Connection refused`, `Traceback`. There is no backend-only target; `PYTHONPATH=. .venv/bin/uvicorn api.main:app --reload --port 8000` is the one-liner.
 - **stop local dev** → `make stop`. Non-destructive — kills backend/frontend processes and stops the Docker containers, but keeps volumes (Postgres + OpenSearch data survive).
 - **teardown local dev** → `make teardown` (→ `scripts/teardown.sh`). DESTRUCTIVE and runs non-interactively (no prompt of its own) — deletes `.venv`, `web/node_modules`, all Docker volumes (Postgres + OpenSearch data), and logs. Confirm with the user before running this even though the script won't ask.
 - **run the demo in Docker** → `make demo` (builds + starts the `app` compose service on `:8000`; needs `make setup` to have run at least once). `make demo-down` stops it — **not** `docker compose --profile app down`, which tears down every service in the project (Postgres/OpenSearch too), not just `app`.

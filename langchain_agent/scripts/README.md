@@ -15,7 +15,7 @@ deployment path anymore — the project is local-only as of issue #110/#113.
 | `teardown.sh` | Clean up: services, volumes, `.venv`, `node_modules`, logs | End of session (optional) | 1–2 min |
 | **Local Development** |
 | `start.sh` | Start Docker, backend (:8000), frontend (:5173) | Session start | 10–15 s |
-| `stop.sh` | Stop backend + frontend; keep Docker up | Before committing | 5 s |
+| `stop.sh` | Stop backend + frontend + Docker containers (volumes kept) | Session end | 5 s |
 | `logs.sh` | Tail backend/frontend logs | Debugging | — |
 | **CI/Manual Gates** |
 | `pre-commit.sh` | Black + isort + flake8 on staged `.py` files | Installed as `.git/hooks/pre-commit` by `setup.sh` — runs automatically on `git commit` | ~2 s |

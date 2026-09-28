@@ -480,7 +480,7 @@ whatever backend URL you're testing; defaults to `http://localhost:8000`).
 - [ ] Check observable events appear in frontend panel
 - [ ] Verify new node outputs are persisted in PostgreSQL checkpoint
 - [ ] Test error cases (missing documents, LLM timeout, etc.)
-- [ ] Run `make lint` (includes flake8 + mypy) to catch regressions
+- [ ] Run `make ci` (format, flake8, mypy, unit tests, frontend) to catch regressions
 
 ---
 
@@ -583,7 +583,7 @@ Symptom: Quality gate keeps retrying, never reaches agent
 
 1. Fork the repo (or create a feature branch)
 2. Make changes, test locally
-3. Run `make lint` (includes flake8 + mypy)
+3. Run `make ci` (format, flake8, mypy, unit tests, frontend)
 4. Write unit/integration tests
 5. Create pull request with description
 6. Request review (especially for new nodes/events)

@@ -1,7 +1,7 @@
 """Interactive terminal REPL for EcommerceSearchAgent (split out of main.py in #47).
 
 Developer entry point only -- the deployed service runs `uvicorn api.main:app`
-and never imports this module. Run with `make run` / `PYTHONPATH=. python main.py`.
+and never imports this module. Run with `PYTHONPATH=. python main.py`.
 """
 
 import sys

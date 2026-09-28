@@ -107,8 +107,7 @@ REQUIREMENTS:
     Ollama running locally (no cloud API key is needed)
 
 NEXT STEPS after setup:
-    1. Start backend: make dev-api (from langchain_agent/)
-    2. Start frontend: make dev-web (from langchain_agent/)
+    1. make dev (from langchain_agent/) — backend :8000 + frontend :5173
     3. Visit http://localhost:5173
 
 For more information, see README.md
@@ -526,8 +525,7 @@ echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Start backend:  cd langchain_agent && make dev-api"
-echo "  2. Start frontend: cd langchain_agent && make dev-web"
+echo "  1. cd langchain_agent && make dev   (backend :8000 + frontend :5173)"
 echo "  3. Visit http://localhost:5173"
 echo ""
 echo "Services running at:"

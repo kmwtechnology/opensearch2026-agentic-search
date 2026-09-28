@@ -20,7 +20,7 @@ These are pytest + httpx + websockets tests (not browser automation).
 ## Prerequisites
 
 ```bash
-# Local (default) — start the backend first via ./scripts/start.sh or make dev-api
+# Local (default) — start the backend first via make dev
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
 
@@ -134,7 +134,7 @@ PYTHONPATH=. pytest tests/e2e/ -m "not slow" -v
 ## Troubleshooting
 
 **Connection refused** — verify the backend is up (`curl $DEPLOYMENT_URL/api/health`,
-default `http://localhost:8000`); start it via `./scripts/start.sh` or `make dev-api`.
+default `http://localhost:8000`); start it via `make dev`.
 
 **Tests timeout** — bump `TIMEOUT=60`; check `logs/backend.log` for errors.
 

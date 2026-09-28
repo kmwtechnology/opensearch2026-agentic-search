@@ -13,39 +13,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 PARENT_DIR="$(dirname "$PROJECT_DIR")"
 
-# Check prerequisites
-echo "🔍 Checking prerequisites..."
-
-# Check if PostgreSQL is running
-if ! docker compose -f "$PARENT_DIR/docker-compose.yml" ps 2>/dev/null | grep -q "postgres.*Up"; then
-    echo "   Starting PostgreSQL..."
-    cd "$PARENT_DIR"
-    docker compose up -d postgres > /dev/null 2>&1
-    cd "$PROJECT_DIR"
-    sleep 2
-fi
-echo "✓ PostgreSQL is ready"
-
-# Check if OpenSearch is running
-if ! docker compose -f "$PARENT_DIR/docker-compose.yml" ps 2>/dev/null | grep -q "opensearch.*Up"; then
-    echo "   Starting OpenSearch..."
-    cd "$PARENT_DIR"
-    docker compose up -d opensearch > /dev/null 2>&1
-    cd "$PROJECT_DIR"
-    echo "   Waiting for OpenSearch to be ready..."
-    for i in {1..30}; do
-        if curl -s http://localhost:9200/_cluster/health 2>/dev/null | grep -q '"status"'; then
-            break
-        fi
-        if [ "$i" -eq 30 ]; then
-            echo "❌ OpenSearch failed to start"
-            echo "   Check: docker compose -f $PARENT_DIR/docker-compose.yml logs opensearch"
-            exit 1
-        fi
-        sleep 2
-    done
-fi
-echo "✓ OpenSearch is ready"
+# Start PostgreSQL + OpenSearch and wait for their healthchecks
+echo "🐳 Ensuring Docker services are up..."
+docker compose -f "$PARENT_DIR/docker-compose.yml" up -d --wait
+echo "✓ PostgreSQL and OpenSearch are ready"
 echo ""
 
 # Check if virtual environment exists
@@ -145,7 +116,6 @@ echo "  Frontend:  ./scripts/logs.sh frontend"
 echo "  All:       ./scripts/logs.sh all"
 echo ""
 echo "⚙️  Commands:"
-echo "  Stop services:        ./scripts/stop.sh"
-echo "  Re-ingest products:  ./scripts/start.sh --update-docs"
+echo "  Stop services:        make stop"
 echo "  View all logs:        ./scripts/logs.sh all"
 echo ""

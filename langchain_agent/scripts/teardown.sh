@@ -25,32 +25,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 PARENT_DIR="$(dirname "$PROJECT_DIR")"
 
-# 1. Stop running services (using reliable port-based killing)
-echo "Stopping services..."
-
-# Stop backend - kill by port first (most reliable)
-if lsof -i :8000 >/dev/null 2>&1; then
-    lsof -ti :8000 | xargs kill -TERM 2>/dev/null || true
-    sleep 1
-    if lsof -i :8000 >/dev/null 2>&1; then
-        lsof -ti :8000 | xargs kill -9 2>/dev/null || true
-    fi
-fi
-rm -f "$PROJECT_DIR/.backend.pid"
-pkill -f "uvicorn api.main" 2>/dev/null || true
-
-# Stop frontend - kill by port first (most reliable)
-if lsof -i :5173 >/dev/null 2>&1; then
-    lsof -ti :5173 | xargs kill -TERM 2>/dev/null || true
-    sleep 1
-    if lsof -i :5173 >/dev/null 2>&1; then
-        lsof -ti :5173 | xargs kill -9 2>/dev/null || true
-    fi
-fi
-rm -f "$PROJECT_DIR/.frontend.pid"
-pkill -f "vite" 2>/dev/null || true
-
-echo "✓ Services stopped"
+# 1. Stop running services
+bash "$SCRIPT_DIR/stop.sh"
+echo ""
 
 # 2. Remove Docker containers and volumes (PostgreSQL + OpenSearch).
 echo "Removing Docker containers and volumes (PostgreSQL + OpenSearch)..."

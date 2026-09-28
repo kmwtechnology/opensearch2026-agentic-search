@@ -39,7 +39,7 @@ PYTHONPATH=. pytest tests/integration/ -m "integration and not slow" -v
 
 2. **Backend running (for WebSocket tests):**
    ```bash
-   make dev-api            # starts on :8000
+   make dev                # backend on :8000 (backgrounded; logs/backend.log)
    ```
 
 3. **Ollama:**
@@ -157,7 +157,7 @@ must be run locally before pushing:
 
 ```bash
 docker compose up -d
-make dev-api &
+make dev
 PYTHONPATH=. pytest tests/integration/ -v
 ```
 
@@ -172,7 +172,7 @@ so they run without touching the real corpus. See `test_attribute_mapping_store.
 | **Services** | Mocked | Real (Postgres + OpenSearch) |
 | **API** | Direct function calls | HTTP/WebSocket clients |
 | **Speed** | ~1 s total | ~30–60 s depending on tests |
-| **Setup** | Automatic | Requires `docker compose up -d` + `make dev-api` |
+| **Setup** | Automatic | Requires `make dev` |
 | **CI** | Collected and run | Collected only; run live locally before push |
 
 ## Difference from E2E Tests

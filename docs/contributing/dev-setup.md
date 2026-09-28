@@ -131,30 +131,11 @@ Then:
 
 ## Daily Development Workflow
 
-You have three ways to start the development servers, depending on whether Docker is already running:
-
-### Option A: Everything Fresh (Most Common)
-
 ```bash
-./scripts/start.sh
+make dev        # same as ./scripts/start.sh
 ```
 
-Starts Docker containers (Postgres, OpenSearch), backend server, and frontend dev server. All in one command.
-
-### Option B: Docker Already Running
-
-```bash
-make dev
-```
-
-Faster — assumes Docker is up. Starts just the backend and frontend. (Same as `./scripts/start.sh` but skips Docker startup.)
-
-### Option C: One Server at a Time
-
-```bash
-make dev-api     # Backend only (:8000)
-make dev-web     # Frontend only (:5173, in a separate terminal)
-```
+Starts the Docker containers (Postgres, OpenSearch) if they aren't up, waits for their healthchecks, then starts the backend and frontend in the background with output in `logs/backend.log` and `logs/frontend.log`. Need just the backend? `PYTHONPATH=. .venv/bin/uvicorn api.main:app --reload --port 8000`.
 
 ---
 
@@ -164,24 +145,24 @@ make dev-web     # Frontend only (:5173, in a separate terminal)
 
 | Scenario | Command | Result | What Stays |
 |----------|---------|--------|-----------|
-| "I'm done for the day" | `./scripts/stop.sh` | Kills backend + frontend, Docker stays up | PostgreSQL data, OpenSearch index, .venv, node_modules |
-| "I'm switching projects" | `./scripts/stop.sh` | Same as above | Everything — quick to resume with `./scripts/start.sh` |
-| "I want a clean slate" | `./scripts/teardown.sh` | 🚨 **REMOVES everything below** | Nothing — you'll need to run `./scripts/setup.sh` again |
+| "I'm done for the day" | `make stop` | Kills backend + frontend, stops the Docker containers | PostgreSQL data, OpenSearch index, .venv, node_modules |
+| "I'm switching projects" | `make stop` | Same as above | Everything — quick to resume with `make dev` |
+| "I want a clean slate" | `make teardown` | 🚨 **REMOVES everything below** | Nothing — you'll need to run `make setup` again |
 | | | Database deleted, index deleted, .venv deleted, node_modules deleted | |
 
 **Pause development (keep all data):**
 ```bash
-./scripts/stop.sh
+make stop
 ```
 
-Kills the backend and frontend processes. Docker containers stay running, so your Postgres data and OpenSearch index persist. Use this when you're done for the day but want to resume tomorrow with `./scripts/start.sh`.
+Kills the backend and frontend processes and stops the Docker containers; the volumes stay, so your Postgres data and OpenSearch index persist. Use this when you're done for the day but want to resume tomorrow with `make dev`.
 
 **Full teardown (DESTRUCTIVE — removes all data):**
 ```bash
-./scripts/teardown.sh
+make teardown
 ```
 
-⚠️  **This is destructive.** Removes Docker containers + volumes, deletes `.venv`, deletes `node_modules`. Your PostgreSQL database and OpenSearch index are deleted permanently. Use this only if you want a clean slate. You'll need to run `./scripts/setup.sh` again (takes ~35-40 min plus the Ollama model download).
+⚠️  **This is destructive.** Removes Docker containers + volumes, deletes `.venv`, deletes `node_modules`. Your PostgreSQL database and OpenSearch index are deleted permanently. Use this only if you want a clean slate. You'll need to run `./scripts/setup.sh` again (~1-2 min to reload the precomputed index, plus the Ollama model download on a first install).
 
 ---
 
@@ -191,14 +172,14 @@ Understanding when services are running helps you reason about what commands to 
 
 | State | Services | Docker | How You Got Here | PostgreSQL | OpenSearch | What to Do Next |
 |-------|----------|--------|------------------|------------|-----------|-----------------|
-| **Fresh install** | None | ⚠️ Off | Just cloned repo | ❌ None | ❌ None | Run `./scripts/setup.sh` |
-| **Dev session** | Backend + Frontend | ✅ On | After `start.sh` or `make dev` | ✅ Active | ✅ Active | Edit code, run tests |
-| **Paused** | None | ✅ On | After `stop.sh` | ✅ Data kept | ✅ Index kept | Run `./scripts/start.sh` to resume |
-| **Torn down** 🚨 | None | ❌ Off | After `teardown.sh` | ❌ **Deleted** | ❌ **Deleted** | Run `./scripts/setup.sh` to rebuild |
+| **Fresh install** | None | ⚠️ Off | Just cloned repo | ❌ None | ❌ None | Run `make setup` |
+| **Dev session** | Backend + Frontend | ✅ On | After `make dev` | ✅ Active | ✅ Active | Edit code, run tests |
+| **Paused** | None | ⏸ Stopped | After `make stop` | ✅ Data kept | ✅ Index kept | Run `make dev` to resume |
+| **Torn down** 🚨 | None | ❌ Removed | After `make teardown` | ❌ **Deleted** | ❌ **Deleted** | Run `make setup` to rebuild |
 
 **Critical distinction:**
-- **`stop.sh`** = "pause" — kill processes only. Docker + all data stays. Resumable with `start.sh`.
-- **`teardown.sh`** = "destroy" — delete Docker containers + volumes. All data is **permanently deleted**. Requires full `setup.sh` to rebuild.
+- **`make stop`** = "pause" — kill processes and stop containers. Volumes and all data stay. Resumable with `make dev`.
+- **`make teardown`** = "destroy" — delete Docker containers + volumes. All data is **permanently deleted**. Requires `make setup` to rebuild.
 
 ---
 
@@ -220,11 +201,10 @@ python main.py
 
 **Good news:** The Makefile sets this automatically. So these work fine:
 ```bash
-make lint        # flake8 + mypy (black/isort check-only live in `make ci`; use `make format-fix` to auto-fix)
-make ci          # fast static gate, no live services needed
-make check       # the pre-push gate: ci + smoke test
 make test        # unit tests
-make smoke # smoke test
+make ci          # static gate (format, flake8, mypy, unit, frontend), no live services needed
+make smoke       # search-intent smoke test against a live backend
+make check       # the pre-push gate: ci + smoke
 ```
 
 **For ad-hoc commands**, remember to set PYTHONPATH.
@@ -240,7 +220,6 @@ make smoke # smoke test
 | Fast static gate (no live services) | `make ci` | ~40-45s |
 | Full pre-push gate | `make check` | `ci` + smoke test |
 | Frontend tests | `npm run test` (from `web/`) | ~5s |
-| Linting only | `make lint` | ~15s |
 
 The **smoke test** (`make smoke`) runs a focused search-intent regression test against your local backend. Use `make check` before pushing a change to catch any integration bugs; run `bash scripts/smoke_local.sh` directly for the full 21-test suite when you want deeper coverage (no dedicated Make target for it).
 
@@ -253,11 +232,9 @@ Common targets for daily development:
 | Target | What It Does | When to Use |
 |--------|--------------|-------------|
 | `make doctor` | Verify setup health (checks Docker, services, deps) | After setup.sh completes |
-| `make dev` | Start backend + frontend (Docker must be up) | Daily development |
-| `make dev-api` | Start backend only | Testing backend in isolation |
-| `make dev-web` | Start frontend only | Testing frontend in isolation |
-| `make lint` | Run flake8 + mypy (same checks as `ci`'s lint step) | Before committing |
-| `make test` | Run unit tests | Before pushing |
+| `make dev` | Start Docker services, then backend + frontend in the background | Daily development |
+| `make stop` | Stop backend, frontend, and Docker containers (data survives) | End of session |
+| `make test` | Run unit tests | While coding |
 | `make format-fix` | Auto-format code (black + isort) | Fix linting errors |
 | `make ci` | Fast static gate (lint + tests + frontend build), no live services | Iterative coding |
 | `make smoke` | Smoke test (search intent only) | Part of `make check` |
