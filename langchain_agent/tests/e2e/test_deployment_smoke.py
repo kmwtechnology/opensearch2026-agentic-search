@@ -470,32 +470,28 @@ class TestCitations:
                 )
                 await websocket.send(message)
 
-                # Collect complete response
-                response_text = ""
-                final_response = ""
-                metadata = {}
+                complete = None
                 start_time = time.time()
 
                 while time.time() - start_time < WEBSOCKET_TIMEOUT:
                     try:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
                         event = json.loads(event_msg)
-
-                        if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("content", "")
-                        elif event.get("type") == "agent_complete":
-                            metadata = event.get("metadata", {})
-                            final_response = event.get("final_response", "") or final_response
+                        if event.get("type") == "agent_complete":
+                            complete = event
                             break
                     except asyncio.TimeoutError:
                         continue
 
-                # Check for citations in metadata
-                assert (
-                    "citations" in metadata
-                    or "sources" in metadata
-                    or len(response_text or final_response) > 0
-                ), "Response should include citations or sources"
+                assert complete is not None, "agent_complete event never received"
+                # `citations` is a top-level list on agent_complete (never under
+                # `metadata`): {label, url, asin?, image_url?}, url = Amazon search by title.
+                citations = complete.get("citations")
+                assert isinstance(citations, list), f"citations missing/not a list: {complete!r}"
+                assert citations, "search for 'Find headphones' produced no citations"
+                for c in citations:
+                    assert c.get("label"), c
+                    assert c.get("url", "").startswith("https://www.amazon.com/s?k="), c
         except Exception as e:
             _fail_if_origin_blocked(e)
             pytest.fail(f"Citations test failed: {e}")

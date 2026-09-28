@@ -33,10 +33,11 @@ dev:
 	@bash scripts/start.sh
 
 # No CI service exists; this is the only gate before a push. Static steps
-# first (fail fast, no services), then Docker comes up and smoke_local.sh runs
-# one search-intent WebSocket round-trip against the native backend on :8080 —
-# it reuses a healthy one (make dev) or starts and stops its own; it never
-# touches the demo container on :8000. Integration/e2e are import-checked
+# first (fail fast, no services), then Docker comes up for the integration
+# tests (live Postgres/OpenSearch, throwaway index names) and smoke_local.sh
+# runs one search-intent WebSocket round-trip against the native backend on
+# :8080 — it reuses a healthy one (make dev) or starts and stops its own; it
+# never touches the demo container on :8000. The rest of e2e is import-checked
 # only; `bash scripts/smoke_local.sh` runs the full e2e suite.
 ci:
 	@echo "[ci] black --check / isort --check-only"
@@ -47,13 +48,16 @@ ci:
 	@$(VENV)/mypy main.py
 	@echo "[ci] pytest tests/unit/"
 	@$(PY)/pytest tests/unit/ -q
-	@echo "[ci] pytest --collect-only tests/integration/ tests/e2e/"
-	@$(PY)/pytest --collect-only -q tests/integration/ tests/e2e/ > /dev/null
+	@echo "[ci] pytest --collect-only tests/e2e/"
+	@$(PY)/pytest --collect-only -q tests/e2e/ > /dev/null
 	@echo "[ci] frontend: vitest, eslint, tsc, build"
 	@cd web && npm install --silent && npm run test && npm run lint && npx tsc --noEmit && npm run build
-	@echo "[ci] smoke: search-intent round-trip against a live backend"
+	@echo "[ci] docker services"
 	@docker info >/dev/null 2>&1 || { echo "Docker isn't running — open -a Docker, wait for it, re-run make ci"; exit 1; }
 	@cd .. && docker compose up -d --wait
+	@echo "[ci] pytest tests/integration/ (live Postgres/OpenSearch)"
+	@$(PY)/pytest tests/integration/ -q
+	@echo "[ci] smoke: search-intent round-trip against a live backend"
 	@bash scripts/smoke_local.sh -k test_search_intent_returns_results -q --tb=short
 	@echo "ci passed — safe to push."
 

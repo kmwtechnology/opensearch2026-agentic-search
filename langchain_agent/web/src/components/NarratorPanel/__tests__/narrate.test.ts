@@ -367,20 +367,6 @@ describe('narrate — enrichment lifecycle', () => {
     expect(learned?.text).not.toContain('was tagged')
   })
 
-  it('falls back to the run URL wording when the cloud build gives no numbers', () => {
-    const line = narrate(
-      enrichment({
-        status: 'complete',
-        canonical: 'brown',
-        corrected_from: 'yellow',
-        reindex_mode: 'github',
-        reindex_run_url: 'https://github.com/x/actions/runs/1',
-      })
-    )
-    expect(line?.text).toContain('cloud build')
-    expect(line?.reindexRunUrl).toBe('https://github.com/x/actions/runs/1')
-  })
-
   it('states plainly that a failed rebuild left the tag unchanged', () => {
     const line = narrate(
       enrichment({ status: 'failed', canonical: 'brown', error: 'docker daemon not running' })

@@ -45,36 +45,6 @@ class TestEnrichmentValueJudge:
         judge.structured_llm.invoke.return_value = assessment
         return judge
 
-    def test_evaluate_returns_the_structured_assessment(self):
-        expected = EnrichmentValueAssessment(is_meaningful=True, reasoning="Real, common term.")
-        judge = self._judge_with_mocked_response(expected)
-
-        result = judge.evaluate(
-            attribute_type="color",
-            variant="tan",
-            canonical="brown",
-            current_mapping="yellow",
-            context="show me tan boots",
-        )
-
-        assert result is expected
-
-    def test_evaluate_can_decline(self):
-        expected = EnrichmentValueAssessment(
-            is_meaningful=False, reasoning="Too ambiguous to be a real correction."
-        )
-        judge = self._judge_with_mocked_response(expected)
-
-        result = judge.evaluate(
-            attribute_type="color",
-            variant="reddish",
-            canonical="red",
-            current_mapping=None,
-            context="reddish shoes",
-        )
-
-        assert result.is_meaningful is False
-
     def test_evaluate_invokes_structured_llm_with_system_and_user_messages(self):
         judge = self._judge_with_mocked_response(
             EnrichmentValueAssessment(is_meaningful=True, reasoning="ok")

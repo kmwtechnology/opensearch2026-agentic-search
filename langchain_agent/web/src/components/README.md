@@ -18,9 +18,6 @@ This directory contains all reusable React components organized by functional do
 | Component | Purpose |
 |-----------|---------|
 | `Layout.tsx` | Root layout wrapper with sidebar + main content grid |
-| `ConfirmDialog.tsx` | Reusable confirmation modal for destructive actions |
-| `ErrorNotification.tsx` | Toast-style error alerts with auto-dismiss |
-| `SkeletonLoader.tsx` | Loading placeholder component |
 
 ## Styling
 
