@@ -24,7 +24,6 @@ Powered by:
 """
 
 import logging
-import os
 import sys
 import uuid
 import warnings
@@ -60,15 +59,6 @@ warnings.filterwarnings(
     message="Core Pydantic V1 functionality isn't compatible with Python 3.14",
     category=UserWarning,
 )
-
-
-# ============================================================================
-# LANGSMITH TRACING (Optional - enable with LANGSMITH_API_KEY env var)
-# ============================================================================
-
-if os.getenv("LANGSMITH_API_KEY"):
-    os.environ["LANGCHAIN_TRACING_V2"] = "true"
-    os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGSMITH_PROJECT", "agentic-hybrid-search")
 
 
 from core.config import (

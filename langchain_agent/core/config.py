@@ -4,7 +4,7 @@ Configuration constants for Agentic Hybrid Search RAG Agent.
 Most configuration values are loaded from the `.env` file via python-dotenv;
 a subset (see #26 -- notably RETRIEVER_K/FETCH_K/ALPHA, RERANKER_FETCH_K/
 TOP_K, ENABLE_RERANKING, ENABLE_QUERY_EVALUATION,
-VECTOR_DIMENSION, ENABLE_COMPACTION, MAX_CONTEXT_TOKENS, DEFAULT_THREAD_ID)
+VECTOR_DIMENSION, ENABLE_COMPACTION, MAX_CONTEXT_TOKENS)
 are plain Python literals below and are NOT env-overridable, regardless of
 what a matching-looking entry in `.env.example` might suggest. Copy
 `.env.example` to `.env` and customize as needed -- but check `.env.example`
@@ -111,7 +111,6 @@ __all__ = [
     "RETRIEVER_K",
     "RETRIEVER_FETCH_K",
     "RETRIEVER_ALPHA",
-    "RETRIEVER_SEARCH_TYPE",
     "ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS",
     # Reranker configuration
     "ENABLE_RERANKING",
@@ -124,8 +123,6 @@ __all__ = [
     # Query evaluation configuration
     "ENABLE_QUERY_EVALUATION",
     "DEFAULT_ALPHA",
-    "ENABLE_QUERY_EVAL_CACHE",
-    "QUERY_EVAL_CACHE_MAX_SIZE",
     "QUERY_EVAL_MODEL",
     "JUDGE_MODEL",
     "QUERY_EVAL_TEMPERATURE",
@@ -142,7 +139,6 @@ __all__ = [
     "BASE_DIR",
     "SEARCH_DEFAULTS",
     # Sample data
-    "DEFAULT_THREAD_ID",
     # Conversation compaction
     "ENABLE_COMPACTION",
     "MAX_CONTEXT_TOKENS",
@@ -150,8 +146,6 @@ __all__ = [
     "MESSAGES_TO_KEEP_FULL",
     "MIN_MESSAGES_FOR_COMPACTION",
     "TOKEN_CHAR_RATIO",
-    # Observable agent streaming configuration
-    "ENABLE_ASYNC_STREAMING",
     # API Security
     "RATE_LIMIT_CONVERSATIONS",
     "RATE_LIMIT_CHAT",
@@ -163,12 +157,6 @@ __all__ = [
     "LOG_LEVEL",
     "LOG_FORMAT",
     "LOG_INCLUDE_TIMESTAMP",
-    # LangSmith Observability
-    "LANGSMITH_API_KEY",
-    "LANGSMITH_PROJECT",
-    "LANGSMITH_TRACING_ENABLED",
-    # Advanced Streaming
-    "ENABLE_ASTREAM_EVENTS",
     # Checkpoint Optimization
     "CHECKPOINT_SELECTIVE_SERIALIZATION",
     "CHECKPOINT_KEEP_VERSIONS",
@@ -302,9 +290,6 @@ RETRIEVER_FETCH_K = 40
 # Optimized from benchmarks: 0.25 provides best quality (0.611) with acceptable latency (22ms)
 RETRIEVER_ALPHA = 0.25
 
-# Default search type: "similarity" (vector-only) or "hybrid" (vector + lexical using RRF)
-RETRIEVER_SEARCH_TYPE = "hybrid"
-
 # Max wait (seconds) for the pipeline's three hidden alpha_estimator_llm /
 # structured-alpha-estimator calls: Retriever._extract_attributes
 # (brand/color/waterproof/price parsing for attribute_filter/refinement
@@ -365,10 +350,6 @@ DEFAULT_ALPHA = 0.25
 # its own dead constant (QUERY_EVAL_TIMEOUT_MS, declared but never wired to
 # anything that enforced it -- issue #122); collapsed into the one real
 # timeout budget instead of carrying two.
-
-# Query evaluator caching configuration
-ENABLE_QUERY_EVAL_CACHE = True
-QUERY_EVAL_CACHE_MAX_SIZE = 100
 
 # Query evaluator model settings (lightweight alpha estimator)
 QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", LLM_MODEL)
@@ -435,13 +416,6 @@ SEARCH_DEFAULTS = {
 }
 
 # ============================================================================
-# SAMPLE DATA
-# ============================================================================
-
-# Default conversation thread ID (can be overridden per conversation)
-DEFAULT_THREAD_ID = "default_thread"
-
-# ============================================================================
 # CONVERSATION COMPACTION (Smart Context Management)
 # ============================================================================
 
@@ -464,22 +438,6 @@ MIN_MESSAGES_FOR_COMPACTION = 20
 TOKEN_CHAR_RATIO = 4
 
 # ============================================================================
-# OBSERVABLE AGENT STREAMING CONFIGURATION
-# ============================================================================
-
-# Enable incremental async streaming for improved responsiveness (EXPERIMENTAL)
-# When False (default): Backward compatible behavior - waits for entire node completion
-#   - Runs entire graph in executor, collects all timing info after completion
-#   - More blocking but stable behavior
-# When True: Improved streaming with incremental event emission
-#   - Emits NodeStartEvent immediately when node begins execution
-#   - Processes events as they complete instead of waiting for full node
-#   - Emits NodeEndEvent with accurate timing after processing
-#   - TRADEOFF: Timing may be slightly less accurate than legacy mode, but
-#     provides better UI responsiveness and prevents async event loop blocking
-ENABLE_ASYNC_STREAMING = True
-
-# ============================================================================
 # API SECURITY CONFIGURATION
 # ============================================================================
 
@@ -495,26 +453,6 @@ RATE_LIMIT_ENABLED = True
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FORMAT = os.getenv("LOG_FORMAT", "console")  # "json" for production, "console" for development
 LOG_INCLUDE_TIMESTAMP = True
-
-# ============================================================================
-# LANGSMITH OBSERVABILITY CONFIGURATION
-# ============================================================================
-
-# LangSmith tracing (optional - requires API key from https://smith.langchain.com)
-# Enable by setting LANGSMITH_API_KEY environment variable
-LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
-LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "agentic-hybrid-search")
-LANGSMITH_TRACING_ENABLED = LANGSMITH_API_KEY is not None
-
-# ============================================================================
-# ADVANCED STREAMING CONFIGURATION
-# ============================================================================
-
-# Enable astream_events for fine-grained token-level streaming (EXPERIMENTAL)
-# When True: Uses LangGraph's astream_events v2 API for token-by-token streaming
-# When False: Uses existing streaming mode (entire node outputs)
-# Requires LangGraph >= 1.0.5
-ENABLE_ASTREAM_EVENTS = os.getenv("ENABLE_ASTREAM_EVENTS", "false").lower() == "true"
 
 # ============================================================================
 # CHECKPOINT OPTIMIZATION CONFIGURATION
