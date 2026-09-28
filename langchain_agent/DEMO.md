@@ -14,11 +14,15 @@ button; you never type a query.
 
 ```bash
 cd langchain_agent
-make dev            # Docker + backend + frontend
+make dev            # Docker services, dev backend :8080 + dev UI :5173, demo container :8000
 ./scripts/reset_demo_taxonomy.sh   # ARM ARC 2 — see below
 ```
 
-Open <http://localhost:5173>. There is no login screen.
+Present from <http://localhost:5173> (the live dev UI) or from
+<http://localhost:8000> (the same UI and backend built into one container by
+`make dev`). Both run the same scripts; the container is frozen as of the last
+`make dev`, so re-run it after any edit you want on stage. There is no login
+screen.
 
 **Start Docker first, and never let it cycle afterwards.** The backend opens its
 PostgreSQL checkpointer pool once, at startup, and does not reopen it. If Docker
@@ -30,8 +34,9 @@ backend. Confirm before you walk on stage that all three are answering:
 
 ```bash
 curl -sf localhost:9200 >/dev/null && echo "opensearch ok"
-curl -sf localhost:8000/api/config >/dev/null && echo "backend ok"
-curl -sf localhost:5173 >/dev/null && echo "frontend ok"
+curl -sf localhost:8080/api/health >/dev/null && echo "dev backend ok"
+curl -sf localhost:5173 >/dev/null && echo "dev ui ok"
+curl -sf localhost:8000/api/health >/dev/null && echo "demo container ok"
 ```
 
 **Present at 1920x1080 or larger, fullscreen.** Browser chrome eats ~180px of
@@ -82,14 +87,14 @@ the **quality bar** (best match against the threshold it had to clear).
 One person, one conversation, narrowing the way people actually shop. Nothing
 starts a new thread; nothing contradicts an earlier turn.
 
-**The spine is alpha moving: 0.25 → 0.35 → 0.55.** The dial swings as the
+**The spine is alpha moving: 0.25 → 0.35 → 0.70.** The dial swings as the
 questions get less literal, and nobody configured it per query.
 
 | # | Query | Intent | α | Filters | Score |
 |---|---|---|---|---|---|
 | 1 | `Show me blue running shoes` | attribute_filter | **0.25** lexical-heavy | color: blue, feature: running | 0.97 |
 | 2 | `only size 10` | refinement | **0.35** balanced | + feature: 10 | 0.95 |
-| 3 | `what about trail running?` | refinement | **0.55** semantic-heavy | none | 0.998 |
+| 3 | `what about trail running?` | refinement | **0.70** semantic-heavy | none | 0.998 |
 
 **Turn 1 — it reads the question before answering it.**
 Two of the words are real indexed attributes, so the filter line shows
@@ -104,7 +109,7 @@ narrowed rather than searched again.
 **Turn 3 — four words with no subject, colour, or size.**
 Watch the **Query Rewriter** line: it turns `what about trail running?` into
 *"Show me blue trail running shoes in size 10"*, carrying both earlier
-constraints forward. Alpha jumps to 0.55 because this question is about purpose,
+constraints forward. Alpha jumps to 0.70 because this question is about purpose,
 not a literal attribute.
 
 > Ask the room to notice that nothing in turn 3 says "blue" or "size 10". The
@@ -295,10 +300,11 @@ a person to look at it and say something.
 is validated against a fixed, bounded list per attribute type, so it cannot
 invent a category; the correction path only overwrites an existing mapping when
 a model explicitly supplies a different canonical after a dispute, so a casual
-mention rewrites nothing; and the whole tool is behind `ENABLE_ENRICHMENT_TOOL`,
-off by default.
+mention rewrites nothing; a second, independent model call judges whether the
+change would actually help shoppers before anything is written; and the whole
+tool is behind `ENABLE_ENRICHMENT_TOOL` (off in code, on in this repo's `.env`).
 
-**Beyond colour?** Yes — the same store, detection stage, and
+**Beyond colour?** Yes — the same taxonomy store, scoped re-tag, and
 `trigger_enrichment` tool cover waterproof too (see "Bonus 2 — schema
 evolution" above, which walks it end to end as a growth story), and the
 correction path is generic over `attribute_type`.
@@ -306,8 +312,8 @@ correction path is generic over `attribute_type`.
 **Non-e-commerce domains?** Yes. Swap ESCI products for your own documents; the
 pipeline is domain-agnostic.
 
-**Conversation memory?** LangGraph checkpoints in PostgreSQL. Long chats get
-context compaction.
+**Conversation memory?** LangGraph checkpoints in PostgreSQL, one thread per
+conversation; the `summary` intent summarizes from them on request.
 
 **Latency?** Intent 10–500ms → query eval 10–500ms → retrieval 200–500ms →
 reranking 1–2s → agent 3–8s. Roughly 6–15s per turn, and you will see the agent
@@ -327,7 +333,7 @@ queries.
 | Next is disabled, reads "Connecting…" | The socket is not open yet. It enables itself; do not click through. |
 | A reply looks attached to the wrong question | You clicked ahead. **Restart** and let each turn finish. |
 | Backend slow or timing out | First query after a cold start pays model warm-up. Send one throwaway query before the room fills. |
-| Frontend blank | `cd langchain_agent/web && npm run dev` |
+| Frontend blank | `./scripts/stop.sh && make dev`, then check `logs/frontend.log` |
 
 **Shorter cut:** arc 2 alone is a complete story in about five minutes — the bug
 that passes every check, the live repair, the proof. Open by saying you will

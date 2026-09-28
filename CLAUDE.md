@@ -45,26 +45,22 @@ cd langchain_agent   # required first — commands below assume this cwd
 ./scripts/teardown.sh       # or: make teardown (DESTRUCTIVE: removes .venv, node_modules, all Docker volumes)
 
 # Tests (PYTHONPATH=. required)
-PYTHONPATH=. pytest tests/unit/                  # ~0.5s, no services required
-PYTHONPATH=. pytest tests/integration/           # needs Postgres + OpenSearch running
-PYTHONPATH=. pytest tests/e2e/                   # full system
-PYTHONPATH=. pytest tests/ -m phase1             # by marker (see pytest.ini for the full marker list:
-                                                  #  phase1, phase3, unit, integration, e2e, slow, websocket,
-                                                  #  asyncio, agent, edge_cases, pipeline, quality_gate_retry,
-                                                  #  retriever_reranker, requires_real_api, evaluator, intent,
-                                                  #  quality_gate)
+PYTHONPATH=. pytest tests/unit/                  # ~30s, no services required
+PYTHONPATH=. pytest tests/integration/           # needs Postgres + OpenSearch running (docker compose up -d)
+PYTHONPATH=. pytest tests/e2e/                   # needs the native backend on :8080 (make dev)
+PYTHONPATH=. pytest tests/ -m phase1             # markers (pytest.ini): phase1, unit, integration, e2e, slow
 PYTHONPATH=. pytest tests/unit/test_foo.py::test_bar -v   # single test
 
-make ci                # THE pre-push gate, ~1-2 min: black/isort/flake8/mypy, unit tests, collect-only
-                        # integration/e2e, frontend test/lint/tsc/build, then `docker compose up -d --wait`
-                        # and one search-intent WebSocket round-trip against the native backend on :8080
-                        # (starts one if none is there; never the demo on :8000). No git hook runs this.
+make ci                # THE pre-push gate, ~2-3 min: black/isort/flake8/mypy, unit tests, collect-only e2e,
+                        # frontend test/lint/tsc/build, then `docker compose up -d --wait`, the integration
+                        # suite against live Postgres/OpenSearch, and one search-intent WebSocket round-trip
+                        # against the native backend on :8080 (starts one if none is there; never the demo
+                        # on :8000). No git hook runs this.
 # The Makefile has exactly five targets: doctor setup dev ci teardown. Everything else is a
 # direct command, documented in the Makefile header:
 .venv/bin/black . && .venv/bin/isort .                    # auto-format
 PYTHONPATH=. .venv/bin/pytest tests/unit/                  # unit tests only (~30s)
 bash scripts/smoke_local.sh                                # full e2e regression suite (~90s)
-PYTHONPATH=. .venv/bin/python benchmarks/benchmark_esci.py --limit 5000 --fast   # ~35 min; --hard-only for LLM intent
 
 # Frontend (from langchain_agent/web/)
 npm install && npm run dev   # :5173, proxies /api and /ws to the native backend on :8080
@@ -102,14 +98,14 @@ Six intent classes (`search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 `main.py` defines `EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin)`; the mixins live in `pipeline/pipeline_nodes.py` (all node implementations) and `pipeline/conversation_management.py`. `setup.py` stays at root (invoked by path from `scripts/setup.sh`). Everything else is grouped by concern:
 
-- `core/` — `agent_state.py` (the `CustomAgentState` TypedDict), `config.py`, `exceptions.py`, `logging_config.py`
-- `pipeline/` — node implementations, conversation management, enrichment events, `reindex_trigger.py`
+- `core/` — `agent_state.py` (the `CustomAgentState` TypedDict), `config.py`, `exceptions.py`, `llm.py`, `logging_config.py`
+- `pipeline/` — node implementations, conversation management, enrichment events, `reindex_trigger.py`, `scoped_retag.py`
 - `retrieval/` — vector store, reranker, embeddings, attribute discovery/mapping store
 - `quality/` — LLM judge, enrichment service + value judge, demo reset
 - `observability/` — embedding cache, relevancy metrics, LLM content helpers
-- `checkpoints/` — Postgres checkpoint maintenance/optimization
-- `benchmarks/` — ESCI benchmark harness
-- `api/` — FastAPI app (`main.py`, `routes/`, `schemas/`, `services/`, `middleware/`)
+- `checkpoints/` — `checkpoint_optimizer.py` (keeps transient fields out of persisted state)
+- `tools/` — `enrichment_tool.py` (the agent's `trigger_enrichment` tool)
+- `api/` — FastAPI app (`main.py`, `routes/` = `chat`, `health`, `suggest`, `admin`; `schemas/`, `services/`, `middleware/` = `origin_auth`, `client_ip`)
 
 ### State access pattern
 
@@ -135,7 +131,7 @@ Beyond that one-time historical tagging, the agent can grow *or fix* the live ta
 
 ### Product images (issues #144, #147)
 
-Every product carries its own photo URL. The corpus is the ESCI US `test` + `small_version` subset (158,637 products). [SQID](https://github.com/Crossing-Minds/shopping-queries-image-dataset) scraped Amazon image URLs for exactly that subset, and `scripts/build_product_sample.py` joins them in as `product_image_url` (95.5% coverage; SQID's `Default_Background_Art` placeholder is treated as no image). The index stores the field as `keyword`, `index: false`: it is displayed, never searched. `_hit_to_document` exposes it as `metadata["image_url"]`, and each citation carries `image_url` next to `asin`. `citations` is typed `List[Dict[str, str]]`, so the event schema needs no change. The strict REST `Citation` model in `api/routes/chat.py` and both frontend types do declare it.
+Every product carries its own photo URL. The corpus is the ESCI US `test` + `small_version` subset (158,637 products). [SQID](https://github.com/Crossing-Minds/shopping-queries-image-dataset) scraped Amazon image URLs for exactly that subset, joined into the corpus as `product_image_url` when it was built (95.5% coverage; SQID's `Default_Background_Art` placeholder was treated as no image). The index stores the field as `keyword`, `index: false`: it is displayed, never searched. `_hit_to_document` exposes it as `metadata["image_url"]`, and each citation carries `image_url` next to `asin`. `citations` is typed `List[Dict[str, str]]`, so the event schema needs no change. The strict REST `Citation` model in `api/routes/chat.py` and both frontend types do declare it.
 
 Images are **not** bundled or curated. They load straight from Amazon's CDN (`referrerPolicy="no-referrer"`). The old committed-JPG approach (`web/src/assets/products/`, `fetch_product_images.py`, hand-picked substitute ASINs) was removed in #147. A URL that 404s (a product delisted since the SQID scrape) trips `ProductCard`'s `onError`, and that bullet falls back to plain text.
 
@@ -153,14 +149,14 @@ The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns
 | Corpus | 158,637 ESCI US test/small products (query-first, every query fully judged), 95.5% with a SQID image URL |
 | Agent framework | LangGraph + LangChain |
 | Vector DB | OpenSearch (HNSW knn + BM25) |
-| Checkpoints | PostgreSQL, via `langgraph-checkpoint-postgres` |
+| Checkpoints | PostgreSQL 18 via `langgraph-checkpoint-postgres` (compose image `pgvector/pgvector:0.8.6-pg18`; the vector extension is unused) |
 | API | FastAPI + WebSocket |
 | Frontend | React 19 + TypeScript + Vite + Zustand, Vitest + ESLint |
 | Deployment | Local only (Docker Compose) |
 
 ## Deploy & CI reality
 
-No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely locally — `make dev` runs the native dev stack (:5173/:8080) and the Dockerized demo image (:8000, everything but Ollama in one container) side by side. `make ci` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either). It is one command with no fast/full split: static checks, unit tests, frontend build, then a live smoke round-trip (it brings Docker up itself).
+No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely locally — `make dev` runs the native dev stack (:5173/:8080) and the Dockerized demo image (:8000, everything but Ollama in one container) side by side. `make ci` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either). It is one command with no fast/full split: static checks, unit tests, frontend build, then (bringing Docker up itself) the integration suite and a live smoke round-trip.
 
 ## Reference Docs
 
