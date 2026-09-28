@@ -74,12 +74,14 @@ REQUIREMENTS:
     - Node.js 24+ (for frontend; 24.21.0 or later)
     - Ollama, running natively (https://ollama.com) — every model is local;
       setup pulls qwen3.6:35b-a3b-q4_K_M (~23 GB) and nomic-embed-text if missing
-    - ~26 GB disk space (models ~23 GB, ESCI dataset + parquet + Docker volumes)
-    - Internet access (to clone ESCI dataset repo from GitHub)
+    - ~26 GB disk space (models ~23 GB, product parquet + Docker volumes)
+    - Internet access (Git LFS pull for the committed product parquet; Ollama model pulls)
 
 WHAT THIS SCRIPT DOES:
     1. Checks prerequisites (Docker, Python 3.13+, Node.js 24+)
-    2. Clones ESCI dataset repo (if not present) → ../esci/
+    2. Verifies data/esci_products.parquet (committed via Git LFS; `git lfs pull`
+       if missing) — only clones the raw amazon-science/esci-data repo as a
+       last-resort fallback for regenerating that parquet from scratch
     3. Creates Python virtual environment at project root (if not present)
     4. Creates .env file from .env.example (if not present)
     5. Creates frontend .env configuration
@@ -222,42 +224,73 @@ if [ $CHECK_ONLY -eq 1 ]; then
     exit 0
 fi
 
-# 2. Setup ESCI dataset repository
-start_step "Setting up ESCI dataset repository"
-log "Step 2: Setting up ESCI dataset repository..."
-echo "📦 Setting up ESCI dataset..."
+# 2. Ensure the product/judgment parquets are present
+# These are committed to the repo via Git LFS (data/esci_products.parquet,
+# data/esci_judgments_aggregated.parquet) — ingest reads them directly and
+# never touches the raw ESCI dataset repo. Only fall back to cloning
+# amazon-science/esci-data if the committed parquet is missing (e.g. LFS
+# wasn't pulled, or someone wants to regenerate the sample from scratch —
+# see data/README.md "Regenerating the products parquet").
+start_step "Checking for product data"
+log "Step 2: Checking for product data..."
+echo "📦 Checking for product data..."
 
-ESCI_REPO_DIR="$PARENT_DIR/esci"
-ESCI_FILE="$ESCI_REPO_DIR/shopping_queries_dataset/shopping_queries_dataset_products.parquet"
+SAMPLE_FILE="$PARENT_DIR/data/esci_products.parquet"
 
-if [ ! -d "$ESCI_REPO_DIR" ]; then
-    log "   🌐 Cloning ESCI dataset from GitHub (~1.5 GB)... this is a one-time download (2-5 min)"
-    echo "   🌐 Cloning ESCI dataset from GitHub (~1.5 GB)... this is a one-time download (2-5 min)"
-    if git clone https://github.com/amazon-science/esci-data.git "$PARENT_DIR/esci"; then
-        log "   ✓ ESCI dataset cloned successfully"
-        echo "   ✓ ESCI dataset cloned successfully"
+if [ -f "$SAMPLE_FILE" ]; then
+    FILE_SIZE=$(du -h "$SAMPLE_FILE" | cut -f1)
+    log "✓ Committed products parquet found ($FILE_SIZE) — skipping ESCI dataset clone"
+    echo "✓ Committed products parquet found ($FILE_SIZE) — skipping ESCI dataset clone"
+else
+    log "   ❌ data/esci_products.parquet not found — attempting 'git lfs pull'"
+    echo "   ❌ data/esci_products.parquet not found — attempting 'git lfs pull'"
+    (cd "$PARENT_DIR" && git lfs pull) || true
+
+    if [ -f "$SAMPLE_FILE" ]; then
+        FILE_SIZE=$(du -h "$SAMPLE_FILE" | cut -f1)
+        log "✓ Products parquet pulled from LFS ($FILE_SIZE)"
+        echo "✓ Products parquet pulled from LFS ($FILE_SIZE)"
     else
-        log "   ❌ Failed to clone ESCI dataset"
-        echo "   ❌ Failed to clone ESCI dataset"
-        echo "      GitHub: https://github.com/amazon-science/esci-data"
-        echo "      Manual download: Extract shopping_queries_dataset/ to ../esci/"
+        log "   ❌ Still missing after 'git lfs pull'. Falling back to cloning the raw ESCI dataset (~1.5 GB)"
+        echo "   ❌ Still missing after 'git lfs pull'. Falling back to cloning the raw ESCI dataset (~1.5 GB)"
+        echo "      This regenerates data/esci_products.parquet — see data/README.md 'Regenerating the products parquet'"
+
+        ESCI_REPO_DIR="$PARENT_DIR/esci"
+        ESCI_FILE="$ESCI_REPO_DIR/shopping_queries_dataset/shopping_queries_dataset_products.parquet"
+
+        if [ ! -d "$ESCI_REPO_DIR" ]; then
+            log "   🌐 Cloning ESCI dataset from GitHub (~1.5 GB)... this is a one-time download (2-5 min)"
+            echo "   🌐 Cloning ESCI dataset from GitHub (~1.5 GB)... this is a one-time download (2-5 min)"
+            if git clone https://github.com/amazon-science/esci-data.git "$ESCI_REPO_DIR"; then
+                log "   ✓ ESCI dataset cloned successfully"
+                echo "   ✓ ESCI dataset cloned successfully"
+            else
+                log "   ❌ Failed to clone ESCI dataset"
+                echo "   ❌ Failed to clone ESCI dataset"
+                echo "      GitHub: https://github.com/amazon-science/esci-data"
+                echo "      Manual download: Extract shopping_queries_dataset/ to ../esci/"
+                exit 1
+            fi
+        else
+            log "✓ ESCI dataset directory exists"
+            echo "✓ ESCI dataset directory exists"
+        fi
+
+        if [ -f "$ESCI_FILE" ]; then
+            FILE_SIZE=$(du -h "$ESCI_FILE" | cut -f1)
+            log "✓ ESCI dataset file found ($FILE_SIZE)"
+            echo "✓ ESCI dataset file found ($FILE_SIZE)"
+        else
+            log "❌ ESCI dataset parquet file not found at: $ESCI_FILE"
+            echo "❌ ESCI dataset parquet file not found at:"
+            echo "   $ESCI_FILE"
+            echo "   Ensure shopping_queries_dataset_products.parquet is in: $ESCI_REPO_DIR/shopping_queries_dataset/"
+            exit 1
+        fi
+
+        echo "   ⚠ Run 'PYTHONPATH=. python scripts/build_product_sample.py' from langchain_agent/ to build data/esci_products.parquet, then re-run setup.sh"
         exit 1
     fi
-else
-    log "✓ ESCI dataset directory exists"
-    echo "✓ ESCI dataset directory exists"
-fi
-
-if [ -f "$ESCI_FILE" ]; then
-    FILE_SIZE=$(du -h "$ESCI_FILE" | cut -f1)
-    log "✓ ESCI dataset file found ($FILE_SIZE)"
-    echo "✓ ESCI dataset file found ($FILE_SIZE)"
-else
-    log "❌ ESCI dataset parquet file not found at: $ESCI_FILE"
-    echo "❌ ESCI dataset parquet file not found at:"
-    echo "   $ESCI_FILE"
-    echo "   Ensure shopping_queries_dataset_products.parquet is in: $ESCI_REPO_DIR/shopping_queries_dataset/"
-    exit 1
 fi
 
 end_step
