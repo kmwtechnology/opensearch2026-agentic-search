@@ -30,14 +30,14 @@ fi
 echo "[pre-commit] black --check ..."
 "$VENV/black" --check "${ABS_STAGED[@]}" 2>&1 || {
   echo ""
-  echo "  Run: cd langchain_agent && make format-fix"
+  echo "  Run: cd langchain_agent && .venv/bin/black . && .venv/bin/isort ."
   exit 1
 }
 
 echo "[pre-commit] isort --check-only ..."
 "$VENV/isort" --check-only "${ABS_STAGED[@]}" 2>&1 || {
   echo ""
-  echo "  Run: cd langchain_agent && make format-fix"
+  echo "  Run: cd langchain_agent && .venv/bin/black . && .venv/bin/isort ."
   exit 1
 }
 

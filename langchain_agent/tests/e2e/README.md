@@ -43,10 +43,10 @@ suite to run.
 
 ### `test_deployment_smoke.py` — basic contract
 
-`scripts/smoke_local.sh` (`make smoke` — the project's real local
-pre-push smoke gate) narrows this file to one test by default
-(`test_search_intent_returns_results`); the full file runs as part of the
-broader manual regression run (`bash scripts/smoke_local.sh` with no args).
+`make ci` (the pre-push gate) ends by running `scripts/smoke_local.sh`
+narrowed to one test from this file (`test_search_intent_returns_results`);
+the full file runs as part of the broader manual regression run
+(`bash scripts/smoke_local.sh` with no args).
 
 - `TestDeploymentHealth` — `/api/health` returns 200 + expected fields
 - `TestAuthentication` — valid Origin → 200/400, disallowed Origin → 403,
@@ -67,8 +67,8 @@ point. Added after a crash surfaced in a live demo run (a `HumanMessage`
 list-of-content-blocks shape that `main.py`'s extraction sites didn't
 handle) — this is the regression guard for that class of bug. Included in
 `scripts/smoke_local.sh`'s full (no-args) run alongside
-`test_deployment_smoke.py`; not part of the narrowed `make smoke`
-default since it isn't `-k`-selected by that target.
+`test_deployment_smoke.py`; not part of `make ci`'s narrowed smoke step
+since it isn't `-k`-selected there.
 
 ## Intent Coverage Matrix
 

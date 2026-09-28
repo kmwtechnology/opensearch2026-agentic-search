@@ -104,8 +104,8 @@ entirely in Docker instead of natively:
 
 ```bash
 cd langchain_agent
-make demo        # builds + starts the app container on http://localhost:8000
-make demo-down   # stops it (leaves Postgres/OpenSearch running)
+make demo                          # builds + starts the app container on http://localhost:8000
+(cd .. && docker compose stop app) # stops it (leaves Postgres/OpenSearch running)
 ```
 
 This builds `langchain_agent/Dockerfile` — a single image bundling the
@@ -607,12 +607,12 @@ PYTHONPATH=. pytest tests/e2e/            # requires a running local backend (se
 PYTHONPATH=. pytest --cov=. --cov-report=html
 ```
 
-`make check` is the local pre-push gate used by this repo: `make ci` (backend
-format, lint/import checks, unit tests, frontend test/lint/type/build) plus
-`make smoke` (a real round-trip against a running backend). `ci` alone
-only collects integration and e2e tests; execute those suites separately
-when a change touches service wiring, WebSocket contracts, or OpenSearch
-mappings.
+`make ci` is the local pre-push gate used by this repo: backend format,
+lint/import checks, unit tests, frontend test/lint/type/build, then one real
+search-intent round-trip against a running backend (it brings Docker up
+itself). Integration and the rest of e2e are only collected, not run;
+execute those suites separately when a change touches service wiring,
+WebSocket contracts, or OpenSearch mappings.
 
 See [tests/README.md](tests/README.md) for the full layout and fixtures, and
 [tests/e2e/README.md](tests/e2e/README.md) for the local smoke/regression
@@ -621,14 +621,13 @@ scenarios.
 ### Lint / format / types
 
 ```bash
-make format-fix      # black + isort (run before every commit)
-make ci              # fast local gate: black/isort check + flake8 + mypy + unit tests + frontend
-make check           # ci + smoke — run this before every push
+.venv/bin/black . && .venv/bin/isort .   # auto-format (run before every commit)
+make ci                                  # the pre-push gate — run this before every push
 ```
 
 A git pre-commit hook (`.git/hooks/pre-commit`) automatically runs black,
 isort, and flake8 on every staged `.py` file. If a commit is blocked, run
-`make format-fix` then re-stage. The hook is local-only and not tracked by
+the formatter line above, then re-stage. The hook is local-only and not tracked by
 git — reinstall it by running:
 
 ```bash
@@ -690,7 +689,7 @@ langchain_agent/
 │       └── utils/         # Utilities
 ├── mapping/               # OpenSearch index mapping templates (judgments_mapping.json)
 ├── tests/                 # Test suite — see tests/README.md
-│   ├── unit/              # Fast, no external services (`make test`)
+│   ├── unit/              # Fast, no external services (PYTHONPATH=. pytest tests/unit/)
 │   ├── integration/       # Multi-component, live services — see tests/integration/README.md
 │   └── e2e/               # Local backend checks by default — see tests/e2e/README.md
 │
@@ -728,7 +727,7 @@ langchain_agent/
 │   ├── checkpoint_maintenance.py  # Checkpoint GC
 │   └── checkpoint_optimizer.py    # Checkpoint tuning
 ├── benchmarks/
-│   ├── benchmark_esci.py     # ESCI relevancy benchmark (`make benchmark`)
+│   ├── benchmark_esci.py     # ESCI relevancy benchmark (see BENCHMARK_RESULTS.md)
 │   └── benchmark_search.py   # Latency benchmarks
 ├── Dockerfile             # Multi-stage (Node + Python)
 ├── Makefile

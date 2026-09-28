@@ -3,7 +3,7 @@ Smoke Tests for Agentic Hybrid Search
 
 Tests core functionality against a running backend to ensure the system is
 working correctly. Runs locally by default (this is what scripts/smoke_local.sh
-invokes for `make smoke`); DEPLOYMENT_URL can point it at a remote
+invokes for `make ci`); DEPLOYMENT_URL can point it at a remote
 backend instead. Includes health checks, API authentication, WebSocket
 connectivity, and search pipeline validation.
 

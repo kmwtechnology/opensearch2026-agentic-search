@@ -16,7 +16,7 @@
 # The Restart button in the UI calls the same code path via
 # POST /api/admin/demo-reset.
 #
-# Usage: ./scripts/reset_demo_taxonomy.sh [--full]   (or: make demo-reset)
+# Usage: ./scripts/reset_demo_taxonomy.sh [--full]
 
 set -euo pipefail
 

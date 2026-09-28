@@ -164,12 +164,12 @@ required environment.
 | `test_deployment_smoke.py` | Health check, auth, basic round-trip (18 tests) |
 | `test_demo_queries_smoke.py` | Demo query regression checks (3 tests) |
 
-**Always run e2e files against a real backend before pushing** — `ci`
-only does `--collect-only` on `tests/e2e/`. `make check` (the pre-push gate)
-executes `test_deployment_smoke.py`'s search-intent test for real via the
-smoke step, but the rest of `tests/e2e/` — including `test_demo_queries_smoke.py`
-in the narrow default — still needs a manual run when you've touched
-service wiring or WebSocket contracts.
+**Always run e2e files against a real backend before pushing** — `make ci`
+executes only `test_deployment_smoke.py`'s search-intent test for real (its
+smoke step); the rest of `tests/e2e/` is `--collect-only` there, so
+`test_demo_queries_smoke.py` and the remaining scenarios still need a manual
+run (`bash scripts/smoke_local.sh`) when you've touched service wiring or
+WebSocket contracts.
 
 **Run time:** ~10-90 s. **Requires:** a backend
 URL. No login/credential is needed — same-origin checking is the only auth
@@ -209,8 +209,8 @@ PYTHONPATH=. pytest tests/ -v
 
 ### CI
 
-There is no GitHub Actions CI (issue #113) — `make check` run locally
-(`ci`'s lint, unit tests, `--collect-only` on integration/e2e, frontend
+There is no GitHub Actions CI (issue #113) — `make ci` run locally
+(lint, unit tests, `--collect-only` on integration/e2e, frontend
 test/lint/type/build, plus a real smoke round-trip) is the only gate before
 pushing or merging to `main`.
 

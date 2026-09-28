@@ -145,14 +145,14 @@ Starts the Docker containers (Postgres, OpenSearch) if they aren't up, waits for
 
 | Scenario | Command | Result | What Stays |
 |----------|---------|--------|-----------|
-| "I'm done for the day" | `make stop` | Kills backend + frontend, stops the Docker containers | PostgreSQL data, OpenSearch index, .venv, node_modules |
-| "I'm switching projects" | `make stop` | Same as above | Everything — quick to resume with `make dev` |
+| "I'm done for the day" | `./scripts/stop.sh` | Kills backend + frontend, stops the Docker containers | PostgreSQL data, OpenSearch index, .venv, node_modules |
+| "I'm switching projects" | `./scripts/stop.sh` | Same as above | Everything — quick to resume with `make dev` |
 | "I want a clean slate" | `make teardown` | 🚨 **REMOVES everything below** | Nothing — you'll need to run `make setup` again |
 | | | Database deleted, index deleted, .venv deleted, node_modules deleted | |
 
 **Pause development (keep all data):**
 ```bash
-make stop
+./scripts/stop.sh
 ```
 
 Kills the backend and frontend processes and stops the Docker containers; the volumes stay, so your Postgres data and OpenSearch index persist. Use this when you're done for the day but want to resume tomorrow with `make dev`.
@@ -174,11 +174,11 @@ Understanding when services are running helps you reason about what commands to 
 |-------|----------|--------|------------------|------------|-----------|-----------------|
 | **Fresh install** | None | ⚠️ Off | Just cloned repo | ❌ None | ❌ None | Run `make setup` |
 | **Dev session** | Backend + Frontend | ✅ On | After `make dev` | ✅ Active | ✅ Active | Edit code, run tests |
-| **Paused** | None | ⏸ Stopped | After `make stop` | ✅ Data kept | ✅ Index kept | Run `make dev` to resume |
+| **Paused** | None | ⏸ Stopped | After `./scripts/stop.sh` | ✅ Data kept | ✅ Index kept | Run `make dev` to resume |
 | **Torn down** 🚨 | None | ❌ Removed | After `make teardown` | ❌ **Deleted** | ❌ **Deleted** | Run `make setup` to rebuild |
 
 **Critical distinction:**
-- **`make stop`** = "pause" — kill processes and stop containers. Volumes and all data stay. Resumable with `make dev`.
+- **`./scripts/stop.sh`** = "pause" — kill processes and stop containers. Volumes and all data stay. Resumable with `make dev`.
 - **`make teardown`** = "destroy" — delete Docker containers + volumes. All data is **permanently deleted**. Requires `make setup` to rebuild.
 
 ---
@@ -199,12 +199,9 @@ python main.py
 
 **Why?** The backend imports relative to `langchain_agent/` (e.g., `from config import ...`). Without `PYTHONPATH=.`, Python doesn't know where to find `config`.
 
-**Good news:** The Makefile sets this automatically. So these work fine:
+**Good news:** the Makefile sets it for you:
 ```bash
-make test        # unit tests
-make ci          # static gate (format, flake8, mypy, unit, frontend), no live services needed
-make smoke       # search-intent smoke test against a live backend
-make check       # the pre-push gate: ci + smoke
+make ci          # the pre-push gate: format, flake8, mypy, unit tests, frontend, then a live smoke test
 ```
 
 **For ad-hoc commands**, remember to set PYTHONPATH.
@@ -216,31 +213,28 @@ make check       # the pre-push gate: ci + smoke
 | Task | Command | How Long |
 |------|---------|----------|
 | Unit tests (no services needed) | `PYTHONPATH=. pytest tests/unit/` | ~5s |
-| Smoke test | `make smoke` | ~13-20s |
-| Fast static gate (no live services) | `make ci` | ~40-45s |
-| Full pre-push gate | `make check` | `ci` + smoke test |
+| The pre-push gate (everything, incl. a live smoke test) | `make ci` | ~1-2 min |
 | Frontend tests | `npm run test` (from `web/`) | ~5s |
+| Full e2e suite | `bash scripts/smoke_local.sh` | ~90s |
 
-The **smoke test** (`make smoke`) runs a focused search-intent regression test against your local backend. Use `make check` before pushing a change to catch any integration bugs; run `bash scripts/smoke_local.sh` directly for the full 21-test suite when you want deeper coverage (no dedicated Make target for it).
+`make ci` ends with one focused search-intent smoke test against your local backend (it brings Docker up itself). Run `bash scripts/smoke_local.sh` directly for the full e2e suite when you want deeper coverage (no Make target for it, on purpose).
 
 ---
 
 ## Makefile Quick Reference
 
-Common targets for daily development:
+The Makefile has exactly six targets (bare `make` runs `doctor`):
 
 | Target | What It Does | When to Use |
 |--------|--------------|-------------|
-| `make doctor` | Verify setup health (checks Docker, services, deps) | After setup.sh completes |
+| `make doctor` | Verify setup health (Docker, Ollama models, .venv, node_modules, LFS data) | After setup, or when something's off |
+| `make setup` | First-time setup: Docker services, .venv, models, precomputed index load | Fresh clone |
 | `make dev` | Start Docker services, then backend + frontend in the background | Daily development |
-| `make stop` | Stop backend, frontend, and Docker containers (data survives) | End of session |
-| `make test` | Run unit tests | While coding |
-| `make format-fix` | Auto-format code (black + isort) | Fix linting errors |
-| `make ci` | Fast static gate (lint + tests + frontend build), no live services | Iterative coding |
-| `make smoke` | Smoke test (search intent only) | Part of `make check` |
-| `make check` | **The pre-push gate**: `ci` + smoke test | Before every push or PR merge |
+| `make demo` | Backend + UI in one Docker container on :8000 | Presenting |
+| `make ci` | **The pre-push gate**: lint, unit tests, frontend build, live smoke test | Before every push |
+| `make teardown` | DESTRUCTIVE: remove .venv, node_modules, Docker volumes | Clean slate |
 
-See `Makefile` for all targets. See [Testing.md](testing.md) for the test pyramid.
+Everything else is a direct command, listed in the Makefile header: `./scripts/stop.sh`, `docker compose stop app`, `./scripts/reset_demo_taxonomy.sh`, `PYTHONPATH=. pytest tests/unit/`, `black . && isort .`, `bash scripts/smoke_local.sh`, and the benchmark. See [Testing.md](testing.md) for the test pyramid.
 
 ---
 
@@ -343,7 +337,7 @@ Wait 5–10 seconds, then try a search again.
 ## Next Steps
 
 - **Write code:** Use `make dev` to start the servers. Changes auto-reload in both backend (uvicorn --reload) and frontend (Vite HMR).
-- **Test locally:** Run `make check` before pushing.
+- **Test locally:** Run `make ci` before pushing.
 - **Read more:** See [Testing.md](testing.md) for test strategies, [Code Patterns](code-patterns.md) for backend/frontend conventions, and [PR Process](pr-process.md) for commit and PR guidance.
 
 ---

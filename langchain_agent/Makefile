@@ -1,58 +1,50 @@
-# Agentic Hybrid Search — run every target from langchain_agent/.
-# `make` lists the targets; the `##` comment on a target line is its help text.
+# Agentic Hybrid Search — run from langchain_agent/. Six targets:
+#   doctor    check prerequisites (Docker, Ollama models, .venv, node_modules, LFS data)
+#   setup     first-time: Docker services, .venv, Ollama models, precomputed index load (~1-2 min)
+#   dev       Postgres+OpenSearch, backend :8000, frontend :5173 in the background (logs/)
+#   demo      backend+UI in one container on :8000 (Docker + native Ollama only)
+#   ci        THE pre-push gate: format/lint/types, unit tests, collect-only integration+e2e,
+#             frontend test/lint/tsc/build, then a live smoke round-trip (brings Docker up)
+#   teardown  DESTRUCTIVE: .venv, node_modules, Docker volumes, logs
+#
+# Not targets, on purpose:
+#   stop dev            ./scripts/stop.sh                  (processes + containers; data survives)
+#   stop demo           (cd .. && docker compose stop app)
+#   re-arm the demo     ./scripts/reset_demo_taxonomy.sh   (or the UI's Restart button)
+#   unit tests only     PYTHONPATH=. .venv/bin/pytest tests/unit/
+#   auto-format         .venv/bin/black . && .venv/bin/isort .
+#   full e2e suite      bash scripts/smoke_local.sh
+#   benchmark           PYTHONPATH=. .venv/bin/python benchmarks/benchmark_esci.py --limit 5000 --fast
+#                       (--hard-only instead of --fast for LLM intent classification)
 
-.DEFAULT_GOAL := help
-.PHONY: help doctor setup dev stop teardown demo demo-down demo-reset test ci check smoke format-fix benchmark
+.DEFAULT_GOAL := doctor
+.PHONY: doctor setup dev demo ci teardown
 
 VENV := .venv/bin
 PY   := PYTHONPATH=. $(VENV)
 
-help: ## List targets
-	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
-
-# ---- Lifecycle ---------------------------------------------------------------
-
-doctor: ## Check prerequisites (Docker, Ollama models, .venv, node_modules, LFS data)
+doctor:
 	@bash scripts/doctor.sh
 
-setup: ## First-time setup: Docker services, .venv, Ollama models, precomputed index load (~1-2 min)
+setup:
 	@bash scripts/setup.sh
 
-dev: ## Start Postgres+OpenSearch, backend :8000, frontend :5173 in the background (logs/ has the output)
+dev:
 	@bash scripts/start.sh
-
-stop: ## Stop backend/frontend/Docker; data volumes survive
-	@bash scripts/stop.sh
-
-teardown: ## DESTRUCTIVE: remove .venv, node_modules, Docker volumes, logs (no prompt)
-	@bash scripts/teardown.sh
-
-# ---- Demo --------------------------------------------------------------------
 
 # The "app" compose profile bundles backend + built UI in one container. Needs
 # one prior `make setup` (Postgres tables, OpenSearch data) and a native Ollama.
-demo: ## Run backend+UI fully Dockerized on :8000 (Docker + native Ollama only)
+# Stop a native `make dev` backend first — both want :8000.
+demo:
 	@cd .. && docker compose --profile app up -d --build
 	@echo "Visit http://localhost:8000"
 
-# `docker compose down` tears down every service in the project even with
-# --profile, so scope to the one service with stop + rm.
-demo-down: ## Stop the Dockerized app (leaves Postgres/OpenSearch running)
-	@cd .. && docker compose stop app && docker compose rm -f app
-
-demo-reset: ## Re-arm the taxonomy demo (tan->yellow) between rehearsals
-	@bash scripts/reset_demo_taxonomy.sh
-
-# ---- Gate --------------------------------------------------------------------
-# There is no CI service; `make check` run locally is the only gate before a
-# push. `ci` needs no live services (integration/e2e are import-checked with
-# --collect-only only); `smoke` needs Docker up and starts a backend if none
-# is on :8000.
-
-test: ## Unit tests only (~30s, no services)
-	@$(PY)/pytest tests/unit/ -q
-
-ci: ## Static gate: black/isort/flake8/mypy, unit tests, integration+e2e collect, frontend test/lint/tsc/build
+# No CI service exists; this is the only gate before a push. Static steps
+# first (fail fast, no services), then Docker comes up and smoke_local.sh runs
+# one search-intent WebSocket round-trip — it reuses a healthy backend on
+# :8000 or starts and stops its own. Integration/e2e are import-checked only;
+# `bash scripts/smoke_local.sh` runs the full e2e suite.
+ci:
 	@echo "[ci] black --check / isort --check-only"
 	@$(VENV)/black --check .
 	@$(VENV)/isort --check-only .
@@ -65,19 +57,11 @@ ci: ## Static gate: black/isort/flake8/mypy, unit tests, integration+e2e collect
 	@$(PY)/pytest --collect-only -q tests/integration/ tests/e2e/ > /dev/null
 	@echo "[ci] frontend: vitest, eslint, tsc, build"
 	@cd web && npm install --silent && npm run test && npm run lint && npx tsc --noEmit && npm run build
-	@echo "ci passed — run 'make check' before pushing."
-
-smoke: ## Search-intent WebSocket round-trip against a live backend (~15s)
+	@echo "[ci] smoke: search-intent round-trip against a live backend"
+	@docker info >/dev/null 2>&1 || { echo "Docker isn't running — open -a Docker, wait for it, re-run make ci"; exit 1; }
+	@cd .. && docker compose up -d --wait
 	@bash scripts/smoke_local.sh -k test_search_intent_returns_results -q --tb=short
+	@echo "ci passed — safe to push."
 
-check: ci smoke ## THE pre-push gate: ci + smoke
-	@echo "check passed — safe to push."
-
-format-fix: ## Auto-format with black + isort
-	@$(VENV)/black .
-	@$(VENV)/isort .
-
-# ---- Benchmark ---------------------------------------------------------------
-
-benchmark: ## ESCI relevancy benchmark, 5000 queries; deterministic (~35 min) unless FULL=1 (LLM intent via Ollama)
-	@$(PY)/python benchmarks/benchmark_esci.py --limit 5000 $(if $(FULL),--hard-only,--fast)
+teardown:
+	@bash scripts/teardown.sh

@@ -43,11 +43,11 @@ make doctor    # Check prerequisites
 
 ## Contribution Flow
 
-This repo runs in **"cowboy mode"** (as of 2026-09-15): the default flow commits directly to `main`, no feature branch or PR required. `main` has no branch protection (private repo, no GitHub Pro), there is no CI (GitHub Actions were removed entirely, issue #113), and there is no deploy step (issue #110). `make check` run locally, before you push, is the only gate that exists for anything in this repo.
+This repo runs in **"cowboy mode"** (as of 2026-09-15): the default flow commits directly to `main`, no feature branch or PR required. `main` has no branch protection (private repo, no GitHub Pro), there is no CI (GitHub Actions were removed entirely, issue #113), and there is no deploy step (issue #110). `make ci` run locally, before you push, is the only gate that exists for anything in this repo.
 
 1. **Get issue context (optional):** use the `workflow-start` skill, or just read the issue yourself
 2. **Make changes — directly on `main`:** edit code, add tests
-3. **Run local tests:** `make check` (the full gate) or `make ci` alone for fast iteration
+3. **Run local tests:** `make ci` (the one gate); `PYTHONPATH=. pytest tests/unit/` for fast iteration
 4. **Commit:** `git commit -m "feat: description"` — include `Closes #N` to auto-close the issue on push
 5. **Self-review:** use the `workflow-check` skill, or read your own diff — check for stale comments, dead code
 6. **Push:** `git push origin main`
@@ -116,11 +116,11 @@ See [Code Patterns](code-patterns.md) for full details.
 
 ## Before You Push
 
-1. ✅ `make check` passes — runs unit tests, linting, frontend checks, and the smoke test in one command
+1. ✅ `make ci` passes — runs linting, unit tests, frontend checks, and the live smoke test in one command
 2. ✅ No dead code or stale comments
 3. ✅ Event parity verified (if you touched events)
 
-`.git/hooks/pre-commit` (installed by `scripts/setup.sh`) runs black/isort/flake8 on staged `.py` files at commit time, so formatting is partly caught automatically. There is still no pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only) — run `make check` manually before pushing.
+`.git/hooks/pre-commit` (installed by `scripts/setup.sh`) runs black/isort/flake8 on staged `.py` files at commit time, so formatting is partly caught automatically. There is still no pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only) — run `make ci` manually before pushing.
 
 ---
 

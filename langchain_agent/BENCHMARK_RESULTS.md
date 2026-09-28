@@ -77,7 +77,7 @@ curl -s http://localhost:9200/esci_judgments/_count | python -m json.tool
 
 ```bash
 cd langchain_agent
-make benchmark
+PYTHONPATH=. .venv/bin/python benchmarks/benchmark_esci.py --limit 5000 --fast
 ```
 
 **Runtime:** ~35 minutes for 5000 queries (each query is embedded through local Ollama; M4 Max).  
@@ -89,7 +89,7 @@ make benchmark
 
 ```bash
 cd langchain_agent
-make benchmark FULL=1
+PYTHONPATH=. .venv/bin/python benchmarks/benchmark_esci.py --limit 5000 --hard-only
 ```
 
 **What it does:** Same three configs, but intent classification uses the local LLM (`LLM_MODEL` via Ollama). Slower than `--fast` by one LLM call per query (not re-measured since #148).
@@ -251,7 +251,7 @@ NDCG@10 0.3897). Different corpus, embedding model and query set.
 - [ ] Products + judgments loaded: `PYTHONPATH=. python scripts/load_precomputed_indices.py` (bulk load from the committed `data/precomputed/` export; there is no ingest pipeline any more)
 - [ ] Verify OpenSearch: `curl http://localhost:9200/esci_judgments/_count`
 - [ ] Dry-run: `python benchmarks/benchmark_esci.py --limit 2 --fast`
-- [ ] Full run: `make benchmark` (~35 min)
+- [ ] Full run: `PYTHONPATH=. python benchmarks/benchmark_esci.py --limit 5000 --fast` (~35 min)
 - [ ] Results printed to stdout
 - [ ] (Optional) Save JSON: `python benchmarks/benchmark_esci.py --limit 5000 --hard-only --fast --output results.json`
 

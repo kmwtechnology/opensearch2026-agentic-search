@@ -102,9 +102,9 @@ export function GuidePage() {
 
             <h4 className="font-semibold text-gray-900 mt-4">4. Verify the setup (optional)</h4>
             <pre className="bg-[var(--color-stage-bg)] text-[var(--color-stage-ink)] p-3 rounded text-[1.375rem] overflow-x-auto">
-              <code>cd langchain_agent{'\n'}make smoke</code>
+              <code>cd langchain_agent{'\n'}make ci</code>
             </pre>
-            <p className="text-[1.375rem] text-gray-600 mt-1">Runs a focused smoke test to verify all components are working (~13-20s)</p>
+            <p className="text-[1.375rem] text-gray-600 mt-1">Runs the full local gate: lint, unit tests, frontend build, and a live smoke round-trip (~1-2 min)</p>
           </div>
         </div>
       ),
@@ -544,7 +544,7 @@ export function GuidePage() {
           <h4 className="font-semibold text-gray-900 mt-4">Resources & Configuration</h4>
           <div className="text-[1.375rem] text-gray-700 space-y-1">
             <p><strong>API Docs:</strong> <a href="/swagger" className="text-blue-600 hover:underline">Interactive Swagger UI at /swagger</a></p>
-            <p><strong>Key commands:</strong> <code className="bg-gray-100 px-1">make dev</code> (start), <code className="bg-gray-100 px-1">make ci</code> (lint/type/test), <code className="bg-gray-100 px-1">make smoke</code> (verify), <code className="bg-gray-100 px-1">make setup</code> (bulk-load the precomputed corpus)</p>
+            <p><strong>Key commands:</strong> <code className="bg-gray-100 px-1">make dev</code> (start), <code className="bg-gray-100 px-1">make ci</code> (lint/test/smoke — the pre-push gate), <code className="bg-gray-100 px-1">make setup</code> (bulk-load the precomputed corpus)</p>
             <p><strong>Config:</strong> See <code className="bg-gray-100 px-1">langchain_agent/.env.example</code> for all environment variables and <code className="bg-gray-100 px-1">CLAUDE.md</code> for the detailed project guide.</p>
           </div>
         </div>

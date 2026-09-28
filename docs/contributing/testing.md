@@ -10,8 +10,8 @@ Test pyramid and local testing commands.
 
 ```
        /\
-      /  \  E2E / Smoke (tests/e2e/, 21 tests, 2 files)
-     /    \   make smoke: 1 test, ~13-20s, real backend
+      /  \  E2E / Smoke (tests/e2e/, 2 files)
+     /    \   make ci runs 1 of them, ~15s, real backend
     /______\   full run: bash scripts/smoke_local.sh, ~90s
     /      \
    / Integ. \  Integration Tests (tests/integration/, ~207 tests)
@@ -22,7 +22,7 @@ Test pyramid and local testing commands.
  /________________\
 ```
 
-**Rule:** More tests at the bottom (fast, deterministic), fewer at the top (slow, flaky). `make check` runs unit tests for real, integration/e2e as `--collect-only` (import/signature check), plus one real smoke test — see "Local Gate" below.
+**Rule:** More tests at the bottom (fast, deterministic), fewer at the top (slow, flaky). `make ci` runs unit tests for real, integration/e2e as `--collect-only` (import/signature check), plus one real smoke test — see "Local Gate" below.
 
 ---
 
@@ -81,7 +81,7 @@ PYTHONPATH=. pytest tests/integration/ -m 'not slow'
 
 Expected: ~30–120 seconds, 0 failures.
 
-**Critical:** Don't skip integration tests for middleware changes. There is no pre-push hook that runs the smoke gate — run `make check` manually; local verification is faster than finding out later.
+**Critical:** Don't skip integration tests for middleware changes. There is no pre-push hook that runs the smoke gate — run `make ci` manually; local verification is faster than finding out later.
 
 ---
 
@@ -117,11 +117,10 @@ PYTHONPATH=. pytest tests/e2e/ -v -m "e2e and slow" --timeout=120
 
 **When:** Manually before pushing — there is no pre-push hook in this repo, so run this by hand before pushing or merging.
 
-**What:** A focused search-intent regression test against a running local backend (part of the broader 20+-test suite in `tests/e2e/`).
+**What:** A focused search-intent regression test against a running local backend (part of the broader suite in `tests/e2e/`). It is the last step of `make ci`; to run just it:
 
-**How:**
 ```bash
-make smoke    # ~13-20s, search intent only, needs Docker + backend
+bash scripts/smoke_local.sh -k test_search_intent_returns_results    # ~15s; needs Docker up, starts a backend if none is on :8000
 ```
 
 There's no dedicated Make target for the full regression suite — run it directly when you want the deeper check (e.g. after a WebSocket/service-wiring change):
@@ -142,24 +141,21 @@ This is the most valuable gate before pushing. It catches regressions that unit 
 
 ## Local Gate
 
-There is no GitHub Actions CI (issue #113) — **`make check`** run locally is
-the only gate. It's two layers:
+There is no GitHub Actions CI (issue #113) — **`make ci`** run locally is
+the only gate, one command, ~1-2 min (most of it the frontend's `npm install`/build and the smoke step):
 
-`make ci` (fast, no live services needed, ~40-45s — most of that is `ci-tools`' pip install and the frontend's `npm install`/build):
-1. **Backend lint** (black, isort, flake8, mypy) — ~5s
-2. **Unit tests** (pytest tests/unit/) — ~3s
-3. **Integration collect-only** (no execution; checks imports) — ~2s
-4. **E2E collect-only** (no execution; checks imports) — ~2s
-5. **Frontend tests** (vitest) — ~3s
-6. **Frontend lint** (eslint) — ~2s
-7. **Frontend type check** (tsc) — ~1s
-8. **Frontend build** (vite) — ~1s
+1. **Backend format + lint** (black, isort, flake8, mypy)
+2. **Unit tests** (pytest tests/unit/) — ~30s
+3. **Integration collect-only** (no execution; checks imports)
+4. **E2E collect-only** (no execution; checks imports)
+5. **Frontend tests** (vitest)
+6. **Frontend lint** (eslint)
+7. **Frontend type check** (tsc)
+8. **Frontend build** (vite)
+9. **Docker services up** (`docker compose up -d --wait`; Docker Desktop must be running)
+10. **Smoke test** (`scripts/smoke_local.sh -k test_search_intent_returns_results`, a real WebSocket round-trip; reuses a healthy backend on :8000 or starts and stops its own) — ~15s
 
-`make check` adds one more step on top of `ci`:
-
-9. **Smoke test** (`make smoke`, real round-trip against a running backend, needs Docker up) — ~13-20s
-
-If any step fails, `make check` exits non-zero and points at the failing step.
+If any step fails, `make ci` exits non-zero at that step.
 
 ---
 
@@ -169,14 +165,13 @@ Follow this checklist before `git push`:
 
 ```bash
 cd langchain_agent
-make check    # the one command: format check, lint, unit tests, frontend, smoke test
+make ci    # the one command: format check, lint, unit tests, frontend, smoke test
 ```
 
-Use `make format-fix` first if `make check` fails on formatting. For fast
-iterative feedback while coding (no live services needed), run `make ci`
-alone instead of the full `check`.
+Run `.venv/bin/black . && .venv/bin/isort .` first if it fails on formatting. For fast
+iterative feedback while coding (no services needed), run `PYTHONPATH=. pytest tests/unit/`.
 
-A `.git/hooks/pre-commit` hook (installed by `scripts/setup.sh`) catches black/isort/flake8 violations at commit time. There is still no local pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only); run `make check` manually before pushing. Nothing stops a push with failing tests except this local gate.
+A `.git/hooks/pre-commit` hook (installed by `scripts/setup.sh`) catches black/isort/flake8 violations at commit time. There is still no local pre-push hook (`.git/hooks/pre-push` is Git LFS's own hook only); run `make ci` manually before pushing. Nothing stops a push with failing tests except this local gate.
 
 ---
 

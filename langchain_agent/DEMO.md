@@ -15,7 +15,7 @@ button; you never type a query.
 ```bash
 cd langchain_agent
 make dev            # Docker + backend + frontend
-make demo-reset     # ARM ARC 2 — see below
+./scripts/reset_demo_taxonomy.sh   # ARM ARC 2 — see below
 ```
 
 Open <http://localhost:5173>. There is no login screen.
@@ -39,7 +39,7 @@ height; the narrator panel is laid out for what is left.
 
 **Arming matters.** Arc 2 works because the catalog mis-files tan boots under
 yellow. Running it *fixes* that, so a second run has nothing to demonstrate —
-it does not error, it just quietly stops being a demo. `make demo-reset` puts
+it does not error, it just quietly stops being a demo. `./scripts/reset_demo_taxonomy.sh` puts
 the defect back in about a second. The **Restart** button in the header does it
 for you, and selecting arc 2 re-arms it automatically, so you should never have
 to think about this on stage. Verify if you want to be sure:
@@ -323,7 +323,7 @@ queries.
 
 | Symptom | Fix |
 |---|---|
-| Arc 2 turn 1 shows no mismatch | The index is already corrected. **Restart**, or `make demo-reset`. |
+| Arc 2 turn 1 shows no mismatch | The index is already corrected. **Restart**, or `./scripts/reset_demo_taxonomy.sh`. |
 | Next is disabled, reads "Connecting…" | The socket is not open yet. It enables itself; do not click through. |
 | A reply looks attached to the wrong question | You clicked ahead. **Restart** and let each turn finish. |
 | Backend slow or timing out | First query after a cold start pays model warm-up. Send one throwaway query before the room fills. |

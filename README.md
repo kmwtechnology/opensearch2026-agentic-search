@@ -449,7 +449,7 @@ cp .env.example .env
 required models, ~23 GB), and disk for the committed corpus plus Docker
 volumes.
 
-There is no CI/CD pipeline and no deploy step (issue #110/#113) — `make check`
+There is no CI/CD pipeline and no deploy step (issue #110/#113) — `make ci`
 run locally is the only gate before merging to `main`.
 
 ### ESCI data ships in `data/`

@@ -8,14 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## New Session Checklist
 
-**Cowboy mode (2026-09-15):** commit directly to `main`, no feature branch or PR required by default. `main` has no branch protection — this is a private repo without GitHub Pro, so classic branch protection and rulesets both 403; `gh api .../branches/main` confirms `"protected": false`. Confirm `git status` is clean and `main` is up to date before starting. Run `make check` before pushing — that local run is the only gate that exists, for anything. A feature branch + PR is still fine when you explicitly want something reviewed before it lands, but it's opt-in now, not the default.
+**Cowboy mode (2026-09-15):** commit directly to `main`, no feature branch or PR required by default. `main` has no branch protection — this is a private repo without GitHub Pro, so classic branch protection and rulesets both 403; `gh api .../branches/main` confirms `"protected": false`. Confirm `git status` is clean and `main` is up to date before starting. Run `make ci` before pushing — that local run is the only gate that exists, for anything. A feature branch + PR is still fine when you explicitly want something reviewed before it lands, but it's opt-in now, not the default.
 
 ## Workflow skills
 
 This repo has project-level skills at `.claude/skills/` (`workflow-start`, `workflow-check`, `workflow-deploy`), rewritten 2026-09-15 for the direct-to-main flow — use them instead of generic process assumptions:
 
 - **`workflow-start`**: get issue context, plan, then code straight on `main` — no branch, no draft PR.
-- **`workflow-check`**: pre-push checklist (tests, `make check`, self-review, docs/memory update) — this is the review gate, since there's no PR/reviewer.
+- **`workflow-check`**: pre-push checklist (`make ci`, self-review, docs/memory update) — this is the review gate, since there's no PR/reviewer.
 - **`workflow-deploy`**: push, verify locally (`make dev`), close the issue.
 
 Load-bearing facts:
@@ -39,8 +39,9 @@ cd langchain_agent   # required first — commands below assume this cwd
                              #   data/precomputed/ is missing. There is no rebuild path.)
 ./scripts/start.sh          # or: make dev     (every session, native backend+frontend)
 make demo                   # fully-Dockerized backend+UI in one container (:8000) — needs only
-                             #   Docker + native Ollama, no local Python/Node; make demo-down to stop
-./scripts/stop.sh           # or: make stop    (stops processes + containers, keeps volumes)
+                             #   Docker + native Ollama, no local Python/Node. Stop it with
+                             #   `docker compose stop app` from the repo root.
+./scripts/stop.sh           # stops processes + containers, keeps volumes (no make target on purpose)
 ./scripts/teardown.sh       # or: make teardown (DESTRUCTIVE: removes .venv, node_modules, all Docker volumes)
 
 # Tests (PYTHONPATH=. required)
@@ -54,15 +55,16 @@ PYTHONPATH=. pytest tests/ -m phase1             # by marker (see pytest.ini for
                                                   #  quality_gate)
 PYTHONPATH=. pytest tests/unit/test_foo.py::test_bar -v   # single test
 
-make test              # unit tests only (~30s, no services)
-make ci                # static gate (no live services): black/isort/flake8/mypy + unit tests
-                        # + collect-only integration/e2e + frontend test/lint/tsc/build
-make smoke             # ~15s search-intent WebSocket round-trip; needs Docker + backend
-make check             # THE pre-push gate: ci + smoke — no git hook runs this, do it by hand
-make format-fix        # black + isort, fixes in place
-make benchmark         # ESCI benchmark, 5000 queries, deterministic (~35 min); FULL=1 adds LLM intent
-bash scripts/smoke_local.sh   # full e2e regression suite (~90s); deliberately no Make target
-# `make` alone lists every target — the Makefile's `##` comments are the help text.
+make ci                # THE pre-push gate, ~1-2 min: black/isort/flake8/mypy, unit tests, collect-only
+                        # integration/e2e, frontend test/lint/tsc/build, then `docker compose up -d --wait`
+                        # and one search-intent WebSocket round-trip against a live backend (starts one
+                        # if none is on :8000). No git hook runs this — do it by hand.
+# The Makefile has exactly six targets: doctor setup dev demo ci teardown. Everything else is a
+# direct command, documented in the Makefile header:
+.venv/bin/black . && .venv/bin/isort .                    # auto-format
+PYTHONPATH=. .venv/bin/pytest tests/unit/                  # unit tests only (~30s)
+bash scripts/smoke_local.sh                                # full e2e regression suite (~90s)
+PYTHONPATH=. .venv/bin/python benchmarks/benchmark_esci.py --limit 5000 --fast   # ~35 min; --hard-only for LLM intent
 
 # Frontend (from langchain_agent/web/)
 npm install && npm run dev   # :5173, proxies API to :8000
@@ -70,16 +72,16 @@ npm run lint                 # eslint, --max-warnings 0
 npm run test                 # vitest run
 ```
 
-**Local git hooks**: `.git/hooks/pre-commit` (installed by `scripts/setup.sh` from `scripts/pre-commit.sh`) runs black/isort/flake8 on *staged* `.py` files only — mirrors `make ci`'s format/lint steps. `.git/hooks/pre-push` is Git LFS's own hook only; nothing there runs tests. Run `make check` by hand before pushing.
+**Local git hooks**: `.git/hooks/pre-commit` (installed by `scripts/setup.sh` from `scripts/pre-commit.sh`) runs black/isort/flake8 on *staged* `.py` files only — mirrors `make ci`'s format/lint steps. `.git/hooks/pre-push` is Git LFS's own hook only; nothing there runs tests. Run `make ci` by hand before pushing.
 
 ### Local dev lifecycle
 
 Spoken triggers "start local dev" / "stop local dev" / "teardown local dev" map 1:1 to these (all from `langchain_agent/`):
 
 - **start local dev** → `make dev` (→ `scripts/start.sh`). Brings up Postgres + OpenSearch with `docker compose up -d --wait`, then starts backend and frontend **in the background** with output in `logs/backend.log` / `logs/frontend.log`, and returns once `/api/health` answers — safe to run synchronously. In the backend log, `Uvicorn running on http://127.0.0.1:8000` binds the port but `Application startup complete` (after LLM/embeddings/reranker/vector-store init) is the real "ready" signal; frontend readiness is `VITE vX ready in Yms`. Failure signatures: `Address already in use`, `EADDRINUSE`, `Connection refused`, `Traceback`. There is no backend-only target; `PYTHONPATH=. .venv/bin/uvicorn api.main:app --reload --port 8000` is the one-liner.
-- **stop local dev** → `make stop`. Non-destructive — kills backend/frontend processes and stops the Docker containers, but keeps volumes (Postgres + OpenSearch data survive).
+- **stop local dev** → `./scripts/stop.sh` (deliberately not a make target). Non-destructive — kills backend/frontend processes and stops the Docker containers, but keeps volumes (Postgres + OpenSearch data survive).
 - **teardown local dev** → `make teardown` (→ `scripts/teardown.sh`). DESTRUCTIVE and runs non-interactively (no prompt of its own) — deletes `.venv`, `web/node_modules`, all Docker volumes (Postgres + OpenSearch data), and logs. Confirm with the user before running this even though the script won't ask.
-- **run the demo in Docker** → `make demo` (builds + starts the `app` compose service on `:8000`; needs `make setup` to have run at least once). `make demo-down` stops it — **not** `docker compose --profile app down`, which tears down every service in the project (Postgres/OpenSearch too), not just `app`.
+- **run the demo in Docker** → `make demo` (builds + starts the `app` compose service on `:8000`; needs `make setup` to have run at least once, and nothing native on :8000). Stop it with `docker compose stop app` from the repo root — **not** `docker compose --profile app down`, which tears down every service in the project (Postgres/OpenSearch too), not just `app`.
 
 ## Architecture
 
@@ -158,7 +160,7 @@ The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns
 
 ## Deploy & CI reality
 
-No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely locally, either native (`make dev`) or fully-Dockerized (`make demo`, everything but Ollama in one container). `make check` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either). `make ci` alone is a faster no-live-services sub-check for iterative coding; `make check` = `ci` + `smoke` and is the actual thing to run before pushing.
+No GitHub Actions CI exists — `.github/workflows/` was deleted entirely (issue #113); every `.github` Actions run was failing before that with 0 steps assigned, so removing it didn't lose real coverage. No deploy mechanism exists either (issue #110) — the demo runs entirely locally, either native (`make dev`) or fully-Dockerized (`make demo`, everything but Ollama in one container). `make ci` run locally is the only gate on this repo, full stop — run it before every push to `main` (see "New Session Checklist" — there's no PR to gate it either). It is one command with no fast/full split: static checks, unit tests, frontend build, then a live smoke round-trip (it brings Docker up itself).
 
 ## Reference Docs
 

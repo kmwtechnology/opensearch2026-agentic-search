@@ -4,7 +4,7 @@ Branch naming, commit conventions, PR template, and review checklist — for the
 
 **Parent:** [Contributing Guide](README.md)
 
-> ⚠️ **This is not the default workflow.** As of 2026-09-15 this repo runs in "cowboy mode": contributors commit directly to `main`, no branch or PR required, and `make check` run locally is the only gate (no CI exists — GitHub Actions were removed entirely, issue #113). See the [Contribution Flow](README.md#contribution-flow) in the Contributing Guide, or [CLAUDE.md](../../CLAUDE.md), for that default path.
+> ⚠️ **This is not the default workflow.** As of 2026-09-15 this repo runs in "cowboy mode": contributors commit directly to `main`, no branch or PR required, and `make ci` run locally is the only gate (no CI exists — GitHub Actions were removed entirely, issue #113). See the [Contribution Flow](README.md#contribution-flow) in the Contributing Guide, or [CLAUDE.md](../../CLAUDE.md), for that default path.
 >
 > Everything below still applies if you *choose* to branch and open a PR — for architectural decisions, large refactors, or anytime you want a second opinion before something lands on `main`.
 
@@ -63,7 +63,7 @@ Closes #42.
 
 - [ ] Create feature branch: `git checkout -b feat/issue-NNN-slug`
 - [ ] Make changes and test locally
-- [ ] Run `make check` — all pass (the one gate: lint, unit tests, frontend, smoke test)
+- [ ] Run `make ci` — all pass (the one gate: lint, unit tests, frontend, smoke test)
 - [ ] Read your own diff — spot any dead code, stale comments
 - [ ] Commit and push
 
@@ -86,7 +86,7 @@ Closes #42.
 
 ## Deployment
 - [ ] Ready to merge
-- [ ] `make check` passes (no deploy step — local-only demo, issue #110/#113)
+- [ ] `make ci` passes (no deploy step — local-only demo, issue #110/#113)
 
 ## Related
 Closes #42.
@@ -128,7 +128,7 @@ Example:
 ```
 
 **After addressing all feedback:**
-1. Re-run `make check` locally
+1. Re-run `make ci` locally
 2. Push the new commit
 3. **Re-request review** (GitHub button at the top of the PR)
 
@@ -136,7 +136,7 @@ Example:
 
 ## Merge
 
-**Maintainer will squash to main** once review is approved. There is no CI to pass — `make check`, run locally by the contributor, is the only test gate; the reviewer is trusting that it was run.
+**Maintainer will squash to main** once review is approved. There is no CI to pass — `make ci`, run locally by the contributor, is the only test gate; the reviewer is trusting that it was run.
 
 All your commits become one:
 ```
