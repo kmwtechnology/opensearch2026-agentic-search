@@ -26,7 +26,7 @@
  * the audience loses the thesis in the enumeration. Each capability is now a
  * TURN inside the arc it belongs to.
  *
- * Transcribed from DEMO.md and DEMO_QUERIES.md. Keep `query` strings EXACT —
+ * Transcribed from DEMO.md. Keep `query` strings EXACT —
  * several are load-bearing in ways that are not obvious; see each `note`.
  */
 

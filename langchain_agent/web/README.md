@@ -1,202 +1,76 @@
-# Agentic Hybrid Search — React Frontend
+# Web UI
 
-> **Parent**: [langchain_agent/README.md](../README.md)
+> **Parent**: [../README.md](../README.md) · API and event contract: [../api/README.md](../api/README.md)
 
-React 19 + TypeScript + Tailwind + Zustand single-page app. Built with Vite; proxies `/api`
-to the native backend on `:8080` during development.
+React 19 + TypeScript + Vite, Tailwind CSS v4, Zustand stores, `react-markdown`
+for answers, `lucide-react` icons, Vitest + Testing Library.
 
-## Quick Start
+## Scripts
 
 ```bash
-cd langchain_agent/web
 npm install
-npm run dev         # Vite dev server on :5173
+npm run dev          # Vite on :5173 (make dev runs this for you)
+npm run build        # tsc + vite build → dist/ (what the demo image ships)
+npm run lint         # eslint, --max-warnings 0
+npm run test         # vitest run  (npm run test:watch for watch mode)
 ```
 
-Open <http://localhost:5173>.
+`make ci` runs test, lint, `tsc --noEmit`, and build.
 
-## Architecture
+## Talking to the backend
+
+The UI only ever uses relative URLs. In development Vite proxies `/api` and
+`/ws` to the native backend on :8080 (`vite.config.ts`); in the demo container
+the built UI and the API share one origin on :8000. The WebSocket URL is built
+from `window.location` (`hooks/useWebSocket.ts`), so both cases work without
+configuration. `VITE_API_URL` exists for the unusual case of a separate origin
+with no proxy — leave it unset.
+
+Requests carry the browser's `Origin`, which is the backend's only auth check.
+
+## Structure
 
 ```text
 src/
-├── App.tsx                    # Root component, page routing
-├── main.tsx                   # Entry point, Zustand store init
-├── components/                # React components
-│   ├── ChatPanel/             # Chat UI, message history
-│   ├── ObservabilityPanel/    # Real-time pipeline visualization
-│   ├── ConversationsSidebar/  # Conversation list + logout
-│   └── ...
-├── hooks/                     # Custom React hooks
-│   ├── useWebSocket.ts        # WebSocket lifecycle + auth
-│   ├── useRecentSearches.ts   # localStorage-backed search history
-│   └── ...
-├── stores/                    # Zustand state management
-│   ├── chatStore.ts           # Messages, conversations, UI state
-│   ├── observabilityStore.ts  # Pipeline events + stage visualization
-│   └── ...
-├── types/                     # TypeScript type definitions
-│   ├── events.ts              # Pydantic event models (MUST match api/schemas/events.py)
-│   └── ...
-├── pages/                     # Page-level components (routed via App.tsx)
-├── utils/                     # Utilities (formatters, helpers)
-└── tests/                     # Vitest unit tests (__tests__/ dirs alongside source)
+├── App.tsx                     routes: / (chat), /guide, /swagger
+├── components/
+│   ├── ChatPanel/              MessageList, Message, ProductCard, MessageInput, TypeaheadSuggestions
+│   ├── ObservabilityPanel/     per-node StepCard + details/, PipelineSummaryCard, DslViewerModal
+│   ├── NarratorPanel/          plain-language narration of the event stream (narrate.ts)
+│   ├── DemoSelector.tsx        the scripted demos
+│   └── Layout.tsx
+├── demos/registry.ts           SOURCE OF TRUTH for the four scripted demos (queries, steps, expectations)
+├── hooks/                      useWebSocket (event dispatch into the stores), useRecentSearches
+├── stores/                     Zustand
+├── pages/                      GuidePage (presenter notes), SwaggerPage
+├── types/events.ts             mirrors api/schemas/events.py — enforced by a Python parity test
+└── utils/                      api.ts (fetch wrapper), threadId.ts
 ```
 
-## Directory Documentation
+| Store | Holds |
+|---|---|
+| `chatStore` | thread id, messages, streaming text, queued messages, connection state |
+| `observabilityStore` | per-node steps and their events, the latest intent / alpha / quality-gate / reranker data, the pipeline summary, the enrichment banner state |
+| `optimizationsStore` | the nine search flags sent with every `chat_message` (persisted in `localStorage`) |
 
-Detailed documentation for subdirectories:
+## Rendering rules worth knowing
 
-| Directory | Purpose | Link |
-|-----------|---------|------|
-| **Components** | React UI components (chat, observability, sidebar) | [src/components/README.md](./src/components/) |
-| **Stores** | Zustand state management (chat, auth, observability) | [src/stores/README.md](./src/stores/) |
-| **Hooks** | Custom React hooks (WebSocket, recent searches) | [src/hooks/README.md](./src/hooks/) |
+- **An answer renders exactly once.** Citations arrive on `agent_complete`, one
+  frame after the last `llm_response_chunk`, so `chatStore.completeTurn` writes
+  the text and the citations in a single update and `MessageList` withholds a
+  still-streaming assistant bubble (the pipeline status card stays up instead).
+  Don't finalize on `llm_response_chunk`; `agent_error` is the failure path.
+- **Product cards are inline.** Each bullet in the answer becomes a
+  `ProductCard` when its bolded name prefix-matches a citation label
+  (`productIndex.ts`); the card uses the citation's `image_url` straight from
+  Amazon's CDN and falls back to a plain bullet on a 404. Nothing is bundled.
+- **Events are the contract.** `types/events.ts` must match
+  `api/schemas/events.py` field for field; add or remove an event on both
+  sides or `tests/unit/test_frontend_backend_event_parity.py` fails.
 
-Start with the components directory to understand the UI structure, then explore stores for state management patterns, and hooks for WebSocket / side-effect logic.
+## Tests
 
-## Development
-
-### Commands
-
-| Command | Purpose |
-|---------|---------|
-| `npm run dev` | Vite dev server, auto-reload, proxy `/api` and `/ws` → `:8080` |
-| `npm run build` | TypeScript + Vite build → `dist/` |
-| `npm run lint` | ESLint |
-| `npm run test` | Vitest runner; 101 tests |
-| `npm run test -- --watch` | Vitest watch mode |
-| `npm run test -- --coverage` | Coverage report |
-
-### Key Files
-
-- **`App.tsx`** — Route setup, page selection, theme provider
-- **`main.tsx`** — React 19 root, Vite entry
-- **`vite-env.d.ts`** — Vite type definitions
-- **`.env.local`** — Local env vars (`VITE_API_URL` set by parent `setup.sh`)
-
-### Frontend Stores
-
-| Store | Purpose |
-|-------|---------|
-| `chatStore.ts` | Messages, active conversation, UI state (chat vs. pipeline view); `ChatMessage` carries `corrected`, `originalContent`, `originalFaithfulness`, `correctedFaithfulness` for judge auto-correction display |
-| `observabilityStore.ts` | Pipeline events from WebSocket, stage-by-stage visualization |
-
-### WebSocket Integration
-
-- **Hook:** `useWebSocket.ts` — manages connection, auth, reconnection, event routing
-- **Auth:** Same-origin only — the browser's `Origin` header is checked on the handshake; no login, no token
-- **Events:** Typed Pydantic payloads streamed from backend; emitted per pipeline stage
-- **URL:** `/api/chat` (proxied to backend by Vite)
-
-### Event Contract
-
-**CRITICAL:** `web/src/types/events.ts` must match `api/schemas/events.py`.
-
-Every `type: Literal[...]` event must exist in both files. Every event's `node` field must agree.
-Pre-flight test `test_frontend_backend_event_parity.py` catches divergence.
-
-If you add a new event in `events.py`:
-1. Add the Pydantic model to `api/schemas/events.py`
-2. Export the `type: Literal[...]` in the union at the bottom
-3. Add the matching TypeScript interface to `web/src/types/events.ts`
-4. Verify `node` field values match in both files
-5. Run: `PYTHONPATH=. pytest tests/unit/test_frontend_backend_event_parity.py`
-
-## Components
-
-Key observability components render pipeline events:
-
-| Component | Purpose | File |
-|-----------|---------|------|
-| `IntentClassifierDetails` | Intent badge, confidence, keyword/LLM path | `ObservabilityPanel/` |
-| `SearchOptimizationDetails` | BM25 synonym expansion, fuzzy, phrase boost, phonetic | `ObservabilityPanel/SearchOptimizationDetails.tsx` |
-| `PipelineSummaryCard` | Per-stage NDCG/MRR/Recall/Precision (or confidence proxy) | `ObservabilityPanel/PipelineSummaryCard.tsx` |
-| `DslViewerModal` | Full OpenSearch DSL body with request line + embedded vectors scrubbed | `ObservabilityPanel/` |
-| `TypeaheadSuggestions` | Did you mean? / Suggestions / Recent Searches combobox | `ChatPanel/` |
-| `Message` | Single chat message bubble; renders markdown, citations, streaming cursor, and amber "AI-corrected" badge with "Show original" toggle when `message.corrected=true` | `ChatPanel/Message.tsx` |
-
-## Testing
-
-```bash
-npm run test                  # Run all 101 tests once
-npm run test -- --watch      # Watch mode
-npm run test -- --coverage   # HTML coverage report
-```
-
-Tests live alongside source in `**/__tests__/` directories.
-
-Coverage spans:
-- Zustand stores (state mutations, persistence)
-- WebSocket hooks (connection, auth, reconnection)
-- Observable components (intent badges, confidence colors, event rendering)
-- Accessibility (ARIA attributes, keyboard navigation)
-
-Example:
-```bash
-cd langchain_agent/web
-npm run test -- --watch --grep "TypeaheadSuggestions"
-```
-
-## Build & Deployment
-
-### Local Build
-
-```bash
-npm run build       # Output: dist/
-npx http-server dist   # Serve dist/ locally for testing
-```
-
-### Docker Build
-
-Multi-stage Docker build in `../Dockerfile`:
-1. **Build stage** — Node 24, `npm install && npm run build` → `dist/`
-2. **Runtime stage** — Python 3.14 + gunicorn serves `dist/` + proxies `/api` to Python backend
-
-The frontend is built into the Docker image and served from the Python backend.
-No separate Node.js service — all one container.
-
-## Configuration
-
-Environment variables (Vite requires `VITE_` prefix):
-
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `VITE_API_URL` | Backend origin; leave unset (relative URLs via the Vite proxy / same-origin in the demo image) | `http://localhost:8080` |
-
-Set in `.env.local` (local) or via Docker build `--build-arg`.
-
-## Troubleshooting
-
-**Can't connect to backend:**
-```bash
-curl http://localhost:8080/api/health
-# Check that the native backend is running on :8080 (:8000 is the demo container)
-```
-
-**Vite build fails:**
-```bash
-npm run build
-# Check for TypeScript errors:
-npx tsc --noEmit
-```
-
-**Tests failing:**
-```bash
-npm run test -- --reporter=verbose
-# Check that node_modules is up to date:
-rm -rf node_modules package-lock.json
-npm install
-```
-
-**Event type mismatch errors:**
-- Edit both `api/schemas/events.py` and `web/src/types/events.ts`
-- Run pre-flight test: `PYTHONPATH=. pytest tests/unit/test_frontend_backend_event_parity.py`
-
-## References
-
-- [React 19 docs](https://react.dev/)
-- [TypeScript docs](https://www.typescriptlang.org/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [Zustand docs](https://github.com/pmndrs/zustand)
-- [Vite docs](https://vitejs.dev/)
-- [Vitest docs](https://vitest.dev/)
+Vitest suites live in `__tests__/` folders next to the code: the three
+stores, `useWebSocket` (client side of the event contract), `narrate`,
+`ProductCard` / `Message` / `MessageList` (the rendering rules above), the
+observability detail cards, and `TypeaheadSuggestions`.

@@ -22,7 +22,7 @@ function createHeaders(additionalHeaders?: Record<string, string>): Record<strin
 }
 
 /**
- * Make an API request that includes the session cookie.
+ * Make an API request; the browser's Origin header is the only credential.
  *
  * @param endpoint - API endpoint (e.g., '/api/suggest?q=nik')
  * @param options - Fetch options (method, body, etc.)

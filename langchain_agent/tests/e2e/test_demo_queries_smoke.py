@@ -1,4 +1,4 @@
-"""Demo-query smoke: drive the three scenarios from DEMO_QUERIES.md.
+"""Demo-query smoke: three legacy conversation scenarios plus the four scripted demos.
 
 Why this exists separately from ``test_deployment_smoke.py``:
 
@@ -10,8 +10,9 @@ The error that prompted this file was
 surfaced while running a demo scenario locally. The fix flattens
 HumanMessage list-of-content-blocks at five extraction sites in
 ``main.py``. The unit-level regression covers the extraction loops; this
-e2e probe drives a real WebSocket end-to-end and asserts the three
-DEMO_QUERIES.md scenarios complete cleanly:
+e2e probe drives a real WebSocket end-to-end and asserts three legacy
+scenarios (they predate the scripted demos in web/src/demos/registry.ts,
+which TestScriptedDemos below drives verbatim) complete cleanly:
 
   1. α-Shift Wins — single turn, expects ``quality_gate`` event with a
      retry, then ``agent_complete``.
@@ -222,7 +223,7 @@ async def _reset_demo_taxonomy() -> None:
 @pytest.mark.slow
 @pytest.mark.asyncio
 class TestDemoQueriesSmoke:
-    """Probe the three DEMO_QUERIES.md scenarios end-to-end.
+    """Probe the three legacy conversation scenarios end-to-end.
 
     Each test opens its own WebSocket and uses a fresh thread_id so prior
     state can't leak between runs. The assertions are loose on the

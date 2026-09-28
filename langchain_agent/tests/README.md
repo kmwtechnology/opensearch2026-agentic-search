@@ -1,307 +1,71 @@
-# opensearch2026-agentic-search — Test Suite
+# Tests
 
-> Related docs: [repo root README](../../README.md) ·
-> [langchain_agent/README.md](../README.md) ·
-> [tests/e2e/README.md](e2e/README.md)
+> **Parent**: [../README.md](../README.md)
 
-Pytest-based tests organized by scope. All commands assume you're in
-`langchain_agent/` with `PYTHONPATH=.` (bare imports across the project
-require it).
+Run from `langchain_agent/` with `PYTHONPATH=.` (bare imports). The suites
+exercise production code only — a test that asserts on a literal it wrote
+itself is cruft, not coverage.
 
-## Layout
-
-```text
-tests/
-├── unit/                          # Fast, no external services
-│   ├── intent/
-│   │   └── test_intent_classifier.py
-│   ├── evaluator/
-│   │   └── test_query_evaluator.py
-│   ├── quality_gate/
-│   │   └── test_quality_gate.py
-│   ├── test_config_validation.py
-│   ├── test_llm_streaming_content_blocks.py
-│   ├── test_model_compatibility.py
-│   ├── test_pipeline_summary_event.py
-│   └── test_relevancy_metrics.py
-│
-├── integration/                   # Multi-component; requires services
-│   ├── test_admin_enrich_route.py
-│   ├── test_agent_response.py
-│   ├── test_attribute_mapping_store.py
-│   ├── test_edge_cases.py
-│   ├── test_enrichment_service.py
-│   ├── test_pipeline_flow.py
-│   ├── test_quality_gate_retry.py
-│   ├── test_retriever_reranker.py
-│   ├── test_suggest.py
-│   └── test_websocket_integration.py
-│
-├── e2e/                           # Against a local backend by default
-│   ├── test_demo_queries_smoke.py
-│   ├── test_deployment_smoke.py
-│   └── README.md
-│
-├── conftest.py                    # Shared fixtures + env defaults
-└── README.md                      # This file
-```
-
-## Running Tests
-
-### Everything
+| Suite | Needs | Run by `make ci`? |
+|---|---|---|
+| `tests/unit/` | nothing (mocks, `bare_agent`) | yes |
+| `tests/integration/` | live PostgreSQL + OpenSearch (`docker compose up -d`); Ollama for the enrichment classifier | yes — `make ci` brings Docker up first. They create and drop their own throwaway indices |
+| `tests/e2e/` | a running backend on :8080 (`make dev`, or `smoke_local.sh` starts one) | one test — the search-intent smoke round-trip. `bash scripts/smoke_local.sh` runs the rest |
+| `web/src/**/__tests__/` | Node | yes (`vitest`) |
 
 ```bash
-PYTHONPATH=. pytest tests/ -v
+PYTHONPATH=. .venv/bin/pytest tests/unit/ -q                 # while coding
+PYTHONPATH=. .venv/bin/pytest tests/unit/test_foo.py::test_bar -v
+PYTHONPATH=. .venv/bin/pytest tests/integration/ -q          # Docker up
+bash scripts/smoke_local.sh                                 # full e2e
+bash scripts/smoke_local.sh -k test_search_intent_returns_results
 ```
 
-### By scope
+Markers (`pytest.ini`, `--strict-markers`): `unit`, `integration`, `e2e`,
+`slow`, `phase1`. Only `e2e` and `slow` drive selection (`smoke_local.sh`
+runs `-m "e2e and slow"`); the others are labels. `timeout = 30` per test.
 
-```bash
-PYTHONPATH=. pytest tests/unit/ -v             # ~0.5 s, no deps
-PYTHONPATH=. pytest tests/integration/ -v      # needs Postgres + OpenSearch + Ollama running
-PYTHONPATH=. pytest tests/e2e/ -v              # needs a running backend (DEPLOYMENT_URL defaults to localhost:8080, the native backend — not the demo image on :8000); no credential required, same-origin checking is the only auth layer
-```
+E2E tests read `DEPLOYMENT_URL` (default `http://localhost:8080`, the native
+backend — the working tree). Don't point them at :8000: that is the demo image,
+frozen at the last `make dev`. They send `Origin: <DEPLOYMENT_URL>`, which is
+all the auth there is.
 
-### By file or pattern
+## Fixtures
 
-```bash
-PYTHONPATH=. pytest tests/unit/intent/test_intent_classifier.py -v
-PYTHONPATH=. pytest tests/integration/test_pipeline_flow.py -v
-PYTHONPATH=. pytest tests/ -k "quality_gate"
-```
+`tests/conftest.py::bare_agent` builds an `EcommerceSearchAgent` via
+`__new__` with every I/O attribute set to `None` or a `MagicMock`, so node and
+helper methods can be unit-tested without PostgreSQL, OpenSearch, or Ollama —
+override the attribute a test needs (`agent.alpha_estimator_llm = MagicMock(...)`).
+`tests/e2e/conftest.py` provides `auth_ws_headers()` / `auth_rest_headers()`
+(the `Origin` header).
 
-### By marker (`pytest.ini`)
+## What guards what
 
-```bash
-PYTHONPATH=. pytest tests/ -m unit
-PYTHONPATH=. pytest tests/ -m "integration and not slow"
-```
+| Invariant | Test |
+|---|---|
+| Graph routing (`_route_after_intent`, quality-gate route, summary route); `hallucination_retry_used` reset every turn | `unit/test_routing_functions.py` |
+| Quality gate pass / retry / accept-after-retry, ±0.3 alpha, per-intent thresholds, no stale `"retry"` leaking through checkpoints | `unit/test_pipeline_nodes.py` |
+| Intent classifier extraction and the refinement → search downgrade | `unit/test_intent_classifier_node.py` |
+| Event contract: `api/schemas/events.py` ↔ `web/src/types/events.ts`, both directions, per-class `node` literals | `unit/test_frontend_backend_event_parity.py` (and `web/src/hooks/__tests__/useWebSocket.test.ts` on the client side) |
+| Same-origin auth: allow-list, Referer fallback, Host can't override a bad Origin, WebSocket close 4003, no `X-Forwarded-For` trust | `unit/test_origin_auth.py`, `unit/test_origin_auth_contract.py`, `unit/test_client_ip.py`; live in `e2e/test_deployment_smoke.py::TestAuthentication` |
+| Scoped re-tag detects exactly what the original tagger did (longest phrase, secondary slot, ASCII `\b`) and touches only candidate products | `unit/test_scoped_retag.py`; end to end in `integration/test_enrichment_service.py` |
+| `WATERPROOF_CANONICALS["waterproof"]` stays empty (the schema-evolution demo depends on it) | `unit/test_attribute_discovery.py` |
+| `_coerce` rejects booleans from the LLM (a literal `False` used to become a truthy hard filter) | `unit/test_extract_attributes_waterproof.py` |
+| Enrichment lifecycle: `started` before the re-tag, one terminal event, value-judge gate, judge skips enrichment turns | `unit/test_enrichment_lifecycle_events.py`, `unit/test_try_enrichment_tool.py`, `unit/test_judge_skips_enrichment_turn.py`; route contract in `integration/test_admin_enrich_route.py` |
+| Citations: Amazon search-by-title URL construction; `agent_complete.citations` shape `{label, url, asin, image_url}` | `unit/test_agent_link_handling.py`; live in `e2e/test_deployment_smoke.py::TestCitations`; REST model in `unit/test_search_optimizations.py` |
+| Reranker rescale ceiling stays below the quality-gate thresholds | `unit/test_reranker.py` |
+| Hybrid search DSL per optimization flag, RRF routing, the nine-key optimizations contract | `unit/test_search_optimizations.py`, `unit/test_vector_store.py` |
+| Judge categories and retry eligibility | `unit/test_judge_categories.py` |
+| Pipeline summary metrics and the confidence proxy | `unit/test_pipeline_summary_event.py`, `unit/test_relevancy_metrics.py` |
+| Typeahead: prefix, dedup, spell correction, fuzzy fallback | `integration/test_suggest.py` |
+| Attribute-mapping store read-after-write, case-insensitivity, cache invalidation | `integration/test_attribute_mapping_store.py` |
+| The four scripted demos in `web/src/demos/registry.ts` run end to end without `agent_error` | `e2e/test_demo_queries_smoke.py::TestScriptedDemos` |
+| Every runtime package has a `COPY` line in the Dockerfile | `unit/test_dockerfile_package_copy.py` |
+| The e2e files use real event types, payload shapes, and routes; the smoke timeout budget fits | `unit/test_e2e_*.py`, `unit/test_smoke_test_budget.py` |
 
-Available markers (kept in sync with `pytest.ini`'s `markers =` list; a
-marker not declared there fails collection under `--strict-markers`):
-`phase1`, `phase3`, `unit`, `integration`, `e2e`, `slow`, `websocket`,
-`asyncio`, `agent`, `edge_cases`, `pipeline`, `quality_gate_retry`,
-`retriever_reranker`, `requires_real_api`, `evaluator`, `intent`,
-`quality_gate`.
+## Writing a test
 
-### Coverage
-
-```bash
-PYTHONPATH=. pytest tests/ --cov=. --cov-report=html
-open htmlcov/index.html
-```
-
-## Test Categories
-
-### Unit (`tests/unit/`)
-
-**Purpose:** component isolation, validation, error paths. No external
-services — everything is mocked through `conftest.py`.
-
-| File | Focus |
-| --- | --- |
-| `intent/test_intent_classifier.py` | 6-intent classification via single LLM call (no keyword fast-path — see #26), confidence thresholds |
-| `evaluator/test_query_evaluator.py` | Dynamic α selection, query expansion, fast-path vs LLM-path |
-| `quality_gate/test_quality_gate.py` | Retry decision logic, α adjustment bounds, intent-specific thresholds |
-| `test_config_validation.py` | Required env vars, value ranges, type checks |
-| `test_embedding_cache.py` | LRU eviction, TTL, disabled-cache no-op, thread safety |
-| `test_exceptions.py` | Custom exception hierarchy, inheritance, error codes |
-| `test_health.py` | `/api/health` response shape, degraded-mode reporting |
-| `test_intent_classifier_node.py` | LangGraph node wrapper, state mutations |
-| `test_llm_streaming_content_blocks.py` | Streaming event emission, token assembly |
-| `test_origin_auth.py` | Origin/Referer allow-list, WebSocket auth checks, Host-fallback contract (disallowed Origin + `*.run.app` Host MUST 403 — Host fallback only fires when both Origin and Referer are absent) |
-| `test_origin_auth_contract.py` | TestClient-based regression test wiring `verify_same_origin` into a FastAPI app; replays the exact production header combos from the 2026-04-29 smoke failure |
-| `test_pipeline_nodes.py` | Node input/output contracts across the pipeline |
-| `test_pipeline_summary_event.py` | `_build_pipeline_summary` accumulation, ground-truth vs. confidence-proxy fallback, latency table assembly |
-| `test_relevancy_metrics.py` | NDCG@k / MRR / Recall@k / Precision@k, `compute_stage_metrics`, `confidence_from_scores`, `count_rank_changes`, `latency_cost_benefit` (43 tests, no NumPy) |
-| `test_reranker.py` | `CrossEncoderReranker` scoring, empty-input handling, warmup |
-| `test_routing_functions.py` | LangGraph edge routing logic |
-| `test_search_optimizations.py` | BM25 synonym expansion, fuzzy, phrase-boost, phonetic config |
-| `test_vector_store.py` | `OpenSearchVectorStore` hybrid search, RRF fusion, facets, collapse |
-| `test_e2e_ws_url_routes.py` | Pre-flight guard: every `/ws/*` URL referenced in `tests/e2e/` must resolve to a registered FastAPI WebSocket route — catches path/query-style mismatches before they reach a running backend |
-| `test_e2e_event_types.py` | Pre-flight guard: every `event["type"] == "..."` literal in `tests/e2e/` must be declared in `api/schemas/events.py`; flags use of `event["event_type"]` (wire field is `type`) |
-| `test_e2e_payload_shapes.py` | Pre-flight guard: every `json.dumps({...})` WS payload in `tests/e2e/` must match the `chat_message` / `stop_execution` contract enforced by `api/routes/chat.py` (catches stale `{"query":, "session_id":}` shapes) |
-| `test_frontend_backend_event_parity.py` | Pre-flight guard: every backend `type: Literal[...]` in `events.py` must appear in `web/src/types/events.ts`; per-event `node:` literals must match between backend and frontend; `AgentEvent` union cannot reference Python builtins |
-| `test_smoke_test_budget.py` | Pre-flight guard: AST-walks the smoke e2e test, counts `chat_message` sends, computes a worst-case budget (`SETUP_OVERHEAD_S=7` + `PER_CHAT_MESSAGE_BUDGET_S=40` × sends), and asserts `scripts/smoke_local.sh`'s `pytest --timeout=N` covers it. Also asserts inner `asyncio.wait_for(timeout=...)` ≤ that `--timeout` and `WEBSOCKET_TIMEOUT` ≥ per-message budget. Tighten constants only if you have new wall-clock data — they reflect production observation, not aspirational SLOs. |
-
-**Run time:** ~7 s. 863 unit tests total. **Best for:** TDD,
-pre-commit, CI fast lane.
-
-### Integration (`tests/integration/`)
-
-**Purpose:** multi-component flows with real or near-real services. See [tests/integration/README.md](integration/README.md) for detailed guide.
-
-| File | Focus |
-| --- | --- |
-| `test_pipeline_flow.py` | Full RAG pipeline: classifier → evaluator → retriever → reranker → quality gate → agent |
-| `test_retriever_reranker.py` | Hybrid search + RRF fusion + reranker scoring |
-| `test_quality_gate_retry.py` | Retry triggered when max reranker score < 0.5, α ±0.3 adjustment |
-| `test_agent_response.py` | Response generation, citation formatting, Amazon URL construction |
-| `test_websocket_integration.py` | WebSocket lifecycle, auth, event ordering |
-| `test_suggest.py` | `/api/suggest` typeahead: prefix matches, spell correction (Levenshtein + ratio), fuzzy distance-1 fallback, corpus-token and prefix guards |
-| `test_admin_enrich_route.py` | `POST /api/admin/enrich` request/response contract, `ENABLE_ENRICHMENT_TOOL` gating, delegation to `enrichment_service` |
-| `test_edge_cases.py` | Empty retrievals, malformed input, low-confidence intents |
-
-**Run time:** ~5–60 s. **Requires:** PostgreSQL + OpenSearch running
-(`docker compose up -d` from repo root) and a local Ollama with the configured models pulled.
-
-**CI note:** `make ci` only runs `pytest --collect-only` on integration tests. Always run the actual
-test suite locally after middleware/WebSocket changes before pushing.
-
-### E2E (`tests/e2e/`)
-
-**Purpose:** smoke and regression testing against a running backend, local
-by default. See [`tests/e2e/README.md`](e2e/README.md) for scenarios and
-required environment.
-
-| File | Focus |
-| --- | --- |
-| `test_deployment_smoke.py` | Health check, auth, basic round-trip (18 tests) |
-| `test_demo_queries_smoke.py` | Demo query regression checks (3 tests) |
-
-**Always run e2e files against a real backend before pushing** — `make ci`
-executes only `test_deployment_smoke.py`'s search-intent test for real (its
-smoke step); the rest of `tests/e2e/` is `--collect-only` there, so
-`test_demo_queries_smoke.py` and the remaining scenarios still need a manual
-run (`bash scripts/smoke_local.sh`) when you've touched service wiring or
-WebSocket contracts.
-
-**Run time:** ~10-90 s. **Requires:** a backend
-URL. No login/credential is needed — same-origin checking is the only auth
-layer and a same-origin caller needs no credentials at all.
-
-```bash
-docker compose up -d                           # PostgreSQL + OpenSearch
-make dev                                       # native backend on :8080 (backgrounded; logs/backend.log)
-PYTHONPATH=. pytest tests/e2e/ -v
-```
-
-## Fixtures (`conftest.py`)
-
-Shared setup injects sensible defaults for test runs:
-
-```python
-os.environ.setdefault("ENABLE_RERANKING", "true")
-os.environ.setdefault("ENABLE_QUALITY_GATE", "true")
-os.environ.setdefault("QUALITY_GATE_THRESHOLD", "0.50")
-```
-
-The repo root is added to `sys.path` so bare imports (`from config import ...`)
-resolve inside tests without `PYTHONPATH=.` — but setting `PYTHONPATH=.` is
-still recommended for consistency with the rest of the project.
-
-## Setup
-
-### Local
-
-```bash
-cd langchain_agent
-pip install -r requirements-dev.txt
-./scripts/setup.sh           # one-time: Docker + venv + DB + ingestion
-./scripts/start.sh           # start services
-PYTHONPATH=. pytest tests/ -v
-```
-
-### CI
-
-There is no GitHub Actions CI (issue #113) — `make ci` run locally
-(lint, unit tests, `--collect-only` on integration/e2e, frontend
-test/lint/type/build, plus a real smoke round-trip) is the only gate before
-pushing or merging to `main`.
-
-## Common Issues
-
-### `ModuleNotFoundError: No module named 'config'` (or similar)
-
-```bash
-PYTHONPATH=. pytest tests/
-```
-
-### Tests hang or time out
-
-Services may not be up. Verify:
-
-```bash
-docker compose ps
-curl http://localhost:9200/_cluster/health
-PGPASSWORD=postgres psql -h localhost -U postgres -d langchain_agent -c 'SELECT 1;'
-```
-
-Pytest has a 30-second default timeout (`pytest.ini`). Mark longer tests
-with `@pytest.mark.slow` or raise the timeout via `--timeout=N`.
-
-### Integration tests skipped
-
-They assert against running services — start them via
-`docker compose up -d` from the repo root plus `./scripts/start.sh` for
-the backend if the test exercises the HTTP/WebSocket layer.
-
-### E2E tests failing with 403
-
-Check `DEPLOYMENT_URL` (if set) has the correct scheme + host — it defaults
-to `http://localhost:8080`. There's no 401/login gate; a 403 means the
-`Origin` wasn't on the same-origin allow-list (`api/middleware/origin_auth.py`).
-
-## Frontend Tests (Vitest)
-
-Frontend tests live alongside the React source in
-`langchain_agent/web/src/**/__tests__/` and run via Vitest:
-
-```bash
-cd langchain_agent/web
-npm run test            # 278 tests
-npm run test -- --watch
-npm run test -- --coverage
-```
-
-Coverage spans Zustand stores (`chatStore`, `observabilityStore`),
-WebSocket hooks (`useWebSocket`, `useRecentSearches`), and observability
-components — `IntentClassifierDetails`, `IntentDisplay`,
-`PipelineSummaryCard`, `SearchOptimizationDetails`,
-`TypeaheadSuggestions`. Tests verify: intent badge colors (search/blue,
-attribute_filter/purple, follow_up/cyan, summary/purple), confidence
-visualization (green ≥0.7 / yellow <0.7), low-confidence clarification
-warning, query expansion display for follow-up intents, boundary cases
-(0.0 / 0.7 / 1.0 confidence), and event-type contracts matching
-`api/schemas/events.py`.
-
-## Writing New Tests
-
-### Unit
-
-```python
-# tests/unit/my_module/test_my_thing.py
-import pytest
-from my_module import MyThing
-
-class TestMyThing:
-    def test_valid(self):
-        assert MyThing(42).value == 42
-
-    def test_invalid_raises(self):
-        with pytest.raises(ValueError):
-            MyThing(-1)
-```
-
-### Integration
-
-```python
-# tests/integration/test_my_flow.py
-import pytest
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-class TestMyFlow:
-    async def test_end_to_end(self, compiled_graph):
-        result = await compiled_graph.ainvoke({"messages": [("user", "hi")]})
-        assert result["messages"]
-```
-
-Mark tests with the appropriate marker(s) so scope-based runs pick them up.
-
-## References
-
-- [pytest docs](https://docs.pytest.org/)
-- [pytest fixtures](https://docs.pytest.org/en/stable/how-to/fixtures.html)
-- [pytest-asyncio](https://pytest-asyncio.readthedocs.io/)
-- [pytest markers](https://docs.pytest.org/en/stable/example/markers.html)
+Put it next to the code it guards, import the production symbol, and assert
+on its behavior. Unit tests take `bare_agent` and mock the one collaborator
+they need; integration tests monkeypatch `INDEX_NAME` to a throwaway index
+and clean up in the fixture; e2e tests use a fresh `thread_id` per test.

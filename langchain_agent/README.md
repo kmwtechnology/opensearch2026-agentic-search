@@ -1,815 +1,212 @@
-# Agentic Hybrid Search — E-Commerce Product Search Agent
+# Backend: Agentic Hybrid Search
 
-> See also: [repo root README](../README.md) ·
-> [tests/README.md](tests/README.md) ·
-> [tests/e2e/README.md](tests/e2e/README.md)
+> **Parent**: [../README.md](../README.md) · Design: [ARCHITECTURE.md](ARCHITECTURE.md) · Demo script: [DEMO.md](DEMO.md) · API: [api/README.md](api/README.md) · UI: [web/README.md](web/README.md) · Tests: [tests/README.md](tests/README.md)
 
-A production-grade LangGraph RAG agent for e-commerce product discovery.
-Uses a local Ollama LLM and embeddings, OpenSearch for hybrid vector + BM25
-search, and PostgreSQL for LangGraph checkpoints. No cloud API key required.
+A LangGraph RAG agent over 158,637 Amazon ESCI products: hybrid BM25 + vector
+retrieval (RRF), a dynamic alpha per intent, cross-encoder reranking behind a
+quality gate, an LLM judge, streamed pipeline events over WebSocket, and a
+taxonomy the agent grows and corrects live. Everything runs locally: Docker
+Compose for PostgreSQL and OpenSearch, native [Ollama](https://ollama.com/)
+for every model.
 
-**Capabilities:**
+## Prerequisites
 
-- **6-intent classification** — `search`, `comparison`, `attribute_filter`,
-  `refinement`, `follow_up`, `summary`. Single structured-output LLM call
-  (no keyword fast-path).
-- **Hybrid retrieval** — vector (768-dim `nomic-embed-text` embeddings via
-  Ollama) + BM25, fused via RRF (k=60), with dynamic α per intent.
-- **Cross-encoder reranking** — local `ms-marco-MiniLM-L-12-v2` scores
-  query-product relevance, no API call; the only reranker.
-- **Quality gate** — retries once with α ±0.3 (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only) if max reranker score < 0.5.
-- **Real-time streaming** — token-by-token WebSocket output with full
-  observability events.
-- **Pipeline Quality Summary** — per-turn scorecard (NDCG@10 / MRR /
-  Recall@20 / Precision@10 against ESCI judgments, or a self-referential
-  confidence proxy when ground truth is unavailable) with a latency
-  cost-benefit table.
-- Data is the Amazon ESCI / Shopping Queries Dataset (products + relevance judgments).
+- Docker Desktop
+- Python 3.14 and Node.js 24 (for native dev; the demo container needs neither)
+- Ollama installed and running natively (Metal GPU on macOS — never containerized).
+  `make setup` pulls the models (~23 GB on first run):
+  `qwen3.6:35b-a3b-q4_K_M` (every chat call) and `nomic-embed-text` (query embeddings).
+- Git LFS (`git lfs install`) — the corpus ships as a precomputed export in
+  `data/precomputed/`; see [../data/README.md](../data/README.md).
 
-**Stack:**
+## Run it
 
-- **Backend:** Python 3.14+, FastAPI, LangGraph, LangChain
-- **Frontend:** React 19, TypeScript, Tailwind, Zustand
-- **Data layer:** OpenSearch 3.8.0 (HNSW + BM25) · PostgreSQL 16
-  (LangGraph checkpoints only)
-- **LLM:** local Ollama `qwen3.6:35b-a3b-q4_K_M` (generation, classify,
-  eval, judge) · `nomic-embed-text` via Ollama (embeddings)
-
----
-
-## Local Development
-
-This application runs local-only (issue #110/#113) — `setup.sh` and
-`start.sh` run PostgreSQL/OpenSearch locally with Docker, plus the FastAPI
-backend and React frontend.
-
-### Prerequisites
-
-[Ollama](https://ollama.com/) installed and running locally, plus:
+All commands run from `langchain_agent/`. The Makefile has five targets:
 
 ```bash
-docker --version      # Docker Desktop
-python3 --version     # Python 3.14+
-node --version        # Node.js 24+
+make doctor     # check prerequisites (bare `make` does the same)
+make setup      # first time: Docker services, .venv, Ollama models, load the precomputed index (~1-2 min)
+make dev        # every session — see below
+make ci         # the pre-push gate
+make teardown   # DESTRUCTIVE: .venv, node_modules, Docker volumes, logs
 ```
 
-`scripts/setup.sh` checks that Ollama is installed/running and pulls any
-missing models (~23 GB on first run); `scripts/doctor.sh` re-checks
-reachability and that the configured models are pulled.
+`make dev` starts everything, side by side, sharing PostgreSQL and OpenSearch:
 
-### Local Development With Docker
+| | URL | What it serves |
+|---|---|---|
+| Dev UI | http://localhost:5173 | Vite with live reload; proxies `/api` and `/ws` to the native backend |
+| Native backend | http://localhost:8080 | `uvicorn --reload`, logs in `logs/backend.log` (Swagger at `/swagger`) |
+| Demo | http://localhost:8000 | One container with the backend and the built UI, rebuilt from the tree on each `make dev` |
 
-```bash
-cd langchain_agent
-cp .env.example .env
-./scripts/setup.sh
-./scripts/start.sh
+Edits show on :5173 immediately; :8000 is frozen until the next `make dev`.
+Stop everything with `./scripts/stop.sh` (containers stop, volumes and data
+survive). Other direct commands — unit tests only, formatting, the full e2e
+suite — are listed in the Makefile header.
+
+`make ci` is the only gate this repo has (there is no CI service): format,
+lint, types, unit tests, frontend test/lint/build, then it brings Docker up
+and runs the live integration tests and one WebSocket smoke round-trip
+against :8080. Run it before every push.
+
+## How a turn works
+
+```
+intent_classifier ─┬─(summary)──► summary ─┬─(continue)──► retriever
+                    ├─(clarify)──► agent    └─(done)──────► agent
+                    └─(other)────► query_evaluator ──► retriever ──► reranker ──► quality_gate ─┬─(retry)───► retriever
+                                                                                                  └─(continue)► agent ──► llm_judge ──► END
 ```
 
-First-time setup takes roughly a couple minutes, dominated by pulling Ollama
-models (~23 GB):
+Eight LangGraph nodes (`main.py::create_agent_graph`):
 
-1. Creates `.env` from `.env.example`
-2. Creates `.venv`, installs Python + frontend dependencies
-3. Checks Ollama is installed/running and pulls any missing models
-4. Starts PostgreSQL and OpenSearch via Docker
-5. Initializes the checkpoint DB and OpenSearch index
-6. Bulk-loads the full ESCI product corpus (158,637 products, already
-   embedded) and judgments (65,028 queries) from the committed precomputed
-   export (`data/precomputed/`, see `../data/README.md`) — no embedding, no
-   ingest pipeline
+1. **intent_classifier** — one structured LLM call picks `search`, `comparison`,
+   `attribute_filter`, `refinement`, `follow_up`, or `summary`; confidence < 0.7
+   routes to the agent for a clarifying question.
+2. **query_evaluator** — estimates the hybrid alpha (0 = pure BM25, 1 = pure
+   vector); comparison/attribute_filter/refinement take a fast-path alpha.
+3. **retriever** — rewrites vague queries against history, extracts color /
+   waterproof / category filters, runs hybrid search plus a BM25 baseline in
+   parallel. Unresolved color and waterproof terms are hard filters, so an
+   unknown term produces a genuine zero-result query — that is what triggers
+   taxonomy growth.
+4. **reranker** — local cross-encoder (`ms-marco-MiniLM-L-12-v2`), scores
+   rescaled so the ceiling stays below the quality-gate thresholds.
+5. **quality_gate** — if the top reranker score is under the intent's threshold
+   (comparison 0.55, search/follow_up 0.50, attribute_filter/refinement 0.45),
+   adjusts alpha by ±0.3, widens the candidate pool 4x, and retries once.
+6. **agent** — streams the answer with citations; offers `trigger_enrichment`
+   when it sees a taxonomy gap, or a correction when a shopper disputes a tag.
+7. **llm_judge** — flags hallucinations against the retrieved products and
+   regenerates once for `fabrication` / `cross_product_bleed`.
+8. **summary** — recap turns skip retrieval.
 
-`make dev` runs two things side by side, sharing Postgres/OpenSearch: the
-native FastAPI backend on `:8080` with the live-reloading React UI on `:5173`
-(Vite proxies `/api` and `/ws` to `:8080`), and the demo container on `:8000`
-(see below).
+Every turn ends with a `pipeline_summary` event: NDCG@10 / MRR / Recall@20 /
+Precision@10 per stage when the query has ESCI ground truth, a confidence
+proxy otherwise. Mechanism details, state fields, and the taxonomy
+growth-and-correction loop are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-There is no login gate — the UI opens straight to the chat, and every
-same-origin caller, including `/api/admin/*`, is unauthenticated. See
-[docs/integration/README.md](../docs/integration/README.md).
+## Taxonomy growth and correction
 
-Stop or clean up local services:
-
-```bash
-./scripts/stop.sh
-./scripts/teardown.sh
-```
-
-Removes running services, the Docker volumes, `.venv`, `node_modules`, and
-log files. Keeps `.env` by default (prompted separately).
-
-### The demo container (:8000)
-
-`make dev` also rebuilds and starts the demo: `langchain_agent/Dockerfile`, a
-single image bundling the compiled React frontend and the FastAPI backend as
-one process on one origin, run as the `app` service in the root
-`docker-compose.yml` and published on <http://localhost:8000>. It is built
-from the working tree at the moment `make dev` runs and then stays frozen —
-edits show up live on `:5173`, and on `:8000` only after the next `make dev`
-(build output in `logs/demo-build.log`). `./scripts/stop.sh` stops it along
-with everything else; `docker compose stop app` (repo root) stops just it.
-
-The `app` service sits behind the `app` compose profile, so a plain
-`docker compose up -d` (what `make ci` runs) never builds it.
-Ollama is **never** containerized — only a native install gets Metal GPU
-access on macOS, and the 35B model is unusably slow on CPU — so a native
-Ollama must still be running; the container reaches it via
-`host.docker.internal`.
-
----
-
-## Usage
-
-### Web UI
-
-Open <http://localhost:5173> and chat. The observability panel on the right
-streams every pipeline stage in real time.
-
-### CLI
-
-```bash
-source .venv/bin/activate
-PYTHONPATH=. python main.py
-```
-
-### API
-
-`/api/health` and `/api/suggest` are public; the chat WebSocket, the REST chat
-POST, and `/api/admin/*` are same-origin-only (see
-[docs/integration/README.md](../docs/integration/README.md)).
-
-```bash
-curl -H "Origin: http://localhost:8000" http://localhost:8000/api/admin/health
-```
-
-The primary surface is the WebSocket endpoint under `/api/chat` — see
-`api/routes/chat.py`. REST routes cover health (`/api/health`), typeahead
-suggestions (`/api/suggest` — see `api/routes/suggest.py`), and admin
-operations (`/api/admin/*` — see `api/routes/admin.py`). Conversation
-history lives in LangGraph's Postgres checkpoints, keyed by `thread_id`;
-there is no REST conversations resource.
-
-#### Typeahead autocomplete — `GET /api/suggest`
-
-```bash
-curl "http://localhost:8000/api/suggest?q=nik&limit=8"
-```
-
-Response:
-
-```json
-{
-  "suggestions": [
-    {
-      "title": "Nike Air Max 90",
-      "brand": "Nike",
-      "score": 1.0,
-      "highlight": ["<mark data-th>Nike</mark> Air Max 90"]
-    }
-  ],
-  "spell_correction": null
-}
-```
-
-Misspelled queries populate `spell_correction` instead of (or alongside)
-`suggestions`:
-
-```bash
-curl "http://localhost:8000/api/suggest?q=nikey"
-# {"suggestions":[], "spell_correction":{"title":"nike","brand":"Nike","score":0.889}}
-```
-
-Behavior:
-
-- Edge-ngram prefix matching on `title_suggest` and `brand_suggest` subfields
-- Spell correction via Levenshtein distance + `SequenceMatcher` ratio
-  (ratio ≥ 0.6, confidence ≥ 0.5). Returns a `spell_correction` payload
-  (`{"title": "...", "brand": "...", "score": 0.xx}`) rendered as "Did you
-  mean?" in the UI
-- Fuzzy fallback for distance-1 typos (e.g., `"nikey"` → `"nike"`) when the
-  primary prefix query returns no results
-- Correction is skipped when the query is already a corpus token, or when
-  it is a prefix of the candidate (prevents "charg" → "charger" suggestions)
-
-Frontend UI (`web/src/components/ChatPanel/TypeaheadSuggestions.tsx`):
-
-- Three sections: **Did you mean?** (spell correction) → **Suggestions**
-  (API results) → **Recent Searches** (localStorage via
-  `web/src/hooks/useRecentSearches.ts`, capped at 8, case-insensitive dedup,
-  clear button)
-- ARIA combobox semantics with `role="combobox"`, `aria-expanded`,
-  `aria-activedescendant`
-- Keyboard navigation: `ArrowDown`/`ArrowUp` to move, `Enter`/`Tab` to
-  accept and submit, `Esc` to close
-- Requests use `AbortController` to cancel stale responses
-
-#### Admin API — `/api/admin/*`
-
-```bash
-# Grow/correct the live color/waterproof taxonomy and trigger a scoped re-tag
-curl -X POST http://localhost:8000/api/admin/enrich \
-  -H "Content-Type: application/json" \
-  -H "Origin: http://localhost:8000" \
-  -d '{"attribute_type": "waterproof", "variant": "weatherproof", "canonical": "waterproof"}'
-
-# Inspect current index health + document count
-curl -H "Origin: http://localhost:8000" http://localhost:8000/api/admin/health
-```
-
-There is no full-ingest endpoint or full-reindex path at all — the corpus is
-a permanent precomputed export (see `data/README.md`). `POST /api/admin/enrich`
-triggers a scoped re-detection/re-tag as a side effect of adding/correcting
-one taxonomy mapping — only products whose text mentions the changed variant
-are re-checked and updated, no re-embedding. Verify the result via
-`GET /api/admin/health`.
-
-### Example Queries
-
-**RAG Q&A:**
-
-```text
-Find wireless headphones under $50
-Show me Nike running shoes
-Compare Sony WH-1000XM5 vs Bose QuietComfort 45
-Make them waterproof                  ← refinement of prior search
-Any cheaper options?                  ← follow-up
-Summarize our conversation
-```
-
----
+Color and waterproof tags (`product_<type>_primary` / `_secondary`) were
+detected once when the corpus was built and ship in the precomputed export.
+The taxonomy itself lives in OpenSearch. At runtime the agent's one tool,
+`trigger_enrichment(attribute_type, variant, canonical)` (gated by
+`ENABLE_ENRICHMENT_TOOL`), writes a mapping and re-tags only the products
+whose text mentions the changed term (`pipeline/scoped_retag.py`, seconds, no
+re-embedding). `waterproof` deliberately starts with zero variants so the gap
+is real on every fresh cluster. `POST /api/admin/enrich` exposes the same
+mechanism without the LLM loop; `./scripts/reset_demo_taxonomy.sh` (or the
+UI's Restart button) re-arms the demos.
 
 ## Configuration
 
-Everything lives in `core/config.py`; most (but not all) values are `.env`-overridable — see `.env.example` for the current, authoritative list of what's genuinely read from the environment vs. hardcoded.
-
-### Models
-
-```bash
-LLM_MODEL=qwen3.6:35b-a3b-q4_K_M   # generation, classify, judge (default for all chat calls)
-QUERY_EVAL_MODEL=qwen3.6:35b-a3b-q4_K_M   # query evaluator (defaults to LLM_MODEL)
-JUDGE_MODEL=qwen3.6:35b-a3b-q4_K_M        # LLM judge (defaults to LLM_MODEL)
-EMBEDDINGS_MODEL=nomic-embed-text  # 768-dim embeddings
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_KEEP_ALIVE=60m
-OLLAMA_NUM_CTX=32768
-LLM_TEMPERATURE=0
-QUERY_EVAL_TEMPERATURE=0
-QUERY_EVAL_MAX_TOKENS=1024
-```
-
-Every chat call goes through `core/llm.py::build_chat_model` (`ChatOllama`,
-`reasoning=False`).
-
-`VECTOR_DIMENSION` (768) is **not** on this list — it's a hardcoded literal in `core/config.py`, not an env override, despite living right next to `EMBEDDINGS_MODEL` in the source.
-
-### Data stores
-
-```bash
-# OpenSearch (hybrid search)
-OPENSEARCH_HOST=localhost
-OPENSEARCH_PORT=9200
-OPENSEARCH_INDEX_NAME=agentic_hybrid_search_docs
-OPENSEARCH_USE_SSL=false
-
-# PostgreSQL (LangGraph checkpoints only)
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=langchain_agent
-```
-
-### Retrieval / reranking
-
-**None of these are `.env`-settable** — they're plain Python literals in `core/config.py`. Values shown are the actual current defaults; edit `core/config.py` and redeploy to change them.
-
-```python
-RETRIEVER_K = 10              # Final docs
-RETRIEVER_FETCH_K = 40        # Candidates before reranking
-RETRIEVER_ALPHA = 0.25        # Default α (evaluator usually overrides)
-ENABLE_RERANKING = True
-RERANKER_FETCH_K = 40         # Candidates reranked
-RERANKER_TOP_K = 10           # Final top-K
-ENABLE_QUERY_EVALUATION = True
-```
-
-`ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS` (default 5) **is** `.env`-settable — it bounds the query evaluator's alpha-estimation call and the retriever's attribute-extraction/query-expansion calls (same underlying model), replacing the formerly-dead `QUERY_EVAL_TIMEOUT_MS`.
-
-### Intent routing
-
-The 6-intent classifier routes every turn:
-
-| Intent | Pipeline | Examples |
-| --- | --- | --- |
-| `search` | RAG Q&A (LLM-path α) | "Find wireless headphones" |
-| `comparison` | RAG Q&A (fast-path α=0.60) | "Compare Sony vs Bose" |
-| `attribute_filter` | RAG Q&A (fast-path α=0.25) | "Blue running shoes size 10" |
-| `refinement` | RAG Q&A (fast-path α=0.35) | "Make them waterproof" |
-| `follow_up` | RAG Q&A (LLM-path α, context-aware) | "Any cheaper ones?" |
-| `summary` | Summary node (no retrieval) | "Recap our conversation" |
-
-Documentation-style asks ("write a guide", "create a comparison") are
-detected during content-type classification inside the generator pipeline
-rather than as a separate intent class.
-
----
-
-## Features
-
-### Conversational query rewriting
-
-Resolves pronouns ("it", "those"), comparatives ("which is cheaper"), and
-short attribute questions ("how much?") using conversation history before
-retrieval. Skips expansion when the query already names a specific
-brand/product. Emits `QueryExpansionEvent` for the observability panel.
-
-### Context-validated refinement
-
-"Make them waterproof" narrows the prior result set, not a fresh search.
-A continuity score combines category matching and document-ID overlap:
-
-- `> 0.7` — refine against prior products (α=0.35)
-- `0.3–0.7` — ambiguous; ask the user to clarify
-- `< 0.3` — pivot detected; reset prior context, treat as new search
-
-### Quality gate with α adjustment
-
-If the top reranker score is below the intent-specific threshold
-(comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45)
-after reranking, the quality gate adjusts α by ±0.3 (toward the opposite
-strategy) and retries retrieval once. Prevents low-relevance outputs
-without an infinite loop.
-
-### Typeahead autocomplete
-
-Edge-ngram prefix search over ESCI product titles and brands, with spell
-correction (Levenshtein + `SequenceMatcher` ratio ≥ 0.6, confidence ≥ 0.5)
-and a distance-1 fuzzy fallback for typos like `"nikey"` → `"nike"`.
-Correction is skipped when the query is already a corpus token or a prefix
-of the candidate, avoiding over-correction of in-progress words. The
-frontend (`TypeaheadSuggestions.tsx` + `useRecentSearches.ts`) renders a
-three-section dropdown (Did you mean? / Suggestions / Recent Searches),
-uses ARIA combobox semantics with full keyboard navigation, and cancels
-stale in-flight requests via `AbortController`.
-
-### BM25 lexical optimizations
-
-Beyond vanilla BM25, the lexical side of hybrid search applies:
-
-- **Synonym expansion** (search-time)
-- **Fuzzy matching** (auto-edit-distance on longer tokens)
-- **Phrase boosting** (exact multi-word matches score higher)
-- **Field boosting** (title/brand weighted above generic content)
-- **Phonetic matching** via `double_metaphone` analyzer (requires the
-  `analysis-phonetic` OpenSearch plugin)
-
-These are surfaced in the frontend observability panel as a collapsible
-"Search Optimizations" card — see
-`web/src/components/ObservabilityPanel/SearchOptimizationDetails.tsx`.
-
-### Pipeline Quality Summary
-
-Every turn ends with a `PipelineSummaryEvent` (emitted right after
-`AgentCompleteEvent`) that powers the **Pipeline Quality Summary** card
-at the bottom of the observability panel.
-
-The retriever runs hybrid search and a BM25-only baseline in parallel via
-a 2-worker `ThreadPoolExecutor` (opensearch-py releases the GIL during
-HTTP I/O). State now carries `pre_rerank_documents`, `bm25_documents`,
-`judgments`, and per-stage latency (`bm25_latency_ms`,
-`retriever_latency_ms`, `reranker_latency_ms`).
-
-**With ESCI ground truth** — when a best-effort exact-keyword lookup
-against the `esci_judgments` index hits a known query, the card renders
-three rows (BM25 → Hybrid → Reranked) with **NDCG@10**, **MRR**,
-**Recall@20**, **Precision@10**, plus a latency cost-benefit table that
-includes a "Lift / 100ms" column. ESCI labels are mapped to numeric
-relevance: `E=4.0`, `S=1.0`, `C=0.1`, `I=0.0`.
-
-**Without ground truth** — the card falls back to a self-referential
-**confidence proxy**: `top1_score`, `score_gap` (top-1 vs top-2),
-`score_variance`, and `rank_changes_count` (rank churn between hybrid and
-reranked). These collapse to a `confidence_label` of `high`, `medium`,
-or `low`. The latency table still renders without the lift column.
-
-Implementation:
-
-- [`observability/relevancy_metrics.py`](observability/relevancy_metrics.py) — pure-Python (no NumPy)
-  module with `ndcg_at_k`, `mrr`, `recall_at_k`, `precision_at_k`,
-  `compute_stage_metrics`, `confidence_from_scores`,
-  `count_rank_changes`, `latency_cost_benefit`. 43 unit tests in
-  [`tests/unit/test_relevancy_metrics.py`](tests/unit/test_relevancy_metrics.py).
-- [`retrieval/vector_store.py`](retrieval/vector_store.py) — `bm25_only_search()` (BM25
-  baseline) and `lookup_judgments(query)` (judgments index lookup).
-- [`api/services/observable_agent.py`](api/services/observable_agent.py) —
-  accumulates pipeline state across the LangGraph stream
-  (last-write-wins) and emits the summary in `_build_pipeline_summary()`.
-  5 unit tests in
-  [`tests/unit/test_pipeline_summary_event.py`](tests/unit/test_pipeline_summary_event.py).
-- [`web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx`][psc] —
-  the rendered card.
-
-[psc]: web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx
-
-### Admin API
-
-`GET /api/admin/health` returns index health and document count.
-`GET /api/admin/diagnose` probes field-level hit counts and mapping
-presence per field. `POST /api/admin/enrich` grows or corrects the
-color/waterproof taxonomy and, by default, triggers a scoped re-detection
-of only the affected products (well under a second to a few seconds,
-measured live) — see "Agentic Taxonomy Growth & Correction" below and
-`docs/integration/rest-api.md` for the request/response shape. All three
-rely on same-origin checking only, like every other route — there is no
-login gate and no admin token.
-
-There is no routine full re-ingestion — the corpus is a permanent
-precomputed export with no rebuild path (see `data/README.md`).
-
-### Agentic Taxonomy Growth & Correction
-
-The agent can grow *or fix* its own catalog taxonomy live via one shared
-tool, `trigger_enrichment(attribute_type, variant, canonical)`, gated by
-`ENABLE_ENRICHMENT_TOOL` (default off). Calling it writes the mapping to
-OpenSearch and re-detects the attribute only on the products whose text
-mentions the changed variant, bulk-updating just those
-(`pipeline/scoped_retag.py`) — no re-embedding, no full reindex. This is
-the only reindex mode there is.
-
-**Gap** (a term the taxonomy has never seen): when `attribute_filter`
-intent extracts a color or waterproof term the taxonomy doesn't recognize
-and the resulting search genuinely fails, `agent_node` offers the tool.
-Both color's and waterproof's unresolved-term filter is a hard exact
-match (excluded from the retriever's filter-relaxation safety net, which
-only ever drops `multi_match` clauses), so either one reliably produces a
-genuine zero-result query through live chat. `WATERPROOF_CANONICALS`
-ships with zero seed variants on purpose (`retrieval/attribute_discovery.py`)
-so this gap is real and reproducible on a fresh cluster, not something
-that merely happens to be missing — the generic `feature` field (anything
-that isn't a color or a waterproofing requirement, e.g. "breathable",
-"insulated") is the one that stays a deliberately soft lexical match, and
-*that* is subject to relaxation.
-
-**Correction** (a term already mapped to the *wrong* bucket — the live
-demo's centerpiece, see `DEMO.md`): a separate detection branch in
-`agent_node` watches `refinement`/`follow_up` turns for dispute language
-("that's wrong", "mistagged", ...) via `_detect_correction_signal`, and
-if the shopper is disputing a real, verifiable mistake, offers the same
-tool framed as a correction. `enrichment_service.enrich_attribute`
-distinguishes this from a no-op by comparing the requested canonical
-against what's already stored — a genuine mismatch is tracked via
-`EnrichmentResult.corrected_from` and reported distinctly ("Corrected
-'tan' from 'yellow' to 'brown'", not "Added"). This case matters because
-it produces a **passing** quality-gate score (the wrong result is still
-relevant, just mis-colored) — invisible to any automated check, only
-catchable by a shopper actually looking at the product.
-
-See `ARCHITECTURE.md`'s "Attribute Detection" / "Taxonomy Growth &
-Correction" sections for the full mechanism and `DEMO.md` for the live
-walkthrough.
-
-### Observable events
-
-Full pipeline is instrumented with Pydantic-typed events streamed over
-WebSocket:
-
-| Event | Purpose |
-| --- | --- |
-| `intent_classification` | 6 intents + confidence + keyword/LLM path |
-| `query_evaluation` | Assigned α, reasoning |
-| `query_expansion` | Original vs rewritten query |
-| `opensearch_query` | α, intent, applied filters, full DSL `body` + `index` + `params`. Tagged with `query_type` (`hybrid`, `bm25_baseline`, `quality_gate_retry`) so the UI can render an eye-icon viewer per query type. |
-| `hybrid_search_start` / `hybrid_search_result` | Candidates + scores |
-| `reranker_start` / `reranker_progress` / `reranker_result` | Per-doc 0.0–1.0 |
-| `quality_gate` | pass / retry / α adjusted |
-| `llm_response_start` / `llm_response_chunk` | Token streaming |
-| `enrichment_triggered` | Agent called `trigger_enrichment`; carries `attribute_type`/`variant`/`canonical` |
-| `agent_complete` | Final response + citations |
-| `pipeline_summary` | Per-stage NDCG/MRR/Recall/Precision (or confidence proxy) + latency cost-benefit |
-
-Schemas in [api/schemas/events.py](api/schemas/events.py) must stay in sync
-with [web/src/types/events.ts](web/src/types/events.ts).
-
----
-
-## Architecture
-
-### LangGraph Pipeline
-
-Seven nodes wired into a graph:
-
-```text
-START → intent_classifier
-  ├── search / comparison / attribute_filter /
-  │   refinement / follow_up   → query_evaluator → retriever → reranker → quality_gate → agent → END
-  │                                                                               │
-  │                                                                               └─(retry)→ retriever
-  ├── summary                  → summary → agent → END
-  └── clarify (confidence<0.7) → agent (requests disambiguation) → END
-```
-
-### Hybrid Search
-
-Reciprocal Rank Fusion combines vector and BM25 rankings:
-
-```text
-rrf_score = Σ 1 / (rank + k)      where k = 60
-```
-
-The **α parameter** controls weighting:
-
-| α | Strategy | Best for |
-| --- | --- | --- |
-| 0.0–0.15 | Pure lexical | ASINs, model numbers, UPCs |
-| 0.15–0.40 | Lexical-heavy | Brand + category, attributes |
-| 0.40–0.60 | Balanced | Feature combinations |
-| 0.60–0.75 | Semantic-heavy | "Best for X", use-case queries |
-| 0.75–1.0 | Pure semantic | Gift ideas, mood/style, exploration |
-
-The query evaluator picks α per turn. If the top reranker score is still
-below 0.5, the quality gate retries with α adjusted by ±0.3.
-
-### State
-
-`CustomAgentState` (see [core/agent_state.py](core/agent_state.py)) is a `total=False`
-TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
-
-| Added by | Fields |
-| --- | --- |
-| Classifier | `intent`, `confidence`, `user_query` |
-| Query Evaluator | `alpha`, `intent_description` |
-| Retriever | `retrieved_documents` |
-| Reranker | `reranker_max_score`, `reranked_documents`, `reranker_latency_ms` |
-| Quality Gate | `quality_gate_retried`, `alpha_adjusted_value` |
-| Pipeline Summary | `pre_rerank_documents`, `bm25_documents`, `judgments`, `bm25_latency_ms`, `retriever_latency_ms` |
-| Agent (enrichment) | `enrichment_triggered`, `enrichment_attribute_type`, `enrichment_variant`, `enrichment_canonical` |
-| Other | `thread_id`, `current_node`, `retrieved_products`, `citations` |
-
----
-
-## Development
-
-### Loading ESCI data
-
-There is no ingest pipeline in this repo. Every index (products, judgments,
-attribute taxonomy) loads from a single permanent, one-time export committed
-via Git LFS — see `data/README.md` for the full story, including why, and
-what would need to be written fresh if the corpus ever genuinely needed to
-change.
-
-```bash
-# Bulk-load from the committed export (what every `make setup` does)
-PYTHONPATH=. python scripts/load_precomputed_indices.py
-```
-
-`data/esci_products.parquet` and `data/esci_judgments_aggregated.parquet`
-are the historical source inputs that originally built the corpus; nothing
-reads them at runtime.
-
-ESCI labels are mapped to numeric relevance: `E=4.0`, `S=1.0`, `C=0.1`,
-`I=0.0`. Lookups from `OpenSearchVectorStore.lookup_judgments(query)` are
-best-effort exact-keyword matches; absence is non-fatal — the summary
-falls back to the confidence proxy.
-
-### Benchmarks
-
-```bash
-PYTHONPATH=. python benchmarks/benchmark_search.py
-```
-
-### Checkpoint maintenance
-
-```bash
-PYTHONPATH=. python checkpoints/checkpoint_maintenance.py   # garbage-collect old checkpoints
-PYTHONPATH=. python checkpoints/checkpoint_optimizer.py     # tune checkpoint performance
-```
-
-### Testing
-
-```bash
-PYTHONPATH=. pytest tests/unit/           # no external deps, ~0.5 s
-PYTHONPATH=. pytest tests/integration/    # requires Postgres + OpenSearch
-PYTHONPATH=. pytest tests/e2e/            # requires a running local backend (see tests/e2e/README.md)
-PYTHONPATH=. pytest --cov=. --cov-report=html
-```
-
-`make ci` is the local pre-push gate used by this repo: backend format,
-lint/import checks, unit tests, frontend test/lint/type/build, then one real
-search-intent round-trip against a running backend (it brings Docker up
-itself). Integration and the rest of e2e are only collected, not run;
-execute those suites separately when a change touches service wiring,
-WebSocket contracts, or OpenSearch mappings.
-
-See [tests/README.md](tests/README.md) for the full layout and fixtures, and
-[tests/e2e/README.md](tests/e2e/README.md) for the local smoke/regression
-scenarios.
-
-### Lint / format / types
-
-```bash
-.venv/bin/black . && .venv/bin/isort .   # auto-format (run before every commit)
-make ci                                  # the pre-push gate — run this before every push
-```
-
-A git pre-commit hook (`.git/hooks/pre-commit`) automatically runs black,
-isort, and flake8 on every staged `.py` file. If a commit is blocked, run
-the formatter line above, then re-stage. The hook is local-only and not tracked by
-git — reinstall it by running:
-
-```bash
-cp scripts/pre-commit.sh ../.git/hooks/pre-commit && chmod +x ../.git/hooks/pre-commit
-```
-
-### Frontend (from `web/`)
-
-```bash
-npm install
-npm run dev          # vite dev server on :5173
-npm run build        # tsc + vite build → dist/
-npm run lint         # eslint
-```
-
----
-
-## Performance
-
-| Operation | Typical |
-| --- | --- |
-| Hybrid search (BM25 + kNN) | ~300–800 ms |
-| Cross-encoder reranking (40 → 10) | ~200 ms–1 s (CPU-bound; ~10 ms/doc × FETCH_K) |
-| Query evaluation (α + expansion) | ~300–500 ms |
-| Quality Gate retry | +1–2 s |
-| LLM response (streaming) | ~3–8 s |
-| **Total per query** | **~6–21 s** (measured across the 4 scripted demos on the local-Ollama stack, M4 Max) (first request after startup is slower: cross-encoder model load) |
-
-Optimizations: HNSW vector index · embedding cache (60-min TTL) ·
-streaming WebSocket generation · fast-path α for
-comparison/attribute_filter/refinement to skip the LLM evaluator.
-
----
-
-## Directory Layout
-
-```text
-langchain_agent/
-├── scripts/               # Lifecycle scripts — see scripts/README.md
-│   ├── setup.sh           # One-time local setup
-│   ├── start.sh           # Start services
-│   ├── stop.sh            # Stop services
-│   ├── teardown.sh        # Full local cleanup
-│   └── logs.sh            # View backend/frontend logs
-├── api/                   # FastAPI backend — see api/README.md
-│   ├── main.py            # FastAPI lifespan
-│   ├── routes/            # chat (WebSocket), conversations, health, suggest, admin, auth
-│   ├── middleware/        # Auth, CORS, session handling
-│   ├── schemas/events.py  # Pydantic event models (MUST sync with web/src/types/events.ts)
-│   └── services/          # Observable agent wrapper
-├── web/                   # React frontend — see web/README.md
-│   └── src/
-│       ├── hooks/         # useWebSocket, useRecentSearches, custom hooks
-│       ├── stores/        # Zustand stores (chat, observability, auth)
-│       ├── components/    # React components (Chat, ObservabilityPanel, Sidebar)
-│       ├── pages/         # Page components
-│       ├── types/         # TypeScript types (events.ts MUST sync with api/schemas/events.py)
-│       └── utils/         # Utilities
-├── mapping/               # OpenSearch index mapping templates (judgments_mapping.json)
-├── tests/                 # Test suite — see tests/README.md
-│   ├── unit/              # Fast, no external services (PYTHONPATH=. pytest tests/unit/)
-│   ├── integration/       # Multi-component, live services — see tests/integration/README.md
-│   └── e2e/               # Local backend checks by default — see tests/e2e/README.md
-│
-│  # --- Entry points (stay at root: invoked by path from shell scripts/CI) ---
-├── main.py                # EcommerceSearchAgent: setup, graph wiring, routers, lifecycle (~600 lines)
-├── setup.py               # DB + index init; bulk-loads data/precomputed/ for ESCI data
-│
-│  # --- Packages ---
-├── core/
-│   ├── agent_state.py     # CustomAgentState TypedDict
-│   ├── config.py          # All configuration constants
-│   ├── exceptions.py      # Custom exception hierarchy
-│   └── logging_config.py  # structlog setup (JSON/console)
-├── pipeline/
-│   ├── pipeline_nodes.py  # PipelineNodesMixin: the 8 LangGraph nodes + helpers (~3,000 lines)
-│   ├── conversation_management.py  # ConversationManagementMixin: threads, titles, summarize/compact
-│   └── reindex_trigger.py # scoped re-tag trigger (pipeline/scoped_retag.py)
-├── retrieval/
-│   ├── vector_store.py    # OpenSearchVectorStore + retriever (RRF)
-│   ├── reranker.py        # CrossEncoderReranker (only reranker)
-│   ├── attribute_discovery.py      # Attribute/taxonomy discovery
-│   ├── attribute_mapping_store.py  # OpenSearch-backed taxonomy store
-│   └── embeddings.py      # nomic-embed-text query/document prefixes
-├── quality/
-│   ├── judge.py           # LLM Judge (hallucination detection)
-│   ├── enrichment_service.py       # enrich_attribute + reindex orchestration
-│   └── enrichment_value_judge.py   # Value gate on proposed taxonomy edits
-├── observability/
-│   ├── relevancy_metrics.py  # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)
-│   ├── embedding_cache.py    # Thread-safe query embedding cache
-│   └── llm_content.py        # _flatten_llm_content (LLM content-block normalization)
-├── checkpoints/
-│   ├── checkpoint_maintenance.py  # Checkpoint GC
-│   └── checkpoint_optimizer.py    # Checkpoint tuning
-├── benchmarks/
-│   ├── benchmark_esci.py     # ESCI relevancy benchmark (see BENCHMARK_RESULTS.md)
-│   └── benchmark_search.py   # Latency benchmarks
-├── Dockerfile             # Multi-stage (Node + Python)
-├── Makefile
-├── requirements.txt
-├── requirements-dev.txt
-└── pytest.ini
-```
-
----
-
-## Troubleshooting
-
-### `ModuleNotFoundError: No module named 'config'`
-
-Bare imports require `PYTHONPATH=.`:
-
-```bash
-cd langchain_agent
-PYTHONPATH=. pytest tests/unit/
-PYTHONPATH=. python setup.py
-```
-
-### View logs
-
-```bash
-./scripts/logs.sh backend
-./scripts/logs.sh frontend
-./scripts/logs.sh all
-```
-
-### Backend won't start
-
-```bash
-curl http://localhost:11434/api/tags  # Ollama must be reachable
-./scripts/logs.sh backend
-
-# If the port is stuck (:8080 is the native backend; :8000 is Docker's — don't kill that):
-lsof -ti :8080 | xargs kill -9
-./scripts/start.sh
-```
-
-### Frontend shows connection error
+`.env.example` is the authoritative list of what `core/config.py` reads from
+the environment: Ollama host and models, PostgreSQL and OpenSearch connection
+settings, `PORT`, the embedding cache, reranker warm-up, the quality gate
+(`ENABLE_QUALITY_GATE`, `QUALITY_GATE_THRESHOLD`), the query evaluator's
+temperature/tokens/timeout, logging, and `ENABLE_ENRICHMENT_TOOL`.
+
+Retrieval tuning is **not** environment-configurable — `RETRIEVER_K`,
+`RETRIEVER_FETCH_K`, `RETRIEVER_ALPHA`, `RERANKER_FETCH_K`, `RERANKER_TOP_K`,
+`VECTOR_DIMENSION` and friends are Python literals in `core/config.py`; a
+matching `.env` line is ignored.
+
+`PORT` defaults to 8080. The demo container listens on 8080 too and is
+published on host :8000 (`docker-compose.yml`), which is why both can run at
+once.
+
+## API
+
+Same-origin checking is the only auth layer: `/api/health` and `/api/suggest`
+are public; every other route (chat, WebSocket, `/api/admin/*`) requires an
+allow-listed `Origin`. The full route table, WebSocket protocol, and event
+list are in [api/README.md](api/README.md).
 
 ```bash
 curl http://localhost:8080/api/health
-./scripts/logs.sh frontend
+curl 'http://localhost:8080/api/suggest?q=wire'
+curl -H 'Origin: http://localhost:8080' http://localhost:8080/api/admin/health
 ```
 
-### Ollama issues
+## Data
+
+The only data in the repo is `data/precomputed/` — a one-time export of the
+products index (with embeddings), the attribute-mapping store, and 65,028
+judged queries, bulk-loaded by `scripts/load_precomputed_indices.py`. There is
+no ingest or rebuild path; see [../data/README.md](../data/README.md).
+
+## Testing
+
+`PYTHONPATH=.` is required for every direct `pytest`/`python` invocation
+(bare imports like `from core.config import ...`).
 
 ```bash
-curl http://localhost:11434/api/tags   # confirm Ollama is running and models are pulled
-ollama pull qwen3.6:35b-a3b-q4_K_M
-ollama pull nomic-embed-text
+PYTHONPATH=. .venv/bin/pytest tests/unit/      # fast, no services
+make ci                                       # everything, including live integration + smoke
+bash scripts/smoke_local.sh                   # the full e2e suite against :8080
 ```
 
-### Database issues
+Layout, markers, fixtures, and which test guards which invariant:
+[tests/README.md](tests/README.md). Formatting is enforced by the pre-commit
+hook `setup.sh` installs (black, isort, flake8 on staged `.py` files).
+
+## Layout
+
+```text
+langchain_agent/
+├── main.py                 EcommerceSearchAgent: setup, graph wiring, lifecycle
+├── setup.py                DB tables, index + search pipeline, precomputed load
+├── core/                   agent_state.py, config.py, exceptions.py, llm.py, logging_config.py
+├── pipeline/               pipeline_nodes.py (the 8 nodes), conversation_management.py,
+│                           enrichment_events.py, reindex_trigger.py, scoped_retag.py
+├── retrieval/              vector_store.py (OpenSearch, RRF), reranker.py, embeddings.py,
+│                           attribute_discovery.py, attribute_mapping_store.py
+├── quality/                judge.py, enrichment_service.py, enrichment_value_judge.py, demo_reset.py
+├── tools/enrichment_tool.py
+├── observability/          relevancy_metrics.py, embedding_cache.py, llm_content.py
+├── checkpoints/            checkpoint_optimizer.py (Postgres checkpoint tuning)
+├── api/                    FastAPI app — see api/README.md
+├── web/                    React UI — see web/README.md
+├── mapping/                judgments_mapping.json (esci_judgments index template)
+├── scripts/                lifecycle scripts — see scripts/README.md
+├── tests/                  unit / integration / e2e — see tests/README.md
+├── Dockerfile              the demo image (built UI + backend, one process)
+├── Makefile                doctor · setup · dev · ci · teardown
+└── .env.example            every environment variable the app reads
+```
+
+## Troubleshooting
 
 ```bash
-docker compose ps
-# Restart:
-cd .. && docker compose down && docker compose up -d postgres && cd langchain_agent
-PYTHONPATH=. python setup.py
+# Is everything up?
+docker compose -f ../docker-compose.yml ps        # PostgreSQL + OpenSearch (+ demo)
+curl http://localhost:9200/_cluster/health
+curl http://localhost:8080/api/health             # native backend
+curl http://localhost:8000/api/health             # demo container
+curl http://localhost:11434/api/tags              # Ollama and pulled models
+
+# Logs
+tail -f logs/backend.log logs/frontend.log logs/demo-build.log
+
+# Port stuck (:8080 native backend, :5173 Vite). :8000 is Docker's port proxy — stop it
+# with `docker compose stop app`, never kill it.
+./scripts/stop.sh
+lsof -ti :8080 | xargs kill -9
+make dev
 ```
 
-### Content stops streaming after generation completes
+- `ModuleNotFoundError: No module named 'config'` — you forgot `PYTHONPATH=.`.
+- `make ci` fails at "docker services" — Docker Desktop isn't running: `open -a Docker`.
+- `make setup` says `data/precomputed/` is missing — `git lfs pull`.
+- Ollama errors — `ollama pull qwen3.6:35b-a3b-q4_K_M && ollama pull nomic-embed-text`.
+- Database trouble — `cd .. && docker compose down && docker compose up -d --wait`,
+  then `PYTHONPATH=. python setup.py` recreates tables and reloads the index.
 
-Backend logs should show `LLM STREAMING STARTED` followed by
-`Emitting AgentCompleteEvent: N chars`. If they don't, pull latest,
-`./scripts/stop.sh` and `./scripts/start.sh`.
-
-### Verify the stack
-
-```bash
-docker compose ps                              # PostgreSQL + OpenSearch
-curl http://localhost:9200/_cluster/health     # OpenSearch
-curl http://localhost:8080/api/health          # Native backend (make dev)
-curl http://localhost:8000/api/health          # Demo container
-```
-
----
-
-## Security
-
-- **Same-origin enforcement** — `Origin` header allow-list (localhost dev
-  ports). Disallowed origins always 403; host-fallback only when both Origin
-  and Referer are absent. This is the only auth layer — there is no login
-  gate and no admin token.
-- **Input validation** — thread IDs validated by regex
-- **Thread safety** — all caches use `threading.Lock`
-- **Rate limiting** — configurable via `slowapi`
-
----
-
-## External References
+## References
 
 - Amazon ESCI dataset: <https://github.com/amazon-science/esci-data>
+- SQID image URLs: <https://github.com/Crossing-Minds/shopping-queries-image-dataset>
 - LangGraph: <https://langchain-ai.github.io/langgraph/>
-- LangChain: <https://python.langchain.com/>
 - OpenSearch: <https://opensearch.org/docs/latest/>
-- OpenSearch Python client: <https://opensearch-project.github.io/opensearch-py/>
 - Ollama: <https://ollama.com/>

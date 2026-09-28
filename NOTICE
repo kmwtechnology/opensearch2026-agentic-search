@@ -2,76 +2,45 @@
 
 Copyright 2026 KMW Technology, LLC
 
-This product includes software developed by other parties:
+This product includes software developed by other parties.
 
-## Backend Framework & LLM
+## Backend
 
-- LangChain (<https://github.com/langchain-ai/langchain>)
-  Licensed under the Apache License, Version 2.0
-
-- LangGraph (<https://github.com/langchain-ai/langgraph>)
-  Licensed under the Apache License, Version 2.0
-
-- FastAPI (<https://github.com/tiangolo/fastapi>)
-  Licensed under the MIT License
-
-- Uvicorn (<https://github.com/encode/uvicorn>)
-  Licensed under the BSD License
-
-- Pydantic (<https://github.com/pydantic/pydantic>)
-  Licensed under the MIT License
-
-- langchain-ollama (<https://github.com/langchain-ai/langchain>)
-  Licensed under the MIT License
-
-## Data & Search
-
-- OpenSearch Python Client (<https://github.com/opensearch-project/opensearch-py>)
-  Licensed under the Apache License, Version 2.0
-
-- sentence-transformers (<https://github.com/UKPLab/sentence-transformers>)
-  Licensed under the Apache License, Version 2.0
-
-- psycopg (<https://github.com/psycopg/psycopg>)
-  Licensed under the GNU Lesser General Public License v3.0 or later
-
-## API & WebSocket
-
-- websockets (<https://github.com/aaugustin/websockets>)
-  Licensed under the BSD License
-
-- httpx (<https://github.com/encode/httpx>)
-  Licensed under the BSD License
-
-- slowapi (<https://github.com/laurenceisla/slowapi>)
-  Licensed under the Apache License, Version 2.0
+- LangChain / langchain-core and langchain-ollama (<https://github.com/langchain-ai/langchain>) — MIT License
+- LangGraph and langgraph-checkpoint-postgres (<https://github.com/langchain-ai/langgraph>) — MIT License
+- FastAPI (<https://github.com/fastapi/fastapi>) — MIT License
+- Uvicorn (<https://github.com/encode/uvicorn>) — BSD 3-Clause License
+- Pydantic (<https://github.com/pydantic/pydantic>) — MIT License
+- websockets (<https://github.com/python-websockets/websockets>) — BSD 3-Clause License
+- httpx (<https://github.com/encode/httpx>) — BSD 3-Clause License
+- slowapi (<https://github.com/laurentS/slowapi>) — MIT License
+- python-dotenv (<https://github.com/theskumar/python-dotenv>) — BSD 3-Clause License
+- structlog (<https://github.com/hynek/structlog>) — MIT License or Apache License 2.0
+- psycopg and psycopg-pool (<https://github.com/psycopg/psycopg>) — GNU Lesser General Public License v3.0
+- opensearch-py (<https://github.com/opensearch-project/opensearch-py>) — Apache License 2.0
+- pyarrow (<https://github.com/apache/arrow>) — Apache License 2.0
+- sentence-transformers (<https://github.com/UKPLab/sentence-transformers>) — Apache License 2.0
 
 ## Frontend
 
-- React (<https://github.com/facebook/react>)
-  Licensed under the MIT License
+- React and react-dom (<https://github.com/facebook/react>) — MIT License
+- react-router-dom (<https://github.com/remix-run/react-router>) — MIT License
+- Zustand (<https://github.com/pmndrs/zustand>) — MIT License
+- react-markdown, remark-gfm, rehype-raw (<https://github.com/remarkjs/react-markdown>) — MIT License
+- lucide-react (<https://github.com/lucide-icons/lucide>) — ISC License
+- clsx (<https://github.com/lukeed/clsx>) — MIT License
+- Tailwind CSS (<https://github.com/tailwindlabs/tailwindcss>) — MIT License
+- Vite (<https://github.com/vitejs/vite>) — MIT License
+- TypeScript (<https://github.com/microsoft/TypeScript>) — Apache License 2.0
 
-- TypeScript (<https://github.com/microsoft/TypeScript>)
-  Licensed under the Apache License, Version 2.0
+## Models and infrastructure
 
-- Tailwind CSS (<https://github.com/tailwindlabs/tailwindcss>)
-  Licensed under the MIT License
+- Ollama (<https://github.com/ollama/ollama>) — MIT License; model weights under their own licenses
+- cross-encoder/ms-marco-MiniLM-L-12-v2 (<https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-12-v2>) — Apache License 2.0
+- OpenSearch (<https://github.com/opensearch-project/OpenSearch>) — Apache License 2.0
+- PostgreSQL (<https://www.postgresql.org>) — PostgreSQL License
 
-- Zustand (<https://github.com/pmndrs/zustand>)
-  Licensed under the MIT License
+## Data
 
-- Vite (<https://github.com/vitejs/vite>)
-  Licensed under the MIT License
-
-## Utilities
-
-- python-dotenv (<https://github.com/theskumar/python-dotenv>)
-  Licensed under the BSD License
-
-## Infrastructure
-
-- OpenSearch (<https://github.com/opensearch-project/OpenSearch>)
-  Licensed under the Elastic License 2.0 and Server Side Public License (SSPL)
-
-- PostgreSQL (<https://www.postgresql.org>)
-  Licensed under the PostgreSQL License (BSD-like)
+- Amazon ESCI Shopping Queries Dataset (<https://github.com/amazon-science/esci-data>) — Apache License 2.0
+- Shopping Queries Image Dataset (<https://github.com/Crossing-Minds/shopping-queries-image-dataset>) — image URLs joined into the corpus
