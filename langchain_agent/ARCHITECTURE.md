@@ -86,22 +86,20 @@ Writes: `alpha`, `query_analysis`. Emits `QueryEvaluationEvent`.
 4. **Hybrid search** (`retrieval/vector_store.py`) — the query is embedded
    with `nomic-embed-text` (prefix `search_query:`; the corpus was embedded
    with `search_document:`), then vector and BM25 run in parallel and are
-   fused with RRF, `score = sum 1/(rank + 60)`. A stock BM25-only baseline
-   runs in parallel too, so the summary can score BM25 → hybrid → reranked.
-   `RETRIEVER_FETCH_K` candidates, collapsed to one hit per product.
+   fused with RRF, `score = sum 1/(rank + 60)`. `RETRIEVER_FETCH_K` candidates, collapsed to one hit per product.
 5. **Filter relaxation** — if fewer than 3 documents survive all filters, the
    soft `multi_match` filters are dropped and the search retried; hard
    color/waterproof/brand filters are never relaxed, because the user named
    them. This is why an unknown color or waterproof term reliably produces an
    empty result instead of a vaguely related one.
 
-Writes: `retrieved_documents`, `pre_rerank_documents`, `bm25_documents`,
-latencies. Emits `HybridSearchStartEvent`, `OpenSearchQueryEvent` (the exact
-DSL, embeddings scrubbed; `query_type` is `hybrid`, `bm25_baseline`, or
-`quality_gate_retry`), `HybridSearchResultEvent`, `SearchProgressEvent`.
+Writes: `retrieved_documents`, `pre_rerank_documents`, latency. Emits
+`HybridSearchStartEvent`, `OpenSearchQueryEvent` (the exact DSL, embeddings
+scrubbed; `query_type` is `hybrid` or `quality_gate_retry`),
+`HybridSearchResultEvent`, `SearchProgressEvent`.
 
-BM25 fields and their boosts, plus the per-turn optimizations (synonyms,
-fuzziness, phrase and field boosts) live in `_build_multi_match`; the primary
+BM25 fields and their boosts, fuzziness, and the title phrase field live in
+`_build_multi_match`; the primary
 text fields use `light_english_analyzer` (kstem) for precision, with
 `.heavy` subfields (snowball) at a low boost for morphological recall.
 
@@ -169,8 +167,7 @@ see "Taxonomy growth and correction".
 
 ### 8. LLM judge
 
-Runs after the agent when `optimizations.llm` and `optimizations.llm_judge`
-are on (`quality/judge.py::LLMJudge`). A second structured-output call grades
+Runs after the agent on every retrieval turn (`quality/judge.py::LLMJudge`). A second structured-output call grades
 the answer against the query and the same documents (shuffled, to blunt
 positional bias) and returns `JudgmentResult`: faithfulness, answer
 relevance, citation accuracy, context utilization, and a list of
@@ -191,13 +188,11 @@ Writes: `judgment`, `original_judgment`, `corrected_response`,
 ### Pipeline summary
 
 After `AgentCompleteEvent`, `observable_agent` emits `PipelineSummaryEvent`:
-per-stage latencies and, when `lookup_judgments()` finds the query in the
-`esci_judgments` index (exact match on `query.keyword`, labels E=4.0, S=1.0,
-C=0.1, I=0.0), real NDCG@10 / MRR / Recall@20 / Precision@10 for stock BM25 →
-BM25 → hybrid → reranked, plus a latency cost-benefit table. Without ground
-truth it falls back to a confidence proxy (top-1 score, top-1/top-2 gap,
-variance, rank churn) bucketed high / medium / low. Metrics are pure Python
-in `observability/relevancy_metrics.py`.
+per-stage latencies (hybrid, reranked), the judge's verdict, and a confidence
+proxy (top-1 score, top-1/top-2 gap, variance, rank churn) bucketed high /
+medium / low. It is a heuristic over the reranker's own scores, not an
+offline relevance metric; the pure-Python helpers are in
+`observability/confidence_proxy.py`.
 
 ## State
 
@@ -211,7 +206,7 @@ there or it silently never reaches `astream_events`.
 Checkpoints are stored in PostgreSQL by `langgraph-checkpoint-postgres`,
 keyed by `thread_id`; the next turn on the same thread resumes from them.
 `checkpoints/checkpoint_optimizer.py` keeps large transient fields (retrieved
-documents, judgments) out of the persisted state.
+documents) out of the persisted state.
 
 ## Events and the WebSocket contract
 
@@ -230,11 +225,8 @@ diverge. Add an event on both sides, then handle it in
 
 - Connect: `GET /ws/chat?thread_id=<id>`. The `Origin` header is checked
   first (`verify_websocket_origin`); a disallowed origin is closed with 4003.
-- Inbound: `{"type": "chat_message", "message": "...", "thread_id": "<id>",
-  "optimizations": {...}}` (thread id must match the connection's) and
-  `{"type": "stop_execution"}`. `optimizations` is an allow-listed dict of
-  booleans (`hybrid`, `fuzzy`, `synonyms`, `phrase_boost`, `field_boost`,
-  `typeahead`, `reranking`, `llm`, `llm_judge`); unknown keys are dropped.
+- Inbound: `{"type": "chat_message", "message": "...", "thread_id": "<id>"}`
+  (thread id must match the connection's) and `{"type": "stop_execution"}`.
 - Outbound: one complete JSON event per frame. Citations arrive on
   `agent_complete`, one frame after the final `llm_response_chunk`; the UI
   commits text and citations together so an answer renders exactly once.
@@ -261,13 +253,11 @@ refuses a dump whose mapping hash differs). In outline:
 - `title_suggest`, `brand_suggest` — edge-ngram fields for typeahead.
 - `product_image_url` — stored, not indexed.
 
-The judgments index (`esci_judgments`) is created from
-`mapping/judgments_mapping.json`; its `query.keyword` has a lowercase
-normalizer so lookups are case-insensitive. The taxonomy lives in
+The taxonomy lives in
 `agentic_hybrid_search_attribute_mappings` (`retrieval/attribute_mapping_store.py`):
 one document per `(attribute_type, variant) -> canonical`.
 
-All three indices are loaded verbatim from `data/precomputed/` by every
+Both indices are loaded verbatim from `data/precomputed/` by every
 `make setup`; the corpus is a frozen export and there is no ingest or rebuild
 path (see `../data/README.md`). The one thing that mutates the products index
 afterwards is the scoped re-tag below.
@@ -372,8 +362,8 @@ export, since the index holds 768-dim `nomic-embed-text` vectors.
 | Cross-encoder rerank (40 docs) | ~1.5–2 s |
 | Quality-gate retry | +1–2 s when it fires |
 | Answer generation (streaming) | ~3–8 s |
-| LLM judge (+ one regeneration) | ~5–30 s when enabled |
-| **Per turn** | **~6–21 s** measured across the four demos |
+| LLM judge (+ one regeneration) | ~5–30 s |
+| **Per turn** | **~6–21 s** measured across the three demos |
 
 Query embeddings are cached for 60 minutes (`observability/embedding_cache.py`).
 

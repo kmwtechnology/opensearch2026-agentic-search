@@ -22,8 +22,6 @@ import type {
   EnrichmentTriggeredEvent,
   IntentClassificationEvent,
   OpenSearchQueryEvent,
-  PipelineStageName,
-  PipelineSummaryEvent,
   QualityGateEvent,
   QueryExpansionEvent,
   QueryEvaluationEvent,
@@ -42,7 +40,6 @@ export type NarratorNode =
   | 'quality_gate'
   | 'agent'
   | 'enrichment'
-  | 'ground_truth'
 
 /**
  * 'moment' lines get oversized, full-width treatment. Reserved for the three
@@ -76,14 +73,6 @@ export interface NarratorGauge {
   caption: string
 }
 
-/** One stage's real ESCI-judged relevance, for the ground-truth reveal card. */
-export interface GroundTruthStage {
-  stage: PipelineStageName
-  label: string
-  ndcg10: number
-  judgedCount: number
-}
-
 export interface NarratorLine {
   /** Stable within a turn, so React keys and de-duplication behave. */
   id: string
@@ -105,8 +94,6 @@ export interface NarratorLine {
   error?: string
   /** Optional bar rendered under the sentence. */
   gauge?: NarratorGauge
-  /** Set when this is a ground-truth reveal — one entry per judged stage. */
-  groundTruthStages?: GroundTruthStage[]
 }
 
 const INTENT_PHRASING: Record<string, string> = {
@@ -187,13 +174,6 @@ function expansionLine(e: QueryExpansionEvent): NarratorLine | null {
 }
 
 function searchLine(e: OpenSearchQueryEvent): NarratorLine | null {
-  // The retriever also issues a stock-BM25 query alongside the real hybrid
-  // one, purely so the pipeline summary can report a baseline to compare
-  // against. Narrating it produces two identical "Searched the catalog"
-  // lines back to back, which reads as a bug to an audience — and burns two
-  // of the five visible slots on one step.
-  if (e.query_type === 'bm25_baseline') return null
-
   const isRetry = e.query_type === 'quality_gate_retry'
   const filters = e.filter_summary ? ` Filtered on ${e.filter_summary}.` : ''
   return {
@@ -377,51 +357,6 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
   }
 }
 
-const GROUND_TRUTH_STAGE_LABELS: Record<PipelineStageName, string> = {
-  stock_bm25: 'Stock BM25',
-  bm25: 'Your BM25',
-  hybrid: 'Hybrid',
-  reranked: 'Reranked',
-}
-
-/**
- * The bonus scene's entire point: real ESCI-judged relevance instead of the
- * self-referential confidence proxy every other turn shows. Without this
- * case, `pipeline_summary` events silently narrate to nothing (the default
- * branch below) and the one thing the scene exists to prove never reaches
- * the panel the audience is actually watching — only the full F2 detail view,
- * which DEMO.md itself says is for Q&A, not the walkthrough (#130).
- */
-function groundTruthLine(e: PipelineSummaryEvent): NarratorLine | null {
-  if (!e.has_ground_truth) return null
-
-  const stageOrder: PipelineStageName[] = ['stock_bm25', 'bm25', 'hybrid', 'reranked']
-  const stages: GroundTruthStage[] = stageOrder
-    .map((stage) => {
-      const metrics = e[stage]
-      if (!metrics) return null
-      return {
-        stage,
-        label: GROUND_TRUTH_STAGE_LABELS[stage],
-        ndcg10: metrics.ndcg10,
-        judgedCount: metrics.judged_count,
-      }
-    })
-    .filter((s): s is GroundTruthStage => s !== null)
-
-  if (stages.length === 0) return null
-
-  const best = stages[stages.length - 1]
-  return {
-    id: `ground-truth-${e.timestamp}`,
-    node: 'ground_truth',
-    label: 'Real Ground Truth',
-    text: `Measured against real ESCI relevance judgments, not this system's own scoring — NDCG@10 climbs to ${best.ndcg10.toFixed(2)}.`,
-    weight: 'moment',
-    groundTruthStages: stages,
-  }
-}
-
 /**
  * Map one event to at most one narrator line.
  *
@@ -444,8 +379,6 @@ export function narrate(event: AgentEvent): NarratorLine | null {
       return qualityGateLine(event)
     case 'enrichment_triggered':
       return enrichmentLine(event)
-    case 'pipeline_summary':
-      return groundTruthLine(event)
     default:
       return null
   }
@@ -497,15 +430,6 @@ export const MAX_VISIBLE_LINES_WITH_MOMENT = 3
  * quality-gate retry, the search that led here) right up to the moment the
  * card appears.
  *
- * ground_truth is NOT a moment here — it used to replace the step lines
- * entirely (cap 0), on the assumption it only ever fires in its own
- * dedicated single-turn bonus scene. That assumption turned out to be false:
- * `lookup_judgments()` runs on every query in every demo, so any exact-match
- * query — typed mid-Arc-1, mid-Arc-2, anywhere — can trigger it, and hiding
- * that turn's actual pipeline context whenever it did was surprising rather
- * than helpful. It now renders in its own tab (see NarratorPanel/index.tsx)
- * instead of competing with step lines for space, so it's filtered out here
- * and never enters the moment-capping logic at all.
  */
 const MOMENT_LINE_CAPS: Partial<Record<NarratorNode, number>> = {
   enrichment: MAX_VISIBLE_LINES_WITH_MOMENT,
@@ -515,7 +439,6 @@ const MOMENT_NODES = new Set<NarratorNode>(Object.keys(MOMENT_LINE_CAPS) as Narr
 export function visibleLines(lines: NarratorLine[]): NarratorLine[] {
   const byNode = new Map<NarratorNode, NarratorLine>()
   for (const line of lines) {
-    if (line.node === 'ground_truth') continue
     byNode.set(line.node, line)
   }
   // Map preserves insertion order, and a re-set key keeps its original

@@ -1,22 +1,16 @@
 /**
  * PipelineSummaryCard
  *
- * Renders the end-of-pipeline retrieval-quality summary emitted as
- * `PipelineSummaryEvent`. Two layouts:
- *
- *  - Ground-truth: BM25 → Hybrid → Reranked metric progression with
- *    NDCG@10 / MRR / Recall@20 / Precision@10. Latency cost-benefit
- *    table at the bottom.
- *  - Fallback: self-referential confidence proxy (top-1 reranker score,
- *    score gap, score variance, rank-change count) plus the same
- *    latency table without lift numbers.
+ * Renders the end-of-pipeline summary emitted as `PipelineSummaryEvent`: a
+ * self-referential confidence proxy (top-1 reranker score, score gap, score
+ * variance, rank-change count), the LLM-as-judge generation row, and a
+ * per-stage latency table.
  *
  * The card is silent when no PipelineSummaryEvent has been received
  * (e.g. pipeline still running, summary intent, or first load).
  */
 
 import { useState } from 'react'
-import { Eye } from 'lucide-react'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import type {
   ConfidenceLabel,
@@ -25,11 +19,8 @@ import type {
   GenerationVerdict,
   HallucinationCategory,
   LatencyStage,
-  OpenSearchQueryEvent,
   PipelineSummaryEvent,
-  StageMetrics,
 } from '../../types/events'
-import { DslViewerModal } from './DslViewerModal'
 
 const CATEGORY_TONE: Record<
   HallucinationCategory,
@@ -93,22 +84,10 @@ function fmtMs(n: number | null | undefined): string {
   return `${Math.round(n)}ms`
 }
 
-function fmtLift(n: number | null | undefined): string {
-  if (n === null || n === undefined) return '—'
-  if (n > 0) return `+${fmt(n, 3)}`
-  return fmt(n, 3)
-}
-
 const STAGE_LABEL: Record<LatencyStage['stage'], string> = {
-  stock_bm25: 'Stock BM25',
-  bm25: 'Your BM25',
   hybrid: 'Hybrid (vec+BM25)',
   reranked: 'Reranked',
 }
-
-// Subset of optimization keys that reshape the BM25 multi_match query.
-// When any of these are off, "Your BM25" reflects a degraded build vs Stock.
-const BM25_TUNING_KEYS = ['fuzzy', 'synonyms', 'phrase_boost', 'field_boost'] as const
 
 const VERDICT_TONE: Record<GenerationVerdict, { chip: string; label: string }> = {
   llm_better: {
@@ -160,73 +139,18 @@ function MetricCell({ label, value, hint }: { label: string; value: string; hint
   )
 }
 
-function StageRow({
-  name,
-  stage,
-  badge,
-  rightAdornment,
-}: {
-  name: string
-  stage: StageMetrics | null | undefined
-  badge?: React.ReactNode
-  rightAdornment?: React.ReactNode
-}) {
-  if (!stage) return null
-  return (
-    <div className="px-3 py-2 rounded-md bg-[var(--color-stage-raised)]/40 border border-[var(--color-stage-border)] space-y-1.5">
-      {/* Title row — name + degradation badge on the left, judged-count chip on
-          the right. flex-wrap so they stack on very narrow panels. */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-[1.375rem] font-medium text-[var(--color-stage-ink)] flex items-center gap-1.5">
-          {name}
-          {badge}
-        </span>
-        <span className="flex items-center gap-2">
-          {rightAdornment}
-          <span
-            className="text-[1.25rem] uppercase tracking-wide text-[var(--color-stage-ink-soft)] whitespace-nowrap"
-            title={`${stage.judged_count} of the top-10 returned items had a ground-truth ESCI judgment`}
-          >
-            {stage.judged_count}/10 judged
-          </span>
-        </span>
-      </div>
-      {/* Metrics row — 4 evenly-sized cells. min-w-0 on the cells lets long
-          numbers shrink with ellipsis instead of overflowing the card. */}
-      <div className="grid grid-cols-4 gap-2">
-        <MetricCell label="NDCG@10" value={fmt(stage.ndcg10, 3)} />
-        <MetricCell label="MRR" value={fmt(stage.mrr, 3)} />
-        <MetricCell label="R@20" value={fmt(stage.recall20, 3)} hint="Recall@20" />
-        <MetricCell label="P@10" value={fmt(stage.precision10, 3)} hint="Precision@10" />
-      </div>
-    </div>
-  )
-}
-
 function LatencyTable({ rows }: { rows: LatencyStage[] }) {
-  const hasGroundTruth = rows.some((r) => r.ndcg !== null && r.ndcg !== undefined)
   return (
     <div className="space-y-1">
       <div className="text-[1.25rem] uppercase tracking-wide text-[var(--color-stage-ink-soft)] px-1">
-        Latency cost-benefit
+        Stage latency
       </div>
       <div className="rounded-md border border-[var(--color-stage-border)] overflow-x-auto">
         <table className="w-full text-[1.25rem] table-fixed">
           <thead className="bg-[var(--color-stage-raised)]/60 text-[var(--color-stage-ink-soft)]">
             <tr>
-              <th className="text-left px-2 py-1.5 font-normal w-[44%]">Stage</th>
-              <th className="text-right px-2 py-1.5 font-normal w-[18%]">Latency</th>
-              {hasGroundTruth && (
-                <>
-                  <th className="text-right px-2 py-1.5 font-normal w-[18%]">NDCG</th>
-                  <th
-                    className="text-right px-2 py-1.5 font-normal w-[20%]"
-                    title="Marginal NDCG lift per 100ms vs the previous stage"
-                  >
-                    Lift / 100ms
-                  </th>
-                </>
-              )}
+              <th className="text-left px-2 py-1.5 font-normal w-[60%]">Stage</th>
+              <th className="text-right px-2 py-1.5 font-normal w-[40%]">Latency</th>
             </tr>
           </thead>
           <tbody className="bg-[var(--color-stage-surface)]/40">
@@ -238,28 +162,6 @@ function LatencyTable({ rows }: { rows: LatencyStage[] }) {
                 <td className="px-2 py-1.5 text-right font-mono text-[var(--color-stage-ink-muted)] tabular-nums">
                   {fmtMs(row.latency_ms)}
                 </td>
-                {hasGroundTruth && (
-                  <>
-                    <td className="px-2 py-1.5 text-right font-mono text-[var(--color-stage-ink-muted)] tabular-nums">
-                      {fmt(row.ndcg, 3)}
-                    </td>
-                    <td
-                      className={`px-2 py-1.5 text-right font-mono tabular-nums ${
-                        row.ndcg_lift_per_100ms !== null &&
-                        row.ndcg_lift_per_100ms !== undefined &&
-                        row.ndcg_lift_per_100ms > 0
-                          ? 'text-[#065F46]'
-                          : row.ndcg_lift_per_100ms !== null &&
-                              row.ndcg_lift_per_100ms !== undefined &&
-                              row.ndcg_lift_per_100ms < 0
-                            ? 'text-[#9F1239]'
-                            : 'text-[var(--color-stage-ink-soft)]'
-                      }`}
-                    >
-                      {fmtLift(row.ndcg_lift_per_100ms)}
-                    </td>
-                  </>
-                )}
               </tr>
             ))}
           </tbody>
@@ -275,20 +177,9 @@ function LatencyTable({ rows }: { rows: LatencyStage[] }) {
 
 export function PipelineSummaryCard() {
   const summary = useObservabilityStore((s) => s.pipelineSummary)
-  const steps = useObservabilityStore((s) => s.steps)
   const [expanded, setExpanded] = useState(true)
-  const [bm25DslOpen, setBm25DslOpen] = useState(false)
 
   if (!summary) return null
-
-  // Locate the BM25 baseline DSL body emitted by the retriever node. The
-  // event is keyed by query_type so it survives a request that emits
-  // multiple opensearch_query events.
-  const retrieverStep = steps.find((s) => s.node === 'retriever')
-  const bm25Event = (retrieverStep?.events ?? []).find(
-    (e): e is OpenSearchQueryEvent =>
-      e.type === 'opensearch_query' && (e as OpenSearchQueryEvent).query_type === 'bm25_baseline',
-  )
 
   return (
     <div className="px-4 pb-4">
@@ -300,41 +191,19 @@ export function PipelineSummaryCard() {
           aria-expanded={expanded}
         >
           <div className="flex items-center gap-2">
-            <span className="text-[1.375rem] font-semibold text-[var(--color-stage-ink)]">Pipeline Quality Summary</span>
+            <span className="text-[1.375rem] font-semibold text-[var(--color-stage-ink)]">Pipeline Summary</span>
             <SummaryBadge summary={summary} />
           </div>
           <span className="text-[var(--color-stage-ink-soft)] text-[1.25rem]">{expanded ? '▾' : '▸'}</span>
         </button>
         {expanded && (
           <div className="px-4 pb-4 space-y-3">
-            <SummaryHeadline summary={summary} />
-            {summary.has_ground_truth ? (
-              <div className="space-y-2">
-                <StageRow name="Stock BM25" stage={summary.stock_bm25} />
-                <StageRow
-                  name="Your BM25"
-                  stage={summary.bm25}
-                  badge={<DegradedBadge optimizations={summary.optimizations} />}
-                  rightAdornment={
-                    bm25Event?.body ? (
-                      <button
-                        onClick={() => setBm25DslOpen(true)}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[1.25rem] text-[#9A3412]/80 hover:text-[#9A3412] hover:bg-white border-2 border-[#9A3412] transition-colors"
-                        title="View BM25 baseline DSL"
-                        aria-label="View BM25 baseline OpenSearch query DSL"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        DSL
-                      </button>
-                    ) : undefined
-                  }
-                />
-                <StageRow name="Hybrid" stage={summary.hybrid} />
-                <StageRow name="Reranked" stage={summary.reranked} />
-              </div>
-            ) : (
-              <ConfidenceCard summary={summary} />
-            )}
+            <p className="text-[1.25rem] text-[var(--color-stage-ink-muted)] leading-relaxed">
+              Self-referential reranker confidence for{' '}
+              <span className="text-[var(--color-stage-ink)] font-medium">"{summary.query}"</span>.
+              <span className="text-[var(--color-stage-ink-soft)]"> (A heuristic over reranker scores, not an offline relevance metric.)</span>
+            </p>
+            <ConfidenceCard summary={summary} />
             {summary.generation && (
               <GenerationCard
                 judgment={summary.generation}
@@ -343,32 +212,14 @@ export function PipelineSummaryCard() {
               />
             )}
             <LatencyTable rows={summary.latency} />
-            <FootnoteText summary={summary} />
           </div>
         )}
       </div>
-      <DslViewerModal
-        isOpen={bm25DslOpen}
-        title="BM25 baseline DSL"
-        subtitle="Pure lexical, optimization toggles applied"
-        body={bm25Event?.body ?? null}
-        index={bm25Event?.index}
-        params={bm25Event?.params}
-        onClose={() => setBm25DslOpen(false)}
-      />
     </div>
   )
 }
 
 function SummaryBadge({ summary }: { summary: PipelineSummaryEvent }) {
-  if (summary.has_ground_truth) {
-    return (
-      <span className="text-[1.25rem] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-white border-2 border-[#1E40AF] text-[#1E40AF] border-[#1E40AF]">
-        ground truth
-      </span>
-    )
-  }
-  if (!summary.confidence) return null
   const tone = CONFIDENCE_TONE[summary.confidence.confidence_label]
   return (
     <span
@@ -379,28 +230,8 @@ function SummaryBadge({ summary }: { summary: PipelineSummaryEvent }) {
   )
 }
 
-function SummaryHeadline({ summary }: { summary: PipelineSummaryEvent }) {
-  if (summary.has_ground_truth) {
-    return (
-      <p className="text-[1.25rem] text-[var(--color-stage-ink-muted)] leading-relaxed">
-        Offline IR metrics for{' '}
-        <span className="text-[var(--color-stage-ink)] font-medium">"{summary.query}"</span> against ESCI
-        ground-truth judgments. Higher is better; compare each stage to the BM25 baseline to see
-        where the pipeline earns its latency.
-      </p>
-    )
-  }
-  return (
-    <p className="text-[1.25rem] text-[var(--color-stage-ink-muted)] leading-relaxed">
-      No ESCI ground truth for this query — falling back to self-referential reranker confidence.
-      <span className="text-[var(--color-stage-ink-soft)]"> (These signals are not offline-truth NDCG.)</span>
-    </p>
-  )
-}
-
 function ConfidenceCard({ summary }: { summary: PipelineSummaryEvent }) {
   const c = summary.confidence
-  if (!c) return null
   const tone = CONFIDENCE_TONE[c.confidence_label]
   return (
     <div className="rounded-md border border-[var(--color-stage-border)] bg-[var(--color-stage-raised)]/40 p-3 space-y-2">
@@ -545,35 +376,5 @@ function GenerationCard({
         })()}
       </div>
     </div>
-  )
-}
-
-function DegradedBadge({ optimizations }: { optimizations: Record<string, boolean> }) {
-  const off = BM25_TUNING_KEYS.filter((k) => optimizations[k] === false)
-  if (off.length === 0) return null
-  return (
-    <span
-      className="text-[1.25rem] uppercase tracking-wide px-1.5 py-0.5 rounded border bg-white border-2 border-[#9A3412] text-[#9A3412] border-[#9A3412]"
-      title={`These BM25 optimizations are off: ${off.join(', ')}. "Your BM25" reflects the degraded build.`}
-    >
-      ⚠ {off.length} off
-    </span>
-  )
-}
-
-function FootnoteText({ summary }: { summary: PipelineSummaryEvent }) {
-  if (summary.has_ground_truth) {
-    return (
-      <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] leading-snug">
-        ESCI relevance scale: Exact=4.0, Substitute=1.0, Complement=0.1, Irrelevant=0.0.
-        "Lift / 100ms" is the marginal NDCG gain divided by the marginal latency in 100ms units.
-      </p>
-    )
-  }
-  return (
-    <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] leading-snug">
-      Confidence is a heuristic over reranker scores when no ground truth exists. NDCG/MRR/
-      Recall@20 only apply to queries that exactly match one of the ~97K judged ESCI queries.
-    </p>
   )
 }

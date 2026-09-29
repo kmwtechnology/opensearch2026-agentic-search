@@ -105,15 +105,9 @@ reconnecting with the same id continues the conversation.
 Inbound messages (`routes/chat.py`):
 
 ```json
-{"type": "chat_message", "message": "Show me tan boots", "thread_id": "conversation_ab12cd34",
- "optimizations": {"hybrid": true, "reranking": true, "llm_judge": true}}
+{"type": "chat_message", "message": "Show me tan boots", "thread_id": "conversation_ab12cd34"}
 {"type": "stop_execution", "thread_id": "conversation_ab12cd34"}
 ```
-
-`optimizations` is optional; unknown keys are dropped. The nine recognized
-flags are `hybrid`, `fuzzy`, `synonyms`, `phrase_boost`, `field_boost`,
-`typeahead`, `reranking`, `llm`, `llm_judge` — each a query-construction or
-pipeline switch, and the UI's Optimizations panel toggles exactly these.
 
 Outbound events, in the order a search turn emits them. Every event has
 `type` and `timestamp`; pipeline events also carry `node`.
@@ -126,7 +120,7 @@ Outbound events, in the order a search turn emits them. Every event has
 | `intent_classification` | intent_classifier | `intent`, `confidence`, reasoning |
 | `query_evaluation` | query_evaluator | assigned `alpha`, strategy, reasoning |
 | `query_expansion` | retriever | original vs rewritten query |
-| `opensearch_query` | retriever | the full DSL `body`, `index`, `params`; `query_type` is `hybrid`, `bm25_baseline`, or `quality_gate_retry` |
+| `opensearch_query` | retriever | the full DSL `body`, `index`, `params`; `query_type` is `hybrid` or `quality_gate_retry` |
 | `hybrid_search_start` / `hybrid_search_result` | retriever | candidate count, then candidates with scores |
 | `search_progress` | retriever | interim status text |
 | `reranker_start` / `reranker_progress` / `reranker_result` | reranker | per-document scores in 0–1 |
@@ -137,8 +131,8 @@ Outbound events, in the order a search turn emits them. Every event has
 | `tool_call` | agent | a tool the agent invoked |
 | `enrichment_triggered` | agent | `attribute_type`, `variant`, `canonical`, `status` (`started`, then `complete` / `failed` / `declined`), `corrected_from`, re-tag counts |
 | `llm_response_corrected` | llm_judge | the regenerated answer after a hallucination retry, with before/after faithfulness |
-| `agent_complete` | — | `final_response`, `citations`, `total_duration_ms`, `documents_used`, generated `title` |
-| `pipeline_summary` | — | per-stage NDCG@10 / MRR / Recall@20 / Precision@10 and latency when ground truth exists, else a confidence proxy |
+| `agent_complete` | — | `final_response`, `citations`, `total_duration_ms`, `documents_used` |
+| `pipeline_summary` | — | confidence proxy (top-1 score, gap, variance, rank churn), the judge's generation verdict, and per-stage latency |
 | `metrics` | — | timing metrics |
 | `agent_error` | — | error text; the client's escape hatch when a turn fails |
 

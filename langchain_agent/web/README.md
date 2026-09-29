@@ -39,7 +39,7 @@ src/
 │   ├── NarratorPanel/          plain-language narration of the event stream (narrate.ts)
 │   ├── DemoSelector.tsx        the scripted demos
 │   └── Layout.tsx
-├── demos/registry.ts           SOURCE OF TRUTH for the four scripted demos (queries, steps, expectations)
+├── demos/registry.ts           SOURCE OF TRUTH for the three scripted demos (queries, steps, expectations)
 ├── hooks/                      useWebSocket (event dispatch into the stores), useRecentSearches
 ├── stores/                     Zustand
 ├── pages/                      GuidePage (presenter notes), SwaggerPage
@@ -51,7 +51,6 @@ src/
 |---|---|
 | `chatStore` | thread id, messages, streaming text, queued messages, connection state |
 | `observabilityStore` | per-node steps and their events, the latest intent / alpha / quality-gate / reranker data, the pipeline summary, the enrichment banner state |
-| `optimizationsStore` | the nine search flags sent with every `chat_message` (persisted in `localStorage`) |
 
 ## Rendering rules worth knowing
 

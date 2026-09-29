@@ -164,13 +164,9 @@ class OpenSearchQueryEvent(BaseEvent):
         None  # Human-readable summary (e.g., "brand: Sony, color: blue")
     )
     intent: str  # intent that triggered the search
-    # Per-feature optimization toggles applied to this search (frontend-controlled).
-    # Echoed back so the observability panel can show what was actually used.
-    optimizations: Optional[Dict[str, bool]] = None
     # Which kind of query this event represents. The retriever node emits one
-    # `hybrid` and one `bm25_baseline` event per request, plus a
-    # `quality_gate_retry` if the gate triggers a re-run.
-    query_type: Literal["hybrid", "bm25_baseline", "quality_gate_retry"] = "hybrid"
+    # `hybrid` event per request, or `quality_gate_retry` on the gate's re-run.
+    query_type: Literal["hybrid", "quality_gate_retry"] = "hybrid"
     # Full DSL body sent to OpenSearch (with embedding vectors scrubbed to a
     # placeholder). Pure DSL — paste-able into OpenSearch's Dev Tools or any REST client.
     body: Optional[Dict[str, Any]] = None
@@ -404,31 +400,19 @@ class AgentErrorEvent(BaseEvent):
 
 
 # ============================================================================
-# PIPELINE QUALITY SUMMARY (offline IR metrics + cost-benefit framing)
+# PIPELINE SUMMARY (confidence proxy + per-stage latency + generation judgment)
 # ============================================================================
 
 
-class StageMetrics(BaseModel):
-    """Offline IR metrics for a single retrieval stage."""
-
-    ndcg10: float
-    mrr: float
-    recall20: float
-    precision10: float
-    judged_count: int  # how many returned items had a ground-truth judgment
-
-
 class LatencyStage(BaseModel):
-    """One row of the per-stage latency / lift table."""
+    """One row of the per-stage latency table."""
 
-    stage: Literal["stock_bm25", "bm25", "hybrid", "reranked"]
+    stage: Literal["hybrid", "reranked"]
     latency_ms: float
-    ndcg: Optional[float] = None
-    ndcg_lift_per_100ms: Optional[float] = None
 
 
 class ConfidenceProxy(BaseModel):
-    """Self-referential signal used when no ESCI ground truth exists."""
+    """Self-referential retrieval-confidence signal derived from reranker scores."""
 
     top1_score: float
     score_gap: float
@@ -470,45 +454,19 @@ class GenerationJudgment(BaseModel):
 
 
 class PipelineSummaryEvent(BaseEvent):
-    """End-of-pipeline retrieval-quality summary.
+    """End-of-pipeline summary.
 
-    Emits two layouts:
-
-      * ``has_ground_truth=True``: ``bm25``/``hybrid``/``reranked`` are
-        populated with offline IR metrics (NDCG@10, MRR, Recall@20,
-        Precision@10) computed against ESCI judgments. The frontend
-        renders the BM25→Hybrid→Reranked progression to make the value
-        of each pipeline stage visible at a glance.
-      * ``has_ground_truth=False``: ``confidence`` carries a self-
-        referential proxy (top-1 reranker score, gap, variance, rank
-        churn, label). The card calls out that the metrics are not
-        offline-truth, so users don't conflate the two.
-
-    ``latency`` is always populated; ``ndcg_lift_per_100ms`` is only
-    filled for stages where ground truth was available.
+    ``confidence`` is a self-referential proxy (top-1 reranker score, gap,
+    variance, rank churn, label), not an offline-truth metric; the card says
+    so. ``latency`` carries the per-stage wall-clock table.
     """
 
     type: Literal["pipeline_summary"] = "pipeline_summary"
-    has_ground_truth: bool
     query: str
-    optimizations: Dict[str, bool] = {}
+    confidence: ConfidenceProxy
 
-    # Ground-truth layout. Up to four rows:
-    #   * stock_bm25 — vanilla BM25 reference (always present, ignores toggles)
-    #   * bm25      — BM25 with the user's optimization toggles applied
-    #   * hybrid    — vector + BM25 (omitted when ``hybrid:false`` toggle)
-    #   * reranked  — reranker output (omitted when ``reranking:false`` toggle)
-    stock_bm25: Optional[StageMetrics] = None
-    bm25: Optional[StageMetrics] = None
-    hybrid: Optional[StageMetrics] = None
-    reranked: Optional[StageMetrics] = None
-
-    # Fallback layout
-    confidence: Optional[ConfidenceProxy] = None
-
-    # LLM-as-judge result (only when both ``optimizations.llm`` and
-    # ``optimizations.llm_judge`` are on). Adds the "Generation" row to
-    # the card with a pairwise verdict + 4 absolute scores + hallucinations.
+    # LLM-as-judge result. Adds the "Generation" row to the card with a
+    # pairwise verdict + 4 absolute scores + hallucinations.
     generation: Optional[GenerationJudgment] = None
     # When auto-correction (Layer 3a) fires, ``generation`` carries the
     # post-retry judgment and these fields carry the original (flagged)
@@ -517,7 +475,6 @@ class PipelineSummaryEvent(BaseEvent):
     hallucination_retry_used: bool = False
     corrected_response: Optional[str] = None
 
-    # Latency cost/benefit framing — always present
     latency: List[LatencyStage] = []
 
 

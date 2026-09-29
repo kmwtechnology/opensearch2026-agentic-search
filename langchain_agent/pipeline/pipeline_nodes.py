@@ -733,14 +733,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             default=0.0,
         )
 
-        # The "no info" branch only fires when the reranker actually scored the
-        # documents — if reranking is off there are no scores to evaluate and
-        # zero relevance doesn't mean low relevance. Skip this gate when the
-        # user has disabled reranking or the LLM (raw-results mode).
-        opts = state.get("optimizations", {})
-        reranker_skipped = opts.get("reranking", True) is False
-        llm_off = opts.get("llm", True) is False
-
         # Two distinct ways retrieval can "fail" here, both needing to be
         # caught for the enrichment gap signal:
         #   1. Documents WERE retrieved but scored poorly even after a
@@ -760,7 +752,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         retry_exhausted_gap = quality_gate_retried and max_relevance < MIN_RELEVANCE_THRESHOLD
         zero_result_filter_gap = intent == "attribute_filter" and not retrieved_documents
 
-        if (retry_exhausted_gap or zero_result_filter_gap) and not reranker_skipped and not llm_off:
+        if retry_exhausted_gap or zero_result_filter_gap:
             logger.info(
                 f"Agent: retrieval failed "
                 f"(retry_exhausted_gap={retry_exhausted_gap}, "
@@ -802,24 +794,17 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         citations_dict: Dict[str, Tuple[str, List[int], str, str]] = {}
 
         # Check max relevance score - suppress citations if all docs are irrelevant.
-        # When the user has disabled reranking, no doc has a `reranker_score`
-        # (defaults to 0.0), so the standard floor would suppress every citation.
-        # In that case we trust the retriever's BM25/RRF ranking and emit
-        # citations for every doc.
         max_relevance = max(
             (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
             default=0.0,
         )
         MIN_CITATION_RELEVANCE = 0.10  # Don't cite docs below 10% relevance
-        reranker_skipped_for_citations = (
-            state.get("optimizations", {}).get("reranking", True) is False
-        )
 
-        if reranker_skipped_for_citations or max_relevance >= MIN_CITATION_RELEVANCE:
+        if max_relevance >= MIN_CITATION_RELEVANCE:
             for i, doc in enumerate(retrieved_documents, 1):
                 # Skip docs with very low relevance, but only when scores are real
                 doc_score = doc.metadata.get("reranker_score", 0.0)
-                if not reranker_skipped_for_citations and doc_score < MIN_CITATION_RELEVANCE:
+                if doc_score < MIN_CITATION_RELEVANCE:
                     continue
 
                 url = self._citation_url_for_doc(doc)
@@ -851,20 +836,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             if image_url:
                 citation["image_url"] = image_url
             citations.append(citation)
-
-        # LLM-off short-circuit: render a plain search-results list (no LLM call).
-        # Document order respects the reranker toggle — if reranking is off the
-        # documents arrive here in retriever-determined order, otherwise in
-        # reranker-scored order.
-        if state.get("optimizations", {}).get("llm", True) is False:
-            results_md = self._format_search_results(retrieved_documents, user_query)
-            logger.info(
-                f"Agent: LLM disabled, returning {len(retrieved_documents)} raw search results"
-            )
-            return {
-                "messages": [AIMessage(content=results_md)],
-                "citations": citations,
-            }
 
         # Build recent conversation context (excluding the current query)
         recent_context = self._build_recent_context(messages)
@@ -2240,30 +2211,23 @@ Respond with JSON only. No other text."""
 
     def llm_judge_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
-        LLM-as-judge for the Pipeline Quality Summary "Generation" stage.
+        LLM-as-judge for the Pipeline Summary "Generation" stage.
 
         Compares the agent's synthesized response (whatever was just produced
-        by ``agent_node``) against the deterministic raw-list response that
-        ``optimizations.llm:false`` would have produced, and emits a
-        structured ``JudgmentResult`` with a pairwise verdict + 4 absolute
-        scores + hallucination list.
+        by ``agent_node``) against the deterministic raw product list, and
+        emits a structured ``JudgmentResult`` with a pairwise verdict + 4
+        absolute scores + hallucination list.
 
         Skipped (returns ``judgment=None``) when:
-          * ``optimizations.llm_judge`` is False (per-query toggle), OR
-          * ``optimizations.llm`` is False (nothing to judge — the raw list
-            IS the response), OR
           * ``intent == "summary"`` (no retrieval, nothing to compare), OR
           * No retrieved documents, OR
           * ``enrichment_triggered`` (the answer describes a tool action, which
             no retrieved document can attest — see below).
         """
-        opts = state.get("optimizations") or {}
-        llm_on = opts.get("llm", True)
-        judge_on = opts.get("llm_judge", False)
         intent = state.get("intent", "search")
         documents = state.get("retrieved_documents") or []
 
-        if not (llm_on and judge_on) or intent == "summary" or not documents:
+        if intent == "summary" or not documents:
             return {"judgment": None}
 
         # A taxonomy correction turn is outside this judge's competence, and
@@ -2309,11 +2273,11 @@ Respond with JSON only. No other text."""
             logger.debug("llm_judge_node: no agent response found, skipping judge")
             return {"judgment": None}
 
-        # Compute the deterministic baseline that llm:false would have produced.
+        # The deterministic raw product list the answer is compared against.
         query = state.get("user_query", "")
         baseline = self._format_search_results(documents, query)
 
-        # Lazy-init the judge so users who never enable it pay no startup cost.
+        # Lazy-init the judge so it costs nothing until the first judged turn.
         if self.judge is None:
             from core.config import (  # local import to avoid circular at module load
                 JUDGE_MODEL,
@@ -2592,7 +2556,6 @@ Original query: {query}
         # race when filling them in. The bodies are emitted to the
         # observability panel below once the searches return.
         hybrid_capture: Dict[str, Any] = {}
-        bm25_capture: Dict[str, Any] = {}
 
         # On a quality-gate retry, SEARCH DEEPER — do not just re-weight.
         #
@@ -2628,8 +2591,7 @@ Original query: {query}
                 k,
             )
 
-        # Create retriever with dynamic alpha, attribute filters, and per-message
-        # optimization toggles (sent by the frontend via the chat WebSocket).
+        # Create retriever with dynamic alpha and attribute filters.
         retriever = self.vector_store.as_retriever(
             search_type="hybrid",
             search_kwargs={
@@ -2637,7 +2599,6 @@ Original query: {query}
                 "fetch_k": fetch_k,
                 "alpha": alpha,
                 "filters": attribute_filters,
-                "optimizations": state.get("optimizations") or {},
                 "capture_body": hybrid_capture,
             },
         )
@@ -2651,64 +2612,10 @@ Original query: {query}
             except Exception as e:
                 logger.debug(f"Could not emit vector search progress event: {e}")
 
-        # Get results — run hybrid retrieval and the BM25 baseline in parallel.
-        # The BM25 baseline powers the Pipeline Quality Summary card; opensearch-py
-        # is a synchronous HTTP client that releases the GIL during I/O so two
-        # worker threads cut the wall-clock cost of the second query in half.
-        bm25_query_opts = dict(state.get("optimizations") or {})
-        bm25_query_opts["hybrid"] = False  # force BM25 for the baseline
-
-        def _hybrid_call() -> Tuple[List[Document], float]:
-            """Run hybrid (vector + BM25) retrieval; returns docs and wall-clock ms."""
-            t0 = time.time()
-            docs = retriever.invoke(query)
-            return docs, (time.time() - t0) * 1000.0
-
-        def _bm25_call() -> Tuple[List[Document], float]:
-            """Run BM25-only retrieval with optimization toggles; returns docs and ms."""
-            t0 = time.time()
-            docs = self.vector_store.bm25_only_search(
-                query,
-                k=RETRIEVER_FETCH_K,
-                filters=attribute_filters,
-                optimizations=bm25_query_opts,
-                capture_body=bm25_capture,
-            )
-            return docs, (time.time() - t0) * 1000.0
-
-        def _stock_bm25_call() -> Tuple[List[Document], float]:
-            """Run vanilla BM25 (no optimization toggles) as a fixed baseline for the Pipeline Quality Summary."""
-            # Ignores all optimization toggles so the card can show what
-            # fuzzy/synonyms/phonetic actually buy over plain BM25.
-            t0 = time.time()
-            docs = self.vector_store.stock_bm25_search(
-                query,
-                k=RETRIEVER_FETCH_K,
-                filters=attribute_filters,
-            )
-            return docs, (time.time() - t0) * 1000.0
-
-        # Best-effort lookup of ESCI ground-truth judgments depends only on
-        # `query`, not on any retrieval result -- runs in the same pool as
-        # the three searches below instead of serially after them (see #25).
         retrieve_start = time.time()
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            hybrid_future = pool.submit(_hybrid_call)
-            bm25_future = pool.submit(_bm25_call)
-            stock_future = pool.submit(_stock_bm25_call)
-            judgments_future = pool.submit(self.vector_store.lookup_judgments, query)
-            results, retriever_latency_ms = hybrid_future.result()
-            bm25_results, bm25_latency_ms = bm25_future.result()
-            stock_bm25_results, stock_bm25_latency_ms = stock_future.result()
-            judgments = judgments_future.result()
-        retrieve_elapsed = time.time() - retrieve_start
-
-        logger.info(
-            f"Retriever: hybrid={len(results)} docs ({retriever_latency_ms:.0f}ms), "
-            f"bm25={len(bm25_results)} docs ({bm25_latency_ms:.0f}ms), "
-            f"stock_bm25={len(stock_bm25_results)} docs ({stock_bm25_latency_ms:.0f}ms), "
-            f"wall={retrieve_elapsed:.3f}s"
-        )
+        results = retriever.invoke(query)
+        retriever_latency_ms = (time.time() - retrieve_start) * 1000.0
+        logger.info(f"Retriever: hybrid={len(results)} docs ({retriever_latency_ms:.0f}ms)")
 
         # Filter relaxation: if attribute filters returned very few results, drop
         # multi_match (feature / size) filters and retry the hybrid query.
@@ -2737,7 +2644,6 @@ Original query: {query}
                         "fetch_k": RETRIEVER_FETCH_K,
                         "alpha": alpha,
                         "filters": hard_filters or None,
-                        "optimizations": state.get("optimizations") or {},
                         "capture_body": hybrid_capture,
                     },
                 )
@@ -2750,11 +2656,9 @@ Original query: {query}
                         len(results),
                     )
 
-        # Emit OpenSearch query events with the actual DSL bodies. The hybrid
-        # event flips to `quality_gate_retry` on the second pass so the UI
-        # can surface the retry separately. The BM25 baseline is identical
-        # across passes (alpha doesn't affect it), so we only emit it once
-        # per request — on the first pass.
+        # Emit the OpenSearch query event with the actual DSL body. It flips to
+        # `quality_gate_retry` on the second pass so the UI can surface the
+        # retry separately.
         if OpenSearchQueryEvent:
             filter_summary = self._format_filter_summary(attribute_filters)
             is_retry = bool(state.get("quality_gate_retried", False))
@@ -2765,7 +2669,6 @@ Original query: {query}
                     filters=attribute_filters,
                     filter_summary=filter_summary,
                     intent=intent,
-                    optimizations=state.get("optimizations") or None,
                     query_type="quality_gate_retry" if is_retry else "hybrid",
                     body=hybrid_capture.get("body"),
                     index=hybrid_capture.get("index"),
@@ -2774,35 +2677,6 @@ Original query: {query}
                 self._emit_event_from_sync(hybrid_event)
             except Exception as e:
                 logger.error(f"Could not emit hybrid OpenSearch query event: {e}", exc_info=True)
-
-            if not is_retry:
-                try:
-                    bm25_event = OpenSearchQueryEvent(
-                        query=query,
-                        alpha=0.0,  # BM25 baseline is pure lexical
-                        filters=attribute_filters,
-                        filter_summary=filter_summary,
-                        intent=intent,
-                        optimizations=state.get("optimizations") or None,
-                        query_type="bm25_baseline",
-                        body=bm25_capture.get("body"),
-                        index=bm25_capture.get("index"),
-                        params=bm25_capture.get("params"),
-                    )
-                    self._emit_event_from_sync(bm25_event)
-                except Exception as e:
-                    logger.error(
-                        f"Could not emit BM25 baseline OpenSearch query event: {e}",
-                        exc_info=True,
-                    )
-
-        # judgments was fetched concurrently above. Missing index or missing
-        # query is silently treated as "no ground truth" — the UI falls back
-        # to the confidence proxy in that case.
-        if judgments:
-            logger.info(f"Retriever: ground truth available ({len(judgments)} judged products)")
-        else:
-            logger.debug("Retriever: no ground truth for query")
 
         # Emit text search progress
         if SearchProgressEvent:
@@ -2871,11 +2745,6 @@ Original query: {query}
         return {
             "retrieved_documents": results,
             "pre_rerank_documents": list(results),
-            "bm25_documents": bm25_results,
-            "stock_bm25_documents": stock_bm25_results,
-            "judgments": judgments,
-            "bm25_latency_ms": bm25_latency_ms,
-            "stock_bm25_latency_ms": stock_bm25_latency_ms,
             "retriever_latency_ms": retriever_latency_ms,
             "prior_search_documents": prior_search_documents,
             "prior_search_intent": prior_search_intent,
@@ -2897,24 +2766,14 @@ Original query: {query}
         """
         retrieved_documents = state.get("retrieved_documents", [])
         intent = state.get("intent", "search")
-        # Per-message toggle from the frontend.
-        reranking_opt = state.get("optimizations", {}).get("reranking", True)
 
-        if not reranking_opt or not self.reranker or not retrieved_documents:
-            logger.debug(
-                f"Reranker: skipped (toggle={reranking_opt}, intent={intent}, "
-                f"docs={len(retrieved_documents)})"
-            )
-            # When reranking is intentionally off we mark the quality gate as
-            # already retried so it doesn't loop trying to "rescue" a missing
-            # score. Documents pass through in their retriever-determined order.
+        if not self.reranker or not retrieved_documents:
+            logger.debug(f"Reranker: skipped (intent={intent}, docs={len(retrieved_documents)})")
             return {
                 "retrieved_documents": retrieved_documents,
-                "reranker_max_score": 1.0 if not reranking_opt else 0.0,
+                "reranker_max_score": 0.0,
                 "reranker_latency_ms": 0.0,
-                "quality_gate_retried": (
-                    True if not reranking_opt else state.get("quality_gate_retried", False)
-                ),
+                "quality_gate_retried": state.get("quality_gate_retried", False),
                 "intent": intent,
             }
 

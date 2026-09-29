@@ -5,7 +5,6 @@
   "products_index_mapping_hash": "250eb3639abdb20b",
   "counts": {
     "products": 158637,
-    "attribute_mappings": 103,
-    "judgments": 65028
+    "attribute_mappings": 103
   }
 }

@@ -145,28 +145,14 @@ class TestLlmJudgeNodeSkips:
         base.update(kwargs)
         return base
 
-    def test_skips_when_judge_off(self):
-        state = self._state_with(optimizations={"llm": True, "llm_judge": False})
-        result = self.agent.llm_judge_node(state)
-        assert result["judgment"] is None
-
-    def test_skips_when_llm_off(self):
-        state = self._state_with(optimizations={"llm": False, "llm_judge": True})
-        result = self.agent.llm_judge_node(state)
-        assert result["judgment"] is None
-
     def test_skips_when_intent_is_summary(self):
-        state = self._state_with(
-            optimizations={"llm": True, "llm_judge": True},
-            intent="summary",
-        )
+        state = self._state_with(intent="summary")
         result = self.agent.llm_judge_node(state)
         assert result["judgment"] is None
 
     def test_skips_when_no_documents(self):
         state = {
             "messages": [],
-            "optimizations": {"llm": True, "llm_judge": True},
             "intent": "search",
             "retrieved_documents": [],
         }
@@ -176,7 +162,6 @@ class TestLlmJudgeNodeSkips:
     def test_skips_when_no_ai_message(self):
         state = {
             "messages": [HumanMessage(content="find headphones")],
-            "optimizations": {"llm": True, "llm_judge": True},
             "intent": "search",
             "retrieved_documents": [MagicMock()],
         }
@@ -211,7 +196,6 @@ class TestLlmJudgeNodeNormalPath:
         doc = Document(page_content="Sony WH-1000XM5 headphones", metadata={})
         state = {
             "messages": [AIMessage(content="Great headphones.")],
-            "optimizations": {"llm": True, "llm_judge": True},
             "intent": "search",
             "user_query": "wireless headphones",
             "retrieved_documents": [doc],
@@ -232,7 +216,6 @@ class TestLlmJudgeNodeNormalPath:
         doc = Document(page_content="content", metadata={})
         state = {
             "messages": [AIMessage(content="response")],
-            "optimizations": {"llm": True, "llm_judge": True},
             "intent": "search",
             "user_query": "query",
             "retrieved_documents": [doc],
@@ -283,7 +266,6 @@ class TestLlmJudgeNodeHallucinationRetry:
         doc = Document(page_content="content", metadata={})
         state = {
             "messages": [AIMessage(content="response with hallucination")],
-            "optimizations": {"llm": True, "llm_judge": True},
             "intent": "search",
             "user_query": "query",
             "retrieved_documents": [doc],
@@ -326,7 +308,6 @@ class TestLlmJudgeNodeHallucinationRetry:
         doc = Document(page_content="content", metadata={})
         state = {
             "messages": [AIMessage(content="response")],
-            "optimizations": {"llm": True, "llm_judge": True},
             "intent": "search",
             "user_query": "query",
             "retrieved_documents": [doc],
@@ -370,7 +351,6 @@ class TestLlmJudgeNodeHallucinationRetry:
         doc = Document(page_content="chewy texture cleans teeth", metadata={})
         state = {
             "messages": [AIMessage(content="response with paraphrase")],
-            "optimizations": {"llm": True, "llm_judge": True},
             "intent": "search",
             "user_query": "dental chews",
             "retrieved_documents": [doc],
@@ -419,7 +399,6 @@ class TestLlmJudgeNodeHallucinationRetry:
         doc = Document(page_content="content", metadata={})
         state = {
             "messages": [AIMessage(content="response")],
-            "optimizations": {"llm": True, "llm_judge": True},
             "intent": "search",
             "user_query": "q",
             "retrieved_documents": [doc],
@@ -481,7 +460,6 @@ class TestLlmJudgeNodeHallucinationRetry:
         doc = Document(page_content="content", metadata={})
         state = {
             "messages": [AIMessage(content="response with Made in USA claims")],
-            "optimizations": {"llm": True, "llm_judge": True},
             "intent": "search",
             "user_query": "nyla bones for puppys",
             "retrieved_documents": [doc],

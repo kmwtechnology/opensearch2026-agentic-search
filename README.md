@@ -11,7 +11,7 @@ no key.
 
 ## The demo
 
-The app is presenter-driven: pick one of four scripted demos from the header
+The app is presenter-driven: pick one of three scripted demos from the header
 and step through it with **Next**. The scripts live in
 [`langchain_agent/web/src/demos/registry.ts`](langchain_agent/web/src/demos/registry.ts);
 the presenter runbook is [`langchain_agent/DEMO.md`](langchain_agent/DEMO.md).
@@ -19,7 +19,6 @@ the presenter runbook is [`langchain_agent/DEMO.md`](langchain_agent/DEMO.md).
 | Demo | What it shows |
 | --- | --- |
 | Adaptive Query Enhancements | One conversation, three narrowing turns; alpha moves 0.25 -> 0.35 -> 0.70 as the questions get less literal, and the rewriter carries earlier constraints into the last one. |
-| Proving It With Real Judgments | A query that hits ESCI ground truth, so the per-stage scorecard shows real NDCG@10 / MRR / Recall@20 / Precision@10 instead of a confidence proxy. |
 | Classification & Correction | The catalog mis-tags "tan" as "yellow" and the result *passes* the quality gate; a shopper disputes it and the agent re-tags only the affected products, live, in under a second. |
 | Data Enrichment: Schema Evolution | "waterproof boots" returns nothing because that dimension does not exist yet; the agent notices, teaches the catalog the term, and the same query comes back filtered. |
 
@@ -130,7 +129,7 @@ Deeper: [`langchain_agent/ARCHITECTURE.md`](langchain_agent/ARCHITECTURE.md).
 | Agent | LangGraph + LangChain |
 | API | FastAPI, WebSocket streaming |
 | Frontend | React 19, TypeScript, Vite, Tailwind, Zustand |
-| Data | ESCI US `test` + `small_version` judged products: 158,637 products, 65,028 judged queries, 95.5% with a product image |
+| Data | ESCI US `test` + `small_version` products: 158,637 products, 95.5% with a product image |
 
 ## Repository
 
@@ -142,7 +141,7 @@ langchain_agent/        the application (Makefile lives here)
   pipeline/             the LangGraph nodes, conversation management, scoped re-tag
   retrieval/            vector store (RRF), reranker, embeddings, attribute taxonomy
   quality/              LLM judge, enrichment service and value judge, demo reset
-  observability/        relevancy metrics, embedding cache
+  observability/        confidence proxy, embedding cache
   checkpoints/          checkpoint optimizer
   tools/                the agent's enrichment tool
   api/                  FastAPI app: routes, schemas, services, middleware

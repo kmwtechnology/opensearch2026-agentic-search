@@ -112,20 +112,6 @@ describe('narrate', () => {
     ).toBeNull()
   })
 
-  it('stays silent on the BM25 baseline query, which is a metrics artifact', () => {
-    expect(
-      narrate({
-        type: 'opensearch_query',
-        node: 'retriever',
-        timestamp: TS,
-        query: 'tan boots',
-        alpha: 0.25,
-        intent: 'attribute_filter',
-        query_type: 'bm25_baseline',
-      } as AgentEvent)
-    ).toBeNull()
-  })
-
   it('distinguishes a retry search from a first search via query_type', () => {
     const first = narrate({
       type: 'opensearch_query',
@@ -384,62 +370,6 @@ describe('narrate — enrichment lifecycle', () => {
   })
 })
 
-describe('narrate — ground truth reveal (#130)', () => {
-  function summary(overrides: Partial<AgentEvent>): AgentEvent {
-    return {
-      type: 'pipeline_summary',
-      timestamp: TS,
-      has_ground_truth: false,
-      query: 'cowboy boots women',
-      optimizations: {},
-      latency: [],
-      ...overrides,
-    } as AgentEvent
-  }
-
-  it('says nothing for the ordinary confidence-proxy case', () => {
-    expect(narrate(summary({ has_ground_truth: false }))).toBeNull()
-  })
-
-  it('carries one stage per judged retrieval pass when real judgments exist', () => {
-    const line = narrate(
-      summary({
-        has_ground_truth: true,
-        stock_bm25: { ndcg10: 0.4693, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
-        bm25: { ndcg10: 0.4441, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
-        hybrid: { ndcg10: 0.852, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
-        reranked: { ndcg10: 0.901, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
-      })
-    )
-
-    expect(line?.node).toBe('ground_truth')
-    expect(line?.weight).toBe('moment')
-    expect(line?.groundTruthStages?.map((s) => s.stage)).toEqual([
-      'stock_bm25',
-      'bm25',
-      'hybrid',
-      'reranked',
-    ])
-    expect(line?.groundTruthStages?.[3].ndcg10).toBe(0.901)
-    expect(line?.groundTruthStages?.[3].judgedCount).toBe(3)
-    expect(line?.text).toContain('0.90')
-  })
-
-  it('omits a stage that was skipped rather than showing a fake zero', () => {
-    // hybrid/reranked are omitted server-side when their optimization toggle
-    // is off — must not be rendered as a judged 0.0 score.
-    const line = narrate(
-      summary({
-        has_ground_truth: true,
-        stock_bm25: { ndcg10: 0.47, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
-        bm25: { ndcg10: 0.44, mrr: 1, recall20: 1, precision10: 0.3, judged_count: 3 },
-      })
-    )
-
-    expect(line?.groundTruthStages?.map((s) => s.stage)).toEqual(['stock_bm25', 'bm25'])
-  })
-})
-
 describe('visibleLines', () => {
   const line = (node: string, id: string) =>
     ({
@@ -524,86 +454,5 @@ describe('visibleLines', () => {
 
   it('respects the safety cap', () => {
     expect(MAX_VISIBLE_LINES).toBeGreaterThanOrEqual(6)
-  })
-
-  it('excludes ground_truth entirely — it renders in its own tab, not among the steps', () => {
-    // Used to cap to a single ground-truth-only card (#130), on the
-    // assumption ground truth only ever fires in its own dedicated bonus
-    // scene. That assumption was false: lookup_judgments() runs on every
-    // query in every demo, so a free-typed query mid-Arc-1 can trigger it
-    // too, and hiding that turn's real pipeline context whenever it did was
-    // surprising. NarratorPanel now renders ground_truth in a separate
-    // "Ground Truth" tab instead, so visibleLines (which only ever feeds the
-    // "Steps" tab) must return the ordinary pipeline lines untouched even
-    // when a ground_truth line is mixed into its input.
-    const fullPipeline = [
-      line('intent_classifier', 'intent'),
-      line('query_evaluator', 'alpha'),
-      line('retriever', 'search'),
-      line('reranker', 'rerank'),
-      line('quality_gate', 'gate'),
-    ]
-    const groundTruth = { ...line('ground_truth', 'gt'), weight: 'moment' } as never
-
-    const shown = visibleLines([...fullPipeline, groundTruth])
-
-    expect(shown).toHaveLength(5)
-    expect(shown.some((l) => l.node === 'ground_truth')).toBe(false)
-    expect(shown.map((l) => l.node)).toEqual([
-      'intent_classifier',
-      'query_evaluator',
-      'retriever',
-      'reranker',
-      'quality_gate',
-    ])
-  })
-
-  // The enrichment card is roughly four ordinary lines tall. A full pipeline
-  // plus that card overflowed a 1920x1080 viewport, and the panel does not
-  // scroll by design, so the card and its re-run button rendered below the
-  // fold and could not be reached — the arc's entire payoff, invisible at
-  // exactly the resolution the demo is presented at (#108). It fit on the
-  // larger development display, which is why it survived review.
-  describe('when the enrichment card is present', () => {
-    const fullPipeline = [
-      line('intent_classifier', 'intent'),
-      line('query_evaluator', 'alpha'),
-      line('query_rewriter', 'rewrite'),
-      line('retriever', 'search'),
-      line('reranker', 'rerank'),
-      line('quality_gate', 'gate'),
-    ]
-
-    const shown = () =>
-      visibleLines([
-        ...fullPipeline,
-        narrate(enrichment({ status: 'complete', canonical: 'brown', corrected_from: 'yellow' }))!,
-      ])
-
-    it('sheds pipeline lines to make room for it', () => {
-      expect(shown().length).toBeLessThan(fullPipeline.length)
-    })
-
-    it('always keeps the card itself, and keeps it last', () => {
-      const lines = shown()
-      expect(lines[lines.length - 1].node).toBe('enrichment')
-      expect(lines.filter((l) => l.node === 'enrichment')).toHaveLength(1)
-    })
-
-    it('keeps the stages nearest the card rather than the earliest ones', () => {
-      // The opposite of the no-card rule: here the card is the point of the
-      // turn and the early stages are context the presenter has already
-      // narrated by the time it appears.
-      expect(shown().map((l) => l.node)).toEqual([
-        'retriever',
-        'reranker',
-        'quality_gate',
-        'enrichment',
-      ])
-    })
-
-    it('does not disturb the cap on turns without a card', () => {
-      expect(visibleLines(fullPipeline)).toHaveLength(6)
-    })
   })
 })

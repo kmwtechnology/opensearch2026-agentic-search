@@ -81,9 +81,8 @@ Eight LangGraph nodes (`main.py::create_agent_graph`):
    regenerates once for `fabrication` / `cross_product_bleed`.
 8. **summary** — recap turns skip retrieval.
 
-Every turn ends with a `pipeline_summary` event: NDCG@10 / MRR / Recall@20 /
-Precision@10 per stage when the query has ESCI ground truth, a confidence
-proxy otherwise. Mechanism details, state fields, and the taxonomy
+Every turn ends with a `pipeline_summary` event: a reranker-confidence proxy,
+the judge's verdict, and per-stage latency. Mechanism details, state fields, and the taxonomy
 growth-and-correction loop are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Taxonomy growth and correction
@@ -132,8 +131,8 @@ curl -H 'Origin: http://localhost:8080' http://localhost:8080/api/admin/health
 ## Data
 
 The only data in the repo is `data/precomputed/` — a one-time export of the
-products index (with embeddings), the attribute-mapping store, and 65,028
-judged queries, bulk-loaded by `scripts/load_precomputed_indices.py`. There is
+products index (with embeddings) and the attribute-mapping store,
+bulk-loaded by `scripts/load_precomputed_indices.py`. There is
 no ingest or rebuild path; see [../data/README.md](../data/README.md).
 
 ## Testing
@@ -164,11 +163,10 @@ langchain_agent/
 │                           attribute_discovery.py, attribute_mapping_store.py
 ├── quality/                judge.py, enrichment_service.py, enrichment_value_judge.py, demo_reset.py
 ├── tools/enrichment_tool.py
-├── observability/          relevancy_metrics.py, embedding_cache.py, llm_content.py
+├── observability/          confidence_proxy.py, embedding_cache.py, llm_content.py
 ├── checkpoints/            checkpoint_optimizer.py (Postgres checkpoint tuning)
 ├── api/                    FastAPI app — see api/README.md
 ├── web/                    React UI — see web/README.md
-├── mapping/                judgments_mapping.json (esci_judgments index template)
 ├── scripts/                lifecycle scripts — see scripts/README.md
 ├── tests/                  unit / integration / e2e — see tests/README.md
 ├── Dockerfile              the demo image (built UI + backend, one process)

@@ -52,14 +52,14 @@ override the attribute a test needs (`agent.alpha_estimator_llm = MagicMock(...)
 | `WATERPROOF_CANONICALS["waterproof"]` stays empty (the schema-evolution demo depends on it) | `unit/test_attribute_discovery.py` |
 | `_coerce` rejects booleans from the LLM (a literal `False` used to become a truthy hard filter) | `unit/test_extract_attributes_waterproof.py` |
 | Enrichment lifecycle: `started` before the re-tag, one terminal event, value-judge gate, judge skips enrichment turns | `unit/test_enrichment_lifecycle_events.py`, `unit/test_try_enrichment_tool.py`, `unit/test_judge_skips_enrichment_turn.py`; route contract in `integration/test_admin_enrich_route.py` |
-| Citations: Amazon search-by-title URL construction; `agent_complete.citations` shape `{label, url, asin, image_url}` | `unit/test_agent_link_handling.py`; live in `e2e/test_deployment_smoke.py::TestCitations`; REST model in `unit/test_search_optimizations.py` |
+| Citations: Amazon search-by-title URL construction; `agent_complete.citations` shape `{label, url, asin, image_url}` | `unit/test_agent_link_handling.py`; live in `e2e/test_deployment_smoke.py::TestCitations` |
 | Reranker rescale ceiling stays below the quality-gate thresholds | `unit/test_reranker.py` |
-| Hybrid search DSL per optimization flag, RRF routing, the nine-key optimizations contract | `unit/test_search_optimizations.py`, `unit/test_vector_store.py` |
+| Hybrid search DSL, RRF routing, query-term truncation | `unit/test_vector_store.py`, `unit/test_issue_85_maxclausecount.py` |
 | Judge categories and retry eligibility | `unit/test_judge_categories.py` |
-| Pipeline summary metrics and the confidence proxy | `unit/test_pipeline_summary_event.py`, `unit/test_relevancy_metrics.py` |
+| Pipeline summary and the confidence proxy | `unit/test_pipeline_summary_event.py`, `unit/test_confidence_proxy.py` |
 | Typeahead: prefix, dedup, spell correction, fuzzy fallback | `integration/test_suggest.py` |
 | Attribute-mapping store read-after-write, case-insensitivity, cache invalidation | `integration/test_attribute_mapping_store.py` |
-| The four scripted demos in `web/src/demos/registry.ts` run end to end without `agent_error` | `e2e/test_demo_queries_smoke.py::TestScriptedDemos` |
+| The three scripted demos in `web/src/demos/registry.ts` run end to end without `agent_error` | `e2e/test_demo_queries_smoke.py::TestScriptedDemos` |
 | Every runtime package has a `COPY` line in the Dockerfile | `unit/test_dockerfile_package_copy.py` |
 
 ## Writing a test

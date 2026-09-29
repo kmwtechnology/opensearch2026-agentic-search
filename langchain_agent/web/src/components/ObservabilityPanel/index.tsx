@@ -7,7 +7,6 @@ import { RefreshCw } from 'lucide-react'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import { PipelineSummaryCard } from './PipelineSummaryCard'
 import { StepsList } from './StepsList'
-import { SearchOptimizationDetails } from './SearchOptimizationDetails'
 
 export function ObservabilityPanel() {
   const { isExecuting, steps, enrichmentTriggered } = useObservabilityStore()
@@ -50,17 +49,12 @@ export function ObservabilityPanel() {
       {/* Content */}
       <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
         <div className="h-full w-full overflow-y-auto">
-          {/* Search Optimizations Info - Always visible */}
-          <div className="px-4 pt-4">
-            <SearchOptimizationDetails />
-          </div>
-
           {/* Execution Steps */}
-          <div className="mt-4">
+          <div className="pt-4">
             <StepsList />
           </div>
 
-          {/* End-of-pipeline retrieval-quality summary */}
+          {/* End-of-pipeline summary */}
           <div className="mt-4">
             <PipelineSummaryCard />
           </div>

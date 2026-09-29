@@ -6,7 +6,7 @@ import asyncio
 import sys
 import uuid
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -19,23 +19,6 @@ from api.services.checkpoint_messages import load_message_count
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-# Known per-message optimization toggle keys. We accept only this allowlist so
-# a hostile client can't inflate checkpoint state with arbitrary JSON. Unknown
-# keys are dropped silently. Mirror this list in optimizationsStore.ts.
-_ALLOWED_OPTIMIZATIONS = frozenset(
-    {
-        "hybrid",
-        "fuzzy",
-        "synonyms",
-        "phrase_boost",
-        "field_boost",
-        "typeahead",
-        "reranking",
-        "llm",
-        "llm_judge",
-    }
-)
 
 router = APIRouter()
 
@@ -217,16 +200,15 @@ async def websocket_chat(websocket: WebSocket):
     **Server Event Types** (see api/schemas/events.py):
         - `ConnectionEstablished` — Initial connection confirmation with thread_id
         - `SearchProgressEvent` — Search initiated
-        - `OpenSearchQueryEvent` — Detailed query (DSL, alpha, intent, optimization toggles)
+        - `OpenSearchQueryEvent` — Detailed query (DSL, alpha, intent)
         - `RerankerProgressEvent` — Documents being reranked
         - `QualityGateEvent` — Quality validation results
         - `QueryExpansionEvent` — Vague query expansion with context
         - `LLMResponseChunkEvent` — Token-by-token output streaming
         - `AgentCompleteEvent` — Execution finished with response and citations
-        - `PipelineSummaryEvent` — End-of-pipeline quality scorecard
-          (BM25 / Hybrid / Reranked NDCG@10, MRR, Recall@20, Precision@10
-          when ESCI judgments exist; confidence proxy otherwise; LLM-as-judge
-          generation row with categorical hallucination flags when enabled)
+        - `PipelineSummaryEvent` — End-of-pipeline scorecard (per-stage latency,
+          confidence proxy, LLM-as-judge generation row with categorical
+          hallucination flags)
         - `AgentErrorEvent` — Error occurred (recoverable or fatal)
 
     **Authentication:**
@@ -292,17 +274,6 @@ async def websocket_chat(websocket: WebSocket):
             if data.get("type") == "chat_message":
                 message = data.get("message", "").strip()
                 msg_thread_id = data.get("thread_id", thread_id)
-                # Validate the per-message optimization toggles against the
-                # module-level allowlist above.
-                raw_optimizations = data.get("optimizations")
-                msg_optimizations: Optional[Dict[str, bool]] = None
-                if isinstance(raw_optimizations, dict):
-                    msg_optimizations = {
-                        k: bool(v)
-                        for k, v in raw_optimizations.items()
-                        if isinstance(k, str) and k in _ALLOWED_OPTIMIZATIONS
-                    }
-
                 if not message:
                     continue
 
@@ -317,7 +288,6 @@ async def websocket_chat(websocket: WebSocket):
                             message=message,
                             thread_id=msg_thread_id,
                             emit=emit_callback,
-                            optimizations=msg_optimizations,
                         )
                     except asyncio.CancelledError:
                         logger.info("agent_task_cancelled", thread_id=msg_thread_id)

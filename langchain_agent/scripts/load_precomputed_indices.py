@@ -34,10 +34,6 @@ from retrieval.vector_store import INDEX_MAPPING, create_opensearch_client
 
 REPO_DIR = Path(__file__).resolve().parent.parent.parent
 DUMP_DIR = REPO_DIR / "data" / "precomputed"
-JUDGMENTS_INDEX_NAME = "esci_judgments"
-JUDGMENTS_MAPPING_PATH = (
-    Path(__file__).resolve().parent.parent / "mapping" / "judgments_mapping.json"
-)
 
 BULK_CHUNK_SIZE = 2000
 
@@ -121,18 +117,11 @@ def main() -> int:
     )
     print(f"  loaded {n_mappings} attribute mappings")
 
-    print(f"Loading judgments -> {JUDGMENTS_INDEX_NAME}...")
-    judgments_mapping = json.loads(JUDGMENTS_MAPPING_PATH.read_text())
-    _ensure_index(client, JUDGMENTS_INDEX_NAME, judgments_mapping)
-    n_judgments = _bulk_load(client, JUDGMENTS_INDEX_NAME, DUMP_DIR / "judgments_dump.parquet")
-    print(f"  loaded {n_judgments} judgments")
-
     expected = metadata.get("counts", {})
     mismatches = []
     for name, actual in (
         ("products", n_products),
         ("attribute_mappings", n_mappings),
-        ("judgments", n_judgments),
     ):
         exp = expected.get(name)
         if exp is not None and exp != actual:

@@ -55,7 +55,6 @@ def _state(**overrides):
         "retrieved_documents": [Document(page_content="A tan leather boot.", metadata={})],
         "user_query": "that's not tan, that's tagged yellow which is wrong",
         "intent": "refinement",
-        "optimizations": {"llm": True, "llm_judge": True},
     }
     state.update(overrides)
     return state

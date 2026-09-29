@@ -1,13 +1,12 @@
 /**
  * Step-level details for the llm_judge node.
  *
- * Mirrors what the Pipeline Quality Summary card already renders, just at
+ * Mirrors what the Pipeline Summary card already renders, just at
  * the per-step level so collapsing/reopening the LLM Judge step keeps a
  * meaningful summary visible.
  */
 
 import { useObservabilityStore } from '../../../stores/observabilityStore'
-import { useOptimizationsStore } from '../../../stores/optimizationsStore'
 import type {
   FlaggedClaim,
   GenerationJudgment,
@@ -58,7 +57,6 @@ const VERDICT_TONE: Record<
 export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
   const summary = useObservabilityStore((s) => s.pipelineSummary)
   const isExecuting = useObservabilityStore((s) => s.isExecuting)
-  const optimizations = useOptimizationsStore((s) => s.optimizations)
   const judgment = summary?.generation
   const original = summary?.original_generation
   const retried = !!summary?.hallucination_retry_used
@@ -79,22 +77,6 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
         </div>
       )
     }
-    const llmOn = optimizations.llm
-    const judgeOn = optimizations.llm_judge
-    if (!llmOn) {
-      return (
-        <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
-          Judge needs <code>llm</code> on (no synthesized response to compare).
-        </div>
-      )
-    }
-    if (!judgeOn) {
-      return (
-        <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
-          Judge toggle off — turn on <code>llm_judge</code> for the next query.
-        </div>
-      )
-    }
     return (
       <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
         No judge result captured for this turn. Send a fresh query.
@@ -103,7 +85,7 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
   }
 
   // Step view — compact one-line summary. Full justification, scores, and
-  // hallucinations live in the Pipeline Quality Summary card below to avoid
+  // hallucinations live in the Pipeline Summary card below to avoid
   // duplicating the same content twice in the panel.
   const tone = VERDICT_TONE[judgment.verdict]
   const faithDelta =
@@ -175,7 +157,7 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
         })()}
       </div>
       <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">
-        Full breakdown in the Pipeline Quality Summary card below.
+        Full breakdown in the Pipeline Summary card below.
       </p>
     </div>
   )

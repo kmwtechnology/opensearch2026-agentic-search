@@ -1,4 +1,4 @@
-"""Demo-query smoke: three legacy conversation scenarios plus the four scripted demos.
+"""Demo-query smoke: three legacy conversation scenarios plus the three scripted demos.
 
 Why this exists separately from ``test_deployment_smoke.py``:
 
@@ -131,28 +131,6 @@ async def _drive_turn(
     return events, completed
 
 
-async def _drain_trailing(websocket: Any, grace_s: float = 5.0) -> List[Dict[str, Any]]:
-    """Collect any further events for a short grace period after
-    agent_complete. Some events (e.g. pipeline_summary) are emitted after
-    agent_complete, which _drive_turn stops listening for as soon as it sees."""
-    events: List[Dict[str, Any]] = []
-    deadline = asyncio.get_event_loop().time() + grace_s
-    while True:
-        remaining = deadline - asyncio.get_event_loop().time()
-        if remaining <= 0:
-            break
-        try:
-            raw = await asyncio.wait_for(websocket.recv(), timeout=remaining)
-        except asyncio.TimeoutError:
-            break
-        try:
-            evt = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        events.append(evt)
-    return events
-
-
 def _summarize(events: List[Dict[str, Any]]) -> str:
     """One-line per event for diagnostic output on failure."""
     lines = []
@@ -187,8 +165,6 @@ def _summarize(events: List[Dict[str, Any]]) -> str:
                 f"attribute_type={e.get('attribute_type')} variant={e.get('variant')!r} "
                 f"canonical={e.get('canonical')!r} corrected_from={e.get('corrected_from')!r}"
             )
-        elif t == "pipeline_summary":
-            lines.append(f"  pipeline_summary has_ground_truth={e.get('has_ground_truth')}")
         else:
             lines.append(f"  {t}")
     return "\n".join(lines)
@@ -337,7 +313,7 @@ class TestDemoQueriesSmoke:
 @pytest.mark.slow
 @pytest.mark.asyncio
 class TestScriptedDemos:
-    """Drive the four ACTUAL scripted demos from web/src/demos/registry.ts,
+    """Drive the three ACTUAL scripted demos from web/src/demos/registry.ts,
     verbatim, end to end. This is separate from TestDemoQueriesSmoke above,
     which exercises the same underlying mechanisms (alpha shift, refinement,
     query rewrite) with standalone queries that predate the current scripted
@@ -347,7 +323,7 @@ class TestScriptedDemos:
     several are load-bearing in ways documented there (see each demo's
     comment block). If registry.ts changes a query, update it here too.
 
-    Two of the four demos are self-consuming (color correction, waterproof
+    Two of the three demos are self-consuming (color correction, waterproof
     growth): each destroys its own precondition on success, so a second run
     without resetting finds nothing to demonstrate. Both reset before AND
     after via /api/admin/demo-reset, so this class is safe to re-run and
@@ -396,40 +372,6 @@ class TestScriptedDemos:
             f"[adaptive-query-turn3] no query_expansion event observed -- the "
             f"vague follow-up should get rewritten with prior context.\n"
             f"Events:\n{_summarize(t3_events)}"
-        )
-
-    async def test_demo_ground_truth_proof(self) -> None:
-        """registry.ts id='ground-truth-proof'. Single turn, single new
-        conversation. The payoff is has_ground_truth flipping True -- this
-        query is one of the few in the corpus with real ESCI judgments."""
-        thread_id = f"ground-truth-proof-{uuid.uuid4().hex[:8]}"
-        async with ws_client.connect(
-            _ws_url(thread_id),
-            additional_headers=auth_ws_headers(),
-        ) as websocket:
-            await _drain_until_welcome(websocket)
-            events, completed = await _drive_turn(
-                websocket, "headphones with microphone", thread_id
-            )
-            # pipeline_summary is emitted AFTER agent_complete (see
-            # observable_agent.py's process_message) -- _drive_turn stops
-            # collecting the instant it sees agent_complete, so keep
-            # listening briefly to catch the trailing event too.
-            events += await _drain_trailing(websocket)
-        _assert_no_error(events, "ground-truth-proof")
-        assert (
-            completed
-        ), f"[ground-truth-proof] agent_complete never emitted.\n{_summarize(events)}"
-
-        summaries = [e for e in events if e.get("type") == "pipeline_summary"]
-        assert summaries, f"[ground-truth-proof] no pipeline_summary event.\n{_summarize(events)}"
-        assert summaries[0].get("has_ground_truth") is True, (
-            f"[ground-truth-proof] expected has_ground_truth=True for this query -- "
-            f"if this now fails, the corpus/judgments no longer have real ESCI "
-            f"ground truth for 'headphones with microphone'; pick a new query in "
-            f"registry.ts (see its long comment on how the current one was chosen) "
-            f"rather than loosening this test.\n"
-            f"Events:\n{_summarize(events)}"
         )
 
     async def test_demo_taxonomy_ingestion(self) -> None:

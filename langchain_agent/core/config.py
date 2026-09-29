@@ -315,7 +315,7 @@ DEFAULT_ALPHA = 0.25
 
 # Query evaluator model settings (lightweight alpha estimator)
 QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", LLM_MODEL)
-# LLM-as-judge for the Pipeline Quality Summary "Generation" stage. Distinct
+# LLM-as-judge for the Pipeline Summary "Generation" stage. Distinct
 # from the agent's main LLM to reduce self-preference bias.
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", LLM_MODEL)
 QUERY_EVAL_TEMPERATURE = float(os.getenv("QUERY_EVAL_TEMPERATURE", "0"))

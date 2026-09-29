@@ -83,7 +83,7 @@
 
 /* Respect the audience/presenter's motion preference. This is a blanket rule
  * rather than one per animation class so it also covers the data-driven
- * width transitions (the alpha/quality gauges, the ground-truth bars) that
+ * width transitions (the alpha/quality gauges) that
  * aren't `@keyframes`-based — everything still reaches its final state, just
  * without the reveal motion (#130). */
 @media (prefers-reduced-motion: reduce) {

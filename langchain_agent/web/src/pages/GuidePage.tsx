@@ -1,5 +1,5 @@
 /**
- * Guide for the Agentic Hybrid Search demo — the 4 scripted demos, the UI,
+ * Guide for the Agentic Hybrid Search demo — the 3 scripted demos, the UI,
  * and how to read the pipeline output.
  */
 
@@ -62,7 +62,7 @@ export function GuidePage() {
         <div className="space-y-4">
           <p className="text-gray-700">
             This is a production-grade AI-powered e-commerce product search agent — hybrid search (semantic + lexical),
-            intelligent reranking, and real-time observability — presented through four scripted, projector-friendly
+            intelligent reranking, and real-time observability — presented through three scripted, projector-friendly
             demos rather than freeform chat. Pick one from the header and follow along; the "Demos" section below
             walks through each one.
           </p>
@@ -73,8 +73,7 @@ export function GuidePage() {
               <li>✓ Product comparison and attribute filtering</li>
               <li>✓ Real-time streaming responses with citations</li>
               <li>✓ Conversation memory within a session (Postgres-checkpointed turns; no saved-conversations list)</li>
-              <li>✓ Per-query search optimization toggles (9 flags) — hybrid, fuzzy, synonyms, phrase_boost, field_boost, typeahead, reranking, llm, llm_judge</li>
-              <li>✓ Pipeline Quality Summary card — offline NDCG/MRR/Recall@20/Precision@10 vs an ESCI ground-truth baseline, with latency cost-benefit framing. Renders in two places: a card in the Details panel, and a "Ground Truth" tab in the Narrator panel</li>
+              <li>✓ Pipeline Summary card — reranker confidence proxy, LLM-as-judge verdict, and per-stage latency</li>
               <li>✓ Full pipeline observability with real-time events</li>
             </ul>
           </div>
@@ -111,11 +110,11 @@ export function GuidePage() {
     },
     {
       id: 'demos',
-      title: '🎬 The Four Demos',
+      title: '🎬 The Three Demos',
       content: (
         <div className="space-y-4">
           <p className="text-[1.375rem] text-gray-700">
-            The header's demo selector picks between four scripted demos, each proving a different part of the
+            The header's demo selector picks between three scripted demos, each proving a different part of the
             pipeline. Pick one, follow its turns in order, and watch the Details panel for the numbers
             called out below.
           </p>
@@ -151,28 +150,6 @@ export function GuidePage() {
             <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-2">
               This catalog has no price field at all — every turn stays on attributes that actually exist (color,
               size, brand, feature, waterproofing).
-            </p>
-          </div>
-
-          <div className="border-l-4 border-emerald-500 pl-4">
-            <h4 className="font-semibold text-gray-900">Proving It With Real Judgments</h4>
-            <p className="text-[1.375rem] text-gray-600">
-              A standalone proof point, run separately from the two conversational arcs. One turn, one query that
-              happens to have real Amazon ESCI relevance judgments behind it, so the Pipeline Quality Summary
-              shows genuine graded metrics instead of its usual self-referential confidence proxy.
-            </p>
-            <ol className="list-decimal list-inside space-y-2 text-[1.375rem] text-gray-700 mt-2">
-              <li>
-                <code className="bg-gray-100 px-1">headphones with microphone</code> — the summary card switches to
-                real NDCG@10 per stage: stock BM25 0.16 → BM25 0.28 → Hybrid 0.40 → Reranked 0.60. A clean climb:
-                every stage beats the one before it. Graded against Amazon's own relevance judgments, not this
-                system's own scoring.
-              </li>
-            </ol>
-            <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)] mt-2">
-              39 products are judged for this query in the corpus (35 of them Exact). The corpus is built
-              query-first (#147), so a judged test query keeps its full judgment set — the number is real, and
-              it's measured against dozens of human judgments, not one or two stragglers.
             </p>
           </div>
 
@@ -255,97 +232,34 @@ export function GuidePage() {
           <div className="space-y-2">
             <h4 className="font-semibold text-gray-900 mt-4">Tips for Best Results</h4>
             <ul className="space-y-1 text-[1.375rem] text-gray-700">
-              <li className="flex gap-2"><span>💡</span> Use exact query strings in demo turns — several are crafted for specific behaviors (e.g., "show me tan boots" for the taxonomy demo, "headphones with microphone" for ground-truth metrics)</li>
+              <li className="flex gap-2"><span>💡</span> Use exact query strings in demo turns — several are crafted for specific behaviors (e.g., "show me tan boots" for the taxonomy demo)</li>
               <li className="flex gap-2"><span>🎯</span> Avoid asking about price — there is no price field in this catalog. Focus on attributes like color, size, brand, feature, and waterproofing</li>
               <li className="flex gap-2"><span>🔄</span> The taxonomy demo re-arms itself automatically on selection, restoring the original tan→yellow mis-tag so the turn-1 failure is fresh every time</li>
               <li className="flex gap-2"><span>📋</span> Click citations to see full product details on Amazon</li>
-              <li className="flex gap-2"><span>⚙️</span> Watch the Narrator/Details panel to understand why results were ranked this way and what the Pipeline Quality Summary shows</li>
+              <li className="flex gap-2"><span>⚙️</span> Watch the Narrator/Details panel to understand why results were ranked this way and what the Pipeline Summary shows</li>
             </ul>
           </div>
         </div>
       ),
     },
     {
-      id: 'search-optimizations',
-      title: '🎛️ Search Optimization Toggles',
-      content: (
-        <div className="space-y-4">
-          <p className="text-[1.375rem] text-gray-700">
-            The Details panel exposes 10 per-query toggles that flip individual search features on or off. Changes apply to the <em>next</em> query you send and the panel reflects what actually ran (skipped stages collapse).
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[1.375rem]">
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">hybrid</code> — vector + BM25 fusion. Off ⇒ pure BM25.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">fuzzy</code> — adds <code>fuzziness: AUTO</code> to multi_match.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">synonyms</code> — query-time synonym expansion via the <code>english_analyzer</code>.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">phrase_boost</code> — adds the <code>title_phrase</code> field with a 2.5× boost.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">field_boost</code> — keeps per-field <code>^N</code> weights. Off ⇒ all fields equal.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">typeahead</code> — frontend autocomplete suggestions.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">reranking</code> — local cross-encoder, ~2s / 40-doc batch (the only reranker). Off ⇒ retriever order is final.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">llm</code> — agent generation. Off ⇒ deterministic markdown product list.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">llm_judge</code> — hallucination detection & auto-correction. Off ⇒ no verification pass.</div>
-          </div>
-
-          <div className="bg-blue-50 border-l-4 border-blue-500 p-3 mt-4 text-[1.375rem]">
-            <p className="font-semibold text-blue-900">Try this:</p>
-            <ol className="text-blue-900 list-decimal list-inside mt-1 space-y-1">
-              <li>During the adaptive-query demo, run the first turn with all toggles on.</li>
-              <li>Toggle <code>reranking</code> off before running a subsequent turn — watch the Reranker row disappear from the Pipeline Quality Summary card and the Reranked stage drop out of the Narrator panel.</li>
-              <li>Toggle <code>llm</code> off and run another turn — the agent renders a raw markdown product list with retrieval scores instead of a synthesized answer.</li>
-              <li>Use the "All" On/Off switch to bulk-flip all toggles and observe how the Narrator/Details panel responds to the change.</li>
-            </ol>
-          </div>
-
-          <p className="text-[1.25rem] text-[var(--color-stage-ink-soft)]">
-            Toggles persist to <code>localStorage</code> via Zustand (<code>search-optimizations</code>) so they survive reloads. Flip all toggles at once with the <em>All</em> On/Off switch on the Search Optimizations card.
-          </p>
-        </div>
-      ),
-    },
-    {
       id: 'pipeline-summary',
-      title: '📈 Pipeline Quality Summary',
+      title: '📈 Pipeline Summary',
       content: (
         <div className="space-y-4">
           <p className="text-[1.375rem] text-gray-700">
-            The last card in the Details panel scores every retrieval against ESCI ground truth (when the query exists) or a self-referential confidence proxy (when it doesn't). It's how you tell — at a glance — whether each stage of the pipeline is earning its latency.
+            The last card in the Details panel summarizes each turn: a self-referential confidence proxy over the reranker scores, the LLM-as-judge verdict on the answer, and a per-stage latency table. It's how you tell — at a glance — whether the pipeline is confident in what it retrieved and where the time went.
           </p>
 
-          <h4 className="font-semibold text-gray-900 mt-2">Ground-truth layout</h4>
+          <h4 className="font-semibold text-gray-900 mt-2">Confidence proxy</h4>
           <p className="text-[1.375rem] text-gray-600">
-            Three rows — <strong>BM25</strong>, <strong>Hybrid</strong>, <strong>Reranked</strong> — each with NDCG@10, MRR, Recall@20, Precision@10. ESCI labels are mapped to relevance:
+            Top-1 reranker score, score gap to #2, score variance, and rank churn (top-10 positions that changed pre/post rerank), rolled into a high / medium / low chip. It is a heuristic over the model's own scores, <em>not</em> an offline relevance metric — the card says so.
           </p>
-          <div className="grid grid-cols-4 gap-2 text-[1.25rem]">
-            <div className="bg-emerald-50 p-2 rounded text-center"><strong>E</strong>xact = 4.0</div>
-            <div className="bg-blue-50 p-2 rounded text-center"><strong>S</strong>ubstitute = 1.0</div>
-            <div className="bg-amber-50 p-2 rounded text-center"><strong>C</strong>omplement = 0.1</div>
-            <div className="bg-gray-100 p-2 rounded text-center"><strong>I</strong>rrelevant = 0.0</div>
-          </div>
 
-          <h4 className="font-semibold text-gray-900 mt-2">Latency cost-benefit</h4>
+          <h4 className="font-semibold text-gray-900 mt-2">Stage latency</h4>
           <p className="text-[1.375rem] text-gray-600">
-            A per-stage table with wall-clock latency and (for ground-truth queries) the marginal NDCG lift normalized to 100ms. Negative lift on the reranker row means it slowed you down without helping.
+            Wall-clock milliseconds for the hybrid retrieval and the cross-encoder rerank.
           </p>
-
-          <h4 className="font-semibold text-gray-900 mt-2">Ground Truth tab in Narrator</h4>
-          <p className="text-[1.375rem] text-gray-600">
-            When a pipeline_summary event lands, this same data also renders as a "Ground Truth" tab inside the Narrator panel on the right — a bar-chart view of BM25 / Hybrid / Reranked NDCG@10 for that turn, separate from the Details panel's metrics-table card. It only appears once the summary event arrives.
-          </p>
-
-          <h4 className="font-semibold text-gray-900 mt-2">Fallback layout</h4>
-          <p className="text-[1.375rem] text-gray-600">
-            For novel queries (not in ESCI), the card shows a self-referential confidence proxy: top-1 reranker score, score gap to #2, score variance, and rank churn (top-10 positions that changed pre/post rerank). Color-coded high / medium / low chip — <em>not</em> NDCG, the card calls this out.
-          </p>
-
-          <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mt-2 text-[1.375rem]">
-            <p className="font-semibold text-amber-900">Ground-truth metrics:</p>
-            <p className="text-amber-900 mt-1 text-[1.25rem]">
-              The full corpus — ~158,637 products and 65,028 judged queries — is bulk-loaded from a
-              committed, precomputed export as part of the standard <code className="bg-yellow-100 px-1">make setup</code> (see
-              <code className="bg-yellow-100 px-1"> data/README.md</code>; there is no separate ingest step any more). Queries that match an ESCI
-              query exactly (lowercased) trigger the BM25 → Hybrid → Reranked layout.
-            </p>
-          </div>
         </div>
       ),
     },
@@ -355,7 +269,7 @@ export function GuidePage() {
       content: (
         <div className="space-y-4">
           <p className="text-[1.375rem] text-gray-700">
-            When the <code>llm_judge</code> toggle is on (and the agent generated a synthesized response), a second local LLM call evaluates the answer against the deterministic raw-list baseline. The card adds a <strong>Generation</strong> row to the Pipeline Quality Summary with a pairwise verdict, four absolute scores (faithfulness, answer_relevance, citation_accuracy, context_utilization), and a list of flagged claims.
+            After each answer, a second local LLM call evaluates it against the deterministic raw-list baseline. The card adds a <strong>Generation</strong> row to the Pipeline Summary with a pairwise verdict, four absolute scores (faithfulness, answer_relevance, citation_accuracy, context_utilization), and a list of flagged claims.
           </p>
 
           <h4 className="font-semibold text-gray-900 mt-2">Hallucination categories</h4>
@@ -411,9 +325,7 @@ export function GuidePage() {
               (below 0.7) routes straight to <code className="bg-gray-100 px-1">agent</code> for clarification.
               Query rewriting (resolving pronouns/follow-ups against history) happens inside{' '}
               <code className="bg-gray-100 px-1">retriever</code>, not as a separate node. Quality gate may
-              loop back to the retriever exactly once with alpha adjusted ±0.3. LLM judge runs only when both the{' '}
-              <code className="bg-gray-100 px-1">llm</code> and <code className="bg-gray-100 px-1">llm_judge</code>{' '}
-              toggles are on, and can trigger a second auto-correction generation pass when fabrications are
+              loop back to the retriever exactly once with alpha adjusted ±0.3. LLM judge runs after every answer and can trigger a second auto-correction generation pass when fabrications are
               flagged (see "LLM-as-Judge" section).
             </p>
 
@@ -517,12 +429,6 @@ export function GuidePage() {
               <p className="font-semibold text-gray-900">Demo: Taxonomy demo turn 3 shows wrong results</p>
               <p className="text-gray-600">Query is being rewritten down a lexical path instead of showing the fixed tag</p>
               <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Turn 3 must be run in a brand-new conversation — reusing the same thread causes the query rewriter to take a lexical shortcut instead of re-searching. Close the conversation and start a new one before running turn 3.</p>
-            </div>
-
-            <div className="border-l-4 border-yellow-500 pl-3">
-              <p className="font-semibold text-gray-900">Demo: has_ground_truth is always false</p>
-              <p className="text-gray-600">Expected behavior (except for one specific query)</p>
-              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Ground truth needs an EXACT match against an ESCI query, and most of the scripted demo queries aren't ESCI queries. Only the "headphones with microphone" turn in the "Proving It With Real Judgments" demo produces has_ground_truth=true. Anywhere else it's false is expected, not a bug.</p>
             </div>
 
             <div className="border-l-4 border-yellow-500 pl-3">

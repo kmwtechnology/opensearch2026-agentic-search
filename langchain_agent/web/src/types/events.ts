@@ -66,7 +66,7 @@ export interface QueryExpansionEvent extends BaseEvent {
   expansion_reason: string
 }
 
-export type OpenSearchQueryType = 'hybrid' | 'bm25_baseline' | 'quality_gate_retry'
+export type OpenSearchQueryType = 'hybrid' | 'quality_gate_retry'
 
 export interface OpenSearchQueryEvent extends BaseEvent {
   type: 'opensearch_query'
@@ -76,7 +76,6 @@ export interface OpenSearchQueryEvent extends BaseEvent {
   filters?: Record<string, unknown>[]  // Applied attribute filters
   filter_summary?: string  // Human-readable summary (e.g., "brand: Sony, color: blue")
   intent: string  // intent that triggered the search
-  optimizations?: Record<string, boolean>  // Per-feature toggles applied to this search
   query_type?: OpenSearchQueryType  // Which kind of query this event represents
   body?: Record<string, unknown>  // Full DSL body sent to OpenSearch (embeddings scrubbed)
   index?: string  // Index the search ran against
@@ -276,16 +275,8 @@ export interface MetricsEvent extends BaseEvent {
 }
 
 // ============================================================================
-// PIPELINE QUALITY SUMMARY
+// PIPELINE SUMMARY
 // ============================================================================
-
-export interface StageMetrics {
-  ndcg10: number
-  mrr: number
-  recall20: number
-  precision10: number
-  judged_count: number
-}
 
 export type ConfidenceLabel = 'high' | 'medium' | 'low'
 
@@ -321,25 +312,17 @@ export interface GenerationJudgment {
   hallucinations: FlaggedClaim[]
 }
 
-export type PipelineStageName = 'stock_bm25' | 'bm25' | 'hybrid' | 'reranked'
+export type PipelineStageName = 'hybrid' | 'reranked'
 
 export interface LatencyStage {
   stage: PipelineStageName
   latency_ms: number
-  ndcg?: number | null
-  ndcg_lift_per_100ms?: number | null
 }
 
 export interface PipelineSummaryEvent extends BaseEvent {
   type: 'pipeline_summary'
-  has_ground_truth: boolean
   query: string
-  optimizations: Record<string, boolean>
-  stock_bm25?: StageMetrics | null
-  bm25?: StageMetrics | null
-  hybrid?: StageMetrics | null
-  reranked?: StageMetrics | null
-  confidence?: ConfidenceProxy | null
+  confidence: ConfidenceProxy
   generation?: GenerationJudgment | null
   original_generation?: GenerationJudgment | null
   hallucination_retry_used?: boolean

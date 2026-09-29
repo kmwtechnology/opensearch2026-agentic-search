@@ -9,7 +9,7 @@ A production-grade LangGraph pipeline for e-commerce product discovery:
 - Conversational query rewriting to resolve pronouns and follow-up references
 - Persistent conversation memory via PostgreSQL LangGraph checkpointer
 - Real-time token-by-token streaming over WebSocket with typed observability events
-- Per-turn Pipeline Quality Summary (NDCG@10, MRR, Recall@20, Precision@10)
+- Per-turn pipeline summary (reranker confidence proxy, judge verdict, stage latency)
 
 Powered by:
 - LLM: local Ollama (qwen3.6:35b-a3b) for generation, classify/eval, and judge
@@ -217,8 +217,7 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         print("✓ Reranker initialized")
         # Warmup is deferred to observable_agent lifespan to avoid blocking startup
 
-        # Lazy LLM-as-judge — only constructed when first needed (judge node
-        # only runs when user toggles llm_judge:on AND llm:on).
+        # Lazy LLM-as-judge — only constructed when the judge node first runs.
         self.judge: Optional[LLMJudge] = None
 
         # Lazy second-opinion judge for trigger_enrichment — only constructed

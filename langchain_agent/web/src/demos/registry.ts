@@ -1,10 +1,9 @@
 /**
  * The demo script, as data (#103).
  *
- * TWO main arcs, matching the two halves of the talk's thesis, plus two
- * optional bonus scenes (ground-truth judgments, schema evolution — #114,
- * #142) that don't fit either arc's pacing but are worth showing if there's
- * time:
+ * TWO main arcs, matching the two halves of the talk's thesis, plus one
+ * optional bonus scene (schema evolution, #142) that doesn't fit either arc's
+ * pacing but is worth showing if there's time:
  *
  *   1. Adaptive Query Enhancements — the agent improves results on the fly:
  *      classify intent, weight hybrid retrieval per query, keep context across
@@ -142,74 +141,6 @@ export const DEMOS: Demo[] = [
        * after twenty miles", which improved 0.30 -> 0.35 and still missed the
        * 0.45 bar.
        */
-    ],
-  },
-  {
-    id: 'ground-truth-proof',
-    title: 'Proving It With Real Judgments',
-    subtitle: 'Scored against real academic judgments.',
-    /*
-     * #114: the retrieval pipeline computes real ESCI ground-truth IR metrics
-     * (NDCG@10, MRR, Recall@20, Precision@10) on every turn via
-     * lookup_judgments() — but has_ground_truth depends on an EXACT match
-     * against esci_judgments' `query.keyword`, and none of the six turns in
-     * the two arcs above happen to hit one (verified live 2026-09-15;
-     * has_ground_truth=False for all six as scripted). This turn is
-     * deliberately separate so it can't silently break arc pacing, and
-     * neither arc above triggers it — see DEMO.md before adding it to a run.
-     *
-     * 'cowboy boots women' (original) reproduced identically across 3 live
-     * runs 2026-09-15 but the BM25 stage actually scored WORSE than the
-     * stock-BM25 baseline (0.4441 vs 0.4693) — traced to one keyword-stuffed
-     * spam listing ("Boat Shoes... Women Boots Ankle", chunk_text repeats
-     * "boots"/"women" dozens of times) that legitimately matched all 3 query
-     * terms and outranked the genuine result. Verified this isn't fixable via
-     * minimum_should_match (tested 75% and 100%; the spam listing still
-     * matches every term, so neither threshold excludes it) without broader
-     * BM25 similarity retuning, which is out of scope here and risks
-     * regressing other queries for one cherry-picked case.
-     *
-     * 'grow light' (first replacement) reproduced a clean monotonic climb
-     * (stock_bm25=0.712 -> bm25=0.906 -> hybrid=0.968 -> reranked=1.000) but
-     * was itself replaced: "grow light" reads to a live audience as a
-     * cannabis-cultivation term first and a houseplant-lighting term second,
-     * which is a distraction this slide doesn't need.
-     *
-     * 'sewing machine' (current) was chosen by scanning esci_judgments for
-     * every query with >=3 judged products, all relevance=4.0, filtering out
-     * anything with any plausible controversial/sensitive reading (medical
-     * devices, weapons, drug paraphernalia, body-image products, branded
-     * "dupes"), then live-testing the boring, unambiguous remainder
-     * (surge protector power strip, weighted blanket, burr coffee grinder,
-     * projector, long ruler, curling iron, amazon tablet — all rejected: each
-     * one either had "Your BM25" score WORSE than stock BM25, a non-monotonic
-     * dip somewhere in the stage progression, or fewer than 3/10 judged
-     * products actually surviving retrieval). "sewing machine" was the only
-     * clean result and reproduced identically across 2 live runs
-     * 2026-09-15: stock_bm25 NDCG@10=0.807 -> bm25=0.906 -> hybrid=0.947 ->
-     * reranked=0.922. Not a perfect monotonic climb (reranked dips slightly
-     * below hybrid), but every optimized stage clearly beats the stock
-     * baseline, the catalog is clean (Singer/Suteck/Brother — real products,
-     * no spam), and there is nothing here for anyone to raise an eyebrow at.
-     *
-     * 'headphones with microphone' (current, #147) replaced it when the corpus
-     * was rebuilt query-first (158K products, local nomic embeddings). On the
-     * new corpus 'sewing machine' measured stock 0.41 -> bm25 0.16 -> hybrid
-     * 0.46 -> reranked 0.36: our BM25 below stock and reranking below hybrid,
-     * the opposite of the story. 16 benign test/small candidates with >=12
-     * Exact judgments were run live through the full pipeline; this was the
-     * clean monotonic winner, identical across 3 runs 2026-09-25: stock_bm25
-     * NDCG@10=0.164 -> bm25=0.284 -> hybrid=0.404 -> reranked=0.596, with 39
-     * judged products in the corpus (35 Exact). ('baby boy onesies' was also
-     * monotonic but starts at 0.0 and tops out at 0.43.)
-     */
-    turns: [
-      {
-        query: 'headphones with microphone',
-        watchFor:
-          'has_ground_truth flips to true — the Pipeline Quality Summary switches from the self-referential confidence proxy to real ESCI NDCG@10 per stage: stock BM25 0.16, BM25 0.28, hybrid 0.40, reranked 0.60 — every stage beats the one before it. This is the same progression the other six turns imply but never actually show: hybrid and reranking measurably beating plain BM25, graded by Amazon\'s own relevance judgments, not this system\'s own scoring.',
-        note: '39 products are judged for this query in the corpus (35 Exact) — #147 builds the corpus query-first, so every judged test query keeps its full judgment set. The number is REAL, graded by Amazon\'s own judgments.',
-      },
     ],
   },
   {

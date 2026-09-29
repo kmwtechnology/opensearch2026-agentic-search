@@ -232,7 +232,7 @@ def main():
             print("\n" + "=" * 70)
             return 1
 
-        print("\n[5/5] Loading precomputed products, judgments, and attribute taxonomy...")
+        print("\n[5/5] Loading precomputed products and attribute taxonomy...")
         print(
             "      Bulk-loading data/precomputed/*.parquet — embeddings and attribute "
             "detection were already run once and committed (Git LFS). No Ollama call, "
@@ -251,9 +251,7 @@ def main():
                 check=True,
                 env={**os.environ, "PYTHONPATH": "."},
             )
-            print(
-                "      ✓ Products, judgments, and attribute taxonomy loaded from precomputed dump"
-            )
+            print("      ✓ Products and attribute taxonomy loaded from precomputed dump")
         except subprocess.CalledProcessError as e:
             docs_ingest_failed = True
             print(f"      ✗ Precomputed load failed (exit {e.returncode})")

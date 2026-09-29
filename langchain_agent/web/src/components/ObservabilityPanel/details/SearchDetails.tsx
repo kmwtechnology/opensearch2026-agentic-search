@@ -169,11 +169,9 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
         onClose={() => setRetryDslOpen(false)}
       />
 
-      {/* Search status banner — retriever card only. Label reflects whether
-          hybrid retrieval ran or whether the `hybrid` toggle forced pure BM25. */}
+      {/* Search status banner — retriever card only. */}
       {mode === 'retriever' && (() => {
-        const hybridOn = opensearchQueryEvent?.optimizations?.hybrid !== false
-        const searchLabel = hybridOn ? 'Hybrid search' : 'Lexical (BM25) search'
+        const searchLabel = 'Hybrid search'
         if (searchStatus === 'running') {
           return (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border-2 border-[#5B21B6] border border-[#5B21B6] text-[1.375rem]">

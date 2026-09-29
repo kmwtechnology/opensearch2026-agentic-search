@@ -460,7 +460,6 @@ class OpenSearchVectorStore:
             fetch_k=search_kwargs.get("fetch_k", RETRIEVER_FETCH_K),
             alpha=search_kwargs.get("alpha", RETRIEVER_ALPHA),
             filters=search_kwargs.get("filters"),
-            optimizations=search_kwargs.get("optimizations"),
             capture_body=search_kwargs.get("capture_body"),
         )
 
@@ -491,20 +490,10 @@ class OpenSearchVectorStore:
         return truncated
 
     @staticmethod
-    def _build_multi_match(
-        query: str,
-        optimizations: Optional[Dict[str, bool]] = None,
-    ) -> Dict[str, Any]:
+    def _build_multi_match(query: str) -> Dict[str, Any]:
         """
-        Build a multi_match clause that respects per-feature optimization toggles.
-
-        Toggle semantics (default True when key missing):
-          - phrase_boost: include `title_phrase` field
-          - field_boost: keep per-field `^N` weights; when False, all fields equal
-          - fuzzy: include `"fuzziness": "AUTO"` on the multi_match
-          - synonyms: keep default (`light_english_analyzer` with kstem); when False, force the
-            query through the `standard` analyzer to suppress query-time
-            synonym expansion (index-time tokens are unaffected)
+        Build the BM25 multi_match clause: per-field boosts, a title phrase field,
+        and bounded fuzziness.
 
         Primary fields use `light_english_analyzer` (kstem) for precision. Sub-fields
         (e.g., `chunk_text.heavy`) use `heavy_english_analyzer` (snowball) at ^0.3
@@ -512,65 +501,37 @@ class OpenSearchVectorStore:
         """
         # Truncate query to prevent maxClauseCount errors (issue #85)
         query = OpenSearchVectorStore._truncate_query_terms(query)
-        opts = optimizations or {}
-        phrase_boost = opts.get("phrase_boost", True)
-        field_boost = opts.get("field_boost", True)
-        fuzzy = opts.get("fuzzy", True)
-        synonyms = opts.get("synonyms", True)
 
-        # (field_name, default_boost) — boost is dropped when field_boost is off
-        candidate_fields: List[tuple] = [
-            ("chunk_text", 1.0),
-            ("title", 3.0),
+        fields = [
+            "chunk_text",
+            "title^3.0",
+            "title_phrase^2.5",
+            "product_brand^2.0",
+            "product_color^1.5",
+            "product_waterproof^2.0",
+            "chunk_text.heavy^0.3",
+            "product_brand.heavy^0.3",
+            "product_color.heavy^0.3",
+            "product_waterproof.heavy^0.3",
         ]
-        if phrase_boost:
-            candidate_fields.append(("title_phrase", 2.5))
-        candidate_fields.extend(
-            [
-                ("product_brand", 2.0),
-                ("product_color", 1.5),
-                ("product_waterproof", 2.0),
-            ]
-        )
-        # Add .heavy sub-fields for recall insurance (snowball stemmer, low weight)
-        candidate_fields.extend(
-            [
-                ("chunk_text.heavy", 0.3),
-                ("product_brand.heavy", 0.3),
-                ("product_color.heavy", 0.3),
-                ("product_waterproof.heavy", 0.3),
-            ]
-        )
-
-        if field_boost:
-            fields = [
-                f"{name}^{boost}" if boost != 1.0 else name for name, boost in candidate_fields
-            ]
-        else:
-            fields = [name for name, _ in candidate_fields]
-
-        clause: Dict[str, Any] = {
-            "query": query,
-            "fields": fields,
-            "type": "best_fields",
-            "tie_breaker": 0.3,
+        return {
+            "multi_match": {
+                "query": query,
+                "fields": fields,
+                "type": "best_fields",
+                "tie_breaker": 0.3,
+                "fuzziness": "AUTO",
+                # Bound the expansion. Unbounded AUTO fuzziness expands each term
+                # into up to 50 vocabulary variants *per field*; over this many
+                # fields and a 158K-product vocabulary (#147) an ordinary 8-10 word
+                # query blew past OpenSearch's 1024-clause limit and hybrid search
+                # failed outright. No fuzzing the first character is the usual
+                # typo-tolerance trade-off; 10 variants per term keeps a 22-word
+                # query well inside the limit.
+                "prefix_length": 1,
+                "max_expansions": 10,
+            }
         }
-        if fuzzy:
-            clause["fuzziness"] = "AUTO"
-            # Bound the expansion. Unbounded AUTO fuzziness expands each term
-            # into up to 50 vocabulary variants *per field*; over this many
-            # fields and a 158K-product vocabulary (#147) an ordinary 8-10 word
-            # query blew past OpenSearch's 1024-clause limit and hybrid search
-            # failed outright. No fuzzing the first character is the usual
-            # typo-tolerance trade-off; 10 variants per term keeps a 22-word
-            # query well inside the limit.
-            clause["prefix_length"] = 1
-            clause["max_expansions"] = 10
-        if not synonyms:
-            # `standard` analyzer skips the synonym_filter applied by english_analyzer
-            clause["analyzer"] = "standard"
-
-        return {"multi_match": clause}
 
     def similarity_search(self, query: str, k: int = 4) -> List[Document]:
         """
@@ -620,7 +581,6 @@ class OpenSearchVectorStore:
         fetch_k: int = 20,
         alpha: float = 0.5,
         filters: Optional[List[Dict[str, Any]]] = None,
-        optimizations: Optional[Dict[str, bool]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """
@@ -645,18 +605,8 @@ class OpenSearchVectorStore:
         if fetch_k < k:
             raise SearchValidationError(f"fetch_k ({fetch_k}) must be >= k ({k})")
 
-        # Honor the `hybrid` toggle: when off, fall through to pure BM25 lexical
-        # search regardless of the alpha the query evaluator chose.
-        opts = optimizations or {}
-        if opts.get("hybrid", True) is False:
-            return self._text_search(
-                query, k, filters, optimizations=optimizations, capture_body=capture_body
-            )
-
         if alpha == 0.0:
-            return self._text_search(
-                query, k, filters, optimizations=optimizations, capture_body=capture_body
-            )
+            return self._text_search(query, k, filters, capture_body=capture_body)
 
         if alpha == 1.0:
             return self.similarity_search(query, k)
@@ -675,7 +625,6 @@ class OpenSearchVectorStore:
                     fetch_k,
                     alpha,
                     filters,
-                    optimizations,
                     capture_body=capture_body,
                 )
             else:
@@ -686,7 +635,6 @@ class OpenSearchVectorStore:
                     fetch_k,
                     alpha,
                     filters,
-                    optimizations,
                     capture_body=capture_body,
                 )
 
@@ -705,7 +653,6 @@ class OpenSearchVectorStore:
         fetch_k: int,
         alpha: float,
         filters: Optional[List[Dict[str, Any]]] = None,
-        optimizations: Optional[Dict[str, bool]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Native OpenSearch hybrid search using search pipeline with optional attribute filters."""
@@ -739,7 +686,7 @@ class OpenSearchVectorStore:
                         },
                         {
                             "bool": {
-                                "must": [self._build_multi_match(query, optimizations)],
+                                "must": [self._build_multi_match(query)],
                                 "filter": text_filter_list,
                             }
                         },
@@ -768,7 +715,7 @@ class OpenSearchVectorStore:
                 if truncated_query != query:
                     # Rebuild the DSL with the truncated query
                     body["query"]["hybrid"]["queries"][1]["bool"]["must"] = [
-                        self._build_multi_match(truncated_query, optimizations)
+                        self._build_multi_match(truncated_query)
                     ]
                     try:
                         response = self.client.search(
@@ -792,7 +739,6 @@ class OpenSearchVectorStore:
         fetch_k: int,
         alpha: float,
         filters: Optional[List[Dict[str, Any]]] = None,
-        optimizations: Optional[Dict[str, bool]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Client-side RRF fallback for older OpenSearch versions."""
@@ -822,7 +768,7 @@ class OpenSearchVectorStore:
             "_source": {"excludes": ["embedding"]},
             "query": {
                 "bool": {
-                    "must": [self._build_multi_match(query, optimizations)],
+                    "must": [self._build_multi_match(query)],
                     "filter": filter_list,
                 }
             },
@@ -844,9 +790,7 @@ class OpenSearchVectorStore:
                 )
                 truncated_query = self._truncate_query_terms(query, max_terms=20)
                 if truncated_query != query:
-                    text_body["query"]["bool"]["must"] = [
-                        self._build_multi_match(truncated_query, optimizations)
-                    ]
+                    text_body["query"]["bool"]["must"] = [self._build_multi_match(truncated_query)]
                     try:
                         text_response = self.client.search(index=self.index_name, body=text_body)
                     except Exception as retry_error:
@@ -889,7 +833,6 @@ class OpenSearchVectorStore:
         query: str,
         k: int = 4,
         filters: Optional[List[Dict[str, Any]]] = None,
-        optimizations: Optional[Dict[str, bool]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Pure BM25 text search for alpha=0.0."""
@@ -903,7 +846,7 @@ class OpenSearchVectorStore:
                 "_source": {"excludes": ["embedding"]},
                 "query": {
                     "bool": {
-                        "must": [self._build_multi_match(query, optimizations)],
+                        "must": [self._build_multi_match(query)],
                         "filter": filter_list,
                     }
                 },
@@ -925,9 +868,7 @@ class OpenSearchVectorStore:
                     )
                     truncated_query = self._truncate_query_terms(query, max_terms=20)
                     if truncated_query != query:
-                        body["query"]["bool"]["must"] = [
-                            self._build_multi_match(truncated_query, optimizations)
-                        ]
+                        body["query"]["bool"]["must"] = [self._build_multi_match(truncated_query)]
                         try:
                             response = self.client.search(index=self.index_name, body=body)
                         except Exception as retry_error:
@@ -942,121 +883,6 @@ class OpenSearchVectorStore:
         except Exception as e:
             logger.error(f"Error during text search: {e}")
             return []
-
-    def bm25_only_search(
-        self,
-        query: str,
-        k: int = 20,
-        filters: Optional[List[Dict[str, Any]]] = None,
-        optimizations: Optional[Dict[str, bool]] = None,
-        capture_body: Optional[Dict[str, Any]] = None,
-    ) -> List[Document]:
-        """Public BM25-only search used as the baseline for relevancy metrics.
-
-        Honors the same per-feature optimization toggles as hybrid so the
-        comparison is apples-to-apples (e.g. fuzzy + synonyms still apply
-        if they're on for the active hybrid query). The ``hybrid`` toggle
-        itself is ignored — this method is the BM25 baseline.
-        """
-        return self._text_search(
-            query,
-            k=k,
-            filters=filters,
-            optimizations=optimizations,
-            capture_body=capture_body,
-        )
-
-    def stock_bm25_search(
-        self,
-        query: str,
-        k: int = 20,
-        filters: Optional[List[Dict[str, Any]]] = None,
-    ) -> List[Document]:
-        """Vanilla BM25 reference — ignores all optimization toggles.
-
-        Standard analyzer (no stemming, no synonyms), multi_match against
-        ``title`` + ``chunk_text`` only, no fuzziness, no phonetic fields,
-        no phrase boost, no field boost. This is the fixed anchor row of
-        the Pipeline Quality Summary card so users can see what their
-        BM25 toggles actually buy them on top of vanilla.
-        """
-        try:
-            filter_list = [{"term": {"collection_id": self.collection_id}}]
-            if filters:
-                filter_list.extend(filters)
-
-            body = {
-                "size": k,
-                "_source": {"excludes": ["embedding"]},
-                "query": {
-                    "bool": {
-                        "must": [
-                            {
-                                "multi_match": {
-                                    "query": query,
-                                    "fields": ["title", "chunk_text"],
-                                    "type": "best_fields",
-                                    "analyzer": "standard",
-                                }
-                            }
-                        ],
-                        "filter": filter_list,
-                    }
-                },
-            }
-
-            response = self.client.search(index=self.index_name, body=body)
-            return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
-        except Exception as e:
-            logger.error(f"Error during stock BM25 search: {e}")
-            return []
-
-    def lookup_judgments(
-        self,
-        query: str,
-        *,
-        index_name: str = "esci_judgments",
-        locale: str = "us",
-    ) -> Optional[Dict[str, float]]:
-        """Look up ESCI ground-truth judgments for ``query``.
-
-        Returns ``{product_id: relevance_score}`` when a matching query
-        exists in the judgments index, else ``None``. Matching is exact
-        on the lowercased keyword so a missing match silently fails over
-        to the self-referential confidence proxy in the UI.
-        """
-        if not query:
-            return None
-        try:
-            response = self.client.search(
-                index=index_name,
-                body={
-                    "size": 1,
-                    "query": {
-                        "bool": {
-                            "must": [
-                                {"term": {"query.keyword": query.strip().lower()}},
-                                {"term": {"locale": locale}},
-                            ]
-                        }
-                    },
-                },
-            )
-        except Exception as exc:
-            # Index may not exist yet (e.g. local dev without ingestion).
-            # Treat as a fallback signal, not an error.
-            logger.debug("Judgments lookup failed: %s", exc)
-            return None
-
-        hits = response.get("hits", {}).get("hits", [])
-        if not hits:
-            return None
-        source = hits[0].get("_source", {})
-        return {
-            entry["product_id"]: float(entry.get("relevance", 0.0))
-            for entry in source.get("judgments", [])
-            if entry.get("product_id")
-        }
 
     @staticmethod
     def _hit_to_document(hit: dict, retrieval_score: Optional[float] = None) -> Document:
@@ -1181,7 +1007,6 @@ class OpenSearchRetriever:
         fetch_k: int = 20,
         alpha: float = 0.5,
         filters: Optional[List[Dict[str, Any]]] = None,
-        optimizations: Optional[Dict[str, bool]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.vector_store = vector_store
@@ -1190,7 +1015,6 @@ class OpenSearchRetriever:
         self.fetch_k = fetch_k
         self.alpha = alpha
         self.filters = filters
-        self.optimizations = optimizations
         # Optional sink for the actual DSL body sent to OpenSearch — populated
         # in-place during ``invoke()`` so the observability layer can echo
         # the exact query the cluster saw (with embedding scrubbed).
@@ -1251,7 +1075,6 @@ class OpenSearchRetriever:
                 fetch_k=self.fetch_k,
                 alpha=self.alpha,
                 filters=self.filters,
-                optimizations=self.optimizations,
                 capture_body=self.capture_body,
             )
         elif self.search_type == "similarity":

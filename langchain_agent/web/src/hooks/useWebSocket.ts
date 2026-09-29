@@ -6,7 +6,6 @@
 import { useCallback, useRef } from 'react'
 import { useChatStore, type ChatMessage } from '../stores/chatStore'
 import { useObservabilityStore } from '../stores/observabilityStore'
-import { useOptimizationsStore } from '../stores/optimizationsStore'
 import type { AgentEvent, NodeName } from '../types/events'
 
 // Singleton WebSocket instance
@@ -57,12 +56,10 @@ export function useWebSocket(): UseWebSocketReturn {
     obsStore.startExecution()
 
     // Send message over WebSocket
-    const optimizations = useOptimizationsStore.getState().optimizations
     const payload = {
       type: 'chat_message',
       message,
       thread_id: currentThreadId,
-      optimizations,
     }
 
     wsInstance.send(JSON.stringify(payload))

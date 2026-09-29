@@ -1,5 +1,5 @@
 """
-LLM-as-judge for Pipeline Quality Summary "Generation" stage.
+LLM-as-judge for Pipeline Summary "Generation" stage.
 
 Compares the agent's synthesized response (LLM:on path) against the
 deterministic raw-product-list response (LLM:off path) and emits a
@@ -17,8 +17,7 @@ Bias mitigations:
     labels; we map back to llm/baseline server-side.
   * Tight token limits + temperature=0 for repeatability.
 
-Cost: one extra local LLM call per judged query (~2-3s warm, no API cost). Skipped when ``optimizations.llm_judge:false`` or
-``optimizations.llm:false``.
+Cost: one extra local LLM call per judged query (~2-3s warm, no API cost).
 """
 
 from __future__ import annotations

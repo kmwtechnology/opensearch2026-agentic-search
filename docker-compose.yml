@@ -30,8 +30,8 @@ services:
       # (OPENSEARCH_USER/OPENSEARCH_PASSWORD in langchain_agent/.env stay empty).
       - DISABLE_SECURITY_PLUGIN=true
       # 2g, up from 512m, for the ~158K-product corpus (#147): ~500 MB of
-      # 768-dim vectors live off-heap in HNSW, but BM25 on 17x the docs, the
-      # 8,956-query judgments index and bulk ingest all want more heap.
+      # 768-dim vectors live off-heap in HNSW, but BM25 on 17x the docs and
+      # the bulk load want more heap.
       - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
     ports:
       - "9200:9200"

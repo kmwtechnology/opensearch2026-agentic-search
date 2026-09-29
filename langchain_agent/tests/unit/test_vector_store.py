@@ -37,21 +37,6 @@ def _make_store():
     return store, mock_client
 
 
-def _make_search_response(judgments):
-    """Build a mock OpenSearch search response with the given judgments list."""
-    return {
-        "hits": {
-            "hits": [
-                {
-                    "_source": {
-                        "judgments": judgments,
-                    }
-                }
-            ]
-        }
-    }
-
-
 # ---------------------------------------------------------------------------
 # TestCollapseByDocument
 # ---------------------------------------------------------------------------
@@ -98,61 +83,6 @@ class TestCollapseByDocument:
         docs = [_make_doc("A"), _make_doc("B"), _make_doc("A"), _make_doc("C")]
         result = OpenSearchRetriever.collapse_by_document(docs)
         assert [d.metadata["product_id"] for d in result] == ["A", "B", "C"]
-
-
-# ---------------------------------------------------------------------------
-# TestLookupJudgments
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestLookupJudgments:
-
-    def test_returns_none_for_empty_query(self):
-        store, mock_client = _make_store()
-        result = store.lookup_judgments("")
-        assert result is None
-        mock_client.search.assert_not_called()
-
-    def test_returns_none_when_no_hits(self):
-        store, mock_client = _make_store()
-        mock_client.search.return_value = {"hits": {"hits": []}}
-        result = store.lookup_judgments("blue shoes")
-        assert result is None
-
-    def test_returns_judgment_dict_on_hit(self):
-        store, mock_client = _make_store()
-        mock_client.search.return_value = _make_search_response(
-            [{"product_id": "p1", "relevance": 0.8}]
-        )
-        result = store.lookup_judgments("blue shoes")
-        assert result == {"p1": 0.8}
-
-    def test_filters_entries_without_product_id(self):
-        store, mock_client = _make_store()
-        mock_client.search.return_value = _make_search_response(
-            [
-                {"product_id": "p1", "relevance": 1.0},
-                {"relevance": 0.5},  # no product_id
-            ]
-        )
-        result = store.lookup_judgments("query")
-        assert result == {"p1": 1.0}
-        assert len(result) == 1
-
-    def test_returns_none_on_client_exception(self):
-        store, mock_client = _make_store()
-        mock_client.search.side_effect = Exception("connection refused")
-        result = store.lookup_judgments("query")
-        assert result is None
-
-    def test_relevance_defaults_to_zero_when_missing(self):
-        store, mock_client = _make_store()
-        mock_client.search.return_value = _make_search_response(
-            [{"product_id": "p1"}]  # no relevance key
-        )
-        result = store.lookup_judgments("query")
-        assert result == {"p1": 0.0}
 
 
 # ---------------------------------------------------------------------------
@@ -403,12 +333,6 @@ class TestHybridSearch:
         results = store.hybrid_search("query", k=1, fetch_k=10, alpha=1.0)
         assert len(results) == 1
 
-    def test_hybrid_disabled_via_optimizations_uses_text(self):
-        store, mock_client, _ = _make_full_store()
-        mock_client.search.return_value = _search_resp(_hit())
-        store.hybrid_search("q", k=1, fetch_k=10, alpha=0.5, optimizations={"hybrid": False})
-        assert mock_client.search.call_count == 1
-
     def test_raises_search_validation_error_for_bad_alpha(self):
         from core.exceptions import SearchValidationError
 
@@ -474,40 +398,6 @@ class TestTextSearch:
         filter_terms = body["query"]["bool"]["filter"]
         brands = [f.get("term", {}).get("product_brand") for f in filter_terms]
         assert "Sony" in brands
-
-
-# ---------------------------------------------------------------------------
-# TestBm25OnlyAndStockBm25
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestBm25Searches:
-    def test_bm25_only_delegates_to_text_search(self):
-        store, mock_client, _ = _make_full_store()
-        mock_client.search.return_value = _search_resp(_hit())
-        results = store.bm25_only_search("query", k=1)
-        assert len(results) == 1
-        assert mock_client.search.call_count == 1
-
-    def test_stock_bm25_returns_documents(self):
-        store, mock_client, _ = _make_full_store()
-        mock_client.search.return_value = _search_resp(_hit("p1"), _hit("p2"))
-        results = store.stock_bm25_search("query", k=2)
-        assert len(results) == 2
-
-    def test_stock_bm25_uses_standard_analyzer(self):
-        store, mock_client, _ = _make_full_store()
-        mock_client.search.return_value = _search_resp()
-        store.stock_bm25_search("query")
-        body = mock_client.search.call_args[1]["body"]
-        mm = body["query"]["bool"]["must"][0]["multi_match"]
-        assert mm["analyzer"] == "standard"
-
-    def test_stock_bm25_returns_empty_on_exception(self):
-        store, mock_client, _ = _make_full_store()
-        mock_client.search.side_effect = Exception("down")
-        assert store.stock_bm25_search("query") == []
 
 
 # ---------------------------------------------------------------------------
@@ -643,18 +533,6 @@ class TestCaptureBody:
         assert body["size"] == 4
         assert "query" in body
         assert capture["index"] == "test_index"
-
-    def test_bm25_only_search_captures_body(self):
-        store, mock_client = _make_store()
-        mock_client.search.return_value = {"hits": {"hits": []}}
-
-        capture: dict = {}
-        store.bm25_only_search("blue widgets", k=10, capture_body=capture)
-
-        body = capture["body"]
-        # Pure BM25 has no embedding — body should echo the multi_match clause.
-        must = body["query"]["bool"]["must"]
-        assert any("multi_match" in clause for clause in must)
 
     def test_hybrid_native_captures_body_with_scrubbed_vector(self):
         store, mock_client = _make_store()

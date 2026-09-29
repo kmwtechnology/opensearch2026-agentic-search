@@ -67,7 +67,7 @@ Armed looks like `yellow: 35`. Already-run looks like `brown: 29`.
 | **Next** | Fills and sends the next scripted turn. Click it and talk. |
 | **Restart** | Clears the transcript, resets the narration, rewinds to turn 1, **and re-arms the index**. |
 | **F2** | Full pipeline detail — raw DSL, per-node timings. For Q&A, not for the walkthrough. |
-| Demo dropdown | Switches arcs (and the two optional bonus scenes — see below). Selecting arc 2 or the schema-evolution bonus re-arms it. |
+| Demo dropdown | Switches arcs (and the optional bonus scene — see below). Selecting arc 2 or the schema-evolution bonus re-arms it. |
 
 The header reads **"Next up · Turn N of M"** — it names the query the button
 will send, which during a running turn is one ahead of what is on screen.
@@ -198,36 +198,7 @@ Each of these was tested; the measurements are in the commit history.
 
 ---
 
-## Bonus — proving it with real judgments (optional, ~1 min)
-
-The retrieval pipeline computes real ESCI ground-truth relevance metrics
-(NDCG@10, MRR, Recall@20, Precision@10) every turn via `lookup_judgments()` —
-but that only fires on an **exact match** against a query string that exists
-in the `esci_judgments` index, and **none of the six scripted turns above
-hit one.** Every turn in Arc 1 and Arc 2 shows the self-referential
-confidence proxy, not real ground truth. This is not a bug in either arc —
-it's just never been demonstrated on stage.
-
-If there's time (skip it if not — neither arc depends on this), select the
-**"Bonus: Proving It With Real Judgments"** demo from the dropdown and run
-its one turn:
-
-**Query: `headphones with microphone`**
-
-Watch the Pipeline Quality Summary switch from the confidence proxy to real
-numbers against relevance judgments from Amazon's own ESCI benchmark — not
-this system's own scoring: **stock BM25 NDCG@10 0.16 → BM25 0.28 → hybrid
-0.40 → reranked 0.60** (identical across 3 live runs), graded against 39
-judged products in the corpus (35 Exact). This is the concrete version of
-the claim both arcs make in passing (hybrid + reranking beat plain lexical
-search): here it's measured against an external, academic ground truth
-instead of the system grading its own homework — and every stage beats the
-one before it. (It replaced "sewing machine", which on the rebuilt corpus
-measured 0.41 → 0.16 → 0.46 → 0.36, the wrong story.)
-
----
-
-## Bonus 2 — schema evolution (optional, ~1 min)
+## Bonus — schema evolution (optional, ~1 min)
 
 Arc 2 shows the agent *correcting* a wrong tag — a shopper has to notice
 and dispute it first. This shows the same taxonomy-growth machinery's other
@@ -305,7 +276,7 @@ change would actually help shoppers before anything is written; and the whole
 tool is behind `ENABLE_ENRICHMENT_TOOL` (off in code, on in this repo's `.env`).
 
 **Beyond colour?** Yes — the same taxonomy store, scoped re-tag, and
-`trigger_enrichment` tool cover waterproof too (see "Bonus 2 — schema
+`trigger_enrichment` tool cover waterproof too (see "Bonus — schema
 evolution" above, which walks it end to end as a growth story), and the
 correction path is generic over `attribute_type`.
 

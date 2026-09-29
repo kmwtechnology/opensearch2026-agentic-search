@@ -128,43 +128,23 @@ class CustomAgentState(TypedDict, total=False):
     # value lets a prior pass's "retry" leak forward through state.
     quality_gate_status: Optional[str]
 
-    # Per-message search optimization toggles (frontend-controlled).
-    # Recognized keys: hybrid, fuzzy, synonyms, phrase_boost, field_boost,
-    # typeahead, reranking, llm, llm_judge. Missing keys default to True.
-    optimizations: Dict[str, bool]
-
     # ------------------------------------------------------------------
-    # Pipeline Quality Summary inputs (set by retriever_node / reranker_node)
+    # Pipeline Summary inputs (set by retriever_node / reranker_node)
     # ------------------------------------------------------------------
     # Pre-rerank hybrid result list (top fetch_k) — preserved before the
-    # reranker overwrites retrieved_documents. Used to compute hybrid-stage
-    # NDCG@10/MRR/Recall@20/Precision@10 in the summary card.
+    # reranker overwrites retrieved_documents. Used to count rank changes for
+    # the summary card's confidence proxy.
     pre_rerank_documents: List[Document]
     # Full reranker-scored list (all candidates from the retriever, sorted
     # descending by reranker score) — preserved before the top-K cut so the
     # observability panel can show every candidate the cross-encoder
     # evaluated, not just the top-K passed to the agent.
     all_reranked_documents: List[Document]
-    # Pure BM25 baseline ranking (top fetch_k). Same query, same filters,
-    # but no vector search — used as the apples-to-apples baseline.
-    bm25_documents: List[Document]
-    # Stock/vanilla BM25 reference. Ignores all optimization toggles —
-    # standard analyzer, title + chunk_text only. Always present, gives
-    # the Pipeline Quality Summary card a fixed anchor for measuring the
-    # value of fuzzy/synonyms/etc.
-    stock_bm25_documents: List[Document]
-    # ESCI ground-truth judgments for the user's query, looked up from
-    # the esci_judgments index. None when the query is novel; the UI
-    # falls back to the confidence proxy in that case.
-    judgments: Optional[Dict[str, float]]
     # Per-stage wall-clock latency in milliseconds.
-    bm25_latency_ms: float
-    stock_bm25_latency_ms: float
     retriever_latency_ms: float
     reranker_latency_ms: float
 
-    # LLM-as-judge output (set by llm_judge_node when both ``llm:on`` and
-    # ``llm_judge:on`` toggles are active). Stored as a plain dict so it
+    # LLM-as-judge output (set by llm_judge_node). Stored as a plain dict so it
     # survives LangGraph checkpoint serialization without importing the
     # judge module here.
     judgment: Optional[Dict[str, object]]

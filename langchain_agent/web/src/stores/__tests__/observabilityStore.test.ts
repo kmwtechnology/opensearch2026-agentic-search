@@ -159,8 +159,8 @@ describe('observabilityStore', () => {
         type: 'pipeline_summary' as const,
         timestamp: '2026-01-01T00:00:00Z',
         node: 'agent' as const,
-        has_judgments: false,
-        stages: [],
+        query: 'boots',
+        latency: [],
       }
       useObservabilityStore.getState().addEvent(event as any)
       expect(useObservabilityStore.getState().pipelineSummary).toEqual(event)

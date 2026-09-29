@@ -10,13 +10,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Cowboy mode (2026-09-15):** commit directly to `main`, no feature branch or PR required by default. `main` has no branch protection — this is a private repo without GitHub Pro, so classic branch protection and rulesets both 403; `gh api .../branches/main` confirms `"protected": false`. Confirm `git status` is clean and `main` is up to date before starting. Run `make ci` before pushing — that local run is the only gate that exists, for anything. A feature branch + PR is still fine when you explicitly want something reviewed before it lands, but it's opt-in now, not the default.
 
-## Workflow skills
+## Workflow
 
-This repo has project-level skills at `.claude/skills/` (`workflow-start`, `workflow-check`, `workflow-deploy`), rewritten 2026-09-15 for the direct-to-main flow — use them instead of generic process assumptions:
-
-- **`workflow-start`**: get issue context, plan, then code straight on `main` — no branch, no draft PR.
-- **`workflow-check`**: pre-push checklist (`make ci`, self-review, docs/memory update) — this is the review gate, since there's no PR/reviewer.
-- **`workflow-deploy`**: push, verify locally (`make dev`), close the issue.
+No project skills: work directly on `main`, gate with `make ci`, update docs and memory before pushing.
 
 Load-bearing facts:
 
@@ -102,7 +98,7 @@ Six intent classes (`search`, `comparison`, `attribute_filter`, `refinement`, `f
 - `pipeline/` — node implementations, conversation management, enrichment events, `reindex_trigger.py`, `scoped_retag.py`
 - `retrieval/` — vector store, reranker, embeddings, attribute discovery/mapping store
 - `quality/` — LLM judge, enrichment service + value judge, demo reset
-- `observability/` — embedding cache, relevancy metrics, LLM content helpers
+- `observability/` — embedding cache, confidence proxy, LLM content helpers
 - `checkpoints/` — `checkpoint_optimizer.py` (keeps transient fields out of persisted state)
 - `tools/` — `enrichment_tool.py` (the agent's `trigger_enrichment` tool)
 - `api/` — FastAPI app (`main.py`, `routes/` = `chat`, `health`, `suggest`, `admin`; `schemas/`, `services/`, `middleware/` = `origin_auth`)

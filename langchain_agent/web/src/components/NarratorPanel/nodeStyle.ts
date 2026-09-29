@@ -18,7 +18,6 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
-  Target,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -32,7 +31,6 @@ export type NodeStyleKey =
   | 'agent'
   | 'enrichment'
   | 'llm_judge'
-  | 'ground_truth'
 
 export const NODE_STYLE: Record<NodeStyleKey, { fg: string; tint: string; Icon: LucideIcon }> = {
   intent_classifier: { fg: '#065F46', tint: '#ECFDF5', Icon: Brain },
@@ -44,10 +42,6 @@ export const NODE_STYLE: Record<NodeStyleKey, { fg: string; tint: string; Icon: 
   agent: { fg: '#155E75', tint: '#ECFEFF', Icon: Sparkles },
   enrichment: { fg: '#065F46', tint: '#ECFDF5', Icon: Sparkles },
   llm_judge: { fg: '#9F1239', tint: '#FFF1F2', Icon: ShieldCheck },
-  // Gold, not brown — deliberately reads as "gold standard" and stays clearly
-  // distinct from quality_gate's rust-orange (#130 feedback: the first pass
-  // was too close to that existing hue).
-  ground_truth: { fg: '#A16207', tint: '#FEFCE8', Icon: Target },
 }
 
 export function nodeStyle(node: string | null | undefined) {
