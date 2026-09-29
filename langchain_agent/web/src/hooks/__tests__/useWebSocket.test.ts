@@ -211,7 +211,6 @@ describe('useWebSocket', () => {
         final_response: 'The answer.',
         citations: [],
         thread_id: 'thread-1',
-        title: 'Test conversation',
       })
       expect(useChatStore.getState().streamingContent).toBe('')
       expect(useObservabilityStore.getState().isExecuting).toBe(false)
@@ -231,7 +230,6 @@ describe('useWebSocket', () => {
         final_response: 'Answer',
         citations,
         thread_id: 'thread-1',
-        title: 'Test',
       })
       const lastMsg = useChatStore.getState().messages.at(-1)
       expect(lastMsg?.citations).toEqual(citations)
@@ -256,7 +254,6 @@ describe('useWebSocket', () => {
         final_response: 'The full answer.',
         citations,
         thread_id: 'thread-1',
-        title: 'Test',
       })
 
       const last = useChatStore.getState().messages.at(-1)
@@ -275,7 +272,7 @@ describe('useWebSocket', () => {
       })
       sendEvent({ type: 'llm_response_chunk', timestamp: 't', content: 'Streamed only', is_complete: true })
       sendEvent({
-        type: 'agent_complete', timestamp: 't', citations: [], thread_id: 't1', title: 'T',
+        type: 'agent_complete', timestamp: 't', citations: [], thread_id: 't1',
       })
 
       expect(useChatStore.getState().messages.at(-1)?.content).toBe('Streamed only')

@@ -63,7 +63,6 @@ ConfidenceProxyModel = ConfidenceProxy
 StageMetricsModel = StageMetrics
 from core.config import (
     ANSWER_STREAM_TAG,
-    ENABLE_RERANKING,
     INTERNAL_LLM_TAG,
     RERANKER_TYPE,
     RETRIEVER_FETCH_K,
@@ -140,9 +139,9 @@ class ObservableAgentService:
 
     async def _warmup_reranker(self) -> None:
         """Warm up reranker in background (non-blocking)."""
-        from core.config import ENABLE_RERANKING, RERANKER_WARMUP_ENABLED
+        from core.config import RERANKER_WARMUP_ENABLED
 
-        if not (ENABLE_RERANKING and RERANKER_WARMUP_ENABLED):
+        if not RERANKER_WARMUP_ENABLED:
             async with self._warmup_lock:
                 self._warmup_complete = True
             return
@@ -216,9 +215,6 @@ class ObservableAgentService:
                     )
 
             async with self._request_lock:
-                # Set thread for conversation persistence
-                self._agent.set_thread_id(thread_id)
-
                 # Set emit callback for intermediate events from retriever_node
                 # Also store the current event loop so retriever_node can use it
                 self._agent.emit_callback = emit
@@ -351,10 +347,7 @@ class ObservableAgentService:
             # Calculate total duration
             total_duration_ms = (time.time() - start_time) * 1000
 
-            # Extract title from user message (don't wait for async title generation)
-            title = message[:50].strip() if message else None
-
-            # Emit completion event (don't block on title generation)
+            # Emit completion event
             logger.info(
                 f"Emitting AgentCompleteEvent: {len(final_response or '')} chars, {total_duration_ms:.0f}ms"
             )
@@ -366,14 +359,10 @@ class ObservableAgentService:
                     iterations=0,
                     response_retries=0,
                     documents_used=documents_used,
-                    title=title,
                     citations=citations,
                 )
             )
             logger.info("AgentCompleteEvent emitted successfully")
-
-            # Generate and persist conversation title in background (non-blocking)
-            asyncio.create_task(self._generate_title_async(thread_id, final_response))
 
             # Emit metrics
             await emit(
@@ -923,7 +912,7 @@ class ObservableAgentService:
             documents = output.get("all_reranked_documents") or output.get(
                 "retrieved_documents", []
             )
-            if documents and ENABLE_RERANKING:
+            if documents:
                 reranked_docs = self._compute_reranked_documents(documents)
                 reranking_changed_order = self._check_if_order_changed(documents, reranked_docs)
 
@@ -1210,31 +1199,6 @@ class ObservableAgentService:
                 return f"{message_count} messages summarized"
             return f"Summary skipped ({message_count} msgs)"
         return ""
-
-    async def _generate_title_async(
-        self,
-        thread_id: str,
-        _response: Optional[str],
-    ) -> None:
-        """Generate and persist conversation title in background (non-blocking).
-
-        This runs asynchronously after AgentCompleteEvent is emitted, so any
-        delays in LLM title generation don't block the WebSocket response.
-
-        `_response` is accepted for API symmetry with the upstream call site
-        but the title is synthesized from the prior conversation state.
-
-        `thread_id` is passed explicitly to `update_conversation_title` rather
-        than relying on `self._agent.thread_id` (see #23): `self._agent` is a
-        single shared instance, and by the time this background task runs, a
-        subsequent request may already have reassigned its thread_id.
-        """
-        try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._agent.update_conversation_title, thread_id)
-            logger.debug(f"Background title generation completed for thread {thread_id}")
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.warning(f"Background title generation failed: {e}")
 
     async def cleanup(self):
         """

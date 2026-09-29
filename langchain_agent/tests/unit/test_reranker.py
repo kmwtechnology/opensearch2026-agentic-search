@@ -117,24 +117,6 @@ class TestCrossEncoderReranker:
         pairs = call_args[0][0]
         assert len(pairs[0][1]) == 500
 
-    def test_rerank_returns_top_k(self):
-        reranker = _make_cross_reranker()
-        docs = [_doc(f"Doc {i}") for i in range(5)]
-        reranker.model = MagicMock()
-        reranker.model.predict.return_value = np.array([2.0, 1.5, 0.0, -0.5, -1.0])
-        result = reranker.rerank("query", docs, top_k=3)
-        assert len(result) == 3
-        scores = [s for _, s in result]
-        assert scores[0] >= scores[1] >= scores[2]
-
-    def test_rerank_top_k_larger_than_docs_returns_all(self):
-        reranker = _make_cross_reranker()
-        docs = [_doc("A"), _doc("B")]
-        reranker.model = MagicMock()
-        reranker.model.predict.return_value = np.array([0.8, -0.5])
-        result = reranker.rerank("query", docs, top_k=10)
-        assert len(result) == 2
-
     def test_warmup_calls_score_documents(self):
         reranker = _make_cross_reranker()
         reranker.model = MagicMock()

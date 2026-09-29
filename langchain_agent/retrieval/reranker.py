@@ -225,20 +225,3 @@ class CrossEncoderReranker:
 
         all_scored.sort(key=lambda x: x[1], reverse=True)
         return all_scored
-
-    def rerank(
-        self, query: str, documents: List[Document], top_k: int
-    ) -> List[Tuple[Document, float]]:
-        """
-        Rerank documents and return top-k most relevant results.
-
-        Args:
-            query: The search query string
-            documents: List of LangChain Document objects to rerank
-            top_k: Maximum number of documents to return
-
-        Returns:
-            List of (Document, score) tuples for top-k results sorted by score descending.
-        """
-        scored_docs = self.score_documents(query, documents)
-        return scored_docs[:top_k]

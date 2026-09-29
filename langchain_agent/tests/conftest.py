@@ -34,7 +34,6 @@ def bare_agent():
     agent.async_pool = None
     agent.checkpointer = None
     agent.app = None
-    agent.thread_id = None
     agent.emit_callback = None
     agent.event_loop = None
     agent.event_queue = []

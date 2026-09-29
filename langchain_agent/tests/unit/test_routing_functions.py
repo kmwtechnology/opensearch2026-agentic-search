@@ -149,7 +149,6 @@ class TestLlmJudgeNodeSkips:
         state = self._state_with(optimizations={"llm": True, "llm_judge": False})
         result = self.agent.llm_judge_node(state)
         assert result["judgment"] is None
-        assert result["judge_latency_ms"] == 0.0
 
     def test_skips_when_llm_off(self):
         state = self._state_with(optimizations={"llm": False, "llm_judge": True})
@@ -222,7 +221,6 @@ class TestLlmJudgeNodeNormalPath:
             result = self.agent.llm_judge_node(state)
 
         assert result["judgment"] == {"verdict": "A_BETTER", "faithfulness": 0.95}
-        assert result["judge_latency_ms"] >= 0
 
     def test_returns_none_judgment_on_judge_exception(self):
         from langchain_core.documents import Document

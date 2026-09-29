@@ -39,10 +39,9 @@ RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cro
 
 # Copy application source (context is repo root, so prefix with langchain_agent/)
 # NOTE: COPY *.py only matches top-level files, not directories — any new
-# top-level package (like integrations/) needs its own explicit COPY line here
+# top-level package (like tools/) needs its own explicit COPY line here
 # or it silently won't exist in the image, crashing the app at import time on
-# boot (issue #18: api/main.py's `from integrations import ...` broke prod
-# deploys this way because this line was missed).
+# boot (issue #18 broke prod deploys this way).
 COPY langchain_agent/*.py ./
 COPY langchain_agent/api/ ./api/
 COPY langchain_agent/core/ ./core/
@@ -52,8 +51,8 @@ COPY langchain_agent/quality/ ./quality/
 COPY langchain_agent/observability/ ./observability/
 COPY langchain_agent/checkpoints/ ./checkpoints/
 COPY langchain_agent/tools/ ./tools/
-# benchmarks/ and scripts/ are deliberately NOT copied: they are local dev
-# entry points invoked from the Makefile, never imported at runtime.
+# scripts/ is deliberately NOT copied: those are local entry points invoked from
+# the Makefile, never imported at runtime.
 # tests/unit/test_dockerfile_package_copy.py enforces the rule above -- it
 # fails if any package imported at runtime is missing a COPY line here.
 

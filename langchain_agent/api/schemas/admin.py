@@ -1,9 +1,8 @@
 """
 Pydantic models for admin routes.
 
-Only the enrichment endpoint needs typed request/response schemas today —
-/api/admin/diagnose and /api/admin/health predate this and return plain
-dicts (see api/routes/admin.py's module docstring).
+Only the enrichment endpoint needs typed request/response schemas; the other
+admin routes return plain dicts.
 """
 
 from typing import Optional

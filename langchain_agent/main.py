@@ -17,18 +17,16 @@ Powered by:
 - Embeddings: local Ollama nomic-embed-text (768-dim); documents were
   embedded once when the corpus was built (data/precomputed/), queries here
   (retrieval/embeddings.py)
-- Vector Store: OpenSearch 2.19.1 with HNSW knn + BM25
+- Vector Store: OpenSearch with HNSW knn + BM25
 - Database: PostgreSQL for LangGraph checkpoints
 - Framework: LangGraph (graph-based pipeline, not ReAct tool-binding)
 - Observability: Pydantic-validated WebSocket events with real-time streaming
 """
 
 import logging
-import sys
 import warnings
 from typing import Optional
 
-import psycopg
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, StateGraph
 from langgraph.utils.runnable import RunnableCallable
@@ -36,7 +34,7 @@ from psycopg_pool import AsyncConnectionPool, ConnectionPool
 
 # Import extracted modules
 from core.agent_state import CustomAgentState
-from core.llm import build_chat_model, missing_ollama_models
+from core.llm import build_chat_model
 from pipeline.conversation_management import ConversationManagementMixin
 from pipeline.pipeline_nodes import AlphaEstimation, IntentClassification, PipelineNodesMixin
 from quality.enrichment_value_judge import EnrichmentValueJudge
@@ -64,18 +62,14 @@ from core.config import (
     DB_CONNECTION_KWARGS,
     DB_POOL_MAX_SIZE,
     EMBEDDINGS_MODEL,
-    ENABLE_QUERY_EVALUATION,
-    ENABLE_RERANKING,
     LLM_MODEL,
     LLM_TEMPERATURE,
-    OLLAMA_HOST,
     QUERY_EVAL_MAX_TOKENS,
     QUERY_EVAL_MODEL,
     QUERY_EVAL_TEMPERATURE,
     RERANKER_FETCH_K,
     RETRIEVER_ALPHA,
     RETRIEVER_FETCH_K,
-    RETRIEVER_K,
     VECTOR_COLLECTION_NAME,
 )
 
@@ -130,62 +124,11 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
     - Query expansion: resolves pronouns/comparatives from history
     - Refinement context validation: category + document overlap scoring
 
-    ## Usage Example
-
-        agent = EcommerceSearchAgent()
-        agent.verify_prerequisites()  # Check Postgres, OpenSearch, Ollama
-        agent.initialize_components()  # Load LLM, embeddings, reranker
-
-        # Build the LangGraph pipeline
-        compiled_graph = agent.build_graph()
-
-        # Execute a query
-        result = compiled_graph.invoke(
-            {"messages": [HumanMessage(content="Find wireless headphones under $100")]},
-            config={"configurable": {"thread_id": "user-123"}}
-        )
-
-        # Result contains assistant response and metadata
-        for msg in result["messages"]:
-            if isinstance(msg, AIMessage):
-                print(msg.content)
-
-    ## Extension Points
-
-    **Add a new intent**:
-        1. Add intent string to `_build_intent_prompt()` available intents list
-        2. Add classification logic in `_build_intent_prompt()`
-        3. Add fast-path alpha in `query_evaluator_node()` if deterministic
-        4. Add conditional edge in `build_graph()` routing to correct node
-        5. Add test in `tests/unit/intent/test_intent_classifier.py`
-
-    **Add a new pipeline node**:
-        1. Implement `def my_node(self, state: CustomAgentState) -> Dict[str, Any]:`
-        2. Add any required fields to `CustomAgentState` (agent_state.py)
-        3. Add node to graph in `build_graph()` using `workflow.add_node("my_node", self.my_node)`
-        4. Add edges: `workflow.add_edge("prior_node", "my_node")`
-        5. Add test in `tests/integration/` covering state transitions
-
-    **Observe a new event**:
-        1. Create Pydantic model in `api/schemas/events.py` inheriting BaseEvent
-        2. Create matching TypeScript type in `web/src/types/events.ts`
-        3. Emit from node: `self._emit_event_from_sync(MyEvent(...))`
-        4. Update `observabilityStore.ts` and `StepCard.tsx` to render the event
-
-    **Swap the LLM or embedding model**:
-        1. Any Ollama model: set `LLM_MODEL` / `QUERY_EVAL_MODEL` / `JUDGE_MODEL` in `.env`
-        2. A different provider: change `core/llm.py::build_chat_model` (every chat
-           caller goes through it) and `retrieval/embeddings.py::build_embeddings`
-        3. A different embedding model means the committed corpus (data/precomputed/)
-           no longer matches -- there is no local re-ingest path any more (see
-           data/README.md); this would need new one-off tooling written fresh, plus
-           an index mapping change since the vector dimension is pinned
-
     ## Implementation Notes
 
     - All node methods follow the signature: `(self, state: CustomAgentState) -> Dict[str, Any]`
     - State fields are optional (`total=False`); always use `state.get(key, default)` for safe access
-    - The graph is built lazily in `build_graph()` and stored in `self.app`
+    - The graph is built in `create_agent_graph()` and stored in `self.app`
     - Streaming is handled by `_stream_llm_response_simple()` and WebSocket callback
     """
 
@@ -198,70 +141,12 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         self.async_pool = None
         self.checkpointer = None
         self.app = None
-        self.thread_id = None
         self.emit_callback = None  # For emitting intermediate events from retriever_node
         self.event_loop = None  # The running event loop (set when emit_callback is set)
         self.event_queue = []  # Queue for intermediate events
         self.retriever = None  # Base retriever
         self.reranker = None  # Cross-encoder reranker
         self.alpha_estimator_llm = None  # Lightweight model for query evaluation
-
-    def verify_prerequisites(self):
-        """Verify that all required services are running"""
-        print("Verifying prerequisites...")
-        print()
-
-        # Check Postgres connection
-        try:
-            with psycopg.connect(DATABASE_URL) as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT 1")
-                    print("✓ Postgres is accessible")
-        except Exception as e:
-            print(f"✗ Cannot connect to Postgres: {e}")
-            print(f"  Connection string: {DATABASE_URL}")
-            sys.exit(1)
-
-        # Check OpenSearch connection
-        try:
-            info = self.vector_store.client.info()
-            print(f"✓ OpenSearch is accessible (v{info['version']['number']})")
-        except Exception as e:
-            print(f"✗ Cannot connect to OpenSearch: {e}")
-            sys.exit(1)
-
-        # Check if OpenSearch index has data
-        try:
-            from core.config import OPENSEARCH_INDEX_NAME
-
-            count = self.vector_store.client.count(
-                index=OPENSEARCH_INDEX_NAME,
-                body={"query": {"term": {"collection_id": VECTOR_COLLECTION_NAME}}},
-            )["count"]
-            if count == 0:
-                print(f"✗ No documents found in OpenSearch index")
-                print("  Run: python ingest_esci_products.py")
-                sys.exit(1)
-            print(f"✓ OpenSearch has {count} document chunks")
-        except Exception as e:
-            print(f"✗ Error checking OpenSearch: {e}")
-            print("  Run: python setup.py")
-            sys.exit(1)
-
-        # Check the local Ollama server has every model this agent will call
-        try:
-            missing = missing_ollama_models([LLM_MODEL, QUERY_EVAL_MODEL, EMBEDDINGS_MODEL])
-        except OSError as e:
-            print(f"✗ Cannot reach Ollama at {OLLAMA_HOST}: {e}")
-            print("  Start it: `ollama serve` (or the Ollama app)")
-            sys.exit(1)
-        if missing:
-            for model in missing:
-                print(f"✗ Ollama model not pulled: {model}  (run: ollama pull {model})")
-            sys.exit(1)
-        print(f"✓ Ollama is serving {LLM_MODEL} and {EMBEDDINGS_MODEL}")
-
-        print()
 
     def initialize_components(self):
         """Initialize all LLM and storage components"""
@@ -273,22 +158,17 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         self.llm = build_chat_model(LLM_MODEL, temperature=LLM_TEMPERATURE, max_tokens=8192)
         print("✓ LLM initialized")
 
-        if ENABLE_QUERY_EVALUATION:
-            print(f"Loading query evaluator (alpha estimator): {QUERY_EVAL_MODEL}")
-            self.alpha_estimator_llm = build_chat_model(
-                QUERY_EVAL_MODEL,
-                temperature=QUERY_EVAL_TEMPERATURE,
-                max_tokens=QUERY_EVAL_MAX_TOKENS,
-            )
-            self.alpha_structured = self.alpha_estimator_llm.with_structured_output(AlphaEstimation)
-            self.intent_structured = self.alpha_estimator_llm.with_structured_output(
-                IntentClassification
-            )
-            print("✓ Query evaluator model initialized")
-        else:
-            self.alpha_estimator_llm = None
-            self.alpha_structured = None
-            self.intent_structured = None
+        print(f"Loading query evaluator (alpha estimator): {QUERY_EVAL_MODEL}")
+        self.alpha_estimator_llm = build_chat_model(
+            QUERY_EVAL_MODEL,
+            temperature=QUERY_EVAL_TEMPERATURE,
+            max_tokens=QUERY_EVAL_MAX_TOKENS,
+        )
+        self.alpha_structured = self.alpha_estimator_llm.with_structured_output(AlphaEstimation)
+        self.intent_structured = self.alpha_estimator_llm.with_structured_output(
+            IntentClassification
+        )
+        print("✓ Query evaluator model initialized")
 
         # Initialize Embeddings
         print(f"Loading embeddings: {EMBEDDINGS_MODEL}")
@@ -325,20 +205,17 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         self.retriever = self.vector_store.as_retriever(
             search_type="hybrid",
             search_kwargs={
-                "k": RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K,
+                "k": RERANKER_FETCH_K,
                 "fetch_k": RETRIEVER_FETCH_K,
                 "alpha": RETRIEVER_ALPHA,
             },
         )
 
         # Initialize Reranker (local cross-encoder)
-        if ENABLE_RERANKING:
-            print(f"Loading cross-encoder reranker: {CROSS_ENCODER_MODEL}")
-            self.reranker = CrossEncoderReranker(model_name=CROSS_ENCODER_MODEL)
-            print("✓ Reranker initialized")
-            # Warmup is deferred to observable_agent lifespan to avoid blocking startup
-        else:
-            self.reranker = None
+        print(f"Loading cross-encoder reranker: {CROSS_ENCODER_MODEL}")
+        self.reranker = CrossEncoderReranker(model_name=CROSS_ENCODER_MODEL)
+        print("✓ Reranker initialized")
+        # Warmup is deferred to observable_agent lifespan to avoid blocking startup
 
         # Lazy LLM-as-judge — only constructed when first needed (judge node
         # only runs when user toggles llm_judge:on AND llm:on).
@@ -353,9 +230,6 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         # This is required because AsyncPostgresSaver needs a running event loop
         self.checkpointer = None
         print("✓ Postgres checkpoint store will be initialized on first use (async)")
-
-        # Ensure conversation metadata table exists
-        self._ensure_metadata_table()
 
         print()
 
@@ -481,10 +355,6 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         logger.info(
             "Agent graph created: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent → llm_judge"
         )
-
-    def set_thread_id(self, thread_id: str):
-        """Set a specific thread ID to resume a conversation"""
-        self.thread_id = thread_id
 
     async def ensure_async_pool_open(self):
         """Ensure the async pool is open and checkpointer is created. Call this before using astream_events."""

@@ -5,34 +5,20 @@ WebSocket endpoint for real-time chat with agent observability.
 import asyncio
 import sys
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field, field_validator
-from slowapi import Limiter
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from api.middleware.client_ip import get_client_ip
-from api.middleware.origin_auth import verify_same_origin, verify_websocket_origin
-from api.schemas.events import (
-    AgentCompleteEvent,
-    AgentErrorEvent,
-    BaseEvent,
-    ConnectionEstablished,
-)
-from api.schemas.validation import validate_message_content_value, validate_thread_id_value
+from api.middleware.origin_auth import verify_websocket_origin
+from api.schemas.events import AgentErrorEvent, BaseEvent, ConnectionEstablished
 from api.services.checkpoint_messages import load_message_count
-from core.config import RATE_LIMIT_CHAT
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-# Initialize limiter (will use app.state.limiter)
-limiter = Limiter(key_func=get_client_ip)
 
 # Known per-message optimization toggle keys. We accept only this allowlist so
 # a hostile client can't inflate checkpoint state with arbitrary JSON. Unknown
@@ -180,59 +166,6 @@ class ConnectionManager:
 
 # Global connection manager instance
 manager = ConnectionManager()
-
-
-# ============================================================================
-# REQUEST MODELS
-# ============================================================================
-
-
-class ChatMessage(BaseModel):
-    """Incoming chat message from client with validation.
-
-    Example:
-        ```json
-        {
-            "type": "chat_message",
-            "message": "Show me blue running shoes",
-            "thread_id": "conv_abc123"
-        }
-        ```
-    """
-
-    type: str = "chat_message"
-    message: str = Field(
-        ...,
-        min_length=1,
-        max_length=4000,
-        description="User query or statement (1-4000 characters). Can be a product search, comparison, attribute filter, or follow-up question.",
-    )
-    thread_id: Optional[str] = Field(
-        None,
-        description="Conversation thread ID for resuming conversations. Format: alphanumeric, underscore, hyphen, max 64 chars. Auto-generated if omitted.",
-    )
-    optimizations: Optional[Dict[str, bool]] = Field(
-        None,
-        description=(
-            "Per-feature search optimization toggles. Nine recognized keys: "
-            "hybrid, fuzzy, synonyms, phrase_boost, field_boost, typeahead, "
-            "reranking, llm, llm_judge. Missing keys default to true (enabled). Skipped "
-            "stages are collapsed out of the observability panel and the Pipeline Quality "
-            "Summary's per-stage metrics."
-        ),
-    )
-
-    @field_validator("thread_id")
-    @classmethod
-    def validate_thread_id(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        return validate_thread_id_value(v)
-
-    @field_validator("message")
-    @classmethod
-    def validate_message_content(cls, v: str) -> str:
-        return validate_message_content_value(v)
 
 
 # ============================================================================
@@ -428,192 +361,3 @@ async def websocket_chat(websocket: WebSocket):
         # Always cleanup connection and cancel any running tasks
         logger.info("websocket_cleanup", thread_id=thread_id)
         await manager.disconnect(thread_id)
-
-
-# ============================================================================
-# REST FALLBACK (for testing without WebSocket)
-# ============================================================================
-
-
-class ChatRequest(BaseModel):
-    """REST chat request (non-streaming fallback) with validation."""
-
-    message: str = Field(
-        ..., min_length=1, max_length=4000, description="User message content (1-4000 characters)"
-    )
-    thread_id: Optional[str] = Field(None, description="Conversation thread ID (optional)")
-
-    @field_validator("thread_id")
-    @classmethod
-    def validate_thread_id(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        return validate_thread_id_value(v)
-
-    @field_validator("message")
-    @classmethod
-    def validate_message_content(cls, v: str) -> str:
-        return validate_message_content_value(v)
-
-
-class Citation(BaseModel):
-    """Citation source for a response.
-
-    Example:
-        ```json
-        {
-            "label": "Sewing Machine",
-            "url": "https://www.amazon.com/s?k=Sewing+Machine"
-        }
-        ```
-    """
-
-    label: str = Field(description="Product name or title")
-    url: str = Field(description="Product URL (Amazon search by title for ESCI products)")
-    asin: Optional[str] = Field(
-        default=None,
-        description="Amazon ASIN, when the cited document is an ESCI product.",
-    )
-    image_url: Optional[str] = Field(
-        default=None,
-        description="Product photo URL (SQID, #147), when Amazon has one. "
-        "The UI renders the product as a card with this image.",
-    )
-
-
-class ChatResponse(BaseModel):
-    """REST chat response (non-streaming fallback).
-
-    Returns the final response text, citations, and execution timing.
-    For real-time streaming, use the WebSocket endpoint instead.
-
-    Example:
-        ```json
-        {
-            "thread_id": "conversation_abc123",
-            "response": "Here are some great running shoes...",
-            "duration_ms": 2450.5,
-            "citations": [
-                {
-                    "label": "Blue Running Shoes",
-                    "url": "https://www.amazon.com/s?k=Blue+Running+Shoes"
-                }
-            ]
-        }
-        ```
-    """
-
-    thread_id: str = Field(description="Conversation thread ID (for resuming conversations)")
-    response: str = Field(
-        description="Agent's response text with product information and recommendations"
-    )
-    duration_ms: float = Field(description="Total execution time in milliseconds")
-    citations: List[Citation] = Field(
-        default=[], description="Product sources with labels and URLs"
-    )
-
-
-@router.post(
-    "/api/chat",
-    response_model=ChatResponse,
-    summary="Non-streaming chat (use /ws/chat for streaming + observability)",
-)
-@limiter.limit(RATE_LIMIT_CHAT)
-async def chat_rest(request: Request, chat_request: ChatRequest):
-    """
-    REST endpoint for chat (non-streaming fallback).
-
-    **Use this endpoint for:**
-        - Testing without WebSocket support
-        - Simple synchronous requests
-        - Integrations that don't support WebSocket
-
-    **For real-time streaming and observability, use `/ws/chat` (WebSocket) instead.**
-
-    **Features:**
-        - Synchronous request-response pattern
-        - Final response + citations returned in one response
-        - Conversation resumption via thread_id
-        - Rate limited (default: 10 req/min per IP)
-
-    **Authentication:**
-        - Same-origin required (enforced via Origin header)
-
-    **Request:** `POST /api/chat`
-        ```json
-        {
-            "message": "Show me tan boots",
-            "thread_id": "conv_my_session"
-        }
-        ```
-
-    **Response:** 200 OK
-        ```json
-        {
-            "thread_id": "conv_my_session",
-            "response": "Here are some tan boots...",
-            "duration_ms": 2450.5,
-            "citations": [...]
-        }
-        ```
-
-    **Errors:**
-        - 400: Invalid request (empty message, invalid thread_id format)
-        - 429: Rate limited (too many requests)
-        - 500: Internal server error
-
-    Args:
-        request: FastAPI request object (for auth and rate limiting)
-        chat_request: Chat request with message and optional thread_id
-
-    Returns:
-        Chat response with agent's answer and citations.
-    """
-    # Verify same-origin authentication
-    await verify_same_origin(request)
-
-    thread_id = chat_request.thread_id or f"conversation_{uuid.uuid4().hex[:8]}"
-
-    start_time = datetime.now(timezone.utc)
-
-    # Collect events (we won't stream them in REST mode)
-    events = []
-
-    async def collect_event(event: BaseEvent):
-        events.append(event)
-
-    await manager.agent_service.ensure_initialized()
-
-    try:
-        final_response = await manager.agent_service.process_message(
-            message=chat_request.message,
-            thread_id=thread_id,
-            emit=collect_event,
-        )
-
-        duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
-
-        # Extract citations from the agent complete event
-        citations: List[Citation] = []
-        for event in events:
-            if isinstance(event, AgentCompleteEvent) and event.citations:
-                citations = [
-                    Citation(
-                        label=c.get("label", ""),
-                        url=c.get("url", ""),
-                        asin=c.get("asin") or None,
-                        image_url=c.get("image_url") or None,
-                    )
-                    for c in event.citations
-                    if c.get("url")  # Only include citations with URLs
-                ]
-                break
-
-        return ChatResponse(
-            thread_id=thread_id,
-            response=final_response or "No response generated",
-            duration_ms=duration_ms,
-            citations=citations,
-        )
-    except Exception as e:
-        raise Exception(f"Agent error: {e}") from e

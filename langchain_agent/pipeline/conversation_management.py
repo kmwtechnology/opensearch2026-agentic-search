@@ -1,158 +1,19 @@
-"""Conversation & checkpoint management for EcommerceSearchAgent (split out of
-main.py in #47): metadata table, title generation, summarization.
-"""
+"""Conversation summarization for EcommerceSearchAgent (split out of main.py in #47)."""
 
 import json
 import logging
-from typing import List, Optional, Sequence
+from typing import Sequence
 
 import httpx
-import psycopg
 from langchain_core.messages import BaseMessage
 
-from core.config import DATABASE_URL
 from observability.llm_content import _flatten_llm_content
 
 logger = logging.getLogger(__name__)
 
 
 class ConversationManagementMixin:
-    """Conversation/checkpoint methods for EcommerceSearchAgent (see module docstring)."""
-
-    def _ensure_metadata_table(self):
-        """Ensure the conversation_metadata table exists.
-
-        Creates the conversation_metadata table if it doesn't already exist.
-        This table stores conversation titles and timestamps for the conversation list.
-
-        Raises:
-            Does not raise exceptions - logs warnings if table creation fails.
-        """
-        try:
-            with psycopg.connect(DATABASE_URL) as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS conversation_metadata (
-                            thread_id TEXT PRIMARY KEY,
-                            title TEXT NOT NULL,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """)
-                conn.commit()
-        except psycopg.Error as e:
-            logger.warning(f"Could not create conversation_metadata table: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error creating conversation_metadata table: {e}")
-
-    def generate_conversation_title(self, messages: List[BaseMessage]) -> str:
-        """Use the LLM to generate a concise title for the conversation.
-
-        Analyzes the conversation messages and generates a descriptive title
-        that captures the main topic being discussed.
-
-        Args:
-            messages: List of conversation messages to analyze.
-
-        Returns:
-            A concise title (max 50 characters). Returns a default title if
-            generation fails or no suitable messages are found.
-
-        Raises:
-            Does not raise exceptions - returns fallback titles on error.
-        """
-        try:
-            # Build a summary of the conversation for title generation
-            conversation_summary = []
-            for msg in messages[-6:]:  # Use last 6 messages for context
-                if hasattr(msg, "content") and msg.content:
-                    # Safely get message type
-                    role = "User" if hasattr(msg, "type") and msg.type == "human" else "Assistant"
-                    content = str(msg.content)[:200]  # Truncate long messages
-                    conversation_summary.append(f"{role}: {content}")
-
-            if not conversation_summary:
-                return "New Conversation"
-
-            prompt = f"""Generate a very short title (max 50 chars) for this conversation.
-The title should capture the main topic or question being discussed.
-Return ONLY the title, nothing else.
-
-Conversation:
-{chr(10).join(conversation_summary)}
-
-Title:"""
-
-            response = self.llm.invoke(prompt)
-            title = _flatten_llm_content(response).strip().strip("\"'")[:50]
-            return title if title else "Untitled Conversation"
-        except Exception as e:
-            logger.debug(f"Title generation failed, using fallback: {e}")
-            # Fallback: use first user message
-            for msg in messages:
-                if (
-                    hasattr(msg, "type")
-                    and msg.type == "human"
-                    and hasattr(msg, "content")
-                    and msg.content
-                ):
-                    return str(msg.content)[:50].strip()
-            return "Untitled Conversation"
-
-    def update_conversation_title(self, thread_id: Optional[str] = None):
-        """Generate and save a title for the current conversation based on its content.
-
-        Retrieves the current conversation messages from the checkpoint, generates
-        a descriptive title using the LLM, and stores it in the conversation_metadata table.
-
-        This method is called after each agent response to keep the title up-to-date
-        with the conversation content.
-
-        Args:
-            thread_id: Conversation to title. Defaults to ``self.thread_id`` for the
-                CLI path. The API path (background title generation in
-                ``ObservableAgentService``) must pass this explicitly -- ``self`` is a
-                single shared agent instance and ``self.thread_id`` may already belong
-                to a different concurrent request by the time this runs.
-
-        Raises:
-            Does not raise exceptions - logs warnings if title update fails.
-        """
-        thread_id = thread_id or self.thread_id
-        try:
-            # Get current conversation messages from checkpoint
-            checkpoint = self.checkpointer.get({"configurable": {"thread_id": thread_id}})
-            if not checkpoint:
-                logger.debug("No checkpoint found for title update")
-                return
-
-            # Access messages from channel_values (checkpoint is a dict)
-            channel_values = checkpoint.get("channel_values", {})
-            messages = channel_values.get("messages", [])
-            if not messages:
-                logger.debug("No messages in checkpoint for title update")
-                return
-
-            # Generate title from conversation
-            title = self.generate_conversation_title(messages)
-
-            with psycopg.connect(DATABASE_URL) as conn:
-                with conn.cursor() as cur:
-                    # Insert or update conversation metadata with new title
-                    cur.execute(
-                        """
-                        INSERT INTO conversation_metadata (thread_id, title)
-                        VALUES (%s, %s)
-                        ON CONFLICT (thread_id)
-                        DO UPDATE SET title = EXCLUDED.title, updated_at = CURRENT_TIMESTAMP
-                    """,
-                        (thread_id, title),
-                    )
-                conn.commit()
-        except psycopg.Error as e:
-            logger.warning(f"Database error updating conversation title: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error updating conversation title: {e}")
+    """Summarization methods for EcommerceSearchAgent (see module docstring)."""
 
     def _fallback_summarize(self, messages_to_summarize: Sequence[BaseMessage]) -> str:
         """

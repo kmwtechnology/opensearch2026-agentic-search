@@ -186,7 +186,7 @@ the load-bearing attribute past character 2,000, and truncating them produced
 false fabrication flags. The judge skips turns where the enrichment tool ran.
 
 Writes: `judgment`, `original_judgment`, `corrected_response`,
-`hallucination_retry_used`, `judge_latency_ms`.
+`hallucination_retry_used`.
 
 ### Pipeline summary
 
@@ -384,5 +384,4 @@ Query embeddings are cached for 60 minutes (`observability/embedding_cache.py`).
   `LOG_FORMAT=json` makes fields greppable.
 - Every event is visible in the browser DevTools Network tab on the
   `/ws/chat` socket; the panel's F2 view shows the raw DSL per turn.
-- `GET /api/admin/diagnose?q=...` reports per-field hit counts for a query;
-  `GET /api/admin/health` reports index document count and service status.
+- `GET /api/admin/health` reports index document count and service status.

@@ -5,7 +5,7 @@ there is no ingest pipeline in this repo any more.
 
 The dumps are a one-time, already-committed full `_source` export of the index as it
 existed after its original ingest and taxonomy seeding (embeddings, attribute detection,
-seeded color taxonomy) -- this script recreates each index's mapping fresh, then
+seeded color taxonomy) -- this script creates each index with its current mapping, then
 bulk-loads the exported documents verbatim. No Ollama call, no ingest pipeline of any
 kind involved. The export that produced these dumps was a one-off data-processing
 exercise against a static corpus and isn't expected to run again; see data/README.md.
@@ -16,11 +16,9 @@ means the dump's document shape may no longer match. There's no supported way to
 the dump for a new mapping and no `--from-scratch` fallback; new one-off tooling would
 need to be written to rebuild the corpus (see data/README.md).
 
-Usage:
-    PYTHONPATH=. python scripts/load_precomputed_indices.py [--reset-index]
+Run by setup.py (make setup); takes no arguments. To start over, make teardown.
 """
 
-import argparse
 import hashlib
 import json
 import sys
@@ -73,12 +71,8 @@ def _check_mapping_hash(metadata: dict) -> None:
         )
 
 
-def _recreate_index(client, index: str, mapping_body: dict, reset: bool) -> None:
-    exists = client.indices.exists(index=index)
-    if exists and reset:
-        client.indices.delete(index=index)
-        exists = False
-    if not exists:
+def _ensure_index(client, index: str, mapping_body: dict) -> None:
+    if not client.indices.exists(index=index):
         client.indices.create(index=index, body=mapping_body)
 
 
@@ -110,26 +104,18 @@ def _bulk_load(client, index: str, parquet_path: Path) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Bulk-load precomputed index dumps")
-    parser.add_argument(
-        "--reset-index",
-        action="store_true",
-        help="Delete existing indices before loading (use when re-loading over a dirty cluster)",
-    )
-    args = parser.parse_args()
-
     metadata = _load_metadata()
     _check_mapping_hash(metadata)
 
     client = create_opensearch_client()
 
     print(f"Loading products -> {OPENSEARCH_INDEX_NAME}...")
-    _recreate_index(client, OPENSEARCH_INDEX_NAME, INDEX_MAPPING, args.reset_index)
+    _ensure_index(client, OPENSEARCH_INDEX_NAME, INDEX_MAPPING)
     n_products = _bulk_load(client, OPENSEARCH_INDEX_NAME, DUMP_DIR / "products_dump.parquet")
     print(f"  loaded {n_products} products")
 
     print(f"Loading attribute mappings -> {ATTRIBUTE_INDEX_NAME}...")
-    _recreate_index(client, ATTRIBUTE_INDEX_NAME, ATTRIBUTE_INDEX_MAPPING, args.reset_index)
+    _ensure_index(client, ATTRIBUTE_INDEX_NAME, ATTRIBUTE_INDEX_MAPPING)
     n_mappings = _bulk_load(
         client, ATTRIBUTE_INDEX_NAME, DUMP_DIR / "attribute_mappings_dump.parquet"
     )
@@ -137,7 +123,7 @@ def main() -> int:
 
     print(f"Loading judgments -> {JUDGMENTS_INDEX_NAME}...")
     judgments_mapping = json.loads(JUDGMENTS_MAPPING_PATH.read_text())
-    _recreate_index(client, JUDGMENTS_INDEX_NAME, judgments_mapping, args.reset_index)
+    _ensure_index(client, JUDGMENTS_INDEX_NAME, judgments_mapping)
     n_judgments = _bulk_load(client, JUDGMENTS_INDEX_NAME, DUMP_DIR / "judgments_dump.parquet")
     print(f"  loaded {n_judgments} judgments")
 

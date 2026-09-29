@@ -392,7 +392,6 @@ class AgentCompleteEvent(BaseEvent):
     response_retries: int = 0  # Number of response retries
     documents_used: int = 0
     citations: Optional[List[Dict[str, str]]] = None
-    title: Optional[str] = None  # Generated conversation title
 
 
 class AgentErrorEvent(BaseEvent):

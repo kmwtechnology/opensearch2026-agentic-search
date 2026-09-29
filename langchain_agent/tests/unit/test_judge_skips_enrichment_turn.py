@@ -72,7 +72,6 @@ class TestJudgeSkipsEnrichmentTurn:
             "flags the correction claim as fabrication and the retry strips it."
         )
         assert result["judgment"] is None
-        assert result["judge_latency_ms"] == 0.0
 
     def test_skip_is_not_merely_suppressing_the_retry(self):
         """No judgment at all, so no spurious flags reach the UI either.

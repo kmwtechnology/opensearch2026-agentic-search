@@ -47,7 +47,7 @@ override the attribute a test needs (`agent.alpha_estimator_llm = MagicMock(...)
 | Quality gate pass / retry / accept-after-retry, ±0.3 alpha, per-intent thresholds, no stale `"retry"` leaking through checkpoints | `unit/test_pipeline_nodes.py` |
 | Intent classifier extraction and the refinement → search downgrade | `unit/test_intent_classifier_node.py` |
 | Event contract: `api/schemas/events.py` ↔ `web/src/types/events.ts`, both directions, per-class `node` literals | `unit/test_frontend_backend_event_parity.py` (and `web/src/hooks/__tests__/useWebSocket.test.ts` on the client side) |
-| Same-origin auth: allow-list, Referer fallback, Host can't override a bad Origin, WebSocket close 4003, no `X-Forwarded-For` trust | `unit/test_origin_auth.py`, `unit/test_origin_auth_contract.py`, `unit/test_client_ip.py`; live in `e2e/test_deployment_smoke.py::TestAuthentication` |
+| Same-origin auth: allow-list, Referer fallback, Host can't override a bad Origin, WebSocket close 4003 | `unit/test_origin_auth.py`, `unit/test_origin_auth_contract.py`; live in `e2e/test_deployment_smoke.py::TestAuthentication` |
 | Scoped re-tag detects exactly what the original tagger did (longest phrase, secondary slot, ASCII `\b`) and touches only candidate products | `unit/test_scoped_retag.py`; end to end in `integration/test_enrichment_service.py` |
 | `WATERPROOF_CANONICALS["waterproof"]` stays empty (the schema-evolution demo depends on it) | `unit/test_attribute_discovery.py` |
 | `_coerce` rejects booleans from the LLM (a literal `False` used to become a truthy hard filter) | `unit/test_extract_attributes_waterproof.py` |

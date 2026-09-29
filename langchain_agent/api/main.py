@@ -26,25 +26,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 
-from api.middleware.client_ip import get_client_ip
 from api.middleware.origin_auth import get_allowed_origins
 from api.routes import admin, chat, health, suggest
-from core.config import API_VERSION, RATE_LIMIT_ENABLED
+from core.config import API_VERSION
 from core.logging_config import configure_logging, get_logger
 
 # Configure structured logging
 configure_logging()
 logger = get_logger(__name__)
-
-
-# Initialize rate limiter
-limiter = Limiter(
-    key_func=get_client_ip,
-    enabled=RATE_LIMIT_ENABLED,
-)
 
 
 @asynccontextmanager
@@ -98,10 +88,6 @@ tags_metadata = [
         ),
     },
     {
-        "name": "conversations",
-        "description": "Conversation history CRUD (LangGraph checkpoints in Postgres).",
-    },
-    {
         "name": "admin",
         "description": (
             "Operational endpoints for index health and diagnostics (same-origin only). "
@@ -111,10 +97,7 @@ tags_metadata = [
     },
     {
         "name": "chat",
-        "description": (
-            "Real-time streaming chat. WebSocket at `/ws/chat` is the primary surface; "
-            "a synchronous REST fallback lives at `/api/chat`."
-        ),
+        "description": ("Real-time streaming chat over the WebSocket at `/ws/chat`."),
     },
 ]
 
@@ -227,12 +210,6 @@ async def projector_swagger_ui() -> HTMLResponse:
     ).body.decode()
     return HTMLResponse(html.replace("</head>", f"{_SWAGGER_PROJECTOR_CSS}</head>"))
 
-
-# Add rate limiter to app state
-app.state.limiter = limiter
-
-# Register rate limit exceeded handler
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS configuration
 # Reuses the same allow-list api/middleware/origin_auth.py's verify_same_origin

@@ -395,8 +395,8 @@ class TestRerankerToggle:
             }
         )
 
-        # Reranker LLM was not called
-        reranker.rerank.assert_not_called()
+        # Cross-encoder was not called
+        reranker.score_documents.assert_not_called()
         # Documents pass through untouched, in original order
         assert out["retrieved_documents"] == [doc]
         # Quality gate is told to pass — score sentinel + retried flag set
@@ -404,11 +404,6 @@ class TestRerankerToggle:
         assert out["quality_gate_retried"] is True
 
     def test_reranking_on_runs_reranker(self, bare_agent, monkeypatch):
-        # Force ENABLE_RERANKING true regardless of env
-        from pipeline import pipeline_nodes as main_module
-
-        monkeypatch.setattr(main_module, "ENABLE_RERANKING", True)
-
         # Stub the reranker so we don't make real LLM calls
         reranker = MagicMock()
         reranker.batch_size = 8
@@ -442,10 +437,6 @@ class TestRerankerToggle:
 
     def test_reranking_default_true_when_key_missing(self, bare_agent, monkeypatch):
         """If the optimizations dict is empty, reranking should run (default True)."""
-        from pipeline import pipeline_nodes as main_module
-
-        monkeypatch.setattr(main_module, "ENABLE_RERANKING", True)
-
         reranker = MagicMock()
         reranker.batch_size = 8
         reranker.device = "cpu"
@@ -463,33 +454,6 @@ class TestRerankerToggle:
             }
         )
         reranker.score_documents.assert_called_once()
-
-    def test_global_enable_reranking_false_overrides_toggle_on(self, bare_agent, monkeypatch):
-        """When the env-level ENABLE_RERANKING is False, the per-query toggle
-        cannot turn it on."""
-        from pipeline import pipeline_nodes as main_module
-
-        monkeypatch.setattr(main_module, "ENABLE_RERANKING", False)
-
-        reranker = MagicMock()
-        agent = self._make_agent(bare_agent, reranker)
-        doc = self._make_doc()
-
-        out = agent.reranker_node(
-            {
-                "messages": [],
-                "retrieved_documents": [doc],
-                "intent": "search",
-                "user_query": "headphones",
-                "optimizations": {"reranking": True},
-            }
-        )
-
-        reranker.rerank.assert_not_called()
-        assert out["retrieved_documents"] == [doc]
-        # When *globally* off, the legacy code path returns score 0.0; we don't
-        # bypass the quality gate here because the user didn't explicitly opt out.
-        assert out["reranker_max_score"] == 0.0
 
 
 class TestLLMToggleFormatting:
@@ -596,41 +560,6 @@ class TestLLMToggleFormatting:
         assert "(untitled product)" in out
 
 
-class TestOptimizationsKeyContract:
-    """The `optimizations` dict on the chat schema and agent state must
-    accept the full set of recognized keys without rejecting unknowns."""
-
-    def test_chat_message_accepts_all_known_keys(self):
-        from api.routes.chat import ChatMessage
-
-        msg = ChatMessage(
-            type="chat_message",
-            message="hello",
-            thread_id="conv_test_xyz",
-            optimizations={
-                "hybrid": True,
-                "fuzzy": False,
-                "synonyms": True,
-                "phrase_boost": True,
-                "field_boost": False,
-                "typeahead": True,
-                "reranking": False,
-                "llm": False,
-                "llm_judge": True,
-            },
-        )
-        assert msg.optimizations is not None
-        assert msg.optimizations["reranking"] is False
-        assert msg.optimizations["fuzzy"] is False
-        assert msg.optimizations["llm"] is False
-
-    def test_chat_message_optimizations_optional(self):
-        from api.routes.chat import ChatMessage
-
-        msg = ChatMessage(message="hello", thread_id="conv_test_xyz")
-        assert msg.optimizations is None
-
-
 class TestRetrieverForwarding:
     def test_retriever_passes_optimizations_to_hybrid_search(self):
         vector_store = MagicMock()
@@ -668,13 +597,3 @@ class TestRetrieverForwarding:
         store = _make_store()
         retriever = store.as_retriever(search_type="hybrid")
         assert retriever.optimizations is None
-
-
-class TestCitationModel:
-    def test_rest_citation_carries_image_url(self):
-        """#147: the REST fallback exposes the same image_url the WS event does."""
-        from api.routes.chat import Citation
-
-        c = Citation(label="[1] Boot", url="https://x", asin="B01", image_url="https://img/1.jpg")
-        assert c.image_url == "https://img/1.jpg"
-        assert Citation(label="[1] Boot", url="https://x").image_url is None

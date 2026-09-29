@@ -39,7 +39,7 @@ from core.config import (
 
 def create_database():
     """Create the langchain_agent database if it doesn't exist"""
-    print("\n[1/7] Creating database...")
+    print("\n[1/5] Creating PostgreSQL database and checkpoint tables...")
 
     try:
         # Connect to the default postgres database to create our database
@@ -74,15 +74,9 @@ def verify_connection():
         raise
 
 
-def create_opensearch_index(reset: bool = False):
-    """Create the OpenSearch index with knn and text mappings.
-
-    Args:
-        reset: If True, delete an existing index before recreating it. Used by
-               --reset-index to guarantee a fresh knn_vector mapping even if a
-               prior (broken or auto-mapped) index already exists.
-    """
-    print("\n[2/7] Creating OpenSearch index...")
+def create_opensearch_index():
+    """Create the OpenSearch index with knn and text mappings."""
+    print("\n[2/5] Creating OpenSearch index...")
 
     try:
         from retrieval.vector_store import INDEX_MAPPING, create_opensearch_client
@@ -92,13 +86,6 @@ def create_opensearch_index(reset: bool = False):
         # Verify connectivity
         info = client.info()
         print(f"      ✓ Connected to OpenSearch {info['version']['number']}")
-
-        # When reset=True, delete any existing index so the next create always
-        # uses INDEX_MAPPING (knn_vector + analyzers). Without this, an auto-
-        # created or stale index would be silently skipped by the exists() check.
-        if reset and client.indices.exists(index=OPENSEARCH_INDEX_NAME):
-            client.indices.delete(index=OPENSEARCH_INDEX_NAME)
-            print(f"      ✓ Index '{OPENSEARCH_INDEX_NAME}' deleted (reset)")
 
         # Create index if it doesn't exist
         if client.indices.exists(index=OPENSEARCH_INDEX_NAME):
@@ -114,7 +101,7 @@ def create_opensearch_index(reset: bool = False):
 
 def create_search_pipeline():
     """Create the hybrid search pipeline with normalization"""
-    print("\n[3/7] Creating search pipeline...")
+    print("\n[3/5] Creating search pipeline...")
 
     try:
         from retrieval.vector_store import SEARCH_PIPELINE, create_opensearch_client
@@ -153,26 +140,6 @@ def init_checkpoint_tables():
         raise
 
 
-def init_metadata_table():
-    """Initialize conversation metadata table"""
-    try:
-        with psycopg.connect(DATABASE_URL) as conn:
-            conn.autocommit = True
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS conversation_metadata (
-                        thread_id TEXT PRIMARY KEY,
-                        title TEXT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                print("      ✓ Conversation metadata table created")
-    except Exception as e:
-        print(f"      ✗ Error initializing metadata table: {e}")
-        raise
-
-
 # ============================================================================
 # STEP 2: LOCAL MODEL (OLLAMA) VALIDATION
 # ============================================================================
@@ -182,7 +149,7 @@ def validate_ollama_models():
     """Check Ollama is up, every configured model is pulled, and embeddings fit the index."""
     from core.llm import missing_ollama_models
 
-    print("\n[5/7] Validating local Ollama models...")
+    print("\n[4/5] Validating local Ollama models...")
     try:
         missing = missing_ollama_models([LLM_MODEL, QUERY_EVAL_MODEL, EMBEDDINGS_MODEL])
     except OSError as e:
@@ -237,12 +204,13 @@ def main():
         create_database()
         verify_connection()
         init_checkpoint_tables()
-        init_metadata_table()
 
-        create_opensearch_index(reset=False)
+        create_opensearch_index()
         create_search_pipeline()
 
-        validate_ollama_models()
+        if not validate_ollama_models():
+            print("\n✗ SETUP INCOMPLETE — fix the Ollama problem above, then re-run `make setup`.")
+            return 1
 
         docs_ingest_failed = False
         precomputed_dump = (
@@ -289,9 +257,6 @@ def main():
         except subprocess.CalledProcessError as e:
             docs_ingest_failed = True
             print(f"      ✗ Precomputed load failed (exit {e.returncode})")
-            print(
-                "      Retry manually: PYTHONPATH=. python langchain_agent/scripts/load_precomputed_indices.py"
-            )
 
         # A failed load means zero (or stale) products are indexed — that's not
         # a state to report as "SETUP COMPLETE". Fail loud instead.
@@ -300,10 +265,7 @@ def main():
             print("✗ SETUP INCOMPLETE — precomputed load failed, no products indexed")
             print("=" * 70)
             print("\nDatabase and OpenSearch index setup succeeded above.")
-            print("Fix the load issue and retry:")
-            print(
-                "  PYTHONPATH=. python langchain_agent/scripts/load_precomputed_indices.py --reset-index"
-            )
+            print("Fix the load issue and re-run `make setup`.")
             print("\n" + "=" * 70)
             return 1
 
@@ -311,12 +273,7 @@ def main():
         print("\n" + "=" * 70)
         print("✓ SETUP COMPLETE!")
         print("=" * 70)
-        print("\nYou can now run the agent:")
-        print("  python main.py")
-        print("\nExample queries:")
-        print("  - Find me wireless headphones")
-        print("  - Show me blue backpacks")
-        print("  - What products do you have from Brand X?")
+        print("\nStart everything with: make dev")
         print("\n" + "=" * 70)
 
         return 0

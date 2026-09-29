@@ -101,11 +101,6 @@ class TestTryEnrichmentTool:
         assert result["messages"] == [final]
         assert result["citations"] == []
         assert result["enrichment_triggered"] is True
-        assert result["enrichment_attribute_type"] == "waterproof"
-        assert result["enrichment_variant"] == "weatherproof"
-        assert result["enrichment_canonical"] == "waterproof"
-        assert result["enrichment_duration_seconds"] == 18.3
-        assert result["enrichment_docs_processed"] == 9618
         mock_enrich.assert_called_once_with(
             "waterproof", "weatherproof", explicit_canonical="waterproof"
         )
@@ -150,8 +145,6 @@ class TestTryEnrichmentTool:
         result = agent._try_enrichment_tool("weatherproof hiking boots")
 
         assert result["enrichment_triggered"] is True
-        assert result["enrichment_duration_seconds"] is None
-        assert result["enrichment_docs_processed"] is None
 
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     @patch("quality.enrichment_service.enrich_attribute")
@@ -247,10 +240,6 @@ class TestEnrichmentValueGate:
         mock_enrich.assert_not_called()
         assert result is not None
         assert result["enrichment_triggered"] is False
-        assert result["enrichment_evaluation_declined"] is True
-        assert (
-            result["enrichment_evaluation_reasoning"] == "Too close to an existing 'red' variant."
-        )
         assert "reddish" in result["messages"][0].content
 
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
@@ -284,7 +273,6 @@ class TestEnrichmentValueGate:
 
         mock_enrich.assert_not_called()
         assert result["enrichment_triggered"] is False
-        assert result["enrichment_evaluation_declined"] is True
 
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_evaluate_called_with_current_mapping_from_store(self, mock_store_cls):

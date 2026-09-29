@@ -145,8 +145,6 @@ class TestAuthentication:
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(f"{DEPLOYMENT_URL}/api/admin/health", headers=auth_rest_headers())
 
-        if response.status_code == 429:
-            pytest.skip("Rate limited; cannot verify origin acceptance")
         assert response.status_code in [
             200,
             400,
@@ -161,8 +159,6 @@ class TestAuthentication:
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(f"{DEPLOYMENT_URL}/api/admin/health", headers=headers)
 
-        if response.status_code == 429:
-            pytest.skip("Rate limited; cannot verify origin rejection")
         assert (
             response.status_code == 403
         ), f"Disallowed origin should be rejected with 403, got {response.status_code}"

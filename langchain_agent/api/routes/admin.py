@@ -1,6 +1,6 @@
 """
-Admin routes for operational tasks: health checks, index diagnostics, and
-the live taxonomy enrichment flywheel.
+Admin routes for operational tasks: index health, the live taxonomy enrichment
+flywheel, and the demo reset.
 
 There is no full re-index path. The only live catalog mutation is a scoped
 re-tag (pipeline/scoped_retag.py), triggered via the enrichment flywheel
@@ -20,70 +20,6 @@ from api.middleware.origin_auth import verify_same_origin
 from api.schemas.admin import EnrichmentRequest, EnrichmentResponse
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-
-
-@router.get("/diagnose", summary="Diagnose index field coverage for a query")
-async def diagnose(request: Request, q: str = "sony") -> dict:
-    """
-    Probe the live index for a query across multiple fields.
-
-    **Authentication:** Same-origin only (see module docstring).
-
-    Diagnostic-only: answers "is there Sony data in the index, and which fields
-    index it?" Compares hit counts for the suggest fields (title_suggest /
-    brand_suggest) against the primary lexical fields (title / product_brand).
-    If primary fields return hits while suggest fields don't, the mapping
-    pre-dates the suggest fields and a re-index with reset_index=true is
-    required.
-
-    Also returns whether the mapping includes the suggest fields at all.
-    """
-    await verify_same_origin(request)
-    return await run_in_threadpool(_diagnose_sync, q)
-
-
-def _diagnose_sync(q: str) -> dict:
-    """Blocking OpenSearch calls for /diagnose, run off the event loop via
-    run_in_threadpool (see #25) so a slow/hanging index probe never stalls
-    concurrent chat WebSocket traffic."""
-    try:
-        from core.config import OPENSEARCH_INDEX_NAME
-        from retrieval.vector_store import get_shared_opensearch_client
-
-        client = get_shared_opensearch_client()
-
-        def count(field: str) -> dict:
-            try:
-                body = {"query": {"match": {field: q}}}
-                res = client.count(index=OPENSEARCH_INDEX_NAME, body=body)
-                return {"count": res.get("count", 0)}
-            except Exception as exc:  # noqa: BLE001
-                return {"error": f"{type(exc).__name__}: {exc}"}
-
-        # Inspect mapping for suggest fields.
-        mapping_fields: dict = {}
-        try:
-            mapping = client.indices.get_mapping(index=OPENSEARCH_INDEX_NAME)
-            index_key = next(iter(mapping))
-            properties = mapping[index_key].get("mappings", {}).get("properties", {})
-            for f in ("title", "product_brand", "title_suggest", "brand_suggest"):
-                mapping_fields[f] = f in properties
-        except Exception as exc:  # noqa: BLE001
-            mapping_fields = {"error": f"{type(exc).__name__}: {exc}"}
-
-        return {
-            "query": q,
-            "index": OPENSEARCH_INDEX_NAME,
-            "field_counts": {
-                "title": count("title"),
-                "product_brand": count("product_brand"),
-                "title_suggest": count("title_suggest"),
-                "brand_suggest": count("brand_suggest"),
-            },
-            "mapping_has_field": mapping_fields,
-        }
-    except Exception as e:  # noqa: BLE001
-        return {"error": f"{type(e).__name__}: {e}"}
 
 
 @router.get("/health", summary="Product index health and document count")

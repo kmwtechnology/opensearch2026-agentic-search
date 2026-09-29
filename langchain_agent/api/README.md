@@ -19,7 +19,7 @@ cookie, no API key, no admin token.
 | Route | Auth |
 |---|---|
 | `GET /api/health`, `GET /api/suggest`, `GET /api/config`, `/swagger` | Public |
-| `POST /api/chat`, `WS /ws/chat`, `GET/POST /api/admin/*` | `Origin` (or `Referer`) must be on the allow-list |
+| `WS /ws/chat`, `GET/POST /api/admin/*` | `Origin` (or `Referer`) must be on the allow-list |
 
 The allow-list (`middleware/origin_auth.py::get_allowed_origins`) is
 `localhost` / `127.0.0.1` on ports 5173, 5174, 3000, 8000, 8080. A disallowed
@@ -31,10 +31,6 @@ automatically; scripts must send the header:
 curl -H 'Origin: http://localhost:8080' http://localhost:8080/api/admin/health
 ```
 
-`POST /api/chat` and the WebSocket are rate limited at 20 requests/minute per
-client IP (`slowapi`, `RATE_LIMIT_CHAT` in `core/config.py`); the limit answers
-`429`.
-
 ## Routes
 
 | Method | Path | Purpose |
@@ -42,10 +38,8 @@ client IP (`slowapi`, `RATE_LIMIT_CHAT` in `core/config.py`); the limit answers
 | GET | `/api/health` | Dependency probe: `status` is `ok` when PostgreSQL and Ollama are healthy, else `degraded` (always 200) |
 | GET | `/api/suggest?q=&limit=` | Typeahead over product titles and brands with spell correction |
 | GET | `/api/config` | `{"apiUrl": ...}` for the UI; empty means "same origin" |
-| POST | `/api/chat` | Non-streaming chat; returns the final answer and citations |
 | WS | `/ws/chat?thread_id=` | Streaming chat with the full pipeline event stream |
 | GET | `/api/admin/health` | Product index existence and document count |
-| GET | `/api/admin/diagnose?q=` | Field-level hit counts for a query; detects a stale mapping |
 | POST | `/api/admin/enrich` | Add or correct a taxonomy mapping and run the scoped re-tag |
 | POST | `/api/admin/demo-reset` | Re-arm both self-consuming demos (mutates the index) |
 
@@ -76,15 +70,6 @@ curl 'http://localhost:8080/api/suggest?q=nikey&limit=3'
                   "highlight": ["<em>Nike</em> Air Zoom"]}],
  "spell_correction": {"title": "nike", "brand": null, "score": null, "highlight": null}}
 ```
-
-### `POST /api/chat`
-
-Request: `{"message": "...", "thread_id": "conversation_ab12cd34"}` (`thread_id`
-optional — one is generated; it must start with a letter). Response:
-`thread_id`, `response`, `duration_ms`, and `citations`, each
-`{label, url, asin?, image_url?}` where `url` is an Amazon search by title
-(`https://www.amazon.com/s?k=...`). Use the WebSocket for anything
-interactive — this endpoint has no streaming and no observability events.
 
 ### `POST /api/admin/enrich`
 
@@ -169,8 +154,7 @@ Close codes: `1000` normal; `4003` origin not allowed (fix the `Origin` header a
 
 | Code | Meaning |
 |---|---|
-| 400 | Malformed request (e.g. invalid `thread_id`, empty message) |
+| 400 | Malformed request (e.g. bad query params) |
 | 403 | Origin not allowed, or `ENABLE_ENRICHMENT_TOOL` is off for `/api/admin/enrich` |
 | 422 | Validation error (query params, request body) |
-| 429 | Rate limit exceeded |
 | 500 | Unhandled error; check `/api/health` for which dependency is down |

@@ -3,7 +3,7 @@ Configuration constants for Agentic Hybrid Search RAG Agent.
 
 Most configuration values are loaded from the `.env` file via python-dotenv;
 a subset (see #26 -- notably RETRIEVER_K/FETCH_K/ALPHA, RERANKER_FETCH_K/
-TOP_K, ENABLE_RERANKING, ENABLE_QUERY_EVALUATION, VECTOR_DIMENSION)
+TOP_K, VECTOR_DIMENSION)
 are plain Python literals below and are NOT env-overridable, regardless of
 what a matching-looking entry in `.env.example` might suggest. Copy
 `.env.example` to `.env` and customize as needed -- but check `.env.example`
@@ -28,13 +28,13 @@ OpenSearch cluster for hybrid search (HNSW knn_vector + BM25 lexical).
 - `OPENSEARCH_INDEX_NAME`: Index containing ESCI products (agentic_hybrid_search_docs)
 - `VECTOR_DIMENSION`: Embedding dimension (768, matches nomic-embed-text)
 
-### Retrieval & Reranking (`RETRIEVER_*`, `RERANKER_*`, `ENABLE_RERANKING`)
+### Retrieval & Reranking (`RETRIEVER_*`, `RERANKER_*`)
 Controls hybrid search balance and LLM-based relevance scoring.
 - `RETRIEVER_K`: Final documents returned to agent
 - `RETRIEVER_FETCH_K`: Candidates fetched before reranking
 - `RETRIEVER_ALPHA`: Default semantic/lexical weighting (0.0-1.0) — usually overridden by query evaluator
 
-### Query Evaluation & Alpha (`ENABLE_QUERY_EVALUATION`, `QUERY_EVAL_*`)
+### Query Evaluation & Alpha (`QUERY_EVAL_*`)
 Dynamic alpha selection based on query intent.
 - `QUERY_EVAL_MODEL`: Fast classifier (defaults to `LLM_MODEL`)
 - `ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS`: Max wait for the alpha-decision LLM call (shared with the retriever's attribute-extraction/query-expansion calls, same model family)
@@ -104,7 +104,6 @@ __all__ = [
     "RETRIEVER_ALPHA",
     "ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS",
     # Reranker configuration
-    "ENABLE_RERANKING",
     "RERANKER_TYPE",
     "CROSS_ENCODER_MODEL",
     "RERANKER_FETCH_K",
@@ -112,7 +111,6 @@ __all__ = [
     "RERANKER_TOP_K",
     "RERANKER_WARMUP_ENABLED",
     # Query evaluation configuration
-    "ENABLE_QUERY_EVALUATION",
     "DEFAULT_ALPHA",
     "QUERY_EVAL_MODEL",
     "JUDGE_MODEL",
@@ -121,12 +119,7 @@ __all__ = [
     # Quality gate configuration
     "ENABLE_QUALITY_GATE",
     "QUALITY_GATE_THRESHOLD",
-    # Project paths
-    "BASE_DIR",
     "SEARCH_DEFAULTS",
-    # API Security
-    "RATE_LIMIT_CHAT",
-    "RATE_LIMIT_ENABLED",
     # Server
     "PORT",
     "API_VERSION",
@@ -280,9 +273,6 @@ ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS = float(os.getenv("ALPHA_ESTIMATOR_CALL_TIM
 # RERANKER CONFIGURATION (local cross-encoder)
 # ============================================================================
 
-# Enable cross-encoder reranking of hybrid search results
-ENABLE_RERANKING = True
-
 # Number of candidates to fetch before reranking
 # 40 enables the "wide net recall" → cross-encoder precision narrative
 RERANKER_FETCH_K = 40
@@ -312,9 +302,6 @@ CROSS_ENCODER_MODEL = os.getenv("CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-M
 # ============================================================================
 # QUERY EVALUATOR CONFIGURATION
 # ============================================================================
-
-# Enable intelligent query evaluation for dynamic alpha adjustment
-ENABLE_QUERY_EVALUATION = True
 
 # Default alpha when evaluation is disabled or fails (0.0 = lexical, 1.0 = semantic)
 DEFAULT_ALPHA = 0.25
@@ -347,12 +334,6 @@ ENABLE_QUALITY_GATE = os.getenv("ENABLE_QUALITY_GATE", "true").lower() == "true"
 QUALITY_GATE_THRESHOLD = float(os.getenv("QUALITY_GATE_THRESHOLD", "0.5"))
 
 # ============================================================================
-# PROJECT PATHS
-# ============================================================================
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# ============================================================================
 # SEARCH DEFAULTS (per-collection)
 # ============================================================================
 # Products need higher semantic weight (α=0.65) for similarity matching.
@@ -364,14 +345,6 @@ SEARCH_DEFAULTS = {
         "reranker_top_k": 10,
     },
 }
-
-# ============================================================================
-# API SECURITY CONFIGURATION
-# ============================================================================
-
-# Rate limiting configuration
-RATE_LIMIT_CHAT = "20/minute"  # Chat requests (REST + WebSocket)
-RATE_LIMIT_ENABLED = True
 
 # ============================================================================
 # LOGGING CONFIGURATION

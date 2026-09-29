@@ -168,7 +168,6 @@ class CustomAgentState(TypedDict, total=False):
     # survives LangGraph checkpoint serialization without importing the
     # judge module here.
     judgment: Optional[Dict[str, object]]
-    judge_latency_ms: float
     # Auto-correction (Layer 3a). Populated when the judge flagged
     # hallucinations and the agent regenerated a clean response.
     original_judgment: Optional[Dict[str, object]]
@@ -191,13 +190,3 @@ class CustomAgentState(TypedDict, total=False):
     # trigger_enrichment tool fires on a detected search-quality gap).
     # Defaults: enrichment_triggered=False
     enrichment_triggered: bool
-    enrichment_attribute_type: Optional[str]
-    enrichment_variant: Optional[str]
-    enrichment_canonical: Optional[str]
-    enrichment_docs_processed: int
-    enrichment_duration_seconds: float
-
-    # Set when EnrichmentValueJudge declines a proposed trigger_enrichment
-    # call before it executes -- no mapping write, no reindex happened.
-    enrichment_evaluation_declined: bool
-    enrichment_evaluation_reasoning: Optional[str]

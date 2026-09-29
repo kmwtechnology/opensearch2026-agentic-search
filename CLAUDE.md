@@ -105,7 +105,7 @@ Six intent classes (`search`, `comparison`, `attribute_filter`, `refinement`, `f
 - `observability/` — embedding cache, relevancy metrics, LLM content helpers
 - `checkpoints/` — `checkpoint_optimizer.py` (keeps transient fields out of persisted state)
 - `tools/` — `enrichment_tool.py` (the agent's `trigger_enrichment` tool)
-- `api/` — FastAPI app (`main.py`, `routes/` = `chat`, `health`, `suggest`, `admin`; `schemas/`, `services/`, `middleware/` = `origin_auth`, `client_ip`)
+- `api/` — FastAPI app (`main.py`, `routes/` = `chat`, `health`, `suggest`, `admin`; `schemas/`, `services/`, `middleware/` = `origin_auth`)
 
 ### State access pattern
 
@@ -117,7 +117,7 @@ All custom exceptions (`core/exceptions.py`) inherit from `AgenticHybridSearchEr
 
 ### Auth model
 
-Same-origin checking (`api/middleware/origin_auth.py`, `verify_same_origin`) is the **sole** auth layer — an allow-list of localhost ports; a disallowed `Origin` always 403s. There is no login gate, no admin token, and no other credential anywhere: `api/middleware/` holds only `origin_auth.py` and `client_ip.py` — don't import a `verify_api_key`/`verify_admin_token`; they don't exist. `/api/admin/*` relies on same-origin checking like every other route.
+Same-origin checking (`api/middleware/origin_auth.py`, `verify_same_origin`) is the **sole** auth layer — an allow-list of localhost ports; a disallowed `Origin` always 403s. There is no login gate, no admin token, and no other credential anywhere: `api/middleware/` holds only `origin_auth.py` — don't import a `verify_api_key`/`verify_admin_token`; they don't exist. `/api/admin/*` relies on same-origin checking like every other route.
 
 ### Attribute detection & agentic taxonomy growth/correction
 

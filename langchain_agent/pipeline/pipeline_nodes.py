@@ -23,12 +23,10 @@ from core.config import (
     ANSWER_STREAM_TAG,
     CROSS_ENCODER_MODEL,
     DEFAULT_ALPHA,
-    ENABLE_RERANKING,
     INTERNAL_LLM_TAG,
     RERANKER_FETCH_K,
     RERANKER_TOP_K,
     RETRIEVER_FETCH_K,
-    RETRIEVER_K,
     RETRY_FETCH_MULTIPLIER,
     SEARCH_DEFAULTS,
     VECTOR_COLLECTION_NAME,
@@ -1110,8 +1108,6 @@ so briefly."""
                 "messages": [decline_response],
                 "citations": [],
                 "enrichment_triggered": False,
-                "enrichment_evaluation_declined": True,
-                "enrichment_evaluation_reasoning": assessment.reasoning,
             }
 
         # Call enrich_attribute() directly rather than trigger_enrichment.invoke()
@@ -1179,23 +1175,10 @@ so briefly."""
 
         final_response = self.llm.invoke(tool_messages)
 
-        enrichment_state: Dict[str, Any] = {
-            "enrichment_triggered": True,
-            "enrichment_attribute_type": call["args"].get("attribute_type"),
-            "enrichment_variant": call["args"].get("variant"),
-            "enrichment_canonical": call["args"].get("canonical"),
-            "enrichment_duration_seconds": (
-                enrichment_result.duration_seconds if enrichment_result.reindex_success else None
-            ),
-            "enrichment_docs_processed": (
-                enrichment_result.docs_processed if enrichment_result.reindex_success else None
-            ),
-        }
-
         return {
             "messages": [final_response],
             "citations": [],
-            **enrichment_state,
+            "enrichment_triggered": True,
         }
 
     # Cheap, local pre-filter for "this message might be disputing a
@@ -2281,7 +2264,7 @@ Respond with JSON only. No other text."""
         documents = state.get("retrieved_documents") or []
 
         if not (llm_on and judge_on) or intent == "summary" or not documents:
-            return {"judgment": None, "judge_latency_ms": 0.0}
+            return {"judgment": None}
 
         # A taxonomy correction turn is outside this judge's competence, and
         # judging it anyway actively destroys the answer (issue #107).
@@ -2305,7 +2288,7 @@ Respond with JSON only. No other text."""
                 "llm_judge_node: skipping — enrichment ran this turn, so the "
                 "answer is grounded in a tool result rather than in documents."
             )
-            return {"judgment": None, "judge_latency_ms": 0.0}
+            return {"judgment": None}
 
         # Pull the agent's just-produced response from the message history.
         llm_response = ""
@@ -2324,7 +2307,7 @@ Respond with JSON only. No other text."""
 
         if not llm_response:
             logger.debug("llm_judge_node: no agent response found, skipping judge")
-            return {"judgment": None, "judge_latency_ms": 0.0}
+            return {"judgment": None}
 
         # Compute the deterministic baseline that llm:false would have produced.
         query = state.get("user_query", "")
@@ -2343,7 +2326,7 @@ Respond with JSON only. No other text."""
             result = self.judge.judge(query, documents, llm_response, baseline)
         except Exception as exc:
             logger.warning("llm_judge_node failed: %s", exc, exc_info=True)
-            return {"judgment": None, "judge_latency_ms": (time.time() - t0) * 1000.0}
+            return {"judgment": None}
 
         elapsed_ms = (time.time() - t0) * 1000.0
         logger.info(
@@ -2374,10 +2357,7 @@ Respond with JSON only. No other text."""
                     "fabrication/cross_product_bleed (inference/overreach only).",
                     len(result.hallucinations),
                 )
-            return {
-                "judgment": result.model_dump(),
-                "judge_latency_ms": elapsed_ms,
-            }
+            return {"judgment": result.model_dump()}
 
         logger.info(
             "llm_judge_node: auto-retrying — faithfulness=%.2f, %d retry-worthy "
@@ -2392,22 +2372,15 @@ Respond with JSON only. No other text."""
             )
         except Exception as exc:
             logger.warning("Auto-retry regeneration failed: %s", exc, exc_info=True)
-            return {
-                "judgment": result.model_dump(),
-                "judge_latency_ms": elapsed_ms,
-            }
+            return {"judgment": result.model_dump()}
 
         try:
             new_baseline = self._format_search_results(documents, query)
             new_result = self.judge.judge(query, documents, corrected, new_baseline)
         except Exception as exc:
             logger.warning("Auto-retry re-judge failed: %s", exc, exc_info=True)
-            return {
-                "judgment": result.model_dump(),
-                "judge_latency_ms": elapsed_ms,
-            }
+            return {"judgment": result.model_dump()}
 
-        total_ms = (time.time() - t0) * 1000.0
         logger.info(
             "llm_judge_node: retry result faithfulness=%.2f → %.2f, flags %d → %d",
             result.faithfulness,
@@ -2420,7 +2393,6 @@ Respond with JSON only. No other text."""
             "original_judgment": result.model_dump(),
             "corrected_response": corrected,
             "hallucination_retry_used": True,
-            "judge_latency_ms": total_ms,
         }
 
     def _regenerate_without_hallucinations(
@@ -2639,7 +2611,7 @@ Original query: {query}
         # thing worth showing an audience.
         is_gate_retry = bool(state.get("quality_gate_retried", False))
         fetch_k = RETRIEVER_FETCH_K * RETRY_FETCH_MULTIPLIER if is_gate_retry else RETRIEVER_FETCH_K
-        k = RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K
+        k = RERANKER_FETCH_K
         if is_gate_retry:
             k *= RETRY_FETCH_MULTIPLIER
             # Soft multi_match filters (feature / size) are hints that often
@@ -2761,7 +2733,7 @@ Original query: {query}
                 relaxed_retriever = self.vector_store.as_retriever(
                     search_type="hybrid",
                     search_kwargs={
-                        "k": RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K,
+                        "k": RERANKER_FETCH_K,
                         "fetch_k": RETRIEVER_FETCH_K,
                         "alpha": alpha,
                         "filters": hard_filters or None,
@@ -2925,15 +2897,10 @@ Original query: {query}
         """
         retrieved_documents = state.get("retrieved_documents", [])
         intent = state.get("intent", "search")
-        # Per-message toggle from the frontend; falls back to the global env flag.
+        # Per-message toggle from the frontend.
         reranking_opt = state.get("optimizations", {}).get("reranking", True)
 
-        if (
-            not ENABLE_RERANKING
-            or not reranking_opt
-            or not self.reranker
-            or not retrieved_documents
-        ):
+        if not reranking_opt or not self.reranker or not retrieved_documents:
             logger.debug(
                 f"Reranker: skipped (toggle={reranking_opt}, intent={intent}, "
                 f"docs={len(retrieved_documents)})"
