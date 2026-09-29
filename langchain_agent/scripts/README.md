@@ -14,7 +14,7 @@ rest are direct commands.
 | `teardown.sh` | `stop.sh`, then removes Docker volumes, `.venv`, `web/node_modules`, `logs/`. Destructive, no prompt | `make teardown` — clean slate |
 | `smoke_local.sh [pytest-args]` | Runs the e2e suite against :8080 — reuses a healthy backend or starts/stops its own. Exit 2 means PostgreSQL/OpenSearch aren't up | `make ci` runs it narrowed to one test; run it bare for the full suite (~90 s) |
 | `load_precomputed_indices.py` | Bulk-loads `data/precomputed/*.parquet` into OpenSearch; refuses a dump whose mapping hash doesn't match `INDEX_MAPPING` | Called by `setup.py`; takes no arguments |
-| `reset_demo_taxonomy.sh [--full]` | Re-arms the taxonomy demos (same code path as the UI's Restart button and `POST /api/admin/demo-reset`) | Between rehearsals |
+| `reset_demo_taxonomy.sh` | Re-arms the taxonomy demos (same code path as the UI's Restart button and `POST /api/admin/demo-reset`) | Between rehearsals |
 | `pre-commit.sh` | black + isort + flake8 on staged `.py` files | Installed as `.git/hooks/pre-commit` by `setup.sh`; runs on every commit |
 
 ## The hook

@@ -25,6 +25,7 @@ import pytest
 from pipeline.reindex_trigger import ReindexOutcome
 from quality import enrichment_service
 from retrieval import attribute_mapping_store as store_module
+from retrieval.attribute_discovery import CANONICALS_BY_TYPE
 from retrieval.attribute_mapping_store import AttributeMappingStore
 
 pytestmark = pytest.mark.integration
@@ -308,7 +309,7 @@ class TestRealReindexEndToEnd:
     def test_real_reindex_completes_and_reports_zero_candidates(self, store):
         # Register a throwaway attribute type's canonical seed just for this
         # test, since enrich_attribute validates against known types.
-        enrichment_service._CANONICAL_SEEDS_BY_TYPE["_test_only"] = {
+        CANONICALS_BY_TYPE["_test_only"] = {
             "test_bucket": ["zzz_test_variant_no_product_mentions_this"]
         }
         try:
@@ -326,4 +327,4 @@ class TestRealReindexEndToEnd:
             assert result.docs_processed == 0
             assert result.duration_seconds >= 0
         finally:
-            del enrichment_service._CANONICAL_SEEDS_BY_TYPE["_test_only"]
+            del CANONICALS_BY_TYPE["_test_only"]

@@ -62,27 +62,17 @@ def test_format_filter_summary_with_waterproof_filter(agent):
     assert result == "waterproof: waterproof"
 
 
-def test_format_filter_summary_with_price_range(agent):
-    """Test filter summary formatting for price range filter."""
-    filters = [{"range": {"price": {"gte": 50.0, "lte": 200.0}}}]
-
-    result = agent._format_filter_summary(filters)
-
-    assert "price: over $50.0" in result
-    assert "price: under $200.0" in result
-
-
 def test_format_filter_summary_with_multiple_filters(agent):
     """Test filter summary formatting with multiple filters."""
     filters = [
         {"match": {"product_brand": {"query": "Sony"}}},
-        {"range": {"price": {"lte": 100.0}}},
+        {"multi_match": {"query": "mesh", "fields": ["title", "chunk_text"]}},
     ]
 
     result = agent._format_filter_summary(filters)
 
     assert "brand: Sony" in result
-    assert "price: under $100.0" in result
+    assert "feature: mesh" in result
 
 
 def test_format_filter_summary_with_empty_filters(agent):

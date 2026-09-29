@@ -108,9 +108,7 @@ Outbound events, in the order a search turn emits them. Every event has
 | `reranker_start` / `reranker_progress` / `reranker_result` | reranker | per-document scores in 0–1 |
 | `quality_gate` | quality_gate | pass / retry, threshold used, alpha adjustment |
 | `summary_generated` | summary | recap text for `summary` turns |
-| `llm_reasoning_start` / `llm_reasoning_chunk` | agent | internal reasoning, not the answer |
 | `llm_response_start` / `llm_response_chunk` | agent | answer tokens; the last chunk has `is_complete: true` |
-| `tool_call` | agent | a tool the agent invoked |
 | `enrichment_triggered` | agent | `attribute_type`, `variant`, `canonical`, `status` (`started`, then `complete` / `failed` / `declined`), `corrected_from`, re-tag counts |
 | `llm_response_corrected` | llm_judge | the regenerated answer after a hallucination retry, with before/after faithfulness |
 | `agent_complete` | — | `final_response`, `citations`, `total_duration_ms`, `documents_used` |

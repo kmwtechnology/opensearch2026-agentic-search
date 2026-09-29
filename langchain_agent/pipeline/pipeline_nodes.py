@@ -1,4 +1,4 @@
-"""The eight LangGraph pipeline nodes and their helpers (split out of main.py in #47).
+"""The eight LangGraph pipeline nodes and their helpers.
 
 `PipelineNodesMixin` is mixed into `main.EcommerceSearchAgent`; every method here
 expects the attributes `initialize_components` sets up (llm, vector_store,
@@ -6,6 +6,7 @@ reranker, judge, ...). The graph wiring and routers stay in main.py.
 """
 
 import asyncio
+import json
 import logging
 import re
 import time
@@ -17,66 +18,63 @@ from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel
 
+from api.schemas.events import (
+    HybridSearchResultEvent,
+    LLMResponseChunkEvent,
+    LLMResponseStartEvent,
+    OpenSearchQueryEvent,
+    QueryExpansionEvent,
+    RerankerProgressEvent,
+    RerankerStartEvent,
+    SearchCandidate,
+    SearchProgressEvent,
+)
 from core.agent_state import CustomAgentState
 from core.config import (
     ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS,
     ANSWER_STREAM_TAG,
     CROSS_ENCODER_MODEL,
     DEFAULT_ALPHA,
+    EVALUATOR_FALLBACK_ALPHA,
     INTERNAL_LLM_TAG,
     RERANKER_FETCH_K,
     RERANKER_TOP_K,
     RETRIEVER_FETCH_K,
     RETRY_FETCH_MULTIPLIER,
-    SEARCH_DEFAULTS,
-    VECTOR_COLLECTION_NAME,
 )
-from core.exceptions import LLMError
 from observability.llm_content import _flatten_llm_content
 from pipeline import enrichment_events
 from quality.enrichment_value_judge import EnrichmentValueJudge
 from quality.judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
-from retrieval.attribute_discovery import (
-    COLOR_CANONICALS,
-    WATERPROOF_CANONICALS,
-    single_term_classify,
-)
+from retrieval.attribute_discovery import CANONICALS_BY_TYPE, single_term_classify
 
 logger = logging.getLogger(__name__)
 
-# Canonical bucket vocabularies for _classify_attribute, by attribute type.
-# Mirrors enrichment_service._CANONICAL_SEEDS_BY_TYPE — add an entry here
-# when a new attribute type gets a discovery seed dict in attribute_discovery.py.
-_CANONICAL_SEEDS_BY_TYPE = {
-    "color": COLOR_CANONICALS,
-    "waterproof": WATERPROOF_CANONICALS,
+# Fixed alpha (and the reasoning shown in the UI) for intents that skip the LLM estimator.
+_FIXED_ALPHA_BY_INTENT = {
+    "comparison": (
+        0.60,
+        "Comparison query: prioritizing semantic search for quality/feature differences",
+    ),
+    "attribute_filter": (
+        0.25,
+        "Attribute filter query: prioritizing lexical search for exact attribute matches",
+    ),
+    "refinement": (
+        0.35,
+        "Refinement query: preserving category context while matching new attribute constraint",
+    ),
 }
 
-# Import event types for observability
-try:
-    from api.schemas.events import (
-        HybridSearchResultEvent,
-        LLMResponseChunkEvent,
-        LLMResponseStartEvent,
-        OpenSearchQueryEvent,
-        QueryExpansionEvent,
-        RerankerProgressEvent,
-        RerankerStartEvent,
-        SearchCandidate,
-        SearchProgressEvent,
-    )
 
-except ImportError:
-    # Event types might not be importable in every context (e.g. isolated unit tests)
-    HybridSearchResultEvent = None
-    RerankerStartEvent = None
-    SearchCandidate = None
-    SearchProgressEvent = None
-    RerankerProgressEvent = None
-    LLMResponseStartEvent = None
-    LLMResponseChunkEvent = None
-    QueryExpansionEvent = None
-    OpenSearchQueryEvent = None
+# Reranker top-score floor per intent below which the quality gate retries.
+_QUALITY_THRESHOLD_BY_INTENT = {
+    "comparison": 0.55,
+    "attribute_filter": 0.45,
+    "refinement": 0.45,
+    "search": 0.50,
+    "follow_up": 0.50,
+}
 
 
 class AlphaEstimation(BaseModel):
@@ -105,56 +103,11 @@ class PipelineNodesMixin:
     # ========================================================================
 
     def intent_classifier_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        Classify the latest user message to determine intent for e-commerce product search.
+        """Classify the latest user message with one structured LLM call.
 
-        Classifies via a single structured LLM call (_classify_intent) -- there is no
-        keyword-based fast-path despite older docs/comments claiming one (see #26; every
-        request pays a full LLM round-trip here). If confidence < 0.7, returns
-        intent=clarify with clarifying questions for user confirmation.
-
-        Intents (6 types):
-        - `search`: General product discovery queries (DEFAULT)
-        - `comparison`: Comparing two or more products ("Compare X vs Y")
-        - `attribute_filter`: Requests with specific attributes ("Show me X in [color] under [price]")
-        - `refinement`: Narrowing prior search with new constraints ("Make them waterproof")
-        - `follow_up`: Vague expansions needing context ("Tell me more", "Any alternatives?")
-        - `summary`: Conversation recap ("Summarize what we discussed")
-        - `clarify`: Low-confidence queries requiring disambiguation
-
-        Args:
-            state: CustomAgentState with 'messages' required. Other fields set by prior nodes.
-
-        Returns:
-            Dict with keys:
-            - intent: str, one of the 6 intent types above
-            - user_query: str, extracted user message
-            - intent_confidence: float, 0.0–1.0 confidence in classification
-            - reasoning: str, explanation for classification decision
-            - clarifying_questions: list[str], questions if confidence < 0.7
-
-        Examples:
-            Query: "Find me wireless headphones under $100"
-            Output: {
-                "intent": "search",
-                "intent_confidence": 0.95,
-                "reasoning": "General product discovery query",
-                "clarifying_questions": []
-            }
-
-            Query: "Hmm, maybe cheaper ones?"
-            Output: {
-                "intent": "follow_up",
-                "intent_confidence": 0.68,
-                "reasoning": "Vague price refinement, low confidence",
-                "clarifying_questions": ["Price range? e.g., under $50", "Any other constraints?"]
-            }
-
-        LangSmith Observability:
-            This node emits structured logs with metadata that LangSmith picks up:
-            - node: "intent_classifier"
-            - intent: detected intent class
-            - confidence: classification confidence (0.0–1.0)
+        Intents: search, comparison, attribute_filter, refinement, follow_up, summary.
+        Confidence below 0.7 routes to `agent` (as `clarify`) for a clarifying
+        question. Also resets the per-turn hallucination-retry guard.
         """
         messages = state["messages"]
         user_query = ""
@@ -170,18 +123,10 @@ class PipelineNodesMixin:
             f"Intent classification: intent={intent}, confidence={confidence:.2f}, query={user_query[:50] if user_query else '<empty>'}..."
         )
 
-        # NEW: Category continuity validation for refinement intents
-        #
-        # Skipped when the message disputes a prior turn's tag (e.g. "that's
-        # not tan, that's tagged yellow which is wrong") -- a correction is
-        # about that tag's accuracy, not a new product category, so it can
-        # never show "continuity" with the prior search in the sense this
-        # check means. Confirmed live: `_extract_product_category_from_query`'s
-        # LLM fallback, asked to name a category for a message that mentions
-        # none, doesn't reliably answer "" as instructed -- it guessed
-        # "clothing" for this exact dispute message, which then hard-mismatched
-        # against the prior turn's "boots" and downgraded intent to `search`,
-        # silently skipping the taxonomy-correction tool gate below (#126).
+        # Category continuity check for refinements. Skipped for tag disputes
+        # ("that's not tan, that's tagged yellow"): the category extractor's LLM
+        # fallback invents a category for them, which would downgrade the turn to
+        # `search` and skip the taxonomy-correction tool.
         if intent == "refinement" and not self._detect_correction_signal(user_query):
             prior_docs = state.get("prior_search_documents", [])
             if prior_docs:
@@ -215,148 +160,44 @@ class PipelineNodesMixin:
             "confidence": confidence,  # For UI display
             "intent_confidence": confidence,
             "clarifying_questions": clarifying_questions,
-            # Reset per-turn guard so every new user message gets a fresh retry budget.
-            # LangGraph persists state through Postgres checkpoints; without this reset,
-            # a retry fired in turn N permanently disables the gate for turns N+1, N+2, …
-            # (issue #83).
+            # Checkpointed state would otherwise carry a spent retry into every later turn.
             "hallucination_retry_used": False,
         }
 
     def query_evaluator_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        Evaluate query type and determine optimal alpha for hybrid search balance.
+        """Choose the hybrid-search alpha (0 = pure BM25, 1 = pure vector).
 
-        Sets the alpha parameter (0.0=pure lexical/BM25, 1.0=pure semantic/vector) based on:
-        - Intent fast-path: deterministic alpha for comparison (0.60), attribute_filter (0.25), refinement (0.35)
-        - LLM path: semantic analysis for search/follow_up intents, prompt-guided selection
+        Comparison, attribute_filter and refinement intents take a fixed alpha with
+        no LLM call; search and follow_up ask the LLM, falling back to the
+        collection default on any failure.
 
-        Also expands vague queries using conversation history (pronouns, comparatives).
-
-        Alpha Interpretation:
-        - 0.0–0.15: Pure lexical (exact model numbers, ASINs, brand+model)
-        - 0.15–0.40: Lexical-heavy (specific features, color/size, brand combos)
-        - 0.40–0.60: Balanced (feature comparisons, activity-based queries)
-        - 0.60–0.75: Semantic-heavy (conceptual needs, occasion-based)
-        - 0.75–1.0: Pure semantic (gift ideas, mood/style, open-ended exploration)
-
-        Args:
-            state: CustomAgentState with 'messages' (required) and 'intent' (set by classifier).
-                   May contain 'prior_search_documents' for refinement context.
-
-        Returns:
-            Dict with keys:
-            - alpha: float, 0.0–1.0 hybrid search weight
-            - query_analysis: str, reasoning for alpha choice
-            - search_strategy: str, human-readable strategy (e.g., "Semantic-Heavy")
-            - intent_optimized: bool, True if fast-path, False if LLM-driven
-
-        Examples:
-            Intent: "comparison", Query: "Compare Sony vs Bose headphones"
-            Output: {
-                "alpha": 0.60,
-                "query_analysis": "Comparison query: prioritizing semantic search for quality differences",
-                "search_strategy": "Semantic-Heavy (Vector dominant)",
-                "intent_optimized": True
-            }
-
-            Intent: "search", Query: "best headphones for long flights"
-            Output: {
-                "alpha": 0.72,
-                "query_analysis": "Activity-based query requiring semantic understanding",
-                "search_strategy": "Semantic-Heavy (Vector dominant)",
-                "intent_optimized": False
-            }
+        Returns `alpha` and `query_analysis` (the reasoning, shown in the UI).
         """
         start_time = time.time()
-        messages = state["messages"]
+        default_alpha = EVALUATOR_FALLBACK_ALPHA
 
-        # Extract last user message
         last_user_msg = None
-        for msg in reversed(messages):
+        for msg in reversed(state["messages"]):
             if isinstance(msg, HumanMessage):
                 last_user_msg = _flatten_llm_content(msg)
                 break
 
         if not last_user_msg:
-            # No user message, use collection-aware default
-            collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
-            return {
-                "alpha": collection_defaults.get("alpha", DEFAULT_ALPHA),
-                "query_analysis": "No query detected",
-            }
+            return {"alpha": default_alpha, "query_analysis": "No query detected"}
 
         intent = state.get("intent", "search")
-        print(
-            f"\n[Query Evaluator] Starting evaluation for query: '{last_user_msg[:80]}...' (intent: {intent})"
-        )
 
-        # FAST PATH: Intent-specific alpha selection (high confidence, no LLM)
-        # These patterns are deterministic and highly accurate for e-commerce
-
-        # 1. COMPARISON queries: Highlight product differences
-        if intent == "comparison":
-            alpha = 0.60  # Semantic-heavy for quality/feature differences
-            strategy = "Semantic-Heavy (Vector dominant)"
-            reasoning = (
-                f"Comparison query: prioritizing semantic search for quality/feature differences"
-            )
-
-            elapsed = time.time() - start_time
+        fixed = _FIXED_ALPHA_BY_INTENT.get(intent)
+        if fixed:
+            alpha, reasoning = fixed
             logger.info(
-                f"Query evaluation (FAST PATH - comparison): alpha={alpha:.2f}, elapsed={elapsed:.3f}s"
+                f"Query evaluation (fixed alpha, {intent}): alpha={alpha:.2f}, elapsed={time.time() - start_time:.3f}s"
             )
-            return {
-                "alpha": alpha,
-                "query_analysis": reasoning,
-                "search_strategy": strategy,
-                "intent_optimized": True,
-            }
+            return {"alpha": alpha, "query_analysis": reasoning}
 
-        # 2. ATTRIBUTE_FILTER queries: Match specific attributes (color, size, price, features)
-        elif intent == "attribute_filter":
-            alpha = 0.25  # Lexical-heavy for exact attribute matching
-            strategy = "Lexical-Heavy (BM25 dominant)"
-            reasoning = (
-                f"Attribute filter query: prioritizing lexical search for exact attribute matches"
-            )
-
-            elapsed = time.time() - start_time
-            logger.info(
-                f"Query evaluation (FAST PATH - attribute_filter): alpha={alpha:.2f}, elapsed={elapsed:.3f}s"
-            )
-            return {
-                "alpha": alpha,
-                "query_analysis": reasoning,
-                "search_strategy": strategy,
-                "intent_optimized": True,
-            }
-
-        # 3. REFINEMENT queries: Adding constraint to prior search (category context + new attribute)
-        elif intent == "refinement":
-            alpha = (
-                0.35  # Slightly more semantic than attribute_filter to preserve category context
-            )
-            strategy = "Lexical-Heavy (BM25 dominant)"
-            reasoning = "Refinement query: preserving category context while matching new attribute constraint"
-
-            elapsed = time.time() - start_time
-            logger.info(
-                f"Query evaluation (FAST PATH - refinement): alpha={alpha:.2f}, elapsed={elapsed:.3f}s"
-            )
-            return {
-                "alpha": alpha,
-                "query_analysis": reasoning,
-                "search_strategy": strategy,
-                "intent_optimized": True,
-            }
-
-        # FULL LLM PATH: General search queries (flexible, intent-aware guidance)
-        # For: search, follow_up (need semantic analysis)
-
-        intent_guidance = ""
         if intent == "follow_up":
             intent_guidance = "\nNOTE: This is a FOLLOW_UP query continuing a previous search. Analyze query semantics and adjust alpha to refine previous results."
-        else:  # search
+        else:
             intent_guidance = "\nNOTE: This is a general SEARCH query. Analyze semantics to determine optimal balance between exact matching and conceptual relevance."
 
         evaluation_prompt = f"""Determine the optimal alpha for hybrid search on this query.{intent_guidance}
@@ -391,101 +232,31 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             result = self._invoke_with_timeout(
                 structured_llm, evaluation_prompt, ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS
             )
-
             alpha = max(0.0, min(1.0, result.alpha))
             reasoning = result.reasoning or "No reasoning provided"
-
-            # Categorize search strategy
-            if alpha <= 0.15:
-                strategy = "Pure Lexical (BM25)"
-            elif alpha <= 0.4:
-                strategy = "Lexical-Heavy (BM25 dominant)"
-            elif alpha <= 0.6:
-                strategy = "Balanced (Hybrid)"
-            elif alpha <= 0.75:
-                strategy = "Semantic-Heavy (Vector dominant)"
-            else:
-                strategy = "Pure Semantic (Vector)"
-
-            elapsed = time.time() - start_time
             logger.info(
-                f"Query evaluation (LLM path): strategy={strategy}, alpha={alpha:.2f}, elapsed={elapsed:.3f}s"
+                f"Query evaluation (LLM): alpha={alpha:.2f}, elapsed={time.time() - start_time:.3f}s"
             )
             logger.debug(f"Query evaluation details: reasoning={reasoning}, query={last_user_msg}")
-
-            return {
-                "alpha": alpha,
-                "query_analysis": reasoning,
-                "search_strategy": strategy,
-                "intent_optimized": False,  # LLM-driven, not fast-path
-            }
-
-        except FutureTimeoutError:
-            elapsed = time.time() - start_time
-            collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
-            fallback_alpha = collection_defaults.get("alpha", DEFAULT_ALPHA)
-            logger.warning(
-                "Query evaluation timeout",
-                extra={
-                    "elapsed_ms": int(elapsed * 1000),
-                    "timeout_ms": int(ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS * 1000),
-                    "fallback_alpha": fallback_alpha,
-                },
-            )
-            return {
-                "alpha": fallback_alpha,
-                "intent_description": "Unknown (timeout)",
-                "query_analysis": {},
-                "search_strategy": "default",
-                "intent_optimized": False,
-            }
-        except LLMError as e:
-            elapsed = time.time() - start_time
-            collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
-            fallback_alpha = collection_defaults.get("alpha", DEFAULT_ALPHA)
-            logger.warning(
-                "Query evaluation LLM error",
-                extra={
-                    "model": getattr(e, "model", None),
-                    "elapsed_ms": int(elapsed * 1000),
-                    "fallback_alpha": fallback_alpha,
-                },
-            )
-            return {
-                "alpha": fallback_alpha,
-                "intent_description": "Unknown (LLM error)",
-                "query_analysis": {},
-                "search_strategy": "default",
-                "intent_optimized": False,
-            }
+            return {"alpha": alpha, "query_analysis": reasoning}
         except Exception as e:
-            # Fallback to collection-aware default if evaluation fails
-            elapsed = time.time() - start_time
-            collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
-            fallback_alpha = collection_defaults.get("alpha", DEFAULT_ALPHA)
+            # Timeout, LLM error, or malformed output: the default alpha still yields a usable search.
             logger.warning(
                 "Query evaluation failed",
                 extra={
-                    "error": str(e),
-                    "elapsed_ms": int(elapsed * 1000),
-                    "fallback_alpha": fallback_alpha,
+                    "error": repr(e),
+                    "elapsed_ms": int((time.time() - start_time) * 1000),
+                    "fallback_alpha": default_alpha,
                 },
             )
-            return {
-                "alpha": fallback_alpha,
-                "query_analysis": f"Evaluation failed: {str(e)}",
-                "search_strategy": "Fallback",
-                "intent_optimized": False,
-            }
+            return {"alpha": default_alpha, "query_analysis": f"Evaluation failed: {e}"}
 
     @staticmethod
     def _build_grounded_context(documents: List[Document]) -> str:
-        """Render retrieved documents as numbered, isolated FACTS blocks.
+        """Render documents as numbered FACTS blocks with hard per-product boundaries.
 
-        Each block carries a hard boundary so the LLM treats facts as
-        per-product (not transferable between products). Inputs to this
-        function feed both the agent_node prompt and the llm_judge_node
-        regeneration helper, so the grounding semantics are identical.
+        Shared by the agent prompt and the judge's regeneration helper so both
+        ground on identical text.
         """
         if not documents:
             return "No relevant documents were found."
@@ -526,16 +297,8 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
     @staticmethod
     def _citation_url_for_doc(doc: Document) -> Optional[str]:
-        """Resolve a stable, user-facing URL for a retrieved document.
-
-        Preference order:
-          1. explicit `metadata['url']` (non-ESCI sources)
-          2. Amazon search-by-title (`/s?k=<title>`) — robust to delisted ASINs,
-             which is the failure mode behind issue #4
-          3. Amazon search-by-product_id as a last resort if no title exists
-
-        Returns None when no usable URL can be constructed.
-        """
+        """Explicit `metadata['url']`, else an Amazon search by title (robust to delisted
+        ASINs), else by product_id; None when the document has none of them."""
         url = doc.metadata.get("url")
         if url:
             return url
@@ -554,31 +317,19 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
     @staticmethod
     def _strip_inline_links(text: str) -> str:
-        """Remove markdown hyperlinks and bare URLs from LLM-generated text.
+        """Collapse `[text](url)` to `text` and drop bare URLs from LLM output.
 
-        The agent prompt forbids the LLM from emitting URLs (it has no canonical
-        product URLs and reliably hallucinates ASINs — see issue #4). This is a
-        belt-and-suspenders guard: if a slipped link survives, collapse
-        `[text](url)` to `text` and drop bare URLs entirely so the user is not
-        shown dead/incorrect Amazon links.
+        The prompt forbids URLs (the model hallucinates ASINs); this catches any that slip through.
         """
         if not text or "http" not in text:
             return text
-        # Collapse markdown links to their visible text. Strip surrounding `**`
-        # the LLM sometimes adds around the URL portion (issue #4 example).
         cleaned = PipelineNodesMixin._MARKDOWN_LINK_RE.sub(r"\1", text)
-        # Drop any remaining bare URLs.
         cleaned = PipelineNodesMixin._BARE_URL_RE.sub("", cleaned)
         return cleaned
 
     @staticmethod
     def _format_search_results(documents: List[Document], user_query: Optional[str]) -> str:
-        """
-        Render retrieved documents as a plain search-results-style markdown list.
-        Used when the user has disabled LLM response generation — order reflects
-        whatever the upstream pipeline produced (reranker scores if reranking is
-        on, otherwise raw retriever order).
-        """
+        """Plain markdown result list, in reranked order; the judge's fallback baseline."""
         if not documents:
             return (
                 f"No products found for **{user_query or 'your search'}**.\n\n"
@@ -596,8 +347,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             title = doc.metadata.get("title") or "(untitled product)"
             brand = doc.metadata.get("product_brand") or doc.metadata.get("brand")
             url = doc.metadata.get("url") or ""
-            # Prefer the reranker's relevance score; fall back to the raw
-            # OpenSearch retrieval score (BM25 / kNN / RRF) when reranking is off.
             reranker_score = doc.metadata.get("reranker_score")
             retrieval_score = doc.metadata.get("retrieval_score")
             snippet = (doc.page_content or "").strip().replace("\n", " ")
@@ -624,36 +373,19 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         return header + "\n\n---\n\n".join(rows)
 
     async def aagent_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        Async face of agent_node, used by every graph path that runs under
-        astream_events (i.e. the API/WebSocket path).
+        """Run agent_node in a worker thread so a scoped re-tag (synchronous OpenSearch
+        calls) cannot block the event loop and starve WebSocket frames.
 
-        This exists purely to keep the event loop free. LangGraph's
-        RunnableCallable.ainvoke short-circuits with
-        ``if not self.afunc: return self.invoke(...)``, so a sync-only node
-        runs ON the loop thread — and agent_node can block briefly when the
-        taxonomy-correction path triggers a scoped re-tag
-        (ScopedRetagTrigger.trigger runs synchronous OpenSearch calls inline).
-        While the loop is blocked no WebSocket frame can leave the server,
-        which is why the re-tag window used to be completely silent in the
-        UI (#103).
-        Handing the body to a worker thread lets the enrichment lifecycle
-        events emitted from inside it actually reach the browser as they
-        happen.
-
-        asyncio.to_thread copies the current context, so LangChain's config
-        and callback plumbing (and our ContextVar emit bridge) propagate into
-        the worker unchanged.
+        asyncio.to_thread copies the context, so LangChain callbacks and the
+        ContextVar emit bridge reach the worker unchanged.
         """
         return await asyncio.to_thread(self.agent_node, state)
 
     def agent_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        Agent response generation node - generates response from retrieved documents.
+        """Answer from the retrieved documents, or ask for clarification / run a taxonomy tool."""
+        # Read at call time: tests patch core.config.ENABLE_ENRICHMENT_TOOL.
+        from core.config import ENABLE_ENRICHMENT_TOOL
 
-        This is a deterministic node that runs after retriever_node.
-        Uses retrieved documents as context to answer the user's question.
-        """
         start_time = time.time()
         messages = list(state["messages"])
         retrieved_documents = state.get("retrieved_documents", [])
@@ -667,7 +399,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         # Handle clarify intent - ask user for more context
         if intent == "clarify":
             clarifying_questions = state.get("clarifying_questions", [])
-            # Always return clarification response, even if questions list is empty
             if clarifying_questions:
                 questions_text = "\n".join(f"- {q}" for q in clarifying_questions)
                 clarify_response = (
@@ -678,7 +409,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                     '$100" or "running shoes for flat feet" — I can take it from there.'
                 )
             else:
-                # Fallback response if no questions were generated
                 clarify_response = (
                     "I'd love to help! To point you at the right products, could you share a "
                     "little more about what you're looking for? For example:\n\n"
@@ -701,18 +431,10 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 user_query = _flatten_llm_content(msg)
                 break
 
-        # Taxonomy CORRECTION signal — the shopper disputing a tag from a
-        # prior turn (e.g. "that's not tan, it's yellow"), distinct from
-        # this turn's own retrieval quality. Checked before the gap-detection
-        # block below since it's independent of whether THIS turn's search
-        # found anything: the thing being fixed is a prior turn's tag. Only
-        # meaningful when there's prior conversation to dispute — the cheap
-        # keyword gate combined with intent already scoped to continuation
-        # turns keeps this from firing on a fresh, standalone query.
-        from core.config import ENABLE_ENRICHMENT_TOOL as _correction_flag
-
+        # Taxonomy correction: the shopper disputes a tag from a prior turn. Checked
+        # before gap detection because it is independent of this turn's retrieval.
         if (
-            _correction_flag
+            ENABLE_ENRICHMENT_TOOL
             and intent in ("refinement", "follow_up")
             and self._detect_correction_signal(user_query)
         ):
@@ -720,35 +442,19 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             if correction_result is not None:
                 logger.info("Agent: taxonomy correction triggered via trigger_enrichment")
                 return correction_result
-            # LLM declined (not confident this was a real correction) — this
-            # isn't a search failure, so fall through to normal response
-            # generation below rather than the "no info" canned response.
+            # LLM declined: not a search failure, so fall through to normal generation.
 
-        # Check if retrieval failed even after quality gate retry
-        # If quality gate retried and max relevance is still very low, return honest acknowledgment
-        MIN_RELEVANCE_THRESHOLD = 0.10  # Same as citation suppression threshold
+        MIN_RELEVANCE_THRESHOLD = 0.10  # also the citation cutoff below
         quality_gate_retried = state.get("quality_gate_retried", False)
         max_relevance = max(
             (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
             default=0.0,
         )
 
-        # Two distinct ways retrieval can "fail" here, both needing to be
-        # caught for the enrichment gap signal:
-        #   1. Documents WERE retrieved but scored poorly even after a
-        #      quality-gate retry (the original condition).
-        #   2. An attribute_filter query's hard filter excluded EVERYTHING
-        #      on the very first pass — quality_gate_node deliberately never
-        #      retries this case (retrying with adjusted alpha can't fix an
-        #      exact-match filter that's excluding everything; see
-        #      quality_gate_node's "No documents to evaluate" branch), so
-        #      quality_gate_retried never becomes True. This is exactly the
-        #      scenario an unrecognized color/waterproof term produces —
-        #      without this branch, the enrichment tool would never be
-        #      offered for the case it exists to fix. Confirmed via a live
-        #      rehearsal: "show me camel colored coats" hit this path
-        #      (0 documents retrieved, quality_gate_retried stayed False)
-        #      rather than the retry path.
+        # Two retrieval failures signal a taxonomy gap: (1) documents scored poorly even
+        # after a quality-gate retry; (2) an attribute_filter's hard filter excluded
+        # everything on the first pass (the quality gate never retries that), which is
+        # what an unrecognized color/waterproof term produces.
         retry_exhausted_gap = quality_gate_retried and max_relevance < MIN_RELEVANCE_THRESHOLD
         zero_result_filter_gap = intent == "attribute_filter" and not retrieved_documents
 
@@ -759,8 +465,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 f"zero_result_filter_gap={zero_result_filter_gap}, "
                 f"max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD})"
             )
-
-            from core.config import ENABLE_ENRICHMENT_TOOL
 
             if ENABLE_ENRICHMENT_TOOL:
                 enrichment_result = self._try_enrichment_tool(user_query)
@@ -779,30 +483,18 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             )
             return {"messages": [AIMessage(content=no_info_response)], "citations": []}
 
-        # Build context from retrieved documents
-        if retrieved_documents:
-            context = self._build_grounded_context(retrieved_documents)
-        else:
-            context = "No relevant documents were found."
+        context = self._build_grounded_context(retrieved_documents)
 
-        # Build citation list from retrieved documents' URLs (deduplicated)
-        # Only include citations if documents have meaningful relevance scores
-        # Map URL to (label, doc_indices, asin, image_url). The ASIN and the
-        # product's image URL (#147) ride along so the UI can render the product
-        # as a card -- citations dedup by title-derived URL, so we keep the first
-        # product seen for a URL.
+        # url -> (label, doc indices, asin, image_url). Citations dedup by title-derived
+        # URL, keeping the first product seen for a URL; asin and image_url let the UI
+        # render each citation as a product card.
         citations_dict: Dict[str, Tuple[str, List[int], str, str]] = {}
 
-        # Check max relevance score - suppress citations if all docs are irrelevant.
-        max_relevance = max(
-            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
-            default=0.0,
-        )
-        MIN_CITATION_RELEVANCE = 0.10  # Don't cite docs below 10% relevance
+        # max_relevance (computed above) < cutoff means nothing is worth citing.
+        MIN_CITATION_RELEVANCE = MIN_RELEVANCE_THRESHOLD
 
         if max_relevance >= MIN_CITATION_RELEVANCE:
             for i, doc in enumerate(retrieved_documents, 1):
-                # Skip docs with very low relevance, but only when scores are real
                 doc_score = doc.metadata.get("reranker_score", 0.0)
                 if doc_score < MIN_CITATION_RELEVANCE:
                     continue
@@ -810,7 +502,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 url = self._citation_url_for_doc(doc)
                 if not url:
                     continue
-                # If URL already tracked, just append the doc index
                 if url in citations_dict:
                     citations_dict[url][1].append(i)
                     continue
@@ -826,7 +517,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 f"Suppressing citations: max_relevance={max_relevance:.3f} < {MIN_CITATION_RELEVANCE}"
             )
 
-        # Convert to list format with document index prefixes
         citations = []
         for url, (label, indices, asin, image_url) in citations_dict.items():
             index_prefix = ",".join(str(idx) for idx in indices)
@@ -837,12 +527,8 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 citation["image_url"] = image_url
             citations.append(citation)
 
-        # Build recent conversation context (excluding the current query)
         recent_context = self._build_recent_context(messages)
         recent_context_block = f"Recent context:\n{recent_context}\n\n" if recent_context else ""
-
-        # Create intent-aware prompt
-        intent = state.get("intent", "search")
 
         # Intent-specific instructions
         if intent == "comparison":
@@ -859,7 +545,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 - Be specific: e.g., "This product comes in blue and is listed in size 10"
 - If some requested attributes aren't available, note that clearly"""
         elif intent == "refinement":
-            # Extract prior search category for explicit feedback
             prior_docs = state.get("prior_search_documents", [])
             prior_category = (
                 self._extract_product_category_from_documents(prior_docs) if prior_docs else ""
@@ -927,72 +612,38 @@ CITATION & STYLE:
 - Tone: plain and direct, like a knowledgeable friend who respects your time — helpful without being chatty. Avoid dismissive phrasing ("you need to narrow down", "I can't help with that"), but do not pad with enthusiasm, apologies, or filler either. Warmth comes from being useful, not from extra words.
 """
 
-        # Build messages for LLM
         llm_messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_query or "Please summarize the context."),
         ]
 
-        # Generate response with streaming if available.
-        #
-        # response_streamed tells observable_agent that the tokens have ALREADY
-        # gone out over the socket, so it must not re-send the finished text at
-        # node end. It used to infer this by watching LangChain's
-        # on_chat_model_stream callback, which stopped reaching it once
-        # agent_node moved to a worker thread (#103) — leaving it convinced
-        # nothing had streamed, so it emitted a second response start plus the
-        # whole answer. The UI then showed an empty streaming bubble and the
-        # text rendered twice.
-        response_streamed = False
-        if hasattr(self.llm, "stream") and callable(getattr(self.llm, "stream")):
-            response = self._stream_llm_response_simple(llm_messages)
-            response_streamed = True
-        else:
-            logger.debug("LLM does not support streaming, using invoke()")
-            response = self.llm.invoke(llm_messages)
+        # Tokens go out over the socket as they stream; response_streamed tells
+        # observable_agent not to re-send the finished text at node end.
+        response = self._stream_llm_response_simple(llm_messages)
 
-        # Strip any inline URLs the LLM emitted in spite of the prompt — ESCI
-        # ASINs are frequently delisted on Amazon and the model also hallucinates
-        # the same ID across distinct products (issue #4). The system-generated
-        # `citations` list below is the authoritative link surface.
+        # The generated `citations` are the only link surface; strip any URLs the model wrote.
         if hasattr(response, "content") and isinstance(response.content, str):
             stripped = self._strip_inline_links(response.content)
             if stripped != response.content:
                 logger.info("Agent: stripped inline URLs from LLM response")
                 response = AIMessage(content=stripped)
 
-        # Calculate response statistics
-        response_length = len(response.content) if hasattr(response, "content") else 0
         elapsed = time.time() - start_time
+        logger.info(f"Agent: generated response ({len(response.content)} chars) in {elapsed:.3f}s")
 
-        logger.info(f"Agent: generated response ({response_length} chars) in {elapsed:.3f}s")
-
-        return {
-            "messages": [response],
-            "citations": citations,
-            "response_streamed": response_streamed,
-        }
+        return {"messages": [response], "citations": citations, "response_streamed": True}
 
     def _try_enrichment_tool(
         self, user_query: Optional[str], prompt: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        """
-        Give the LLM a chance to use trigger_enrichment before falling back
-        to the canned "no results" response, when a search-quality gap was
-        detected (quality_gate_retried and max_relevance still very low) --
-        or, when called with an explicit `prompt`, for any other scenario
-        that offers the same tool (e.g. the shopper disputing a taxonomy
-        tag on a prior turn; see _try_correction_tool).
+        """Offer the LLM `trigger_enrichment` on a detected taxonomy gap (or, with an
+        explicit `prompt`, a disputed tag; see _try_correction_tool).
 
-        Kept as a manual two-call loop (bind tools -> invoke -> execute tool
-        + append ToolMessage -> invoke again without tools for the final
-        response) rather than a ToolNode/graph-topology change — lower risk
-        to the existing quality_gate retry / llm_judge wiring, and this only
-        ever needs to call at most one tool once per turn.
+        A manual two-call loop (bind tools, execute the one tool call, invoke again
+        without tools for the final text) rather than a ToolNode, which would change
+        the graph topology around quality_gate and llm_judge.
 
-        Returns None if the LLM didn't call the tool (caller falls through
-        to the existing canned response), or a full agent_node return dict
-        (messages, citations, enrichment_* state fields) if it did.
+        Returns None if the LLM declined to call the tool, else a full agent_node return dict.
         """
         from quality.enrichment_service import enrich_attribute
         from tools.enrichment_tool import format_enrichment_message, trigger_enrichment
@@ -1014,11 +665,7 @@ so briefly."""
 
         llm_with_tools = self.llm.bind_tools([trigger_enrichment])
         tool_messages = [HumanMessage(content=gap_prompt)]
-        # Tagged as deliberation so observable_agent does not stream it to the
-        # chat window. This call decides WHETHER to offer a taxonomy fix; when
-        # it declines it explains itself in prose ("nothing here looks like a
-        # color or waterproof term"), and that prose was reaching users as the
-        # answer to whatever they actually asked.
+        # INTERNAL_LLM_TAG keeps a declining call's prose out of the chat stream.
         response = llm_with_tools.invoke(tool_messages, config={"tags": [INTERNAL_LLM_TAG]})
 
         tool_calls = getattr(response, "tool_calls", None)
@@ -1053,13 +700,8 @@ so briefly."""
         )
         if not assessment.is_meaningful:
             logger.info(f"Agent: declined trigger_enrichment — {assessment.reasoning}")
-            # The value judge turning a change down is a real, explainable
-            # outcome — and it is the guardrail worth showing an audience.
-            # Before #103 this path emitted nothing at all, which on stage is
-            # indistinguishable from the app having hung. Note this fires only
-            # for a JUDGE rejection, never for the LLM simply choosing not to
-            # call the tool (_detect_correction_signal is deliberately broad,
-            # so that would narrate noise on ordinary follow-ups).
+            # Published only for a judge rejection, never for the LLM merely not calling
+            # the tool (the correction gate is broad; that would narrate noise).
             enrichment_events.publish(
                 status="declined",
                 attribute_type=attribute_type,
@@ -1081,32 +723,11 @@ so briefly."""
                 "enrichment_triggered": False,
             }
 
-        # Call enrich_attribute() directly rather than trigger_enrichment.invoke()
-        # so we get the structured EnrichmentResult (duration_seconds,
-        # docs_processed) for observability, without triggering a second,
-        # real re-index — format_enrichment_message() builds the exact same
-        # ToolMessage text the tool itself would return (#80).
-        # Announce BEFORE the re-index starts. enrich_attribute() blocks for
-        # ~20s in local mode, and this is the only chance to tell the UI that
-        # something is underway — everything after this line is reporting on a
-        # thing the audience has already spent 20 silent seconds waiting for
-        # (#103). Safe on a worker thread; a no-op when nobody is observing.
-        # `current_mapping` (computed above for the value judge) is threaded
-        # through as `corrected_from` so the frontend can explain WHY this is
-        # happening before the reindex even starts — "nothing currently
-        # matches this term" (a gap) reads very differently from "this is
-        # currently mapped to something else" (a correction), and #142
-        # flagged that the UI was jumping straight to reingestion without
-        # saying which one this was.
-        #
-        # Only send it when it is a REAL correction, i.e. the proposed
-        # canonical differs from what is on file. When they match,
-        # enrich_attribute short-circuits on "already mapped" and does no
-        # write at all, so announcing `tan is currently mapped to tan —
-        # rewriting that` would narrate a rewrite that never happens (and
-        # reads as a tautology besides). Matches the terminal event, where
-        # EnrichmentResult.corrected_from is likewise only set on a genuine
-        # replacement.
+        # Call enrich_attribute() directly (not trigger_enrichment.invoke()) to get the
+        # structured result without a second re-index. Announce first: the re-index
+        # blocks for seconds and this is the UI's only signal that work is underway.
+        # `corrected_from` is sent only for a real correction: when the canonical
+        # matches what is on file, enrich_attribute writes nothing.
         started_corrected_from = current_mapping if current_mapping != canonical else None
         enrichment_events.publish(
             status="started",
@@ -1123,9 +744,6 @@ so briefly."""
             attribute_type=attribute_type,
             variant=variant,
             canonical=enrichment_result.canonical or canonical,
-            # The tell that separates "learned a new term" from "corrected a
-            # wrong one" — the whole point of the correction demo, and until
-            # now it never left the backend.
             corrected_from=enrichment_result.corrected_from,
             error=enrichment_result.reindex_error,
             reindex_mode=enrichment_result.reindex_mode,
@@ -1152,12 +770,8 @@ so briefly."""
             "enrichment_triggered": True,
         }
 
-    # Cheap, local pre-filter for "this message might be disputing a
-    # taxonomy tag" — deliberately broad (false positives just cost one
-    # extra LLM decision that declines to call the tool; false negatives
-    # silently drop a real correction, which is worse). Not meant to be
-    # exhaustive NLU — the actual judgment call is the LLM's, in
-    # _try_correction_tool's tool-offer prompt below.
+    # Deliberately broad pre-filter for "might be disputing a taxonomy tag": a false
+    # positive costs one LLM call that declines, a false negative drops a real correction.
     _CORRECTION_SIGNAL_PHRASES = (
         "that's not",
         "thats not",
@@ -1181,12 +795,7 @@ so briefly."""
     )
 
     def _detect_correction_signal(self, user_query: Optional[str]) -> bool:
-        """
-        Cheap keyword gate: does the latest message plausibly dispute a
-        color/waterproof tag from a prior turn? Runs before any LLM call so
-        ordinary follow-ups ("show me cheaper ones") never pay for the
-        extra correction-offer prompt.
-        """
+        """Keyword gate run before any LLM call, so ordinary follow-ups skip the correction prompt."""
         if not user_query:
             return False
         q = user_query.lower()
@@ -1195,19 +804,11 @@ so briefly."""
     def _try_correction_tool(
         self, messages: Sequence[BaseMessage], user_query: Optional[str]
     ) -> Optional[Dict[str, Any]]:
-        """
-        Offer trigger_enrichment for a taxonomy CORRECTION rather than a
-        gap-fill: the shopper is disputing a color/waterproof tag the catalog
-        assigned to a product shown in a prior turn (e.g. "that's not tan,
-        it's clearly yellow" after a mistagged product surfaced). Unlike
-        the zero-result gap path, this fires regardless of this turn's own
-        retrieval results — the thing being fixed is a PRIOR turn's tag,
-        not this turn's search.
+        """Offer trigger_enrichment for a correction: the shopper disputes a tag from a
+        prior turn, so this fires regardless of this turn's retrieval.
 
-        Reuses _try_enrichment_tool's manual two-call loop with a
-        correction-framed prompt; enrich_attribute already supports
-        overwriting an existing mapping when the LLM supplies a different
-        canonical than the one on file (see enrichment_service.py).
+        Reuses _try_enrichment_tool with a correction-framed prompt; enrich_attribute
+        overwrites the existing mapping when the LLM proposes a different canonical.
         """
         history = self._build_recent_context(messages, limit=8)
 
@@ -1242,16 +843,13 @@ just respond to the shopper normally."""
         return self._try_enrichment_tool(user_query, prompt=correction_prompt)
 
     def _build_recent_context(self, messages: Sequence[BaseMessage], limit: int = 6) -> str:
-        """
-        Format a short history block from the most recent messages (excluding the current query).
-        """
+        """Short history block from the most recent messages, excluding the current query."""
         if not messages:
             return ""
 
         history_entries: list[str] = []
         recent_messages = list(messages)
 
-        # Drop the current query if it's the last message (it will be appended separately)
         if recent_messages and isinstance(recent_messages[-1], HumanMessage):
             recent_messages = recent_messages[:-1]
 
@@ -1268,28 +866,13 @@ just respond to the shopper normally."""
         return "\n".join(history_entries)
 
     def _expand_vague_query(self, query: str, messages: Sequence[BaseMessage]) -> str:
-        """
-        Expand follow-up queries using LLM and conversation context.
-
-        Lets the LLM intelligently decide if a query needs expansion and
-        what the expanded query should be based on conversation context.
-
-        Args:
-            query: The user's query
-            messages: Conversation history
-
-        Returns:
-            Expanded query with topic context, or original query if expansion not needed
-        """
-        # Filter to user turns only — AI responses (product listings) inflate the query bloat.
-        # For resolving what the user meant ("those", "the one you mentioned"),
-        # only user context matters; AI descriptions are irrelevant and cause maxClauseCount errors (issue #85).
+        """Rewrite a vague follow-up ("those but blue") into a self-contained query, or return it unchanged."""
+        # User turns only: AI product listings bloat the query and trip maxClauseCount.
         user_messages = [m for m in messages if isinstance(m, HumanMessage)]
         context = self._build_recent_context(user_messages, limit=4)
         if not context:
             return query
 
-        # Let LLM decide if expansion is needed based on context
         prompt = f"""Given the conversation context and a follow-up message, determine if the message needs expansion to be self-contained.
 
 USER MESSAGE: "{query}"
@@ -1313,29 +896,20 @@ Return ONLY the query text, nothing else."""
             response = self._invoke_with_timeout(
                 self.alpha_estimator_llm, prompt, ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS
             )
-            expanded = _flatten_llm_content(response).strip()
+            expanded = _flatten_llm_content(response).strip().strip("\"'")
 
-            # Remove any quotes the LLM might have added
-            expanded = expanded.strip("\"'")
-
-            # Sanity check - don't accept empty or very long expansions
             if not expanded or len(expanded) > 500:
                 return query
 
             if expanded != query:
                 logger.info(f"Query expansion: '{query}' → '{expanded}'")
-                # Emit query expansion event
-                if QueryExpansionEvent:
-                    try:
-                        self._emit_event_from_sync(
-                            QueryExpansionEvent(
-                                original_query=query,
-                                expanded_query=expanded,
-                                expansion_reason="Follow-up expanded with conversation context",
-                            )
-                        )
-                    except Exception as emit_error:
-                        logger.debug(f"Could not emit query expansion event: {emit_error}")
+                self._emit_event_from_sync(
+                    QueryExpansionEvent(
+                        original_query=query,
+                        expanded_query=expanded,
+                        expansion_reason="Follow-up expanded with conversation context",
+                    )
+                )
 
             return expanded
         except Exception as e:
@@ -1343,23 +917,11 @@ Return ONLY the query text, nothing else."""
             return query
 
     def _extract_product_category_from_documents(self, docs: List[Document]) -> str:
-        """
-        Extract primary product category from document titles.
-
-        Uses LLM fast-path to infer category from first 5 product titles.
-        Examples: "boots", "headphones", "dresses", "shoes", "electronics"
-
-        Args:
-            docs: List of documents to extract category from
-
-        Returns:
-            Inferred product category (lowercase string), or empty string if unknown
-        """
+        """Infer the primary category ("boots", "headphones", ...) from the first 5 titles; "" if unknown."""
         if not docs:
             return ""
 
         try:
-            # Extract first 5 titles for category inference
             titles = [
                 doc.metadata.get("title", "") for doc in docs[:5] if doc.metadata.get("title")
             ]
@@ -1367,7 +929,6 @@ Return ONLY the query text, nothing else."""
             if not titles:
                 return ""
 
-            # Use fast LLM to categorize (Lite model for speed)
             prompt = f"""Based on these product titles, what is the primary product category?
 Answer with ONLY the category name in lowercase (e.g., boots, headphones, shoes, dresses).
 Do not include any explanation.
@@ -1380,14 +941,8 @@ Titles:
             )
             category = _flatten_llm_content(response).strip().lower()
 
-            # Validate response looks like a short category name, not an
-            # explanation. Category names are legitimately multi-word
-            # ("running shoes", "trail running shoes") -- rejecting any
-            # space here silently discarded those and defaulted every such
-            # category to "", which forced _validate_category_continuity's
-            # score to the ambiguous band (0.5) for entire product lines.
+            # A short name (multi-word allowed: "trail running shoes"), not an explanation.
             if category and len(category) < 50 and category.count(" ") <= 2:
-                logger.debug(f"Extracted product category from documents: '{category}'")
                 return category
 
             return ""
@@ -1396,24 +951,12 @@ Titles:
             return ""
 
     def _extract_product_category_from_query(self, query: str) -> str:
-        """
-        Extract product category mention from user query using patterns.
-
-        First tries keyword patterns (fast), then LLM for unknown categories.
-        Examples: "boots", "headphones", "dresses", "shoes"
-
-        Args:
-            query: User query string
-
-        Returns:
-            Inferred product category (lowercase string), or empty string if unknown
-        """
+        """Category named in the query: keyword patterns first, then the LLM; "" if none."""
         if not query:
             return ""
 
         query_lower = query.lower()
 
-        # Quick pattern matching for common product types
         category_patterns = {
             "boots": ["boot", "bootie", "ankle boot"],
             "shoes": ["shoe", "sneaker", "loafer", "heel", "pump"],
@@ -1429,10 +972,8 @@ Titles:
 
         for category, keywords in category_patterns.items():
             if any(kw in query_lower for kw in keywords):
-                logger.debug(f"Detected product category from query via pattern: '{category}'")
                 return category
 
-        # Fallback to LLM for unknown categories
         try:
             prompt = f"""What product category does this query mention?
 Answer with ONLY the category name in lowercase (e.g., boots, headphones, shoes, dresses).
@@ -1446,11 +987,7 @@ Query: "{query}" """
             )
             category = _flatten_llm_content(response).strip().lower()
 
-            # Same relaxed short-multi-word allowance as
-            # _extract_product_category_from_documents -- see that
-            # function's comment.
             if category and len(category) < 50 and category.count(" ") <= 2:
-                logger.debug(f"Detected product category from query via LLM: '{category}'")
                 return category
         except Exception as e:
             logger.debug(f"Category extraction from query (LLM) failed: {e}")
@@ -1463,19 +1000,9 @@ Query: "{query}" """
         current_query: str,
         current_results: List[Document],
     ) -> Tuple[float, str]:
-        """
-        Validate if current query continues prior search or starts new.
-
-        Calculates continuity score (0.0-1.0) based on:
-        1. Product category match (extracted from prior docs vs query)
-        2. Document ID overlap (% of prior results still in new results)
-
-        Returns:
-            (continuity_score, reasoning_text)
-            - Score > 0.7: "Strong category continuity"
-            - Score 0.3-0.7: "Ambiguous category continuity"
-            - Score < 0.3: "Different product categories"
-        """
+        """Score (0-1) whether the query continues the prior search, from category match
+        and, when `current_results` is given, product-id overlap. Returns (score, reasoning);
+        > 0.7 strong continuity, 0.3-0.7 ambiguous, < 0.3 a new search."""
         if not prior_docs:
             return 0.5, "No prior search context available"
 
@@ -1500,16 +1027,9 @@ Query: "{query}" """
             scores.append(0.5)
             reasons.append(f"Could not extract prior category, current: {current_category}")
 
-        # 2. Document ID overlap — only meaningful when the caller actually has
-        # this turn's retrieved documents to compare against. The only caller
-        # today (intent_classifier_node) runs before retriever_node, so it always
-        # passes an empty current_results; scoring that as "0% overlap" silently
-        # dragged the continuity score to ~0.0 for every refinement-classified
-        # turn whose category couldn't be keyword-matched (e.g. a shopper
-        # disputing a tag: "that's not tan, that's tagged yellow which is
-        # wrong" mentions no product category at all) -- downgrading it to
-        # "search" and skipping the taxonomy-correction tool entirely. Treat
-        # "no current results to compare" as "unknown", not "no overlap".
+        # Document-id overlap counts only when there are current results to compare:
+        # scoring "no results yet" as 0% overlap would sink every refinement whose
+        # category can't be keyword-matched (e.g. a tag dispute).
         prior_ids = {
             doc.metadata.get("product_id") for doc in prior_docs if doc.metadata.get("product_id")
         }
@@ -1523,10 +1043,8 @@ Query: "{query}" """
             scores.append(overlap)
             reasons.append(f"Document overlap: {overlap:.1%} of prior results")
 
-        # Calculate final score
         final_score = sum(scores) / len(scores) if scores else 0.5
 
-        # Generate reasoning
         if final_score > 0.7:
             conclusion = "Strong category continuity - treating as refinement"
         elif final_score > 0.3:
@@ -1557,22 +1075,13 @@ Query: "{query}" """
 
     @staticmethod
     def _classify_attribute(attribute_type: str, term: str) -> Optional[str]:
-        """
-        Classify an LLM-extracted color or waterproof term against the
-        corresponding taxonomy (OS-backed, grown by the live enrichment
-        flywheel). Returns None for terms that don't resolve — both callers
-        (color, waterproof) fall back to a hard filter on the raw term
-        rather than an always-empty exact filter, since a genuinely novel
-        color or waterproof mention is exactly the gap the enrichment
-        flywheel exists to grow (see the caller in _extract_attributes).
+        """Resolve an LLM-extracted color/waterproof term against the OpenSearch-backed taxonomy.
 
-        No LLM fallback here — this is the query-time read path, called on
-        every attribute_filter query; the LLM-assisted classification (for a
-        term that genuinely can't be dictionary-matched) belongs to the
-        live enrichment tool, triggered deliberately on a detected gap, not
-        on every lookup.
+        None for unresolved terms; callers then hard-filter on the raw term, because a
+        novel term is exactly the gap the enrichment flywheel grows. No LLM here: this is
+        the query-time read path.
         """
-        canonical_seeds = _CANONICAL_SEEDS_BY_TYPE.get(attribute_type)
+        canonical_seeds = CANONICALS_BY_TYPE.get(attribute_type)
         if canonical_seeds is None:
             return None
 
@@ -1589,14 +1098,8 @@ Query: "{query}" """
     def _invoke_with_timeout(self, llm, prompt: str, timeout_seconds: float):
         """Invoke an LLM off-thread with a hard wall-clock bound.
 
-        A plain ``llm.invoke(prompt)`` has no timeout of its own -- a slow or
-        hung call blocks whichever pipeline node called it for as long as the
-        provider takes. Measured hanging ~18.7s vs. a normal <1s in one
-        reindex-adjacent trial for the retriever's hidden attribute/query
-        LLM calls (issue #117/#120). Raises ``concurrent.futures.TimeoutError``
-        on timeout; the orphaned call is left to finish in the background
-        rather than waited on further, since blocking on it would defeat the
-        point of the timeout.
+        Raises ``concurrent.futures.TimeoutError``; the orphaned call finishes in the
+        background rather than blocking the node.
         """
         executor = ThreadPoolExecutor(max_workers=1)
         try:
@@ -1606,20 +1109,7 @@ Query: "{query}" """
             executor.shutdown(wait=False)
 
     def _extract_attributes(self, query: str) -> list:
-        """
-        Extract product attributes from attribute_filter queries.
-
-        Returns a list of OpenSearch filter clauses for:
-        - product_brand: Brand names ("Sony", "Apple", "Nike", etc.)
-        - product_color: Colors ("blue", "red", "black", etc.)
-
-        Args:
-            query: The user's attribute filter query
-
-        Returns:
-            List of OpenSearch filter objects (to be combined with AND in filter context),
-            or empty list if no attributes found
-        """
+        """OpenSearch filter clauses (implicitly AND'd) for brand, color, waterproof, feature and size; [] if none."""
         if not query or len(query) < 5:
             return []
 
@@ -1637,11 +1127,9 @@ Extract these attributes if present:
   EXCLUDING waterproofing (e.g., "breathable", "insulated", "vegan leather", "leather",
   "mesh", "wireless", "noise canceling", "anti-slip", "slip-resistant", "Gore-Tex")
 - size: Size specification (e.g., "size 10", "XL", "large", "medium", "10.5")
-- price_max: Maximum price as a number only if "under $X" or "less than $X" present (e.g., 100)
-- price_min: Minimum price as a number only if "over $X" or "more than $X" present (e.g., 50)
 
 Return ONLY a JSON object (use null for missing attributes):
-{{"brand": "...", "color": "...", "waterproof": null, "feature": "...", "size": "...", "price_max": null, "price_min": null}}"""
+{{"brand": "...", "color": "...", "waterproof": null, "feature": "...", "size": "..."}}"""
 
         try:
             try:
@@ -1657,10 +1145,6 @@ Return ONLY a JSON object (use null for missing attributes):
                 return []
             text = _flatten_llm_content(response).strip()
 
-            # Extract JSON from response
-            import json
-            import re
-
             json_match = re.search(r"\{.*?\}", text, re.DOTALL)
             if not json_match:
                 return []
@@ -1668,30 +1152,16 @@ Return ONLY a JSON object (use null for missing attributes):
             attributes = json.loads(json_match.group())
             filters = []
 
-            # Coerce LLM-extracted attribute values to strings. Some models sometimes
-            # returns array values (e.g. feature=["noise canceling"])
-            # even when the prompt asks for a single string. Passing a list to
-            # an OpenSearch ``query`` field fails with
-            #   [multi_match] unknown token [START_ARRAY] after [query]
             def _coerce(val: Any) -> Optional[str]:
-                if val is None:
-                    return None
-                # A JSON bool must never become a filter VALUE. str(False) is
-                # "False" -- non-empty, therefore truthy, therefore a hard
-                # `match` on product_<type>_primary that matches nothing and
-                # (being a `match`, not a `multi_match`) survives filter
-                # relaxation. That turns an answerable query into a
-                # zero-result one AND falsely trips zero_result_filter_gap,
-                # inviting the agent to "teach the catalog" a term from a
-                # query that was fine. Reachable because the `waterproof`
-                # field reads like a yes/no question, so the model can
-                # answer it with `false` instead of the template's `null`.
-                if isinstance(val, bool):
+                """LLM values to a clean string or None.
+
+                Lists are joined (a list in a multi_match ``query`` is an OpenSearch error).
+                Bools are dropped: str(False) is a truthy "False" that would hard-filter to
+                zero results and falsely trip the zero-result taxonomy-gap signal.
+                """
+                if val is None or isinstance(val, bool):
                     return None
                 if isinstance(val, list):
-                    # Same bool exclusion inside a list: `False not in (None, "")`
-                    # is True, so without the isinstance check a stray bool
-                    # element would still reach the filter as "False".
                     parts = [
                         str(v).strip()
                         for v in val
@@ -1701,17 +1171,14 @@ Return ONLY a JSON object (use null for missing attributes):
                 s = str(val).strip()
                 return s or None
 
-            # Build OpenSearch filter clauses (as separate filter objects - they're implicitly AND'd)
             brand = _coerce(attributes.get("brand"))
             if brand:
                 filters.append({"match": {"product_brand_normalized": {"query": brand}}})
 
-            # Classify against the OS-backed color taxonomy first (fixes
-            # variant spellings like "grey" not matching an index that
-            # normalized to "gray"); an unresolved term falls back to using
-            # the raw LLM-extracted value directly, matching pre-existing
-            # behavior — a color term is rarely a red herring, so it always
-            # gets a hard filter, resolved or not.
+            # Color and waterproof are hard filters whether or not the term resolves in
+            # the taxonomy (the raw term is the fallback). WATERPROOF_CANONICALS ships
+            # empty on purpose, so a fresh cluster's "waterproof boots" is a genuine
+            # zero-result gap that the enrichment flywheel then fills.
             color = _coerce(attributes.get("color"))
             if color:
                 color_canonical = self._classify_attribute("color", color)
@@ -1719,24 +1186,8 @@ Return ONLY a JSON object (use null for missing attributes):
                     {"match": {"product_color_primary": {"query": color_canonical or color}}}
                 )
 
-            # waterproof gets its own dedicated extraction (rather than folding
-            # into the generic "feature" bucket below) because, like color,
-            # it's narrow and well-defined enough to always warrant a hard
-            # filter — resolved or not. WATERPROOF_CANONICALS ships with zero
-            # seed variants (attribute_discovery.py) *by design*: on a fresh
-            # cluster this branch resolves to nothing, so "waterproof hiking
-            # boots" hard-filters against an as-yet-empty
-            # product_waterproof_primary and gets a genuine zero-result gap —
-            # exactly the signal that lets the live enrichment flywheel
-            # (_try_enrichment_tool) grow this attribute type from scratch.
-            # Once trigger_enrichment writes the first mapping, this same
-            # branch resolves and returns real, filtered results.
-            # `waterproof` reads like a yes/no field, so the model answers it
-            # with a bool often enough to handle explicitly: `true` means the
-            # requirement is present (treat it as the term itself), `false`
-            # means absent and is dropped by _coerce along with null. Without
-            # the `is True` arm a genuine "waterproof boots" turn whose model
-            # replied `true` would silently lose its filter.
+            # The model often answers `waterproof` as a bool: true means the requirement
+            # is present (use the term itself); false is dropped by _coerce like null.
             raw_waterproof = attributes.get("waterproof")
             waterproof = "waterproof" if raw_waterproof is True else _coerce(raw_waterproof)
             if waterproof:
@@ -1751,77 +1202,20 @@ Return ONLY a JSON object (use null for missing attributes):
                     }
                 )
 
-            # feature covers everything else shoppers add as a constraint that
-            # isn't a color or a waterproofing requirement ("breathable",
-            # "insulated", "vegan leather", "noise canceling", ...). There's no
-            # taxonomy for these — always a soft multi_match, so an
-            # unrecognized feature word narrows results without ever excluding
-            # everything the way a hard filter on an untaxonomized term would.
-            feature = _coerce(attributes.get("feature"))
-            if feature:
-                filters.append(
-                    {
-                        "multi_match": {
-                            "query": feature,
-                            "fields": ["title", "chunk_text"],
-                            "type": "best_fields",
+            # Feature and size are soft multi_match clauses: an unrecognized word narrows
+            # results without excluding everything the way a hard filter would.
+            for attr in ("feature", "size"):
+                value = _coerce(attributes.get(attr))
+                if value:
+                    filters.append(
+                        {
+                            "multi_match": {
+                                "query": value,
+                                "fields": ["title", "chunk_text"],
+                                "type": "best_fields",
+                            }
                         }
-                    }
-                )
-
-            # size → multi_match against title + content
-            size = _coerce(attributes.get("size"))
-            if size:
-                filters.append(
-                    {
-                        "multi_match": {
-                            "query": size,
-                            "fields": ["title", "chunk_text"],
-                            "type": "best_fields",
-                        }
-                    }
-                )
-
-            # price range → range filter, but ONLY if the index actually has a
-            # price field. This guard is what the comment here always claimed
-            # ("if price field exists in index") and never did (#103).
-            #
-            # It matters because the ESCI product index has no price field at
-            # all, and a range filter on an unmapped field is not an error in
-            # OpenSearch — it matches nothing. So every "under $100" query
-            # silently returned zero results and the user got a no-match
-            # answer, as if the catalog held no affordable products. Better to
-            # ignore a price constraint we cannot honour and return real
-            # products than to return nothing at all.
-            wants_price_filter = (
-                attributes.get("price_max") is not None or attributes.get("price_min") is not None
-            )
-            price_is_filterable = wants_price_filter and self.vector_store.has_field("price")
-
-            if wants_price_filter and not price_is_filterable:
-                logger.info(
-                    "Ignoring price constraint (%s-%s): the index has no 'price' field, "
-                    "and filtering on it would match nothing",
-                    attributes.get("price_min"),
-                    attributes.get("price_max"),
-                )
-
-            if price_is_filterable:
-                if attributes.get("price_max") is not None:
-                    try:
-                        filters.append(
-                            {"range": {"price": {"lte": float(attributes["price_max"])}}}
-                        )
-                    except (ValueError, TypeError):
-                        logger.debug(f"Could not parse price_max: {attributes.get('price_max')}")
-
-                if attributes.get("price_min") is not None:
-                    try:
-                        filters.append(
-                            {"range": {"price": {"gte": float(attributes["price_min"])}}}
-                        )
-                    except (ValueError, TypeError):
-                        logger.debug(f"Could not parse price_min: {attributes.get('price_min')}")
+                    )
 
             return filters
 
@@ -1830,13 +1224,7 @@ Return ONLY a JSON object (use null for missing attributes):
             return []
 
     def _format_filter_summary(self, filters: Optional[List[Dict[str, Any]]]) -> Optional[str]:
-        """
-        Format filter objects into human-readable summary.
-
-        Example:
-            [{"match": {"product_brand": {"query": "Sony"}}}]
-            → "brand: Sony"
-        """
+        """Human-readable summary of filter clauses, e.g. "color: blue, feature: mesh"."""
         if not filters:
             return None
 
@@ -1849,21 +1237,9 @@ Return ONLY a JSON object (use null for missing attributes):
                         query = match_obj["product_brand"].get("query", "")
                         parts.append(f"brand: {query}")
                     elif "product_color_primary" in match_obj:
-                        # The filter built by _extract_attribute_filters uses
-                        # "product_color_primary" (see that method), not the
-                        # bare "product_color" this branch checked for prior
-                        # to 2026-09-14 -- that key never matched, so no
-                        # color filter's summary text ever rendered despite
-                        # the filter itself working correctly against
-                        # OpenSearch. Confirmed live: "show me blue running
-                        # shoes size 10" applied a real color:blue filter but
-                        # the "Filters Applied" line never showed it.
                         query = match_obj["product_color_primary"].get("query", "")
                         parts.append(f"color: {query}")
                     elif "product_waterproof_primary" in match_obj:
-                        # Same class of bug: a resolved waterproof filter (see
-                        # _extract_attribute_filters) had no branch here at
-                        # all, so it silently vanished from the summary too.
                         query = match_obj["product_waterproof_primary"].get("query", "")
                         parts.append(f"waterproof: {query}")
                 elif "multi_match" in f:
@@ -1872,14 +1248,6 @@ Return ONLY a JSON object (use null for missing attributes):
                     fields = mm.get("fields", [])
                     if "chunk_text" in fields or "title" in fields:
                         parts.append(f"feature: {query_text}")
-                elif "range" in f:
-                    range_obj = f["range"]
-                    if "price" in range_obj:
-                        price_range = range_obj["price"]
-                        if "lte" in price_range:
-                            parts.append(f"price: under ${price_range['lte']}")
-                        if "gte" in price_range:
-                            parts.append(f"price: over ${price_range['gte']}")
             return ", ".join(parts) if parts else None
         except Exception:
             logger.warning("Failed to format filter summary", exc_info=True)
@@ -1888,18 +1256,8 @@ Return ONLY a JSON object (use null for missing attributes):
     def _classify_intent(
         self, user_input: str, messages: Sequence[BaseMessage]
     ) -> tuple[str, str, float, list]:
-        """
-        Classify user intent using LLM.
-
-        Returns:
-            Tuple of (intent, reasoning, confidence, clarifying_questions)
-            - intent: The classified intent (search, comparison, attribute_filter,
-              refinement, follow_up, summary -- or "clarify" for low-confidence turns)
-            - reasoning: Explanation for the classification
-            - confidence: 0.0-1.0 confidence score
-            - clarifying_questions: List of questions to ask if confidence is low
-        """
-
+        """Returns (intent, reasoning, confidence, clarifying_questions); intent is
+        "clarify" for a low-confidence first message."""
         prompt = self._build_intent_prompt(user_input, messages)
 
         structured_llm = self.intent_structured or self.llm.with_structured_output(
@@ -1912,11 +1270,8 @@ Return ONLY a JSON object (use null for missing attributes):
             confidence = result.confidence
             clarifying_questions = result.clarifying_questions
 
-            # If confidence is below threshold, switch to clarify intent — UNLESS
-            # there's already a product search in the conversation, in which case
-            # the new message is almost certainly a follow_up/refinement (audience,
-            # situation, or vague expansion). Asking for clarification mid-thread
-            # is jarring and discards the user's context.
+            # Low confidence asks for clarification, unless a search is already under way:
+            # then the message is almost certainly a follow-up, and re-asking is jarring.
             CONFIDENCE_THRESHOLD = 0.7
             if confidence < CONFIDENCE_THRESHOLD and clarifying_questions:
                 prior_human_msgs = [m for m in messages if isinstance(m, HumanMessage)]
@@ -1930,10 +1285,10 @@ Return ONLY a JSON object (use null for missing attributes):
                 logger.info(f"Low confidence ({confidence:.2f}), will ask for clarification")
                 return "clarify", reasoning, confidence, clarifying_questions
 
-            # Guard: refinement requires prior conversation context
+            # A refinement needs a prior turn to refine.
             if intent == "refinement":
                 prior_human_msgs = [m for m in messages if isinstance(m, HumanMessage)]
-                if len(prior_human_msgs) <= 1:  # Only the current message, no prior context
+                if len(prior_human_msgs) <= 1:
                     logger.info(
                         "Refinement intent with no prior context — downgrading to attribute_filter"
                     )
@@ -2077,64 +1432,27 @@ Respond with JSON only. No other text."""
         return "Message"
 
     def _stream_llm_response_simple(self, messages: Sequence[BaseMessage]) -> AIMessage:
-        """
-        Stream the LLM response and accumulate the full response while emitting events.
-
-        Simplified version without tool binding - for direct response generation.
-
-        Args:
-            messages: The input messages for the LLM
-
-        Returns:
-            The accumulated AIMessage response
-        """
+        """Stream the answer, emitting start and chunk events, and return the accumulated AIMessage."""
         stream_start = time.time()
 
-        # Emit start event (if event classes are available).
-        #
-        # Goes through _emit_event_from_sync, NOT _emit_streaming_event — the
-        # latter only logs. Token streaming used to reach the browser purely as
-        # a side effect of observable_agent capturing LangChain's
-        # on_chat_model_stream callback, and that stopped working the moment
-        # agent_node moved to a worker thread (#103): the callback fires on a
-        # non-loop thread and never reaches the astream_events iterator, so the
-        # UI sat on "Generating response" and then dumped the whole answer at
-        # once. _emit_event_from_sync hops back onto the loop with
-        # run_coroutine_threadsafe, which is exactly the same bridge the
-        # retriever already uses for its progress events.
-        if LLMResponseStartEvent is not None:
-            self._emit_event_from_sync(LLMResponseStartEvent())
+        # Events go through _emit_event_from_sync, which hops back onto the event loop:
+        # LangChain's stream callbacks fire on this worker thread and never reach astream_events.
+        self._emit_event_from_sync(LLMResponseStartEvent())
 
-        # Accumulate response content
         accumulated_content = ""
         chunk_count = 0
 
         try:
-            # Stream from the LLM
             for chunk in self.llm.stream(messages, config={"tags": [ANSWER_STREAM_TAG]}):
                 chunk_count += 1
 
-                # Extract content from chunk (handle both string and list-of-blocks format)
-                if hasattr(chunk, "content") and chunk.content:
-                    content = chunk.content
-
-                    # Extract text if content is a list of content blocks
-                    if isinstance(content, list):
-                        text_parts = []
-                        for block in content:
-                            if isinstance(block, dict) and "text" in block:
-                                text_parts.append(block["text"])
-                        content = "".join(text_parts) if text_parts else ""
-
-                    # Only accumulate and emit non-empty string content
-                    if content and isinstance(content, str):
+                if getattr(chunk, "content", None):
+                    content = _flatten_llm_content(chunk)
+                    if content:
                         accumulated_content += content
-
-                        # Emit chunk event (if event classes are available)
-                        if LLMResponseChunkEvent is not None:
-                            self._emit_event_from_sync(
-                                LLMResponseChunkEvent(content=content, is_complete=False)
-                            )
+                        self._emit_event_from_sync(
+                            LLMResponseChunkEvent(content=content, is_complete=False)
+                        )
 
         except StopIteration:
             pass
@@ -2152,11 +1470,6 @@ Respond with JSON only. No other text."""
             else:
                 accumulated_content = str(invoke_result)
 
-        # Emit completion event (if event classes are available)
-        if LLMResponseChunkEvent is not None:
-            completion_event = LLMResponseChunkEvent(content="", is_complete=True)
-            self._emit_streaming_event(completion_event)
-
         stream_elapsed = time.time() - stream_start
         logger.debug(
             f"Streaming complete: {chunk_count} chunks, {len(accumulated_content)} chars in {stream_elapsed:.3f}s"
@@ -2164,89 +1477,35 @@ Respond with JSON only. No other text."""
 
         return AIMessage(content=accumulated_content)
 
-    def _emit_streaming_event(self, event) -> None:
-        """
-        Emit a streaming event (for future integration with WebSocket or event listeners).
-
-        Currently logs the event. Can be extended to:
-        - Send events to WebSocket clients
-        - Broadcast to observability systems
-        - Update real-time dashboards
-
-        Args:
-            event: The streaming event to emit
-        """
-        if event is None:
-            return
-
-        if LLMResponseStartEvent is not None and isinstance(event, LLMResponseStartEvent):
-            logger.debug("LLM streaming started")
-        elif LLMResponseChunkEvent is not None and isinstance(event, LLMResponseChunkEvent):
-            if event.is_complete:
-                logger.debug("LLM streaming complete")
-            else:
-                logger.debug(f"LLM chunk received: {len(event.content)} chars")
+    def _emit_progress(self, stage: str, message: str) -> None:
+        self._emit_event_from_sync(SearchProgressEvent(stage=stage, message=message))
 
     def _emit_event_from_sync(self, event) -> None:
-        """
-        Emit an event from a synchronous context immediately.
-
-        This is called from retriever_node to emit intermediate events
-        (hybrid search result, reranker start) as they happen.
-
-        Uses asyncio.run_coroutine_threadsafe to schedule the emit in the
-        running event loop without blocking.
-        """
+        """Schedule an event on the running loop from a sync node, without blocking."""
         if not self.emit_callback or not self.event_loop:
             return
 
         try:
-            # Use the stored event loop that was set when emit_callback was assigned
             asyncio.run_coroutine_threadsafe(self.emit_callback(event), self.event_loop)
-            # Don't wait for the result - let it run asynchronously
         except Exception as e:
-            # Fallback: queue the event if we can't emit directly
             logger.debug(f"Could not emit event immediately: {e}, queueing instead")
             self.event_queue.append(event)
 
     def llm_judge_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        LLM-as-judge for the Pipeline Summary "Generation" stage.
-
-        Compares the agent's synthesized response (whatever was just produced
-        by ``agent_node``) against the deterministic raw product list, and
-        emits a structured ``JudgmentResult`` with a pairwise verdict + 4
-        absolute scores + hallucination list.
-
-        Skipped (returns ``judgment=None``) when:
-          * ``intent == "summary"`` (no retrieval, nothing to compare), OR
-          * No retrieved documents, OR
-          * ``enrichment_triggered`` (the answer describes a tool action, which
-            no retrieved document can attest — see below).
-        """
+        """LLM-as-judge for the Pipeline Summary "Generation" stage: compares the agent's
+        answer with the raw product list and returns a `JudgmentResult` (verdict, scores,
+        hallucinations). Returns `judgment=None` for summary turns, when nothing was
+        retrieved, and on enrichment turns."""
         intent = state.get("intent", "search")
         documents = state.get("retrieved_documents") or []
 
         if intent == "summary" or not documents:
             return {"judgment": None}
 
-        # A taxonomy correction turn is outside this judge's competence, and
-        # judging it anyway actively destroys the answer (issue #107).
-        #
-        # The judge grades the response against `retrieved_documents`. On a
-        # correction turn the load-bearing claim — "I corrected the taxonomy so
-        # tan now maps to brown" — is grounded in the `trigger_enrichment` TOOL
-        # RESULT, which the judge never sees. It is therefore unfalsifiable from
-        # the evidence the judge has, gets categorised as fabrication, and
-        # `_regenerate_without_hallucinations` then rewrites the answer using
-        # the documents alone. The only thing that regeneration can produce is
-        # an answer that omits the correction, and in practice it produced one
-        # asserting the OPPOSITE — "these are indeed indexed as yellow" —
-        # eight seconds after the correction had demonstrably succeeded.
-        #
-        # Suppressing only the retry is not enough: the flags would remain and
-        # surface a spurious hallucination warning on the same answer. There is
-        # no valid judgment to make here, so we make none.
+        # Enrichment turns are unjudgeable: the load-bearing claim ("tan now maps to
+        # brown") is grounded in the tool result, which the judge never sees, so it would
+        # be flagged as fabrication and regeneration would rewrite the answer from the
+        # documents alone, omitting or even contradicting the correction.
         if state.get("enrichment_triggered"):
             logger.info(
                 "llm_judge_node: skipping — enrichment ran this turn, so the "
@@ -2254,34 +1513,21 @@ Respond with JSON only. No other text."""
             )
             return {"judgment": None}
 
-        # Pull the agent's just-produced response from the message history.
         llm_response = ""
         for msg in reversed(state["messages"]):
             if isinstance(msg, AIMessage) and msg.content and not getattr(msg, "tool_calls", None):
-                content = msg.content
-                if isinstance(content, list):
-                    text_parts = []
-                    for block in content:
-                        if isinstance(block, dict) and "text" in block:
-                            text_parts.append(block["text"])
-                    llm_response = "".join(text_parts)
-                else:
-                    llm_response = content
+                llm_response = _flatten_llm_content(msg)
                 break
 
         if not llm_response:
             logger.debug("llm_judge_node: no agent response found, skipping judge")
             return {"judgment": None}
 
-        # The deterministic raw product list the answer is compared against.
         query = state.get("user_query", "")
         baseline = self._format_search_results(documents, query)
 
-        # Lazy-init the judge so it costs nothing until the first judged turn.
         if self.judge is None:
-            from core.config import (  # local import to avoid circular at module load
-                JUDGE_MODEL,
-            )
+            from core.config import JUDGE_MODEL
 
             self.judge = LLMJudge(model_name=JUDGE_MODEL)
 
@@ -2300,14 +1546,10 @@ Respond with JSON only. No other text."""
             elapsed_ms,
         )
 
-        # Auto-retry path (Layer 3a). Triggered when at least one flagged
-        # claim is fabrication / cross_product_bleed AND we haven't already
-        # retried this turn. The faithfulness score is NOT checked here —
-        # the LLM judge can assign a high score (e.g. 0.90) while simultaneously
-        # flagging dangerous fabrications, making the score an unreliable gate.
-        # Categorical claim classification is the authoritative signal (issue #77).
-        # Inference- or overreach-only flags surface to the UI but skip the
-        # ~20–30s retry — regenerating those usually makes the answer worse.
+        # Retry once when a flagged claim is fabrication / cross_product_bleed. The
+        # category is the gate, not faithfulness (the judge can score 0.9 while flagging a
+        # fabrication). Inference/overreach flags reach the UI but skip the slow retry:
+        # regenerating those usually makes the answer worse.
         retry_worthy_claims = [
             h for h in result.hallucinations if h.category in RETRY_ELIGIBLE_CATEGORIES
         ]
@@ -2366,11 +1608,7 @@ Respond with JSON only. No other text."""
         original_response: str,
         hallucinations: List[str],
     ) -> str:
-        """Re-prompt the agent's LLM with explicit 'do not say X' instructions.
-
-        Used by the auto-retry path in ``llm_judge_node``. Returns the new
-        response string (no streaming, no state mutation).
-        """
+        """Re-prompt the LLM with explicit "do not say X" instructions (no streaming, no state)."""
         forbidden = "\n".join(f"  - {h}" for h in hallucinations)
         context = self._build_grounded_context(documents)
         correction_prompt = f"""Your previous response to "{query}" contained UNSUPPORTED claims that are NOT in the retrieved product descriptions. You MUST omit them and stay strictly grounded.
@@ -2404,25 +1642,10 @@ Original query: {query}
             ),
             HumanMessage(content=correction_prompt),
         ]
-        response = self.llm.invoke(messages)
-        # Some LLM providers may return ``content`` as a list of content blocks
-        # ([{"type": "text", "text": "..."}, ...]) — flatten to a string
-        # so downstream Pydantic models accept it.
-        content = getattr(response, "content", response)
-        if isinstance(content, list):
-            text_parts = []
-            for block in content:
-                if isinstance(block, dict) and "text" in block:
-                    text_parts.append(block["text"])
-                elif isinstance(block, str):
-                    text_parts.append(block)
-            return "".join(text_parts)
-        return content if isinstance(content, str) else str(content)
+        return _flatten_llm_content(self.llm.invoke(messages))
 
     def summary_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        Generate a conversation summary when the user intent is to summarize history.
-        """
+        """Summarize the conversation when the intent is `summary`."""
         intent = state.get("intent", "question")
         messages = state["messages"]
         if intent != "summary":
@@ -2435,31 +1658,19 @@ Original query: {query}
         return {"summary_text": summary_text, "message_count": len(messages)}
 
     def retriever_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        Intent-aware hybrid retrieval node - performs hybrid search with dynamic alpha.
+        """Hybrid (BM25 + vector, RRF) retrieval at the query evaluator's alpha; the LLM is
+        used only to rewrite vague follow-ups and extract attribute filters.
 
-        Behavior per intent:
-        - "search": Full hybrid search (vector + BM25 fusion via RRF)
-        - "comparison": Full hybrid search (alpha optimized for differences)
-        - "attribute_filter": Lexical-heavy hybrid (alpha=0.25 for exact attribute matching)
-        - "refinement": Hybrid search constrained to prior search results with new attribute filter
-        - "follow_up": Full hybrid search (refined from previous context)
-        - "summary": Skipped (no retrieval needed)
-
-        All searches use Reciprocal Rank Fusion (RRF) with dynamic alpha weighting.
-        No LLM involvement - deterministic retrieval based on query_evaluator output.
+        Refinements are constrained to the prior turn's products; summary turns skip retrieval.
         """
         start_time = time.time()
         messages = state["messages"]
         alpha = state.get("alpha", 0.25)
         intent = state.get("intent", "search")
-        intent_optimized = state.get("intent_optimized", False)
 
-        # Save prior search context before overwriting
         prior_search_documents = state.get("retrieved_documents", [])
         prior_search_intent = state.get("intent", None)
 
-        # Early exit for summary intent - no retrieval needed
         if intent == "summary":
             logger.debug("Retriever: skipping hybrid search (intent=summary)")
             return {
@@ -2468,20 +1679,12 @@ Original query: {query}
                 "prior_search_intent": prior_search_intent,
             }
 
-        # Log retrieval strategy
-        if intent_optimized:
-            logger.info(f"Retriever: using FAST PATH alpha={alpha:.2f} (intent={intent})")
-        else:
-            logger.info(f"Retriever: using LLM-determined alpha={alpha:.2f} (intent={intent})")
-
-        # Extract original user query from messages
         query = None
         for msg in reversed(messages):
             if isinstance(msg, HumanMessage):
                 query = _flatten_llm_content(msg)
                 break
 
-        # Expand vague follow-up queries using conversation context
         if query:
             query = self._expand_vague_query(query, messages)
 
@@ -2495,24 +1698,13 @@ Original query: {query}
 
         logger.info(f"Retriever: query='{query[:50]}...', alpha={alpha:.2f}")
 
-        # Extract attributes for attribute_filter and refinement intents
         attribute_filters = None
         if intent in ("attribute_filter", "refinement"):
-            if SearchProgressEvent:
-                try:
-                    self._emit_event_from_sync(
-                        SearchProgressEvent(
-                            stage="attribute_extraction",
-                            message="Extracting attribute filters...",
-                        )
-                    )
-                except Exception as e:
-                    logger.debug(f"Could not emit attribute extraction progress event: {e}")
+            self._emit_progress("attribute_extraction", "Extracting attribute filters...")
             attribute_filters = self._extract_attributes(query)
             if attribute_filters:
                 logger.info(f"Retriever: applying {len(attribute_filters)} attribute filter(s)")
 
-        # For refinement intents, constrain results to prior search documents
         if intent == "refinement" and prior_search_documents:
             prior_product_ids = [
                 doc.metadata.get("product_id")
@@ -2520,20 +1712,9 @@ Original query: {query}
                 if doc.metadata.get("product_id")
             ]
             if prior_product_ids:
-                # Constrain to the prior turn's products by DOCUMENT ID, not by
-                # a product_id field in _source. The products index build
-                # sets idField: "product_id", so that value becomes OpenSearch's
-                # _id and is never written into _source — the mapping declares
-                # product_id as a keyword, but every document's value is null.
-                # `terms: {product_id: [...]}` therefore matched ZERO documents
-                # and every refinement turn came back empty ("I searched for
-                # noise-canceling wireless headphones but found no matching
-                # products"), while the log cheerfully reported it was
-                # constraining to 10 prior products (#103).
-                #
-                # The read path already relies on this: vector_store's
-                # _to_document uses hit["_id"] as the source of truth for
-                # product_id, which is why prior_product_ids holds real ASINs.
+                # Constrain by document _id, not a product_id field: the index build used
+                # product_id as the _id, so _source.product_id is null and a `terms` filter
+                # on it matches nothing.
                 product_id_filter = {"ids": {"values": prior_product_ids}}
                 if attribute_filters is None:
                     attribute_filters = []
@@ -2542,46 +1723,20 @@ Original query: {query}
                     f"Retriever (refinement): constraining to {len(prior_product_ids)} prior search product(s)"
                 )
 
-        # Emit embedding progress
-        if SearchProgressEvent:
-            try:
-                self._emit_event_from_sync(
-                    SearchProgressEvent(stage="embedding", message="Embedding query...")
-                )
-            except Exception as e:
-                logger.debug(f"Could not emit embedding progress event: {e}")
+        self._emit_progress("embedding", "Embedding query...")
 
-        # Capture sinks for the actual DSL bodies sent to OpenSearch. Each
-        # parallel search gets its own dict so the threadpool workers don't
-        # race when filling them in. The bodies are emitted to the
-        # observability panel below once the searches return.
+        # Filled with the DSL body actually sent to OpenSearch, for the observability panel.
         hybrid_capture: Dict[str, Any] = {}
 
-        # On a quality-gate retry, SEARCH DEEPER — do not just re-weight.
-        #
-        # The gate's only lever used to be alpha +/-0.3, and measurement says
-        # that lever does nothing: scoring ten conceptual shoe queries at alpha
-        # 0.1 / 0.4 / 0.7 / 1.0 returned the SAME reranker max score to two
-        # decimals in every case ("what should I wear for a marathon" = 0.30 at
-        # all four). Re-weighting reorders a candidate pool that already
-        # contains the same best document, so the retry could not change its
-        # own outcome — a loop that always reached the verdict it started with.
-        #
-        # Widening the pool can only help: max(score) over a superset is
-        # monotonic, so the second pass either finds something better deeper in
-        # the ranking or returns exactly what the first pass had. Nothing gets
-        # worse, and "it looked harder the second time" is both true and the
-        # thing worth showing an audience.
+        # On a quality-gate retry, search deeper rather than only re-weighting: alpha alone
+        # barely moves the top reranker score (measured identical at alpha 0.1-1.0), while a
+        # wider pool can only match or beat the first pass.
         is_gate_retry = bool(state.get("quality_gate_retried", False))
         fetch_k = RETRIEVER_FETCH_K * RETRY_FETCH_MULTIPLIER if is_gate_retry else RETRIEVER_FETCH_K
         k = RERANKER_FETCH_K
         if is_gate_retry:
             k *= RETRY_FETCH_MULTIPLIER
-            # Soft multi_match filters (feature / size) are hints that often
-            # over-constrain; the same relaxation already runs when a
-            # filtered search returns too little. Colour, waterproof, and
-            # brand `match` filters stay — the user asked for those
-            # explicitly.
+            # Drop soft multi_match filters (feature/size); color, waterproof and brand stay.
             if attribute_filters:
                 attribute_filters = [f for f in attribute_filters if "multi_match" not in f]
             logger.info(
@@ -2591,7 +1746,6 @@ Original query: {query}
                 k,
             )
 
-        # Create retriever with dynamic alpha and attribute filters.
         retriever = self.vector_store.as_retriever(
             search_type="hybrid",
             search_kwargs={
@@ -2603,25 +1757,16 @@ Original query: {query}
             },
         )
 
-        # Emit search progress
-        if SearchProgressEvent:
-            try:
-                self._emit_event_from_sync(
-                    SearchProgressEvent(stage="vector_search", message="Searching vector index...")
-                )
-            except Exception as e:
-                logger.debug(f"Could not emit vector search progress event: {e}")
+        self._emit_progress("vector_search", "Searching vector index...")
 
         retrieve_start = time.time()
         results = retriever.invoke(query)
         retriever_latency_ms = (time.time() - retrieve_start) * 1000.0
         logger.info(f"Retriever: hybrid={len(results)} docs ({retriever_latency_ms:.0f}ms)")
 
-        # Filter relaxation: if attribute filters returned very few results, drop
-        # multi_match (feature / size) filters and retry the hybrid query.
-        # Color, waterproof, and brand filters use `match` and are kept — the
-        # user explicitly asked for those. Multi_match filters are style hints
-        # that can over-constrain (e.g. "athletic" in "red shoes athletic").
+        # Filter relaxation: too few results with soft multi_match filters (feature/size)
+        # means they over-constrain, so retry without them. Color, waterproof and brand
+        # `match` filters stay.
         MIN_ATTR_FILTER_RESULTS = 3
         if (
             attribute_filters
@@ -2656,53 +1801,27 @@ Original query: {query}
                         len(results),
                     )
 
-        # Emit the OpenSearch query event with the actual DSL body. It flips to
-        # `quality_gate_retry` on the second pass so the UI can surface the
-        # retry separately.
-        if OpenSearchQueryEvent:
-            filter_summary = self._format_filter_summary(attribute_filters)
-            is_retry = bool(state.get("quality_gate_retried", False))
-            try:
-                hybrid_event = OpenSearchQueryEvent(
-                    query=query,
-                    alpha=alpha,
-                    filters=attribute_filters,
-                    filter_summary=filter_summary,
-                    intent=intent,
-                    query_type="quality_gate_retry" if is_retry else "hybrid",
-                    body=hybrid_capture.get("body"),
-                    index=hybrid_capture.get("index"),
-                    params=hybrid_capture.get("params"),
-                )
-                self._emit_event_from_sync(hybrid_event)
-            except Exception as e:
-                logger.error(f"Could not emit hybrid OpenSearch query event: {e}", exc_info=True)
+        # `quality_gate_retry` on the second pass lets the UI surface the retry separately.
+        self._emit_event_from_sync(
+            OpenSearchQueryEvent(
+                query=query,
+                alpha=alpha,
+                filters=attribute_filters,
+                filter_summary=self._format_filter_summary(attribute_filters),
+                intent=intent,
+                query_type="quality_gate_retry" if is_gate_retry else "hybrid",
+                body=hybrid_capture.get("body"),
+                index=hybrid_capture.get("index"),
+                params=hybrid_capture.get("params"),
+            )
+        )
 
-        # Emit text search progress
-        if SearchProgressEvent:
-            try:
-                self._emit_event_from_sync(
-                    SearchProgressEvent(stage="text_search", message="Full-text search complete")
-                )
-            except Exception as e:
-                logger.debug(f"Could not emit text search progress event: {e}")
+        self._emit_progress("text_search", "Full-text search complete")
+        self._emit_progress("fusion", "Fusing results with Reciprocal Rank Fusion...")
 
-        # Emit fusion progress
-        if SearchProgressEvent:
-            try:
-                self._emit_event_from_sync(
-                    SearchProgressEvent(
-                        stage="fusion",
-                        message="Fusing results with Reciprocal Rank Fusion...",
-                    )
-                )
-            except Exception as e:
-                logger.debug(f"Could not emit fusion progress event: {e}")
-
-        # Emit hybrid search result event
-        if HybridSearchResultEvent and results:
-            try:
-                search_event = HybridSearchResultEvent(
+        if results:
+            self._emit_event_from_sync(
+                HybridSearchResultEvent(
                     candidate_count=len(results),
                     candidates=[
                         SearchCandidate(
@@ -2717,30 +1836,11 @@ Original query: {query}
                         for doc in results[:10]
                     ],
                 )
-                self._emit_event_from_sync(search_event)
-            except Exception as e:
-                logger.debug(f"Could not emit hybrid search result event: {e}")
+            )
 
         elapsed = time.time() - start_time
 
-        # Intent-specific result logging
-        result_summary = f"Retrieved {len(results)} documents in {elapsed:.3f}s"
-        if intent == "comparison":
-            logger.info(
-                f"Retriever (comparison): {result_summary} - highlighting product differences"
-            )
-        elif intent == "attribute_filter":
-            logger.info(
-                f"Retriever (attribute_filter): {result_summary} - prioritizing attribute matches"
-            )
-        elif intent == "refinement":
-            logger.info(
-                f"Retriever (refinement): {result_summary} - filtered to prior search with new constraint"
-            )
-        elif intent == "follow_up":
-            logger.info(f"Retriever (follow_up): {result_summary} - refining previous results")
-        else:  # search
-            logger.info(f"Retriever (search): {result_summary}")
+        logger.info(f"Retriever ({intent}): retrieved {len(results)} documents in {elapsed:.3f}s")
 
         return {
             "retrieved_documents": results,
@@ -2749,20 +1849,14 @@ Original query: {query}
             "prior_search_documents": prior_search_documents,
             "prior_search_intent": prior_search_intent,
             "user_query": query,
-            "intent": intent,  # Pass intent downstream for reranker/agent
+            "intent": intent,
         }
 
     def reranker_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        Intent-aware reranker node - scores and reorders documents by relevance.
+        """Cross-encoder rerank of the retrieved candidates.
 
-        Behavior per intent:
-        - "comparison": Reranks by quality/feature differences (highlights tradeoffs)
-        - "attribute_filter": Reranks by attribute match accuracy (exact matches prioritized)
-        - "search": Standard relevance reranking
-        - "follow_up": Reranks by relevance to refine previous results
-
-        Returns reranked documents + reranker_max_score for quality gate.
+        Every candidate is scored (the UI shows the full ranking); the agent gets the top
+        RERANKER_TOP_K. Returns `reranker_max_score` for the quality gate.
         """
         retrieved_documents = state.get("retrieved_documents", [])
         intent = state.get("intent", "search")
@@ -2777,212 +1871,73 @@ Original query: {query}
                 "intent": intent,
             }
 
-        # Extract query for reranking
         query = state.get("user_query", "")
         if not query:
-            messages = state["messages"]
-            for msg in reversed(messages):
+            for msg in reversed(state["messages"]):
                 if isinstance(msg, HumanMessage):
                     query = _flatten_llm_content(msg)
                     break
 
-        # Emit reranker start event
-        if RerankerStartEvent:
-            try:
-                self._emit_event_from_sync(
-                    RerankerStartEvent(
-                        model=CROSS_ENCODER_MODEL,
-                        candidate_count=len(retrieved_documents),
-                    )
-                )
-            except Exception as e:
-                logger.debug(f"Could not emit reranker start event: {e}")
+        self._emit_event_from_sync(
+            RerankerStartEvent(model=CROSS_ENCODER_MODEL, candidate_count=len(retrieved_documents))
+        )
 
-        # Store original ranks
-        original_sources = [doc.metadata.get("source", "unknown") for doc in retrieved_documents]
         for i, doc in enumerate(retrieved_documents, 1):
             doc.metadata["original_rank"] = i
 
-        # Calculate total content size for throughput metrics
-        total_content_chars = sum(len(doc.page_content) for doc in retrieved_documents)
-        batch_size = self.reranker.batch_size
-
         rerank_start = time.time()
         logger.info(
-            f"Reranker: processing {len(retrieved_documents)} candidates, batch_size={batch_size}, device={self.reranker.device}"
+            f"Reranker: processing {len(retrieved_documents)} candidates, "
+            f"batch_size={self.reranker.batch_size}, device={self.reranker.device}"
+        )
+        self._emit_event_from_sync(
+            RerankerProgressEvent(
+                stage="scoring",
+                progress=0.0,
+                message=f"Scoring {len(retrieved_documents)} documents...",
+            )
         )
 
-        # Emit initial progress
-        if RerankerProgressEvent:
-            try:
-                self._emit_event_from_sync(
-                    RerankerProgressEvent(
-                        stage="scoring",
-                        progress=0.0,
-                        message=f"Scoring {len(retrieved_documents)} documents...",
-                    )
-                )
-            except Exception as e:
-                logger.debug(f"Could not emit reranker progress event: {e}")
-
-        # Score every retrieved candidate so the observability panel can show
-        # the full cross-encoder ranking (not just the top-K cut sent to the
-        # agent). The agent still gets only the top-K to keep its context
-        # focused; everything below is exposed via ``all_reranked_documents``.
         all_scored = self.reranker.score_documents(query, retrieved_documents)
-        reranked_results = all_scored[:RERANKER_TOP_K]
         rerank_elapsed = time.time() - rerank_start
 
-        # Emit completion progress
-        if RerankerProgressEvent:
-            try:
-                self._emit_event_from_sync(
-                    RerankerProgressEvent(
-                        stage="ranking",
-                        progress=1.0,
-                        message=f"Ranking complete - {len(retrieved_documents)} documents scored",
-                    )
-                )
-            except Exception as e:
-                logger.debug(f"Could not emit reranker completion event: {e}")
-
-        # Extract documents with scores
-        results_with_scores = [(doc, score) for doc, score in reranked_results]
-        results = [doc for doc, score in results_with_scores]
-
-        # Store reranker scores in metadata
-        for i, (doc, score) in enumerate(results_with_scores, 1):
-            doc.metadata["reranker_score"] = score
-
-        # Calculate throughput metrics
-        docs_per_sec = len(results) / rerank_elapsed if rerank_elapsed > 0 else 0
-        chars_per_sec = total_content_chars / rerank_elapsed if rerank_elapsed > 0 else 0
-        ms_per_doc = (rerank_elapsed * 1000) / len(results) if results else 0
-
-        # Log reranking results with detailed timing
-        avg_score = (
-            sum(score for _, score in results_with_scores) / len(results_with_scores)
-            if results_with_scores
-            else 0
-        )
-        max_score = max((score for _, score in results_with_scores), default=0.0)
-
-        # Intent-specific result logging
-        result_summary = f"Complete in {rerank_elapsed:.3f}s, top {len(results)} selected, avg_score={avg_score:.4f}, max_score={max_score:.4f}"
-        if intent == "comparison":
-            logger.info(
-                f"Reranker (comparison): {result_summary} - prioritizing feature/quality differences"
+        self._emit_event_from_sync(
+            RerankerProgressEvent(
+                stage="ranking",
+                progress=1.0,
+                message=f"Ranking complete - {len(retrieved_documents)} documents scored",
             )
-        elif intent == "attribute_filter":
-            logger.info(
-                f"Reranker (attribute_filter): {result_summary} - prioritizing attribute accuracy"
-            )
-        elif intent == "refinement":
-            logger.info(
-                f"Reranker (refinement): {result_summary} - from prior search with new constraint"
-            )
-        elif intent == "follow_up":
-            logger.info(f"Reranker (follow_up): {result_summary} - refining previous results")
-        else:  # search
-            logger.info(f"Reranker (search): {result_summary}")
-
-        logger.debug(
-            f"Reranker throughput: {docs_per_sec:.1f} docs/s, {chars_per_sec:.0f} chars/s, {ms_per_doc:.1f} ms/doc"
         )
 
-        # Log individual scores at debug level
-        for i, (doc, score) in enumerate(results_with_scores, 1):
-            source = doc.metadata.get("source", "unknown")
-            logger.debug(f"  {i}. score={score:.4f} [{source}]")
-
-        # Log order changes
-        reranked_sources = [doc.metadata.get("source", "unknown") for doc in results]
-        if original_sources[: len(reranked_sources)] != reranked_sources:
-            logger.debug("Reranker: order changed (reranking improved relevance)")
-        else:
-            logger.debug("Reranker: order unchanged (already optimally ranked)")
-
-        # Stash reranker scores on every scored doc so the UI can render the
-        # full ranking. The top-K subset shares Document instances with the
-        # agent's ``retrieved_documents`` so scores set above carry over.
+        # The top-K subset shares Document instances with the agent's documents, so these
+        # scores carry over to what the agent sees.
         for doc, score in all_scored:
             doc.metadata["reranker_score"] = score
-        all_reranked_results = [doc for doc, _ in all_scored]
+
+        top = all_scored[:RERANKER_TOP_K]
+        results = [doc for doc, _ in top]
+        max_score = max((score for _, score in top), default=0.0)
+        avg_score = sum(score for _, score in top) / len(top) if top else 0.0
+        logger.info(
+            f"Reranker ({intent}): complete in {rerank_elapsed:.3f}s, top {len(results)} selected, "
+            f"avg_score={avg_score:.4f}, max_score={max_score:.4f}"
+        )
 
         return {
             "retrieved_documents": results,
-            "all_reranked_documents": all_reranked_results,
+            "all_reranked_documents": [doc for doc, _ in all_scored],
             "reranker_max_score": max_score,
             "reranker_latency_ms": rerank_elapsed * 1000.0,
-            "intent": intent,  # Pass intent to quality gate
+            "intent": intent,
         }
 
     def quality_gate_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        Adaptive quality gate — checks reranker scores and triggers retry if results are low-quality.
+        """Retry retrieval once, with alpha shifted 0.3 the other way, when the top reranker
+        score is under the intent's threshold (comparison 0.55, attribute_filter/refinement
+        0.45, else 0.50).
 
-        Prevents passing poor-quality search results to the agent. If the highest reranker score
-        is below the intent-specific threshold, adjusts alpha in the opposite direction and retries
-        the retriever once to try a different search strategy.
-
-        Decision Logic:
-        - **PASS**: `reranker_max_score >= threshold` → continue to agent with current results
-        - **RETRY**: `reranker_max_score < threshold` AND not yet retried → adjust alpha, loop back to retriever
-        - **ACCEPT**: already retried once → continue to agent regardless of score (accept best-effort results)
-
-        Intent-Specific Thresholds:
-        - `comparison`: 0.55 (highest — comparison needs quality feature analysis)
-        - `attribute_filter`: 0.45 (attribute matches can be fuzzy)
-        - `refinement`: 0.45 (feature keyword matching is specific)
-        - `search`, `follow_up`: 0.50 (standard quality bar)
-
-        Alpha Adjustment (retry strategy):
-        - If current alpha >= 0.5: lower by 0.3 (shift to more lexical matching)
-        - If current alpha < 0.5: raise by 0.3 (shift to more semantic matching)
-
-        Args:
-            state: CustomAgentState with:
-                - reranker_max_score: float, highest relevance score from reranker (0.0–1.0)
-                - alpha: float, current search weight
-                - quality_gate_retried: bool, whether already retried once
-                - intent: str, for threshold selection
-                - retrieved_documents: list, documents to evaluate
-
-        Returns:
-            Dict with keys:
-            - quality_gate_status: str, "pass" | "retry" (only when retrying)
-            - quality_gate_retried: bool, True if retry triggered
-            - quality_gate_reason: str, explanation of decision
-            - alpha: float, NEW alpha if retrying, otherwise omitted
-            - reranker_max_score: float, the score that was evaluated
-
-        Examples:
-            Scenario 1 (PASS):
-            Input: max_score=0.72, threshold=0.50, intent="search"
-            Output: {
-                "quality_gate_status": "pass",
-                "quality_gate_reason": "PASS: max_score 0.72 >= threshold 0.50",
-                "quality_gate_retried": False
-            }
-            → Continues to agent_node
-
-            Scenario 2 (RETRY):
-            Input: max_score=0.35, threshold=0.50, intent="search", alpha=0.65 (semantic-heavy)
-            Output: {
-                "quality_gate_status": "retry",
-                "quality_gate_reason": "RETRY (search): score 0.35 < 0.50, alpha → 0.35",
-                "quality_gate_retried": True,
-                "alpha": 0.35  # Shift to more lexical search
-            }
-            → Loops back to retriever_node with adjusted alpha
-
-            Scenario 3 (ACCEPT — already retried):
-            Input: quality_gate_retried=True (from prior attempt)
-            Output: {
-                "quality_gate_reason": "Accepted after retry (max_score=0.42)",
-                "quality_gate_retried": False  # No further retries
-            }
-            → Continues to agent_node with current best results
+        Every return path sets `quality_gate_status` to "pass" or "retry": a stale "retry"
+        in checkpointed state would make the router loop back to the retriever forever.
         """
         from core.config import ENABLE_QUALITY_GATE, QUALITY_GATE_THRESHOLD
 
@@ -2990,67 +1945,39 @@ Original query: {query}
         max_score = state.get("reranker_max_score", 0.0)
         intent = state.get("intent", "search")
 
-        # Intent-aware thresholds
-        intent_thresholds = {
-            "comparison": 0.55,  # Higher threshold for quality comparisons
-            "attribute_filter": 0.45,  # Standard threshold
-            "refinement": 0.45,  # Same as attribute_filter — feature keyword matching is specific
-            "search": 0.50,  # Standard threshold
-            "follow_up": 0.50,  # Standard threshold
-        }
-        quality_threshold = intent_thresholds.get(intent, QUALITY_GATE_THRESHOLD)
+        quality_threshold = _QUALITY_THRESHOLD_BY_INTENT.get(intent, QUALITY_GATE_THRESHOLD)
 
-        # Early return if quality gate disabled
-        if not ENABLE_QUALITY_GATE:
+        def verdict(status: str, reason: str, **extra: Any) -> Dict[str, Any]:
             return {
-                "quality_gate_retried": False,
-                "quality_gate_reason": "Quality gate disabled in config",
-                "quality_gate_status": "pass",
+                "quality_gate_status": status,
+                "quality_gate_reason": reason,
                 "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
+                **extra,
             }
 
-        # Already retried once - accept results. This branch only runs on the
-        # SECOND pass through this node (after a real retry), so it must
-        # explicitly overwrite quality_gate_status to "pass" here -- leaving
-        # it unset would let the first pass's "retry" value leak forward
-        # through state and make _quality_gate_route loop back to the
-        # retriever forever.
+        if not ENABLE_QUALITY_GATE:
+            return verdict("pass", "Quality gate disabled in config", quality_gate_retried=False)
+
         if state.get("quality_gate_retried", False):
             logger.info(
                 f"QualityGate: already retried, accepting results (max_score={max_score:.3f})"
             )
-            return {
-                "quality_gate_reason": f"Accepted after retry (max_score={max_score:.3f})",
-                "quality_gate_status": "pass",
-                "quality_gate_threshold_used": quality_threshold,
-                "reranker_max_score": max_score,
-            }
+            return verdict("pass", f"Accepted after retry (max_score={max_score:.3f})")
 
-        # No documents to evaluate
         if not state.get("retrieved_documents", []):
-            return {
-                "quality_gate_retried": False,
-                "quality_gate_reason": "No documents to evaluate",
-                "quality_gate_status": "pass",
-                "quality_gate_threshold_used": quality_threshold,
-                "reranker_max_score": max_score,
-            }
+            return verdict("pass", "No documents to evaluate", quality_gate_retried=False)
 
-        # Score above threshold - good results, continue
         if max_score >= quality_threshold:
             logger.info(
                 f"QualityGate ({intent}): PASS - score {max_score:.3f} above threshold {quality_threshold:.2f}"
             )
-            return {
-                "quality_gate_retried": False,
-                "quality_gate_reason": f"PASS: max_score {max_score:.3f} >= threshold {quality_threshold:.2f}",
-                "quality_gate_status": "pass",
-                "quality_gate_threshold_used": quality_threshold,
-                "reranker_max_score": max_score,
-            }
+            return verdict(
+                "pass",
+                f"PASS: max_score {max_score:.3f} >= threshold {quality_threshold:.2f}",
+                quality_gate_retried=False,
+            )
 
-        # Score below threshold - adjust alpha and retry
         if current_alpha >= 0.5:
             new_alpha = max(0.0, current_alpha - 0.3)
             direction = "lexical"
@@ -3061,12 +1988,9 @@ Original query: {query}
         logger.info(
             f"QualityGate ({intent}): RETRY - score {max_score:.3f} below threshold {quality_threshold:.2f}, alpha {current_alpha:.2f} → {new_alpha:.2f} ({direction}-boost)"
         )
-
-        return {
-            "alpha": new_alpha,
-            "quality_gate_retried": True,
-            "quality_gate_reason": f"RETRY ({intent}): score {max_score:.3f} < {quality_threshold:.2f}, alpha → {new_alpha:.2f}",
-            "quality_gate_status": "retry",
-            "quality_gate_threshold_used": quality_threshold,
-            "reranker_max_score": max_score,
-        }
+        return verdict(
+            "retry",
+            f"RETRY ({intent}): score {max_score:.3f} < {quality_threshold:.2f}, alpha → {new_alpha:.2f}",
+            alpha=new_alpha,
+            quality_gate_retried=True,
+        )

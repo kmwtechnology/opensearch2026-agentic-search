@@ -1,14 +1,6 @@
-"""
-Second-opinion LLM judge for trigger_enrichment: before the agent's own
-tool-call decision is allowed to write a taxonomy mapping and trigger a
-scoped re-tag, an independent model evaluates whether the proposed
-change would genuinely, meaningfully improve search quality for real
-shoppers -- not just whether the first call's choice of canonical bucket
-is semantically defensible (it already checked that).
-
-Same bias-mitigation pattern as judge.py's LLMJudge: a different, cheap
-model (config.JUDGE_MODEL) than the agent's own generation model, temp=0,
-structured output.
+"""Second-opinion judge for trigger_enrichment: before a mapping is written and a re-tag
+runs, an independent model (JUDGE_MODEL, temperature 0, structured output) decides whether
+the change would really improve search for shoppers, not just whether the canonical is defensible.
 """
 
 from __future__ import annotations
@@ -25,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class EnrichmentValueAssessment(BaseModel):
-    """Verdict on whether a proposed trigger_enrichment call is worth a
-    real catalog write + reindex."""
+    """Whether a proposed trigger_enrichment call is worth a catalog write and re-tag."""
 
     is_meaningful: bool = Field(
         description=(
@@ -71,12 +62,8 @@ def _build_prompt(
         "current mappings at all, mapping a term to itself is how the very "
         "first entry (and the filter dimension it enables) gets registered, "
         "not a redundant or trivial change."
-        # (x or "") because callers source these from call["args"].get(key, "")
-        # — the "" default only applies to a MISSING key, so a model that
-        # emits the key with a JSON null hands us None. Before this check
-        # existed both values only ever reached an f-string, where None was
-        # harmless; .strip() on None would raise inside agent_node and take
-        # down the whole turn.
+        # `or ""`: a model that emits the key as JSON null hands us None, and .strip() on
+        # it would take down the whole turn.
         if (variant or "").strip().lower() == (canonical or "").strip().lower()
         else ""
     )
@@ -100,8 +87,7 @@ Return is_meaningful (true/false) and a one-sentence reasoning."""
 
 
 class EnrichmentValueJudge:
-    """Gate for trigger_enrichment: judges the proposed mapping itself,
-    independent of the agent's own tool-call decision."""
+    """Gate for trigger_enrichment, independent of the agent's own tool-call decision."""
 
     def __init__(self, model_name: str) -> None:
         self.model_name = model_name
@@ -123,8 +109,7 @@ class EnrichmentValueJudge:
             {"role": "user", "content": prompt},
         ]
         started = time.time()
-        # Also deliberation, also inside agent_node — same streaming leak as
-        # the tool-offer call (see core.config.INTERNAL_LLM_TAG).
+        # Deliberation inside agent_node: keep it out of the chat stream.
         from core.config import INTERNAL_LLM_TAG
 
         result: EnrichmentValueAssessment = self.structured_llm.invoke(

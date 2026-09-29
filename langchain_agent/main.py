@@ -1,26 +1,8 @@
-#!/usr/bin/env python3
-"""
-E-Commerce Product RAG Agent with Real-Time Streaming, Hybrid Search, and Persistent Memory
+"""EcommerceSearchAgent: a LangGraph RAG pipeline for Amazon ESCI product search.
 
-A production-grade LangGraph pipeline for e-commerce product discovery:
-- 6-intent classifier (search, comparison, attribute_filter, refinement, follow_up, summary)
-- Hybrid vector + BM25 retrieval fused via Reciprocal Rank Fusion (RRF, k=60)
-- Cross-encoder reranking with quality gate and alpha-adjustment retry
-- Conversational query rewriting to resolve pronouns and follow-up references
-- Persistent conversation memory via PostgreSQL LangGraph checkpointer
-- Real-time token-by-token streaming over WebSocket with typed observability events
-- Per-turn pipeline summary (reranker confidence proxy, judge verdict, stage latency)
-
-Powered by:
-- LLM: local Ollama (qwen3.6:35b-a3b) for generation, classify/eval, and judge
-- Rerank: local cross-encoder (ms-marco-MiniLM-L-12-v2)
-- Embeddings: local Ollama nomic-embed-text (768-dim); documents were
-  embedded once when the corpus was built (data/precomputed/), queries here
-  (retrieval/embeddings.py)
-- Vector Store: OpenSearch with HNSW knn + BM25
-- Database: PostgreSQL for LangGraph checkpoints
-- Framework: LangGraph (graph-based pipeline, not ReAct tool-binding)
-- Observability: Pydantic-validated WebSocket events with real-time streaming
+Six-intent classifier, hybrid BM25 + kNN retrieval, cross-encoder reranking behind a
+quality gate, an LLM judge, and Postgres-checkpointed conversation memory. All models run
+locally through Ollama except the cross-encoder, which runs in-process.
 """
 
 import logging
@@ -30,9 +12,8 @@ from typing import Optional
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, StateGraph
 from langgraph.utils.runnable import RunnableCallable
-from psycopg_pool import AsyncConnectionPool, ConnectionPool
+from psycopg_pool import AsyncConnectionPool
 
-# Import extracted modules
 from core.agent_state import CustomAgentState
 from core.llm import build_chat_model
 from pipeline.conversation_management import ConversationManagementMixin
@@ -43,7 +24,6 @@ from retrieval.embeddings import build_embeddings
 from retrieval.reranker import CrossEncoderReranker
 from retrieval.vector_store import OpenSearchVectorStore
 
-# Setup logging
 logger = logging.getLogger(__name__)
 
 
@@ -67,93 +47,36 @@ from core.config import (
     QUERY_EVAL_MAX_TOKENS,
     QUERY_EVAL_MODEL,
     QUERY_EVAL_TEMPERATURE,
-    RERANKER_FETCH_K,
-    RETRIEVER_ALPHA,
-    RETRIEVER_FETCH_K,
     VECTOR_COLLECTION_NAME,
 )
 
 
 class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
-    """
-    Production-grade LangGraph RAG agent for e-commerce product discovery.
+    """Orchestrator: builds the components and the graph; the node bodies live in the mixins.
 
-    This is the main orchestrator for a conversational product search system powered by
-    local Ollama models, OpenSearch hybrid search, and LangGraph. It implements a sophisticated
-    6-intent classifier, dynamic alpha weighting for semantic/lexical balance, LLM-based
-    reranking, and real-time WebSocket streaming with full observability.
-
-    ## Architecture
-
-    The agent executes a stateful pipeline:
-
-        intent_classifier (6 intents)
-          ├→ search / comparison / attribute_filter / refinement / follow_up
-          │   → query_evaluator (dynamic alpha) → retriever (hybrid search)
-          │   → reranker (LLM scoring) → quality_gate (retry if needed) → agent (response)
-          ├→ summary → agent (conversation recap)
-          └→ clarify (low confidence) → agent (ask user to disambiguate)
-
-    ## Key Capabilities
-
-    **Intent Classification (6 types)**:
-    - `search`: General product discovery ("Find wireless headphones")
-    - `comparison`: Compare products ("Compare Sony vs Bose")
-    - `attribute_filter`: Filter by attributes ("Show me boots in blue under $100")
-    - `refinement`: Narrow prior results ("Make them waterproof") — with context validation
-    - `follow_up`: Vague expansion ("Tell me more") — uses conversation history
-    - `summary`: Recap previous results
-
-    **Hybrid Search**:
-    - Vector search (768-dim nomic-embed-text embeddings) + BM25 lexical search
-    - Reciprocal Rank Fusion (k=60) for score fusion
-    - Dynamic alpha (0.0–1.0) per query: lexical-heavy for exact matches, semantic-heavy for conceptual needs
-
-    **Quality Gate**:
-    - Reranker scores products on 0.0–1.0 scale
-    - If max score < threshold, adjusts alpha ±0.3 and retries once
-    - Prevents low-quality responses
-
-    **Observable Events**:
-    - Real-time WebSocket streaming with typed Pydantic events
-    - 15+ event types: IntentClassification, QueryEvaluation, HybridSearchResult, RerankerProgress, QualityGateDecision, etc.
-    - Enables live visualization in frontend ObservabilityPanel
-
-    **Conversational Context**:
-    - PostgreSQL checkpoints for multi-turn memory
-    - Query expansion: resolves pronouns/comparatives from history
-    - Refinement context validation: category + document overlap scoring
-
-    ## Implementation Notes
-
-    - All node methods follow the signature: `(self, state: CustomAgentState) -> Dict[str, Any]`
-    - State fields are optional (`total=False`); always use `state.get(key, default)` for safe access
-    - The graph is built in `create_agent_graph()` and stored in `self.app`
-    - Streaming is handled by `_stream_llm_response_simple()` and WebSocket callback
+    intent_classifier -> summary | agent (clarify) | query_evaluator -> retriever -> reranker
+    -> quality_gate (one retry to retriever) -> agent -> llm_judge. Node methods take a
+    CustomAgentState and return a partial update; read state with `state.get(key, default)`.
     """
 
     def __init__(self):
-        """Initialize the agent and all its components"""
         self.llm = None
         self.embeddings = None
         self.vector_store = None
-        self.pool = None
         self.async_pool = None
         self.checkpointer = None
         self.app = None
-        self.emit_callback = None  # For emitting intermediate events from retriever_node
-        self.event_loop = None  # The running event loop (set when emit_callback is set)
-        self.event_queue = []  # Queue for intermediate events
-        self.retriever = None  # Base retriever
-        self.reranker = None  # Cross-encoder reranker
-        self.alpha_estimator_llm = None  # Lightweight model for query evaluation
+        # Set per request by ObservableAgentService so sync nodes can emit events.
+        self.emit_callback = None
+        self.event_loop = None
+        self.event_queue = []
+        self.reranker = None
+        self.alpha_estimator_llm = None
 
     def initialize_components(self):
-        """Initialize all LLM and storage components"""
         print("Initializing components...")
         print()
 
-        # Main generation model (streams via astream_events in the API path)
         print(f"Loading LLM: {LLM_MODEL}")
         self.llm = build_chat_model(LLM_MODEL, temperature=LLM_TEMPERATURE, max_tokens=8192)
         print("✓ LLM initialized")
@@ -170,30 +93,20 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         )
         print("✓ Query evaluator model initialized")
 
-        # Initialize Embeddings
         print(f"Loading embeddings: {EMBEDDINGS_MODEL}")
         self.embeddings = build_embeddings()
         print("✓ Embeddings initialized")
 
-        # Initialize Postgres connection pools (must be before vector store)
         print("Connecting to Postgres checkpoint store...")
-        connection_kwargs = DB_CONNECTION_KWARGS.copy()
-
-        # Sync pool for vector store operations
-        self.pool = ConnectionPool(
-            conninfo=DATABASE_URL, max_size=DB_POOL_MAX_SIZE, kwargs=connection_kwargs
-        )
-
-        # Async pool for checkpointer (required for astream_events)
+        # Async pool for the checkpointer; astream_events requires it. Opened later, in the loop.
         self.async_pool = AsyncConnectionPool(
             conninfo=DATABASE_URL,
             max_size=DB_POOL_MAX_SIZE,
-            kwargs=connection_kwargs,
-            open=False,  # Will be opened asynchronously
+            kwargs=DB_CONNECTION_KWARGS.copy(),
+            open=False,
         )
-        print("✓ Postgres connection pools initialized")
+        print("✓ Postgres connection pool initialized")
 
-        # Initialize Vector Store using OpenSearch
         print(f"Loading OpenSearch vector store: {VECTOR_COLLECTION_NAME}")
         self.vector_store = OpenSearchVectorStore(
             embeddings=self.embeddings,
@@ -201,133 +114,63 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         )
         print("✓ Vector store initialized")
 
-        # Create base retriever
-        self.retriever = self.vector_store.as_retriever(
-            search_type="hybrid",
-            search_kwargs={
-                "k": RERANKER_FETCH_K,
-                "fetch_k": RETRIEVER_FETCH_K,
-                "alpha": RETRIEVER_ALPHA,
-            },
-        )
-
-        # Initialize Reranker (local cross-encoder)
         print(f"Loading cross-encoder reranker: {CROSS_ENCODER_MODEL}")
         self.reranker = CrossEncoderReranker(model_name=CROSS_ENCODER_MODEL)
         print("✓ Reranker initialized")
-        # Warmup is deferred to observable_agent lifespan to avoid blocking startup
 
-        # Lazy LLM-as-judge — only constructed when the judge node first runs.
+        # Judges are built on first use.
         self.judge: Optional[LLMJudge] = None
-
-        # Lazy second-opinion judge for trigger_enrichment — only constructed
-        # when the agent's own tool-call decision first fires (most users
-        # never trigger enrichment at all).
         self.enrichment_value_judge: Optional[EnrichmentValueJudge] = None
 
-        # Checkpointer will be created asynchronously via create_async_checkpointer()
-        # This is required because AsyncPostgresSaver needs a running event loop
+        # AsyncPostgresSaver needs a running event loop, so ensure_async_pool_open creates it.
         self.checkpointer = None
         print("✓ Postgres checkpoint store will be initialized on first use (async)")
 
         print()
 
     def _route_after_intent(self, state: CustomAgentState) -> str:
-        """Route based on detected intent for e-commerce product search.
-
-        Returns the route key from intent_routes mapping, not the node name.
-        Intent routes mapping:
-        - "clarify" → agent node (direct clarification response)
-        - "summary" → summary node (skip retrieval)
-        - "search", "comparison", "attribute_filter", "follow_up" → query_evaluator node (standard Q&A pipeline)
-        """
+        """Route key for intent_routes: clarify goes straight to agent, summary skips retrieval,
+        every product-search intent goes through query_evaluator."""
         intent = state.get("intent", "search")
-
-        # Route based on intent
-        if intent == "clarify":
-            return "clarify"  # Maps to "agent" node
-        if intent == "summary":
-            return "summary"  # Maps to "summary" node
-
-        # All product search intents go through standard pipeline
-        # (search, comparison, attribute_filter, follow_up)
-        return "other"  # Maps to "query_evaluator" node
+        if intent in ("clarify", "summary"):
+            return intent
+        return "other"
 
     def _route_after_summary(self, state: CustomAgentState) -> str:
-        """Route after summary node.
-
-        If intent was summary, go directly to agent (skip retrieval).
-        Otherwise continue to retriever.
-        """
-        intent = state.get("intent", "question")
-        if intent == "summary":
-            return "done"
-        return "continue"
+        """A summary turn goes straight to agent; anything else continues to retrieval."""
+        return "done" if state.get("intent") == "summary" else "continue"
 
     def _quality_gate_route(self, state: CustomAgentState) -> str:
         """Route after quality gate: retry retrieval or continue to agent."""
-        # quality_gate_node sets quality_gate_status explicitly for this
-        # purpose ("retry" / "pass" — see its docstring). Route on that
-        # directly rather than substring-matching quality_gate_reason: a
-        # prior version of this check looked for "Retry triggered" in the
-        # reason text, but quality_gate_node has only ever produced reasons
-        # shaped like "RETRY (search): score 0.35 < 0.50, alpha -> 0.35" —
-        # that substring never matched, so this route always fell through to
-        # "continue" and the single-retry loop never actually executed, even
-        # when quality_gate_node genuinely decided to retry. Confirmed live
-        # 2026-09-14 investigating why Part 4 of DEMO.md never showed a
-        # second Knowledge Search/Reranker pass after "Retry Triggered".
+        # quality_gate_node sets quality_gate_status explicitly for this decision; routing
+        # on its reason text instead once never matched and silently disabled the retry.
         return "retry" if state.get("quality_gate_status") == "retry" else "continue"
 
     def create_agent_graph(self):
-        """Create custom StateGraph with automatic retrieval pipeline.
-
-        Flow: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent → END
-
-        The quality_gate can route back to retriever for a single retry with adjusted alpha.
-        """
-        logger.info("Creating agent graph with automatic retrieval")
-
-        # Build the graph
+        """Build and compile the StateGraph (with the checkpointer, if one exists yet)."""
         workflow = StateGraph(CustomAgentState)
 
-        # Add core nodes
         workflow.add_node("intent_classifier", self.intent_classifier_node)
         workflow.add_node("query_evaluator", self.query_evaluator_node)
         workflow.add_node("summary", self.summary_node)
         workflow.add_node("retriever", self.retriever_node)
         workflow.add_node("reranker", self.reranker_node)
         workflow.add_node("quality_gate", self.quality_gate_node)
-        # The agent node is registered with BOTH faces on purpose: the API path
-        # drives the graph via astream_events and must get the async one, or
-        # LangGraph runs the sync body on the event loop thread and a taxonomy
-        # re-tag blocks every WebSocket frame (#103); the sync face is the body
-        # itself (aagent_node hands it to a worker thread) and what unit tests
-        # call directly. name="agent" is load-bearing: observable_agent branches
-        # on the traced node name, which a hand-built RunnableCallable does not
-        # inherit from the key.
+        # Registered with both faces on purpose: astream_events must get the async one, or the
+        # sync body runs on the event loop thread and a taxonomy re-tag blocks every WebSocket
+        # frame. name="agent" is load-bearing: observable_agent branches on the traced node name.
         workflow.add_node(
             "agent",
             RunnableCallable(self.agent_node, self.aagent_node, name="agent"),
         )
         workflow.add_node("llm_judge", self.llm_judge_node)
 
-        # Set entry point
         workflow.set_entry_point("intent_classifier")
-
-        # Intent classifier routing
-        intent_routes = {
-            "summary": "summary",
-            "clarify": "agent",
-            "other": "query_evaluator",
-        }
         workflow.add_conditional_edges(
             "intent_classifier",
             self._route_after_intent,
-            intent_routes,
+            {"summary": "summary", "clarify": "agent", "other": "query_evaluator"},
         )
-
-        # Core pipeline edges
         workflow.add_edge("query_evaluator", "retriever")
         workflow.add_conditional_edges(
             "summary",
@@ -337,61 +180,34 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         workflow.add_edge("retriever", "reranker")
         workflow.add_edge("reranker", "quality_gate")
 
-        # Quality gate routing: retry retrieval or continue to agent
         workflow.add_conditional_edges(
             "quality_gate",
             self._quality_gate_route,
             {"retry": "retriever", "continue": "agent"},
         )
 
-        # Agent is the final step
         workflow.add_edge("agent", "llm_judge")
         workflow.add_edge("llm_judge", END)
 
-        # Compile with checkpointer
         self.app = workflow.compile(checkpointer=self.checkpointer)
 
-        logger.info(
-            "Agent graph created: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent → llm_judge"
-        )
-
     async def ensure_async_pool_open(self):
-        """Ensure the async pool is open and checkpointer is created. Call this before using astream_events."""
+        """Open the async pool and create the checkpointer (needs a running loop), then
+        recompile the graph with it. Call before astream_events."""
         if self.async_pool:
             try:
-                # Open the pool if not already open
-                # The pool's open() method is idempotent, so calling it twice is safe
-                await self.async_pool.open()
+                await self.async_pool.open()  # idempotent
             except Exception as e:
                 logger.warning(f"Error opening async pool: {e}")
 
-        # Create checkpointer if not already created (must be done in async context)
         if self.checkpointer is None:
-            from core.config import CHECKPOINT_SELECTIVE_SERIALIZATION
+            from checkpoints.checkpoint_optimizer import SelectiveJsonPlusSerializer
 
-            if CHECKPOINT_SELECTIVE_SERIALIZATION:
-                from checkpoints.checkpoint_optimizer import SelectiveJsonPlusSerializer
-
-                self.checkpointer = AsyncPostgresSaver(
-                    self.async_pool, serde=SelectiveJsonPlusSerializer()
-                )
-            else:
-                self.checkpointer = AsyncPostgresSaver(self.async_pool)
-
-            # Recompile the graph with the new checkpointer
+            self.checkpointer = AsyncPostgresSaver(
+                self.async_pool, serde=SelectiveJsonPlusSerializer()
+            )
             if self.app is not None:
-                self._recompile_with_checkpointer()
-
-    def _recompile_with_checkpointer(self):
-        """Recompile the agent graph with the async checkpointer.
-
-        This rebuilds the LangGraph workflow and compiles it with the checkpointer
-        that was created asynchronously. Must be called after self.checkpointer is set.
-        """
-        # Reuse create_agent_graph which already handles all node/edge setup
-        # and compiles with self.checkpointer
-        self.create_agent_graph()
-        logger.info("Graph recompiled with async checkpointer")
+                self.create_agent_graph()
 
     async def close_async_pool(self):
         """Close the async pool."""
@@ -399,12 +215,6 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
             await self.async_pool.close()
 
     def cleanup(self):
-        """Clean up resources"""
-        # Clear reranker from memory if loaded
+        """Release the reranker model; the async pool is closed via close_async_pool()."""
         if self.reranker:
             del self.reranker
-
-        if self.pool:
-            self.pool.close()
-
-        # Note: async_pool should be closed via close_async_pool() in async context

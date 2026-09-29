@@ -12,7 +12,7 @@ import sys
 import structlog
 from structlog.types import Processor
 
-from core.config import LOG_FORMAT, LOG_INCLUDE_TIMESTAMP, LOG_LEVEL
+from core.config import LOG_FORMAT, LOG_LEVEL
 
 
 def configure_logging() -> None:
@@ -44,8 +44,7 @@ def configure_logging() -> None:
         structlog.processors.UnicodeDecoder(),
     ]
 
-    if LOG_INCLUDE_TIMESTAMP:
-        shared_processors.insert(0, structlog.processors.TimeStamper(fmt="iso"))
+    shared_processors.insert(0, structlog.processors.TimeStamper(fmt="iso"))
 
     # Format-specific renderer
     if LOG_FORMAT == "json":

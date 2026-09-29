@@ -14,13 +14,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 @pytest.mark.unit
 @pytest.mark.phase1
 class TestConfig:
-    def test_ollama_settings_in_config_all(self):
-        """OLLAMA_* settings must be exported so callers can import them."""
-        from core import config
-
-        for name in ("OLLAMA_HOST", "OLLAMA_KEEP_ALIVE", "OLLAMA_NUM_CTX"):
-            assert name in config.__all__
-
     def test_llm_temperature_is_a_real_float_config_attribute(self):
         """Regression: `int(os.getenv("LLM_TEMPERATURE", 0))` made LLM_TEMPERATURE=0.7
         raise at import time. Check the real module attribute, not a re-parsed literal."""

@@ -54,7 +54,7 @@ override the attribute a test needs (`agent.alpha_estimator_llm = MagicMock(...)
 | Enrichment lifecycle: `started` before the re-tag, one terminal event, value-judge gate, judge skips enrichment turns | `unit/test_enrichment_lifecycle_events.py`, `unit/test_try_enrichment_tool.py`, `unit/test_judge_skips_enrichment_turn.py`; route contract in `integration/test_admin_enrich_route.py` |
 | Citations: Amazon search-by-title URL construction; `agent_complete.citations` shape `{label, url, asin, image_url}` | `unit/test_agent_link_handling.py`; live in `e2e/test_deployment_smoke.py::TestCitations` |
 | Reranker rescale ceiling stays below the quality-gate thresholds | `unit/test_reranker.py` |
-| Hybrid search DSL, RRF routing, query-term truncation | `unit/test_vector_store.py`, `unit/test_issue_85_maxclausecount.py` |
+| Hybrid search DSL, query-term truncation | `unit/test_vector_store.py`, `unit/test_issue_85_maxclausecount.py` |
 | Judge categories and retry eligibility | `unit/test_judge_categories.py` |
 | Pipeline summary and the confidence proxy | `unit/test_pipeline_summary_event.py`, `unit/test_confidence_proxy.py` |
 | Attribute-mapping store read-after-write, case-insensitivity, cache invalidation | `integration/test_attribute_mapping_store.py` |

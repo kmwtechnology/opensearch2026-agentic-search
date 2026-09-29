@@ -1,23 +1,12 @@
-"""
-LLM-as-judge for Pipeline Summary "Generation" stage.
+"""LLM-as-judge for the Pipeline Summary "Generation" stage.
 
-Compares the agent's synthesized response (LLM:on path) against the
-deterministic raw-product-list response (LLM:off path) and emits a
-structured judgment with a pairwise verdict, four absolute scores
-(faithfulness, answer_relevance, citation_accuracy, context_utilization),
-a brief justification, and any specific hallucinations the judge spotted.
+Compares the agent's answer with the raw product list and returns a pairwise verdict, four
+0-1 scores (faithfulness, answer_relevance, citation_accuracy, context_utilization), a
+justification, and tiered hallucination flags.
 
-Bias mitigations:
-  * JUDGE_MODEL is its own setting so the judge *can* run a different model
-    than the agent (reduces self-preference). Since the move to local Ollama
-    (#148) both default to the same qwen3.6:35b-a3b -- one resident model --
-    so this mitigation is currently off unless JUDGE_MODEL is set.
-  * Randomize "Response A" / "Response B" labels per call to mitigate
-    positional bias on the pairwise verdict. The judge sees blind
-    labels; we map back to llm/baseline server-side.
-  * Tight token limits + temperature=0 for repeatability.
-
-Cost: one extra local LLM call per judged query (~2-3s warm, no API cost).
+Response A/B labels are randomized per call to counter positional bias, and temperature is
+0. JUDGE_MODEL can differ from the agent's model to reduce self-preference, but both default
+to the same resident model.
 """
 
 from __future__ import annotations
@@ -40,13 +29,8 @@ Verdict = Literal["llm_better", "tied", "llm_worse"]
 
 
 class HallucinationCategory(str, Enum):
-    """Tier a flagged claim by severity so the retry gate can route on it.
-
-    ``fabrication`` and ``cross_product_bleed`` are dangerous and trigger the
-    auto-correction retry. ``inference`` and ``overreach`` are surfaced to the
-    user but skip the ~20–30s retry — regenerating typically makes the answer
-    worse, not better.
-    """
+    """Severity tier of a flagged claim. Fabrication and cross_product_bleed trigger the
+    auto-correction retry; inference and overreach are only surfaced."""
 
     fabrication = "fabrication"
     cross_product_bleed = "cross_product_bleed"
@@ -54,7 +38,6 @@ class HallucinationCategory(str, Enum):
     overreach = "overreach"
 
 
-# Categories that justify the auto-correction retry path.
 RETRY_ELIGIBLE_CATEGORIES: frozenset[HallucinationCategory] = frozenset(
     {HallucinationCategory.fabrication, HallucinationCategory.cross_product_bleed}
 )
@@ -137,18 +120,11 @@ class JudgmentResult(BaseModel):
             )
         coerced: list = []
         for item in v:
-            if isinstance(item, FlaggedClaim):
-                coerced.append(item)
-            elif isinstance(item, str):
+            if isinstance(item, str):
                 if item.strip():
                     coerced.append(
-                        {
-                            "claim": item.strip(),
-                            "category": HallucinationCategory.fabrication,
-                        }
+                        {"claim": item.strip(), "category": HallucinationCategory.fabrication}
                     )
-            elif isinstance(item, dict):
-                coerced.append(item)
             else:
                 coerced.append(item)
         return coerced
@@ -166,17 +142,8 @@ _JUDGE_SYSTEM = (
 
 
 def _format_docs_for_prompt(documents: List[Document], max_chars: int = 10_000) -> str:
-    """Compact numbered render of the retrieved docs, truncated for prompt size.
-
-    Default 10 000 chars/doc — effectively no truncation for any realistic ESCI
-    product (ceiling ~2498 chars, e.g. Thursday Boot Company Captain B07PQ9M1C5).
-    At RETRIEVER_K=4 docs the block is ≤40 000 chars (~10 000 tokens), still
-    well inside the 32K-token OLLAMA_NUM_CTX window. Earlier limits (360 in
-    issue #81, 1500 in PR #82, 2500 in issue #84) all caused false-positive
-    fabrication flags when grounded product attributes appeared in late Amazon
-    bullet points past the cutoff. 10 000 is a safety cap against pathological
-    documents, not a tuned budget.
-    """
+    """Numbered render of the retrieved docs. The 10,000-char cap is a safety limit, not a
+    budget: shorter caps caused false fabrication flags on facts in late bullet points."""
     lines = []
     for i, doc in enumerate(documents, 1):
         title = doc.metadata.get("title") or "(untitled)"
@@ -185,11 +152,8 @@ def _format_docs_for_prompt(documents: List[Document], max_chars: int = 10_000) 
         if len(snippet) > max_chars:
             snippet = snippet[:max_chars].rstrip() + "…"
         entry = f"{i}. [{product_id}] {title}\n   {snippet}"
-        # Mirror EcommerceSearchAgent._build_grounded_context's raw-vs-indexed
-        # color facts here too -- the judge must see every fact the generating
-        # LLM saw, or it flags a grounded claim (e.g. "indexed as yellow") as
-        # an unsupported fabrication and the auto-correction retry strips it
-        # back out.
+        # The judge must see every fact the generator saw (see _build_grounded_context),
+        # or it flags grounded claims such as "indexed as yellow" as fabrication.
         color = doc.metadata.get("product_color") or ""
         color_category = doc.metadata.get("product_color_primary") or ""
         if color:
@@ -271,12 +235,8 @@ class LLMJudge:
         *,
         seed: Optional[int] = None,
     ) -> JudgmentResult:
-        """Score the LLM response against the baseline raw-list response.
-
-        The verdict's polarity is normalized: "llm_better" always means the
-        synthesized response wins, regardless of which blind label the model
-        actually saw. We randomize A/B per call to mitigate positional bias.
-        """
+        """Score the LLM response against the baseline. The A/B assignment is random per call;
+        the verdict is reported in terms of the LLM response, whichever label it wore."""
         rng = random.Random(seed) if seed is not None else random
         a_is_llm = rng.random() < 0.5
         response_a = llm_response if a_is_llm else baseline_response

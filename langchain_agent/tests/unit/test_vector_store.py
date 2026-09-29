@@ -185,7 +185,6 @@ def _make_full_store():
     store.collection_id = "esci_products"
     store.search_pipeline = "hybrid-search-pipeline"
     store.embeddings = mock_embeddings
-    store._hybrid_supported = None
 
     # Attach a disabled embedding cache so _get_embedding always hits the mock
     from observability.embedding_cache import EmbeddingCache
@@ -232,42 +231,6 @@ class TestGetEmbedding:
         mock_emb.embed_query.side_effect = Exception("API down")
         with pytest.raises(EmbeddingError):
             store._get_embedding("query")
-
-
-# ---------------------------------------------------------------------------
-# TestCheckHybridSupport
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestCheckHybridSupport:
-    def test_returns_cached_value(self):
-        store, _, _ = _make_full_store()
-        store._hybrid_supported = True
-        assert store._check_hybrid_support() is True
-        store.client.info.assert_not_called()
-
-    def test_returns_false_for_old_version(self):
-        store, mock_client, _ = _make_full_store()
-        mock_client.info.return_value = {"version": {"number": "2.9.0"}}
-        assert store._check_hybrid_support() is False
-
-    def test_returns_false_when_neural_plugin_missing(self):
-        store, mock_client, _ = _make_full_store()
-        mock_client.info.return_value = {"version": {"number": "2.10.0"}}
-        mock_client.cat.plugins.return_value = [{"component": "other-plugin"}]
-        assert store._check_hybrid_support() is False
-
-    def test_returns_true_when_neural_plugin_present(self):
-        store, mock_client, _ = _make_full_store()
-        mock_client.info.return_value = {"version": {"number": "2.19.1"}}
-        mock_client.cat.plugins.return_value = [{"component": "neural-search"}]
-        assert store._check_hybrid_support() is True
-
-    def test_returns_false_on_exception(self):
-        store, mock_client, _ = _make_full_store()
-        mock_client.info.side_effect = Exception("connection error")
-        assert store._check_hybrid_support() is False
 
 
 # ---------------------------------------------------------------------------
@@ -337,38 +300,8 @@ class TestHybridSearch:
         from core.exceptions import SearchValidationError
 
         store, _, _ = _make_full_store()
-        store._hybrid_supported = False  # skip native path
         with pytest.raises(SearchValidationError):
             store.hybrid_search("query", k=1, fetch_k=10, alpha=1.5)
-
-
-# ---------------------------------------------------------------------------
-# TestHybridSearchRrf
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestHybridSearchRrf:
-    def test_fuses_vector_and_text_results(self):
-        store, mock_client, mock_emb = _make_full_store()
-        store._hybrid_supported = False
-        mock_client.search.side_effect = [
-            _search_resp(_hit("p1", 0.9), _hit("p2", 0.7)),  # vector
-            _search_resp(_hit("p2", 0.8), _hit("p3", 0.6)),  # text
-        ]
-        results = store.hybrid_search("query", k=3, fetch_k=10, alpha=0.5)
-        ids = [r.metadata["product_id"] for r in results]
-        assert "p2" in ids  # appears in both → highest RRF score
-
-    def test_top_k_limit_respected(self):
-        store, mock_client, _ = _make_full_store()
-        store._hybrid_supported = False
-        mock_client.search.side_effect = [
-            _search_resp(*[_hit(f"v{i}") for i in range(5)]),
-            _search_resp(*[_hit(f"t{i}") for i in range(5)]),
-        ]
-        results = store.hybrid_search("query", k=3, fetch_k=10, alpha=0.5)
-        assert len(results) == 3
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +342,6 @@ class TestTextSearch:
 class TestOpenSearchRetrieverInvoke:
     def _make_retriever(self, search_type="hybrid"):
         store, mock_client, _ = _make_full_store()
-        store._hybrid_supported = False
         mock_client.search.return_value = _search_resp(_hit("p1"), _hit("p2"))
         retriever = OpenSearchRetriever(
             vector_store=store,
@@ -444,7 +376,6 @@ class TestOpenSearchRetrieverInvoke:
 
     def test_collapses_duplicates_for_esci(self):
         store, mock_client, _ = _make_full_store()
-        store._hybrid_supported = False
         # Two hits with same product_id → should collapse to 1
         mock_client.search.side_effect = [
             _search_resp(_hit("p1", 0.9), _hit("p1", 0.7)),
@@ -537,7 +468,6 @@ class TestCaptureBody:
     def test_hybrid_native_captures_body_with_scrubbed_vector(self):
         store, mock_client = _make_store()
         store.search_pipeline = "hybrid_search_pipeline"
-        store._hybrid_supported = True
         mock_client.search.return_value = {"hits": {"hits": []}}
 
         capture: dict = {}

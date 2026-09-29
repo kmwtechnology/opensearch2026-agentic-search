@@ -1,47 +1,16 @@
-"""
-Re-arm the two self-consuming demos: taxonomy self-correction (#103) and
-schema-evolution growth (issue #142).
+"""Re-arm the two self-consuming demos: taxonomy correction (color) and schema growth (waterproof).
 
-Both demos destroy their own preconditions, in opposite ways:
+Both destroy their own preconditions, quietly:
 
-* **Correction** (color): the catalog mis-tags tan products as ``yellow``;
-  succeeding rewrites the mapping to ``brown`` and re-indexes every product
-  to match. Run it twice without resetting and turn 1 looks perfectly
-  normal — nothing to notice, nothing to dispute, nothing to correct.
-* **Growth** (waterproof): the taxonomy starts with a genuine gap (zero
-  seed variants — see attribute_discovery.py's WATERPROOF_CANONICALS);
-  succeeding teaches it a real variant->canonical mapping and tags matching
-  products. Run it twice without resetting and turn 1 finds the gap already
-  filled — nothing missing to notice.
+* **Correction**: the catalog mis-tags tan products as ``yellow``; succeeding rewrites the
+  mapping to ``brown`` and re-tags the products. Run twice without a reset and turn 1 has
+  nothing to dispute.
+* **Growth**: the waterproof taxonomy starts with zero variants (WATERPROOF_CANONICALS);
+  succeeding teaches it a mapping and tags products. Run twice and the gap is already filled.
 
-Neither failure errors. Both just quietly stop demonstrating anything, which
-is the worst way to find out mid-talk. reset_demo_taxonomy() restores BOTH
-to their "before" state unconditionally on every call — it's cheap and
-idempotent, so there's no need for the caller to know which demo is
-currently selected; see web/src/components/Layout.tsx's armCatalog.
-
-Two ways back for the color demo, and the difference matters when a
-presenter is clicking about between rehearsals:
-
-* **fast** (default) — flip the mapping row and re-tag only the handful of
-  products whose listed color is "tan", with one ``_update_by_query``.
-  Milliseconds. This is a surgical undo of what the demo did, not a rebuild.
-* **full** — flip the mapping row and re-run the scoped Python re-tag
-  (``pipeline/scoped_retag.py``) against every "tan"-listed candidate the
-  index actually has, instead of the fast path's narrower direct write. Use
-  it when the index may have drifted for reasons beyond this demo. There is
-  no corpus-wide rebuild path any more (#147/#148's precomputed dump is the
-  only source of the corpus and is never regenerated locally).
-
-The waterproof demo only has a fast path: delete its mapping row(s) and
-strip the field back off any products it tagged, both scoped ``_by_query``
-operations. There's no "full" mode for it because, unlike color, there's no
-correct steady-state mapping to restore — the taxonomy is supposed to be
-empty until the live flywheel (re-)grows it.
-
-Both fast paths are deliberately narrow: each only knows how to undo its own
-demo's state. Neither is a general-purpose taxonomy repair, and neither
-pretends to be — anything broader belongs in a re-ingest / re-seed.
+reset_demo_taxonomy() restores both unconditionally; it is cheap and idempotent, so callers
+need not know which demo is selected. Each reset is narrow: it only undoes its own demo's
+state and is not a general taxonomy repair.
 """
 
 import logging
@@ -54,7 +23,6 @@ DEMO_ATTRIBUTE_TYPE = "color"
 DEMO_VARIANT = "tan"
 DEMO_BROKEN_CANONICAL = "yellow"
 
-# The attribute type the growth demo teaches the catalog from scratch.
 WATERPROOF_ATTRIBUTE_TYPE = "waterproof"
 _WATERPROOF_FIELDS = (
     "product_waterproof",
@@ -63,18 +31,14 @@ _WATERPROOF_FIELDS = (
 )
 
 
-def reset_demo_taxonomy(full_reindex: bool = False) -> Dict[str, Any]:
-    """
-    Put both self-consuming demos back to their "before" state.
-
-    Returns a summary describing what changed, suitable for an API response.
-    """
-    color = _reset_color_demo(full_reindex=full_reindex)
+def reset_demo_taxonomy() -> Dict[str, Any]:
+    """Put both demos back to their "before" state; returns a summary for the API response."""
+    color = _reset_color_demo()
     waterproof = _reset_waterproof_demo()
     return {**color, "waterproof": waterproof}
 
 
-def _reset_color_demo(full_reindex: bool) -> Dict[str, Any]:
+def _reset_color_demo() -> Dict[str, Any]:
     from core.config import OPENSEARCH_INDEX_NAME
     from retrieval.attribute_mapping_store import AttributeMappingStore
     from retrieval.vector_store import get_shared_opensearch_client
@@ -83,40 +47,14 @@ def _reset_color_demo(full_reindex: bool) -> Dict[str, Any]:
         attribute_type=DEMO_ATTRIBUTE_TYPE,
         variant=DEMO_VARIANT,
         canonical=DEMO_BROKEN_CANONICAL,
-        # Reset restores the SHIPPED state, so the row should not claim the
-        # agent learned it — otherwise the next run's "corrected_from" story
-        # is told against a mapping that looks agent-authored already.
+        # The shipped state, so the row must not claim the agent learned it.
         source="seed",
     )
     logger.info("Demo reset: mapping restored to %s -> %s", DEMO_VARIANT, DEMO_BROKEN_CANONICAL)
 
-    if full_reindex:
-        from pipeline.reindex_trigger import build_reindex_trigger
-
-        # "Full" means a real re-detection of the demo's variant against the
-        # restored mapping, not the fast path's surgical flip.
-        outcome = build_reindex_trigger().trigger(DEMO_ATTRIBUTE_TYPE, [DEMO_VARIANT])
-        logger.info(
-            "Demo reset (full): reindex success=%s docs=%s", outcome.success, outcome.docs_processed
-        )
-        return {
-            "mode": "full",
-            "restored": {
-                "attribute_type": DEMO_ATTRIBUTE_TYPE,
-                "variant": DEMO_VARIANT,
-                "canonical": DEMO_BROKEN_CANONICAL,
-            },
-            "reindex_success": outcome.success,
-            "docs_processed": outcome.docs_processed,
-            "duration_seconds": outcome.duration_seconds,
-            "error": outcome.error,
-        }
-
     client = get_shared_opensearch_client()
-    # Re-tag only the products whose LISTED color is tan. Matching on the
-    # listed value rather than on the current indexed category means this is
-    # correct whichever direction the index is currently in, and it cannot
-    # touch products that are genuinely yellow or genuinely brown.
+    # Match the LISTED color, not the current indexed category: correct in whichever direction
+    # the index currently is, and it cannot touch genuinely yellow or brown products.
     response = client.update_by_query(
         index=OPENSEARCH_INDEX_NAME,
         refresh=True,
@@ -129,7 +67,7 @@ def _reset_color_demo(full_reindex: bool) -> Dict[str, Any]:
         },
     )
     updated = response.get("updated", 0)
-    logger.info("Demo reset (fast): re-tagged %s tan-listed products", updated)
+    logger.info("Demo reset: re-tagged %s tan-listed products", updated)
 
     return {
         "mode": "fast",
@@ -145,17 +83,8 @@ def _reset_color_demo(full_reindex: bool) -> Dict[str, Any]:
 
 
 def _reset_waterproof_demo() -> Dict[str, Any]:
-    """
-    Delete any "waterproof" taxonomy rows the live flywheel has grown and
-    strip the fields it tagged onto products — restores the schema-evolution
-    demo's "before" state (a genuine gap), not a wrong-but-present mapping
-    to revert like the color demo.
-
-    Both operations are scoped ``_by_query`` calls (delete on the mapping
-    store, update on the products index), not a full reindex — milliseconds,
-    safe to call on every restart/demo-select regardless of which demo is
-    currently selected.
-    """
+    """Delete the waterproof mapping rows the flywheel grew and strip the fields it tagged
+    onto products, restoring a genuine gap. Both are scoped ``_by_query`` calls."""
     from core.config import OPENSEARCH_INDEX_NAME
     from retrieval.attribute_mapping_store import INDEX_NAME as MAPPING_INDEX_NAME
     from retrieval.attribute_mapping_store import AttributeMappingStore, _clear_lookup_cache
@@ -169,9 +98,7 @@ def _reset_waterproof_demo() -> Dict[str, Any]:
         body={"query": {"term": {"attribute_type": WATERPROOF_ATTRIBUTE_TYPE}}},
     )
     mappings_deleted = delete_response.get("deleted", 0)
-    # A raw delete_by_query bypasses add_mapping's own cache invalidation, so
-    # the in-process lookup cache would otherwise keep serving the deleted
-    # rows until its TTL expires.
+    # delete_by_query bypasses add_mapping's cache invalidation.
     _clear_lookup_cache()
 
     client = get_shared_opensearch_client()

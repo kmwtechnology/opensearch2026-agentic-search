@@ -1,60 +1,8 @@
-"""
-Configuration constants for Agentic Hybrid Search RAG Agent.
+"""Configuration for the agent, API and scripts.
 
-Most configuration values are loaded from the `.env` file via python-dotenv;
-a subset (see #26 -- notably RETRIEVER_K/FETCH_K/ALPHA, RERANKER_FETCH_K/
-TOP_K, VECTOR_DIMENSION)
-are plain Python literals below and are NOT env-overridable, regardless of
-what a matching-looking entry in `.env.example` might suggest. Copy
-`.env.example` to `.env` and customize as needed -- but check `.env.example`
-itself for which of its entries actually do anything.
-
-## Configuration Sections
-
-### LLM & Embeddings (`OLLAMA_HOST`, `LLM_*`, `EMBEDDINGS_*`)
-Local Ollama models for generation, classification, and embeddings — no cloud API key.
-- `LLM_MODEL`: Main generation model (e.g., qwen3.6:35b-a3b-q4_K_M)
-- `LLM_TEMPERATURE`: Controls output creativity (0.0=deterministic, 1.0=creative)
-- `EMBEDDINGS_MODEL`: Embedding model (e.g., nomic-embed-text, 768-dim)
-- `QUERY_EVAL_MODEL`: Query evaluation model (defaults to `LLM_MODEL`)
-
-### Database & Checkpoints (`POSTGRES_*`, `DATABASE_URL`, `DB_POOL_MAX_SIZE`)
-PostgreSQL stores LangGraph checkpoints for conversation memory and state persistence.
-All fields optional (defaults provided); only `DATABASE_URL` is used if set.
-
-### Vector Database (`OPENSEARCH_*`, `VECTOR_*`)
-OpenSearch cluster for hybrid search (HNSW knn_vector + BM25 lexical).
-- `OPENSEARCH_HOST/PORT`: Server location (local Docker Compose: localhost:9200)
-- `OPENSEARCH_INDEX_NAME`: Index containing ESCI products (agentic_hybrid_search_docs)
-- `VECTOR_DIMENSION`: Embedding dimension (768, matches nomic-embed-text)
-
-### Retrieval & Reranking (`RETRIEVER_*`, `RERANKER_*`)
-Controls hybrid search balance and LLM-based relevance scoring.
-- `RETRIEVER_K`: Final documents returned to agent
-- `RETRIEVER_FETCH_K`: Candidates fetched before reranking
-- `RETRIEVER_ALPHA`: Default semantic/lexical weighting (0.0-1.0) — usually overridden by query evaluator
-
-### Query Evaluation & Alpha (`QUERY_EVAL_*`)
-Dynamic alpha selection based on query intent.
-- `QUERY_EVAL_MODEL`: Fast classifier (defaults to `LLM_MODEL`)
-- `ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS`: Max wait for the alpha-decision LLM call (shared with the retriever's attribute-extraction/query-expansion calls, same model family)
-- Alpha table: 0.0 (pure lexical) ← intent categories → 1.0 (pure semantic)
-
-### Quality Gate (`ENABLE_QUALITY_GATE`, `QUALITY_GATE_THRESHOLD`)
-Retry retrieval with adjusted alpha if max reranker score < threshold (default 0.50).
-Catches cases where initial alpha was poorly calibrated.
-
-### Embedding Cache (`ENABLE_EMBEDDING_CACHE`, `EMBEDDING_CACHE_MAX_SIZE`)
-In-memory cache for query embeddings (60-minute TTL). Reduces API calls for repeated queries.
-
-## Getting Started
-
-1. Copy `.env.example` to `.env`
-2. Install Ollama natively (https://ollama.com) and pull `LLM_MODEL` + `EMBEDDINGS_MODEL`
-3. `docker compose up -d` starts PostgreSQL + OpenSearch
-4. Run `python3 setup.py` to validate config, create tables, ingest ESCI products
-
-All other variables have sensible defaults in this file.
+Values read with os.getenv come from `.env` (see `.env.example`, the list of what is
+actually read). Retrieval tuning (RETRIEVER_*, RERANKER_*, VECTOR_DIMENSION, the quality
+gate's per-intent thresholds) is plain Python below and is not env-overridable.
 """
 
 import os
@@ -62,93 +10,20 @@ import os
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
-# Load environment variables from .env file
 load_dotenv()
-
-__all__ = [
-    # Ollama configuration
-    "OLLAMA_HOST",
-    "OLLAMA_KEEP_ALIVE",
-    "OLLAMA_NUM_CTX",
-    "LLM_MODEL",
-    "LLM_TEMPERATURE",
-    "EMBEDDINGS_MODEL",
-    # PostgreSQL configuration
-    "POSTGRES_USER",
-    "POSTGRES_PASSWORD",
-    "POSTGRES_HOST",
-    "POSTGRES_PORT",
-    "POSTGRES_DB",
-    "DATABASE_URL",
-    "DB_CONNECTION_KWARGS",
-    "DB_POOL_MAX_SIZE",
-    # Vector configuration
-    "VECTOR_DIMENSION",
-    "VECTOR_COLLECTION_NAME",
-    # OpenSearch configuration
-    "OPENSEARCH_HOST",
-    "OPENSEARCH_PORT",
-    "OPENSEARCH_USER",
-    "OPENSEARCH_PASSWORD",
-    "OPENSEARCH_USE_SSL",
-    "OPENSEARCH_VERIFY_CERTS",
-    "OPENSEARCH_INDEX_NAME",
-    "OPENSEARCH_SEARCH_PIPELINE",
-    "OPENSEARCH_TIMEOUT",
-    # Embedding cache configuration
-    "ENABLE_EMBEDDING_CACHE",
-    "EMBEDDING_CACHE_MAX_SIZE",
-    # Retriever configuration
-    "RETRIEVER_K",
-    "RETRIEVER_FETCH_K",
-    "RETRIEVER_ALPHA",
-    "ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS",
-    # Reranker configuration
-    "RERANKER_TYPE",
-    "CROSS_ENCODER_MODEL",
-    "RERANKER_FETCH_K",
-    "RETRY_FETCH_MULTIPLIER",
-    "RERANKER_TOP_K",
-    "RERANKER_WARMUP_ENABLED",
-    # Query evaluation configuration
-    "DEFAULT_ALPHA",
-    "QUERY_EVAL_MODEL",
-    "JUDGE_MODEL",
-    "QUERY_EVAL_TEMPERATURE",
-    "QUERY_EVAL_MAX_TOKENS",
-    # Quality gate configuration
-    "ENABLE_QUALITY_GATE",
-    "QUALITY_GATE_THRESHOLD",
-    "SEARCH_DEFAULTS",
-    # Server
-    "PORT",
-    "API_VERSION",
-    # Logging
-    "LOG_LEVEL",
-    "LOG_FORMAT",
-    "LOG_INCLUDE_TIMESTAMP",
-    # Checkpoint Optimization
-    "CHECKPOINT_SELECTIVE_SERIALIZATION",
-    # Agentic Enrichment Flywheel
-    "ENABLE_ENRICHMENT_TOOL",
-]
 
 # ============================================================================
 # LOCAL MODELS (OLLAMA) -- #148
 # ============================================================================
 
-# Everything runs on a local Ollama server (native on the host for Metal GPU
-# access): generation, classify/eval/judge, and query embeddings. Documents
-# were embedded once when the corpus was built, against the same server.
+# Everything runs on a local Ollama server (native on the host, for Metal GPU access):
+# generation, classification, evaluation, judging and query embeddings.
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
 
-# How long Ollama keeps a model resident after a call. A cold load is 7-18s,
-# which would land mid-demo on the first turn after an idle spell.
-# Same variable name the Ollama server reads, so a host already running
-# `OLLAMA_KEEP_ALIVE=1h ollama serve` behaves the same for this app. Accepts
-# Ollama's duration syntax ("90s", "60m", "1h") or bare seconds; normalized
-# to int seconds because langchain-ollama's OllamaEmbeddings only takes an int.
+# How long Ollama keeps a model resident (a cold load is 7-18s). Accepts Ollama's duration
+# syntax ("90s", "60m", "1h") or bare seconds, normalized to int seconds because
+# langchain-ollama's OllamaEmbeddings only takes an int.
 def _duration_seconds(value: str) -> int:
     value = value.strip().lower()
     for suffix, factor in (("h", 3600), ("m", 60), ("s", 1)):
@@ -158,30 +33,25 @@ def _duration_seconds(value: str) -> int:
 
 
 OLLAMA_KEEP_ALIVE = _duration_seconds(os.getenv("OLLAMA_KEEP_ALIVE", "60m"))
-# Chat context window, in tokens. Ollama silently truncates anything longer
-# (see core/llm.py). The longest real prompts -- agent system prompt + up to
-# 10 products + multi-turn history -- stay well under this; qwen3.6 supports
-# far more, but every extra token of window costs KV-cache memory.
+# Chat context window in tokens; Ollama silently truncates beyond it (see core/llm.py).
+# Real prompts (system prompt + 10 products + history) stay well under; a larger window
+# only costs KV-cache memory.
 OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "32768"))
 
-# One model for every chat call. qwen3.6:35b-a3b is a mixture-of-experts model
-# (~3B active params per token): on the real intent prompt it matched all 8
-# DEMO.md demo turns and ran FASTER than qwen3.5:9b on every call measured
-# (intent ~1.5s vs ~2.5s warm). QUERY_EVAL_MODEL / JUDGE_MODEL below stay
-# separate settings so a smaller classifier can be split out later.
+# One model for every chat call: qwen3.6:35b-a3b is a mixture-of-experts model (~3B active
+# params) that handled every demo turn and ran faster than a 9B dense model.
+# QUERY_EVAL_MODEL / JUDGE_MODEL below are separate settings so they can be split out.
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen3.6:35b-a3b-q4_K_M")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", 0))
 
-# Query embeddings. Must be the model the corpus was embedded with, and
-# 768-dim to match the index mapping. nomic-embed-text is asymmetric -- the
-# search_query:/search_document: prefixes are applied in retrieval/embeddings.py.
+# Must be the model the corpus was embedded with (768-dim, matching the index mapping).
+# nomic-embed-text is asymmetric; the prefixes are applied in retrieval/embeddings.py.
 EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "nomic-embed-text")
 
 # ============================================================================
 # POSTGRES CONFIGURATION
 # ============================================================================
 
-# Database connection details (use environment variables for Docker compatibility)
 POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
@@ -189,17 +59,12 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "langchain_agent")
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
 DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-# Port the API listens on. Native `make dev` runs here; the demo container
-# listens on it too and is published on host :8000.
+# Native `make dev` listens here; the demo container does too, published on host :8000.
 PORT = int(os.getenv("PORT", 8080))
 
-# API version -- single source of truth for both the FastAPI app's own
-# `version=` (api/main.py, shows up in the OpenAPI spec/Swagger UI) and the
-# /api/health response body (api/routes/health.py). Previously hardcoded
-# separately in both places and had drifted out of sync (1.0.0 vs 1.1.0).
+# Shared by the OpenAPI spec (api/main.py) and /api/health.
 API_VERSION = "1.0.0"
 
-# Connection pool settings
 DB_CONNECTION_KWARGS = {
     "autocommit": True,
     "prepare_threshold": 0,
@@ -211,12 +76,9 @@ DB_POOL_MAX_SIZE = 20
 # VECTOR CONFIGURATION
 # ============================================================================
 
-# Vector embedding dimension (nomic-embed-text is natively 768-dim)
-# Default is 3072 but 768 is recommended: nearly identical quality with far less storage
+# nomic-embed-text is natively 768-dim.
 VECTOR_DIMENSION = 768
 
-# Collection name for vector storage
-# Use "esci_products" for Amazon ESCI e-commerce products
 VECTOR_COLLECTION_NAME = "esci_products"
 
 # ============================================================================
@@ -237,86 +99,63 @@ OPENSEARCH_TIMEOUT = int(os.getenv("OPENSEARCH_TIMEOUT", 30))
 # EMBEDDING CACHE CONFIGURATION
 # ============================================================================
 
-# Enable query embedding caching (reduces latency for repeated queries)
 ENABLE_EMBEDDING_CACHE = os.getenv("ENABLE_EMBEDDING_CACHE", "true").lower() == "true"
 
-# Maximum number of cached query embeddings
 EMBEDDING_CACHE_MAX_SIZE = int(os.getenv("EMBEDDING_CACHE_MAX_SIZE", 100))
 
 # ============================================================================
 # RETRIEVER CONFIGURATION
 # ============================================================================
 
-# Number of documents to retrieve from vector store
+# Documents returned by a retriever built without explicit search_kwargs.
 RETRIEVER_K = 10
 
-# Number of documents to fetch before filtering (for hybrid search)
-# 40 candidates provides diversity for reranker to "rescue from outside top 12"
+# Candidates per method (kNN and BM25) fetched for hybrid search.
 RETRIEVER_FETCH_K = 40
 
-# Lambda multiplier for hybrid search (standard convention: 0.0 = pure lexical/BM25, 1.0 = pure semantic/vector)
-# Optimized from benchmarks: 0.25 provides best quality (0.611) with acceptable latency (22ms)
+# Hybrid weight when none is given: 0.0 = pure BM25, 1.0 = pure vector.
 RETRIEVER_ALPHA = 0.25
 
-# Max wait (seconds) for the pipeline's three hidden alpha_estimator_llm /
-# structured-alpha-estimator calls: Retriever._extract_attributes
-# (brand/color/waterproof/price parsing for attribute_filter/refinement
-# queries), Retriever._expand_vague_query (follow-up query expansion), and
-# query_evaluator_node's alpha-estimation call. None of these calls has a
-# timeout of its own -- one was measured hanging ~18.7s in one
-# reindex-adjacent trial vs. a normal <1s (issue #117/#120/#122). On
-# timeout, each falls back gracefully (no filters / original query /
-# collection-default alpha) rather than blocking the whole turn.
+# Max wait for the pipeline's hidden LLM calls (alpha estimation, attribute extraction,
+# query expansion): they have no timeout of their own and one was measured hanging ~18.7s.
+# Each falls back gracefully (default alpha / no filters / the original query).
 ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS = float(os.getenv("ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS", "5"))
 
 # ============================================================================
 # RERANKER CONFIGURATION (local cross-encoder)
 # ============================================================================
 
-# Number of candidates to fetch before reranking
-# 40 enables the "wide net recall" → cross-encoder precision narrative
+# Candidates handed to the reranker.
 RERANKER_FETCH_K = 40
 
-# How much wider the quality gate's retry searches than the first pass.
-# The retry used to only nudge alpha, which measurably changed nothing: the
-# reranker's best score was identical at alpha 0.1/0.4/0.7/1.0 for every
-# conceptual query tested, because re-weighting reorders a pool that already
-# holds the same best document. Multiplying the pool is what lets the second
-# pass see candidates the first one never scored (#103).
+# How much wider the quality gate's retry searches. Re-weighting alpha alone measurably
+# changed nothing: the best reranker score was identical at alpha 0.1-1.0.
 RETRY_FETCH_MULTIPLIER = 4
 
-# Final number of documents to return after reranking
+# Documents the agent receives after reranking.
 RERANKER_TOP_K = 10
 
-# Enable API connection priming on startup to reduce first-query latency
+# Warm the cross-encoder in the background at startup to spare the first query.
 RERANKER_WARMUP_ENABLED = os.getenv("RERANKER_WARMUP_ENABLED", "true").lower() == "true"
 
-# Reranker backend. Only "cross-encoder" exists since the earlier LLM-as-reranker
-# option was removed (#148); kept as a constant because reranker_result events carry it
-# and the UI keys its description off it (#87). ~2s for a 40-doc batch.
+# Reported on reranker_result events; the UI keys its description off it.
 RERANKER_TYPE = "cross-encoder"
 
-# Cross-encoder model for local reranking
 CROSS_ENCODER_MODEL = os.getenv("CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-12-v2")
 
 # ============================================================================
 # QUERY EVALUATOR CONFIGURATION
 # ============================================================================
 
-# Default alpha when evaluation is disabled or fails (0.0 = lexical, 1.0 = semantic)
+# Alpha for a turn that has none yet (initial state, quality-gate default).
 DEFAULT_ALPHA = 0.25
 
-# Query evaluation timeout: see ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS above
-# (retriever config section) -- shared with the retriever's attribute-
-# extraction/query-expansion calls, same underlying model. Was previously
-# its own dead constant (QUERY_EVAL_TIMEOUT_MS, declared but never wired to
-# anything that enforced it -- issue #122); collapsed into the one real
-# timeout budget instead of carrying two.
+# Alpha the query evaluator falls back to when its LLM call fails or times out; products
+# need more semantic weight than DEFAULT_ALPHA.
+EVALUATOR_FALLBACK_ALPHA = 0.65
 
-# Query evaluator model settings (lightweight alpha estimator)
 QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", LLM_MODEL)
-# LLM-as-judge for the Pipeline Summary "Generation" stage. Distinct
-# from the agent's main LLM to reduce self-preference bias.
+# LLM-as-judge for the Pipeline Summary "Generation" stage.
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", LLM_MODEL)
 QUERY_EVAL_TEMPERATURE = float(os.getenv("QUERY_EVAL_TEMPERATURE", "0"))
 QUERY_EVAL_MAX_TOKENS = int(os.getenv("QUERY_EVAL_MAX_TOKENS", "1024"))
@@ -325,26 +164,11 @@ QUERY_EVAL_MAX_TOKENS = int(os.getenv("QUERY_EVAL_MAX_TOKENS", "1024"))
 # QUALITY GATE CONFIGURATION
 # ============================================================================
 
-# Enable quality gate that retries retrieval with adjusted alpha when results have low relevance
-# Single retry with alpha shifted ±0.3 if top reranker score < threshold
+# One retry with alpha shifted 0.3 when the top reranker score is under the threshold.
 ENABLE_QUALITY_GATE = os.getenv("ENABLE_QUALITY_GATE", "true").lower() == "true"
 
-# Retry if top reranker score is below this threshold (0.0-1.0)
-# Default: 0.5 (moderate threshold)
+# Fallback threshold for intents not listed in pipeline_nodes._QUALITY_THRESHOLD_BY_INTENT.
 QUALITY_GATE_THRESHOLD = float(os.getenv("QUALITY_GATE_THRESHOLD", "0.5"))
-
-# ============================================================================
-# SEARCH DEFAULTS (per-collection)
-# ============================================================================
-# Products need higher semantic weight (α=0.65) for similarity matching.
-# New collections can define their own alpha/fetch_k/reranker_top_k.
-SEARCH_DEFAULTS = {
-    "esci_products": {
-        "alpha": 0.65,
-        "fetch_k": 40,
-        "reranker_top_k": 10,
-    },
-}
 
 # ============================================================================
 # LOGGING CONFIGURATION
@@ -352,45 +176,21 @@ SEARCH_DEFAULTS = {
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FORMAT = os.getenv("LOG_FORMAT", "console")  # "json" for production, "console" for development
-LOG_INCLUDE_TIMESTAMP = True
-
-# ============================================================================
-# CHECKPOINT OPTIMIZATION CONFIGURATION
-# ============================================================================
-
-# Enable selective state serialization (excludes large fields from checkpoints)
-# Reduces checkpoint size by ~10x by excluding retrieved_documents and document_grades
-# These fields are regenerated on retrieval, not needed for conversation continuity
-CHECKPOINT_SELECTIVE_SERIALIZATION = True
 
 # ============================================================================
 # AGENTIC ENRICHMENT FLYWHEEL (DEMO-SPECIFIC)
 # ============================================================================
 
-# Gates both the trigger_enrichment agent tool and the /api/admin/enrich
-# endpoint. Off by default — this writes to the live index and the
-# OpenSearch-backed attribute mapping store, so it's kept opt-in outside the
-# conference demo environment.
+# Gates the trigger_enrichment agent tool and /api/admin/enrich. It writes to the live
+# index and the attribute mapping store, so it is opt-in (`.env.example` turns it on).
 ENABLE_ENRICHMENT_TOOL = os.getenv("ENABLE_ENRICHMENT_TOOL", "false").lower() == "true"
 
-# Tag applied to LLM calls made INSIDE agent_node that are deliberation, not
-# the answer — the trigger_enrichment tool-offer call and the enrichment value
-# judge. observable_agent streams every on_chat_model_stream it sees while the
-# agent node is current, so without this the model's internal reasoning is
-# shown to the user as if it were the reply. Observed live: asking for
-# wireless headphones produced the answer "Nothing in the query ... looks like
-# a color or material term", which is the tool-offer prompt thinking out loud.
+# Tags on LLM calls inside agent_node, read by observable_agent when deciding which
+# on_chat_model_stream chunks to forward to the chat window.
+# INTERNAL_LLM_TAG: deliberation (trigger_enrichment offer, value judge) that must not be
+# shown as the reply.
 INTERNAL_LLM_TAG = "internal_deliberation"
 
-# Tag applied to the ONE call that produces the user-visible answer, which
-# agent_node streams itself through the sync emit bridge
-# (_stream_llm_response_simple). observable_agent must not also stream that
-# call's on_chat_model_stream chunks: both paths fire for the same tokens, and
-# the browser appends them to one buffer, so the reply renders interleaved with
-# itself ("...offer various stylesThese wireless headphones offer various
-# styles including..."), every sentence doubled mid-clause (#103).
-#
-# The pipeline's own emit is the one that survives: agent_node runs on a worker
-# thread, where the LangChain callback cannot reach the astream_events iterator
-# reliably, which is why it was moved onto the bridge in the first place.
+# ANSWER_STREAM_TAG: the call that produces the answer, which agent_node streams itself
+# through the sync emit bridge; forwarding these chunks too would render every token twice.
 ANSWER_STREAM_TAG = "answer_stream"

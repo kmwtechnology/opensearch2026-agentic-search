@@ -112,6 +112,5 @@ class TestAlphaEstimatorCallTimeout:
             result = agent.query_evaluator_node(state)
             elapsed = time.monotonic() - start
 
-        assert result["intent_description"] == "Unknown (timeout)"
         assert result["alpha"] == 0.65  # esci_products collection default
         assert elapsed < 1.0, f"should not block for the full hang duration, took {elapsed:.2f}s"

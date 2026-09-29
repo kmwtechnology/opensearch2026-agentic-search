@@ -79,6 +79,13 @@ COLOR_CANONICALS: Dict[str, List[str]] = {
 }
 
 
+# Canonical bucket vocabularies by attribute type; add an entry when a new type gets a seed dict.
+CANONICALS_BY_TYPE: Dict[str, Dict[str, List[str]]] = {
+    "color": COLOR_CANONICALS,
+    "waterproof": WATERPROOF_CANONICALS,
+}
+
+
 def single_term_classify(
     term: str,
     canonical_seeds: Dict[str, List[str]],

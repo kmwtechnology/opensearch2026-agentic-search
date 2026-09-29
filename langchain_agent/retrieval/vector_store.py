@@ -8,8 +8,7 @@ Provides:
 
 import logging
 import threading
-import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import urllib3
 from langchain_core.documents import Document
@@ -175,7 +174,7 @@ INDEX_MAPPING = {
             },
             "doc_type": {"type": "keyword"},
             "url": {"type": "keyword"},
-            # E-commerce product fields (dual-mapped: text for BM25 search + keyword for faceting/filtering)
+            # Product fields, dual-mapped: text for BM25, keyword for filtering.
             "product_id": {"type": "keyword"},
             "product_brand": {
                 "type": "text",
@@ -201,22 +200,19 @@ INDEX_MAPPING = {
                     "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
                 },
             },
-            # Normalized attribute filter fields, populated once at the
-            # corpus's original build time and preserved verbatim in the
-            # committed precomputed dump (pipeline/scoped_retag.py handles
-            # every live change afterward). Declared explicitly here (unlike
-            # product_color_primary/product_brand_normalized, which land via
-            # dynamic mapping today) so a fresh index always has these as
-            # keyword from the start.
+            # Attribute fields tagged when the corpus was built (preserved in the precomputed
+            # dump; pipeline/scoped_retag.py handles live changes). Declared explicitly so a
+            # fresh index maps them as keyword; product_color_primary and
+            # product_brand_normalized arrive via dynamic mapping.
             "product_waterproof_primary": {"type": "keyword"},
             "product_waterproof_secondary": {"type": "keyword"},
             "product_locale": {"type": "keyword"},
-            # SQID image URL (#147): displayed, never searched -- keep it out of
-            # the inverted index entirely.
+            # SQID image URL: displayed, never searched, so kept out of the inverted index.
             "product_image_url": {"type": "keyword", "index": False},
             "esci_labels": {"type": "keyword"},
             "collection": {"type": "keyword"},
-            # Autocomplete suggest fields
+            # Unused since typeahead was removed; kept because the precomputed dump
+            # carries them and the loader checks this mapping's hash.
             "title_suggest": {
                 "type": "text",
                 "analyzer": "autocomplete_analyzer",
@@ -227,12 +223,11 @@ INDEX_MAPPING = {
                 "analyzer": "autocomplete_analyzer",
                 "search_analyzer": "autocomplete_search_analyzer",
             },
-            # Phrase matching field (boosts multi-word phrase matches in titles)
+            # Boosts multi-word phrase matches in titles.
             "title_phrase": {
                 "type": "text",
                 "analyzer": "english_shingle_analyzer",
             },
-            # Phonetic matching fields (handles sound-alike typos in brand/title)
         }
     },
 }
@@ -284,12 +279,8 @@ _shared_client_lock = threading.Lock()
 
 
 def get_shared_opensearch_client() -> OpenSearch:
-    """Process-wide OpenSearch client for read/ops paths outside the main
-    search pipeline (health, admin diagnostics, attribute mapping
-    store). RequestsHttpConnection pools sockets internally, so constructing
-    a fresh client per request (previously done in each of those call sites)
-    meant a full TCP(+TLS) handshake per call. Reusing this instance avoids that.
-    """
+    """Process-wide client for health, admin and attribute-mapping paths; it pools sockets,
+    so this avoids a TCP(+TLS) handshake per call."""
     global _shared_client
     if _shared_client is None:
         with _shared_client_lock:
@@ -299,62 +290,18 @@ def get_shared_opensearch_client() -> OpenSearch:
 
 
 def reset_shared_opensearch_client() -> None:
-    """Test hook: drop the cached shared client so the next call re-creates
-    it, picking up a fresh create_opensearch_client() patch. Without this,
-    a test that patches create_opensearch_client after the singleton has
-    already been constructed (by an earlier test) would silently get the
-    stale real/previously-mocked client instead of its own mock."""
+    """Test hook: drop the cached client so the next call picks up a patched create_opensearch_client()."""
     global _shared_client
     with _shared_client_lock:
         _shared_client = None
 
 
 class OpenSearchVectorStore:
+    """kNN, BM25 and hybrid search over the products index.
+
+    Hybrid uses OpenSearch's native `hybrid` query with the min-max normalization search
+    pipeline (created by setup.py).
     """
-    OpenSearch-based vector store for semantic and hybrid document search.
-
-    Uses OpenSearch's native hybrid query with normalization-processor
-    search pipeline for score fusion. Falls back to client-side RRF
-    if the hybrid query type is not available.
-
-    Attributes:
-        embeddings: query-side embeddings (retrieval/embeddings.py's PrefixedOllamaEmbeddings)
-        collection_id: Collection ID for document filtering
-        client: OpenSearch client instance
-        index_name: Name of the OpenSearch index
-        search_pipeline: Name of the search pipeline for hybrid search
-    """
-
-    # Cache of the index's top-level field names, so callers can avoid building
-    # filters against fields that are not mapped (#103). Populated on first use.
-    _mapped_fields_cache: Optional[set] = None
-
-    def has_field(self, field: str) -> bool:
-        """
-        Is `field` actually mapped on the index?
-
-        A range or term filter against an UNMAPPED field is not an error in
-        OpenSearch — it simply matches nothing. So a filter built on an
-        assumption that turns out to be wrong silently empties the result set,
-        which is indistinguishable from "we have no such products". That is
-        exactly what happened with `price`: the ESCI product index has no price
-        field, so every "under $100" query returned zero results.
-
-        Fails CLOSED (returns False) if the mapping cannot be read, because the
-        safe direction is to skip the filter and return unfiltered results
-        rather than to silently return nothing.
-        """
-        if self._mapped_fields_cache is None:
-            try:
-                mapping = self.client.indices.get_mapping(index=self.index_name)
-                fields: set = set()
-                for index_body in mapping.values():
-                    fields.update(index_body.get("mappings", {}).get("properties", {}).keys())
-                self._mapped_fields_cache = fields
-            except Exception as e:  # pragma: no cover - network/permission dependent
-                logger.warning("Could not read index mapping to check fields: %s", e)
-                self._mapped_fields_cache = set()
-        return field in self._mapped_fields_cache
 
     def __init__(
         self,
@@ -369,75 +316,22 @@ class OpenSearchVectorStore:
         self.client = client or create_opensearch_client()
         self.index_name = OPENSEARCH_INDEX_NAME
         self.search_pipeline = OPENSEARCH_SEARCH_PIPELINE
-        self._hybrid_supported: Optional[bool] = None
-        # Instance-level cache for embeddings
         self._embedding_cache = EmbeddingCache(
             max_size=EMBEDDING_CACHE_MAX_SIZE,
             enabled=ENABLE_EMBEDDING_CACHE,
         )
 
-    def _check_hybrid_support(self) -> bool:
-        """Check if OpenSearch supports native hybrid queries (2.10+ with neural-search)."""
-        if self._hybrid_supported is not None:
-            return self._hybrid_supported
-
-        try:
-            info = self.client.info()
-            version = info["version"]["number"]
-            major, minor = int(version.split(".")[0]), int(version.split(".")[1])
-            if major < 2 or (major == 2 and minor < 10):
-                self._hybrid_supported = False
-                logger.warning(f"OpenSearch {version} does not support hybrid queries (need 2.10+)")
-                return False
-
-            plugins = self.client.cat.plugins(format="json")
-            has_neural = any("neural" in p.get("component", "").lower() for p in plugins)
-            self._hybrid_supported = has_neural
-            if not has_neural:
-                logger.warning("OpenSearch neural-search plugin not found, using fallback RRF")
-            return has_neural
-        except Exception as e:
-            logger.warning(f"Could not check hybrid support: {e}, using fallback RRF")
-            self._hybrid_supported = False
-            return False
-
     def _get_embedding(self, query: str) -> List[float]:
-        """Get embedding for query, using cache if available. Retries on 429 rate-limit errors."""
+        """Query embedding, cached."""
         cached = self._embedding_cache.get(query)
         if cached is not None:
             return cached
-
-        max_retries = 3
-        retry_delay = 1
-        last_error = None
-
-        for attempt in range(max_retries):
-            try:
-                embedding = self.embeddings.embed_query(query)
-                self._embedding_cache.set(query, embedding)
-                return embedding
-            except Exception as e:
-                last_error = e
-                error_str = str(e)
-                is_rate_limit = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
-
-                if is_rate_limit and attempt < max_retries - 1:
-                    logger.warning(
-                        f"Embedding API rate limited (attempt {attempt + 1}/{max_retries}), "
-                        f"retrying in {retry_delay}s"
-                    )
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
-                    continue
-
-                recoverable = is_rate_limit
-                raise EmbeddingError(
-                    f"Failed to generate embedding: {e}", recoverable=recoverable
-                ) from e
-
-        raise EmbeddingError(
-            f"Failed to generate embedding after {max_retries} retries"
-        ) from last_error
+        try:
+            embedding = self.embeddings.embed_query(query)
+        except Exception as e:
+            raise EmbeddingError(f"Failed to generate embedding: {e}") from e
+        self._embedding_cache.set(query, embedding)
+        return embedding
 
     def as_retriever(
         self,
@@ -464,41 +358,24 @@ class OpenSearchVectorStore:
 
     @staticmethod
     def _truncate_query_terms(query: str, max_terms: int = 40) -> str:
-        """
-        Truncate a query to a maximum number of terms.
-
-        Prevents maxClauseCount errors (Lucene hard cap: 1024 clauses).
-        A 40-term query × 8 fields (with .heavy sub-fields) = 320 clauses,
-        well under the limit. Issue #85.
-
-        Args:
-            query: The query string to truncate
-            max_terms: Maximum number of terms to keep (default: 40)
-
-        Returns:
-            Truncated query or original if already short enough
-        """
+        """Cap a query at `max_terms` terms to stay under Lucene's 1024-clause limit."""
         terms = query.split()
         if len(terms) <= max_terms:
             return query
         truncated = " ".join(terms[:max_terms])
         logger.warning(
-            f"Query truncated from {len(terms)} to {max_terms} terms (issue #85): "
+            f"Query truncated from {len(terms)} to {max_terms} terms: "
             f"{query[:80]}... → {truncated[:80]}..."
         )
         return truncated
 
     @staticmethod
     def _build_multi_match(query: str) -> Dict[str, Any]:
-        """
-        Build the BM25 multi_match clause: per-field boosts, a title phrase field,
-        and bounded fuzziness.
+        """BM25 multi_match with per-field boosts, a title phrase field and bounded fuzziness.
 
-        Primary fields use `light_english_analyzer` (kstem) for precision. Sub-fields
-        (e.g., `chunk_text.heavy`) use `heavy_english_analyzer` (snowball) at ^0.3
-        for recall insurance, leveraging dense vectors for morphological coverage.
+        Primary fields use the kstem analyzer for precision; the `.heavy` (snowball)
+        sub-fields add recall at ^0.3.
         """
-        # Truncate query to prevent maxClauseCount errors (issue #85)
         query = OpenSearchVectorStore._truncate_query_terms(query)
 
         fields = [
@@ -520,29 +397,15 @@ class OpenSearchVectorStore:
                 "type": "best_fields",
                 "tie_breaker": 0.3,
                 "fuzziness": "AUTO",
-                # Bound the expansion. Unbounded AUTO fuzziness expands each term
-                # into up to 50 vocabulary variants *per field*; over this many
-                # fields and a 158K-product vocabulary (#147) an ordinary 8-10 word
-                # query blew past OpenSearch's 1024-clause limit and hybrid search
-                # failed outright. No fuzzing the first character is the usual
-                # typo-tolerance trade-off; 10 variants per term keeps a 22-word
-                # query well inside the limit.
+                # Unbounded AUTO fuzziness expands each term into up to 50 variants per
+                # field, which blew the 1024-clause limit on ordinary 8-10 word queries.
                 "prefix_length": 1,
                 "max_expansions": 10,
             }
         }
 
     def similarity_search(self, query: str, k: int = 4) -> List[Document]:
-        """
-        Pure knn vector search.
-
-        Args:
-            query: The search query string
-            k: Number of similar documents to return
-
-        Returns:
-            List of k most similar LangChain Document objects with metadata
-        """
+        """Pure kNN search; returns [] on any error."""
         try:
             query_embedding = self._get_embedding(query)
 
@@ -582,22 +445,9 @@ class OpenSearchVectorStore:
         filters: Optional[List[Dict[str, Any]]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
-        """
-        Hybrid search combining vector similarity and full-text search.
+        """Hybrid kNN + BM25 search. alpha 0.0 is pure BM25, 1.0 pure vector.
 
-        Uses OpenSearch's native hybrid query with normalization-processor
-        search pipeline. Falls back to client-side RRF if not supported.
-
-        Args:
-            query: Search query string
-            k: Number of final results to return
-            fetch_k: Number of candidates to fetch from each method
-            alpha: Weight for vector vs text (0.0=pure BM25, 1.0=pure vector)
-            filters: Optional list of OpenSearch filter clauses for attribute filtering
-                     (filters in a list are implicitly AND'd)
-
-        Returns:
-            List of Document objects ranked by combined score
+        `filters` are OpenSearch clauses, implicitly AND'd.
         """
         if k <= 0:
             raise SearchValidationError(f"k must be > 0, got {k}")
@@ -616,26 +466,9 @@ class OpenSearchVectorStore:
         try:
             query_embedding = self._get_embedding(query)
 
-            if self._check_hybrid_support():
-                return self._hybrid_search_native(
-                    query,
-                    query_embedding,
-                    k,
-                    fetch_k,
-                    alpha,
-                    filters,
-                    capture_body=capture_body,
-                )
-            else:
-                return self._hybrid_search_rrf(
-                    query,
-                    query_embedding,
-                    k,
-                    fetch_k,
-                    alpha,
-                    filters,
-                    capture_body=capture_body,
-                )
+            return self._hybrid_search_native(
+                query, query_embedding, k, fetch_k, alpha, filters, capture_body=capture_body
+            )
 
         except EmbeddingError:
             raise
@@ -643,6 +476,38 @@ class OpenSearchVectorStore:
             raise SearchTimeoutError(f"Search timed out: {e}", operation="hybrid_search") from e
         except Exception as e:
             raise SearchFailureError(f"Hybrid search failed: {e}") from e
+
+    def _search(
+        self,
+        query: str,
+        build_body: Callable[[str], Dict[str, Any]],
+        params: Optional[Dict[str, Any]] = None,
+        capture_body: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Run the search built by `build_body(query)`.
+
+        On a maxClauseCount error, retries once with the query cut to 20 terms. When
+        `capture_body` is given it receives the first body (embedding scrubbed), the
+        search params and the index name, for the observability panel.
+        """
+        body = build_body(query)
+        if capture_body is not None:
+            capture_body["body"] = _scrub_body_for_display(body)
+            if params is not None:
+                capture_body["params"] = dict(params)
+            capture_body["index"] = self.index_name
+        try:
+            return self.client.search(index=self.index_name, body=body, params=params)
+        except Exception as e:
+            if "max_clause_count" not in str(e).lower():
+                raise
+            shorter = self._truncate_query_terms(query, max_terms=20)
+            if shorter == query:
+                raise
+            logger.warning(f"maxClauseCount error, retrying with a shorter query: {e}")
+            return self.client.search(
+                index=self.index_name, body=build_body(shorter), params=params
+            )
 
     def _hybrid_search_native(
         self,
@@ -654,178 +519,44 @@ class OpenSearchVectorStore:
         filters: Optional[List[Dict[str, Any]]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
-        """Native OpenSearch hybrid search using search pipeline with optional attribute filters."""
-        # Build filter lists - combine collection_id with attribute filters
-        # Filters in an array are implicitly AND'd together
-        knn_filter_list = [{"term": {"collection_id": self.collection_id}}]
-        text_filter_list = [{"term": {"collection_id": self.collection_id}}]
+        """OpenSearch `hybrid` query fused by the search pipeline."""
+        filter_list = [{"term": {"collection_id": self.collection_id}}, *(filters or [])]
+        knn_filter = {"bool": {"must": filter_list}} if len(filter_list) > 1 else filter_list[0]
 
-        if filters:
-            knn_filter_list.extend(filters)
-            text_filter_list.extend(filters)
-
-        body = {
-            "size": k,
-            "_source": {"excludes": ["embedding"]},
-            "query": {
-                "hybrid": {
-                    "queries": [
-                        {
-                            "knn": {
-                                "embedding": {
-                                    "vector": query_embedding,
-                                    "k": fetch_k,
-                                    "filter": (
-                                        {"bool": {"must": knn_filter_list}}
-                                        if len(knn_filter_list) > 1
-                                        else knn_filter_list[0]
-                                    ),
+        def build_body(q: str) -> Dict[str, Any]:
+            return {
+                "size": k,
+                "_source": {"excludes": ["embedding"]},
+                "query": {
+                    "hybrid": {
+                        "queries": [
+                            {
+                                "knn": {
+                                    "embedding": {
+                                        "vector": query_embedding,
+                                        "k": fetch_k,
+                                        "filter": knn_filter,
+                                    }
                                 }
-                            }
-                        },
-                        {
-                            "bool": {
-                                "must": [self._build_multi_match(query)],
-                                "filter": text_filter_list,
-                            }
-                        },
-                    ]
-                }
-            },
-        }
+                            },
+                            {
+                                "bool": {
+                                    "must": [self._build_multi_match(q)],
+                                    "filter": filter_list,
+                                }
+                            },
+                        ]
+                    }
+                },
+            }
 
-        # Use search_pipeline parameter to apply normalization
-        params = {"search_pipeline": self.search_pipeline}
-        if capture_body is not None:
-            capture_body["body"] = _scrub_body_for_display(body)
-            capture_body["params"] = dict(params)
-            capture_body["index"] = self.index_name
-        try:
-            response = self.client.search(index=self.index_name, body=body, params=params)
-        except Exception as e:
-            # Catch maxClauseCount errors and retry with aggressive truncation (issue #85)
-            if "max_clause_count" in str(e).lower() and "already_retried" not in getattr(
-                e, "_ahs_context", ""
-            ):
-                logger.warning(
-                    f"maxClauseCount error on first attempt, retrying with aggressive truncation: {e}"
-                )
-                truncated_query = self._truncate_query_terms(query, max_terms=20)
-                if truncated_query != query:
-                    # Rebuild the DSL with the truncated query
-                    body["query"]["hybrid"]["queries"][1]["bool"]["must"] = [
-                        self._build_multi_match(truncated_query)
-                    ]
-                    try:
-                        response = self.client.search(
-                            index=self.index_name, body=body, params=params
-                        )
-                    except Exception as retry_error:
-                        # Mark it so we don't retry again
-                        retry_error._ahs_context = "already_retried"
-                        raise
-                else:
-                    raise
-            else:
-                raise
+        response = self._search(
+            query,
+            build_body,
+            params={"search_pipeline": self.search_pipeline},
+            capture_body=capture_body,
+        )
         return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
-
-    def _hybrid_search_rrf(
-        self,
-        query: str,
-        query_embedding: List[float],
-        k: int,
-        fetch_k: int,
-        alpha: float,
-        filters: Optional[List[Dict[str, Any]]] = None,
-        capture_body: Optional[Dict[str, Any]] = None,
-    ) -> List[Document]:
-        """Client-side RRF fallback for older OpenSearch versions."""
-        RRF_K = 60
-
-        # Build filter lists
-        filter_list = [{"term": {"collection_id": self.collection_id}}]
-        if filters:
-            filter_list.extend(filters)
-
-        # Vector search
-        vector_body = {
-            "size": fetch_k,
-            "_source": {"excludes": ["embedding"]},
-            "query": {
-                "bool": {
-                    "must": [{"knn": {"embedding": {"vector": query_embedding, "k": fetch_k}}}],
-                    "filter": filter_list,
-                }
-            },
-        }
-        vector_response = self.client.search(index=self.index_name, body=vector_body)
-
-        # Text search
-        text_body = {
-            "size": fetch_k,
-            "_source": {"excludes": ["embedding"]},
-            "query": {
-                "bool": {
-                    "must": [self._build_multi_match(query)],
-                    "filter": filter_list,
-                }
-            },
-        }
-        if capture_body is not None:
-            capture_body["body"] = _scrub_body_for_display(
-                {"_rrf_fallback": True, "vector_body": vector_body, "text_body": text_body}
-            )
-            capture_body["index"] = self.index_name
-        try:
-            text_response = self.client.search(index=self.index_name, body=text_body)
-        except Exception as e:
-            # Catch maxClauseCount errors and retry with aggressive truncation (issue #85)
-            if "max_clause_count" in str(e).lower() and "already_retried" not in getattr(
-                e, "_ahs_context", ""
-            ):
-                logger.warning(
-                    f"maxClauseCount error on first attempt, retrying with aggressive truncation: {e}"
-                )
-                truncated_query = self._truncate_query_terms(query, max_terms=20)
-                if truncated_query != query:
-                    text_body["query"]["bool"]["must"] = [self._build_multi_match(truncated_query)]
-                    try:
-                        text_response = self.client.search(index=self.index_name, body=text_body)
-                    except Exception as retry_error:
-                        retry_error._ahs_context = "already_retried"
-                        raise
-                else:
-                    raise
-            else:
-                raise
-
-        # Build rank maps
-        vector_ranks = {}
-        for rank, hit in enumerate(vector_response["hits"]["hits"], 1):
-            vector_ranks[hit["_id"]] = (rank, hit)
-
-        text_ranks = {}
-        for rank, hit in enumerate(text_response["hits"]["hits"], 1):
-            text_ranks[hit["_id"]] = (rank, hit)
-
-        # Compute RRF scores
-        all_ids = set(vector_ranks.keys()) | set(text_ranks.keys())
-        vector_weight = alpha
-        text_weight = 1.0 - alpha
-
-        scored = []
-        for doc_id in all_ids:
-            v_rank = vector_ranks[doc_id][0] if doc_id in vector_ranks else 999999
-            t_rank = text_ranks[doc_id][0] if doc_id in text_ranks else 999999
-            rrf_score = (vector_weight / (RRF_K + v_rank)) + (text_weight / (RRF_K + t_rank))
-            hit = vector_ranks.get(doc_id, text_ranks.get(doc_id))[1]
-            scored.append((rrf_score, hit))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-        # Use the fused RRF score as the retrieval_score so the UI shows the
-        # actual rank-fusion value, not the raw kNN/BM25 score from one half.
-        return [self._hit_to_document(hit, retrieval_score=score) for score, hit in scored[:k]]
 
     def _text_search(
         self,
@@ -834,72 +565,35 @@ class OpenSearchVectorStore:
         filters: Optional[List[Dict[str, Any]]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
-        """Pure BM25 text search for alpha=0.0."""
-        try:
-            filter_list = [{"term": {"collection_id": self.collection_id}}]
-            if filters:
-                filter_list.extend(filters)
+        """Pure BM25 search (alpha=0.0); returns [] on any error."""
+        filter_list = [{"term": {"collection_id": self.collection_id}}, *(filters or [])]
 
-            body = {
+        def build_body(q: str) -> Dict[str, Any]:
+            return {
                 "size": k,
                 "_source": {"excludes": ["embedding"]},
                 "query": {
                     "bool": {
-                        "must": [self._build_multi_match(query)],
+                        "must": [self._build_multi_match(q)],
                         "filter": filter_list,
                     }
                 },
             }
 
-            if capture_body is not None:
-                capture_body["body"] = _scrub_body_for_display(body)
-                capture_body["index"] = self.index_name
-
-            try:
-                response = self.client.search(index=self.index_name, body=body)
-            except Exception as e:
-                # Catch maxClauseCount errors and retry with aggressive truncation (issue #85)
-                if "max_clause_count" in str(e).lower() and "already_retried" not in getattr(
-                    e, "_ahs_context", ""
-                ):
-                    logger.warning(
-                        f"maxClauseCount error on first attempt, retrying with aggressive truncation: {e}"
-                    )
-                    truncated_query = self._truncate_query_terms(query, max_terms=20)
-                    if truncated_query != query:
-                        body["query"]["bool"]["must"] = [self._build_multi_match(truncated_query)]
-                        try:
-                            response = self.client.search(index=self.index_name, body=body)
-                        except Exception as retry_error:
-                            retry_error._ahs_context = "already_retried"
-                            raise
-                    else:
-                        raise
-                else:
-                    raise
+        try:
+            response = self._search(query, build_body, capture_body=capture_body)
             return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
-
         except Exception as e:
             logger.error(f"Error during text search: {e}")
             return []
 
     @staticmethod
     def _hit_to_document(hit: dict, retrieval_score: Optional[float] = None) -> Document:
-        """Convert an OpenSearch hit to a LangChain Document.
-
-        ``retrieval_score`` overrides ``hit["_score"]`` and is used by the RRF
-        fallback path to surface the fused rank score instead of the raw
-        per-subquery BM25/kNN score.
-        """
+        """Convert an OpenSearch hit to a Document; ``retrieval_score`` overrides ``hit["_score"]``."""
         src = hit["_source"]
         score = retrieval_score if retrieval_score is not None else hit.get("_score")
-        # product_id: the corpus's original build set the parquet's product_id
-        # column as the OpenSearch document _id -- it is never also written
-        # back out as its own `product_id` field in _source, and every doc in
-        # the committed precomputed dump preserves that shape verbatim.
-        # hit["_id"] (== _source.id, both always the product's ASIN) is the
-        # actual source of truth; src.get("product_id") is kept only as a
-        # defensive fallback.
+        # The dump stores the ASIN as the document _id and never writes it into _source
+        # as product_id, so _id is the source of truth.
         product_id = hit.get("_id") or src.get("id") or src.get("product_id", "")
         metadata = {
             "source": src.get("source", ""),
@@ -911,7 +605,6 @@ class OpenSearchVectorStore:
             "product_brand": src.get("product_brand", ""),
             "product_color": src.get("product_color", ""),
             "product_color_primary": src.get("product_color_primary", ""),
-            # ~95% of products carry one (SQID); "" when Amazon has no photo.
             "image_url": src.get("product_image_url", "") or "",
         }
         if score is not None:
@@ -920,82 +613,11 @@ class OpenSearchVectorStore:
 
 
 class OpenSearchRetriever:
-    """
-    LangChain-compatible retriever for hybrid vector/BM25 search in OpenSearch.
+    """Retriever over OpenSearchVectorStore: `hybrid` (kNN + BM25; alpha 0 is pure BM25, 1 pure
+    vector) or `similarity` (kNN only).
 
-    Bridges OpenSearchVectorStore and LangGraph/LangChain's BaseRetriever interface.
-    Supports pure vector similarity search or hybrid search combining vector + lexical
-    (BM25) via Reciprocal Rank Fusion (RRF).
-
-    ## Hybrid Search Strategy
-
-    Hybrid mode (`search_type="hybrid"`) merges two ranking lists:
-    1. **Vector Search**: kNN (HNSW) on 768-dim embeddings → scored by cosine similarity
-    2. **Lexical Search**: BM25 on English analyzer tokenization → term frequency scoring
-
-    **Reciprocal Rank Fusion (RRF)**:
-    - Formula: `score = Σ 1/(rank + k)` where k=60 (RRF constant)
-    - Normalizes ranks from both search methods and blends them
-    - Robust to outliers; doesn't require probability calibration
-
-    **Alpha Parameter** (0.0 to 1.0):
-    - 0.0 = Pure lexical (BM25): exact term matching, no semantic understanding
-    - 0.5 = Balanced: keyword + meaning
-    - 1.0 = Pure semantic (vector): conceptual matching, ignores exact terms
-
-    The `fetch_k` parameter is key: fetch more candidates before deduplication and
-    reranking. `k` is the final count returned to the agent.
-
-    ## Product Deduplication
-
-    ESCI products (the default collection) may have multiple index chunks from a single
-    product (if chunked). `collapse_by_document()` deduplicates to one result per product.
-    This is automatically applied when `collection_id="esci_products"`.
-
-    ## Parameters
-
-    Args:
-        vector_store: OpenSearchVectorStore instance to query
-        search_type: "similarity" (kNN only) or "hybrid" (kNN + BM25 via RRF)
-        k: Number of final documents to return after filtering/dedup/reranking
-        fetch_k: Number of candidates to fetch before deduplication/reranking.
-                 Should be >= k. Larger fetch_k = more thorough but slower.
-        alpha: Hybrid search weighting (0.0–1.0). Controls semantic/lexical balance.
-               Only used if search_type="hybrid".
-        filters: Optional list of OpenSearch filter clauses (AND'd together).
-                 Example: [{"match": {"product_brand": {"query": "Sony"}}}]
-
-    ## Usage Example
-
-        # Create retriever with hybrid search, alpha=0.35 (lexical-heavy)
-        retriever = vector_store.as_retriever(
-            search_type="hybrid",
-            search_kwargs={
-                "k": 10,
-                "fetch_k": 40,
-                "alpha": 0.35,
-                "filters": [{"match": {"product_color": {"query": "blue"}}}]
-            }
-        )
-
-        # Retrieve documents
-        docs = retriever.invoke("wireless headphones")
-        for doc in docs:
-            print(f"{doc.metadata['title']}: {doc.page_content[:100]}")
-
-    ## Extension Points
-
-    **Modify the search algorithm**:
-    - Subclass OpenSearchRetriever and override `invoke()` for custom fusion logic
-    - Replace RRF with other rank fusion methods (Borda count, Condorcet fusion, etc.)
-
-    **Add custom scoring**:
-    - Extend `invoke()` to apply post-search rescoring (e.g., popularity boost, recency)
-    - Modify `collapse_by_document()` to use custom aggregation (e.g., max score vs first chunk)
-
-    **Use different vector DB**:
-    - Replace OpenSearchVectorStore with Pinecone, Milvus, Weaviate, etc.
-    - Implement same `similarity_search()` and `hybrid_search()` interface
+    `fetch_k` is the per-method candidate pool, `k` the count returned; `filters` are
+    OpenSearch clauses, AND'd. Chunks of one product collapse to the top-scoring one.
     """
 
     def __init__(
@@ -1014,9 +636,7 @@ class OpenSearchRetriever:
         self.fetch_k = fetch_k
         self.alpha = alpha
         self.filters = filters
-        # Optional sink for the actual DSL body sent to OpenSearch — populated
-        # in-place during ``invoke()`` so the observability layer can echo
-        # the exact query the cluster saw (with embedding scrubbed).
+        # Filled in place by invoke() with the DSL body sent to OpenSearch.
         self.capture_body = capture_body
 
     @staticmethod
@@ -1024,20 +644,7 @@ class OpenSearchRetriever:
         documents: List[Document],
         collapse_field: str = "product_id",
     ) -> List[Document]:
-        """
-        Collapse multiple chunks from the same document into one result.
-
-        Keeps only the first (highest-scored) chunk per unique document.
-        Applied to product collections where chunks are redundant fragments
-        of the same product, not distinct perspectives.
-
-        Args:
-            documents: Retrieved documents (assumed ranked by relevance)
-            collapse_field: Metadata field to deduplicate by
-
-        Returns:
-            Documents with at most one per unique collapse_field value
-        """
+        """Keep the first (highest-ranked) document per `collapse_field` value; documents without one pass through."""
         seen_ids: set = set()
         collapsed: List[Document] = []
         for doc in documents:
@@ -1052,16 +659,7 @@ class OpenSearchRetriever:
         self,
         input_dict: Union[Dict[str, Any], str],
     ) -> List[Document]:
-        """
-        Retrieve documents for a query.
-
-        Args:
-            input_dict: Either a dictionary with 'input' or 'query' key,
-                       or a string query directly
-
-        Returns:
-            List of Document objects matching the query
-        """
+        """Retrieve for a query string or a dict with an 'input' or 'query' key."""
         if isinstance(input_dict, dict):
             query = input_dict.get("input") or input_dict.get("query", "")
         else:
@@ -1081,7 +679,6 @@ class OpenSearchRetriever:
         else:
             raise ValueError(f"Unknown search_type: {self.search_type}")
 
-        # Deduplicate product chunks — keep only the top-scoring chunk per product
         if self.vector_store.collection_id == "esci_products":
             documents = self.collapse_by_document(documents, "product_id")
 

@@ -213,4 +213,4 @@ def _demo_reset_sync() -> dict:
     """
     from quality.demo_reset import reset_demo_taxonomy
 
-    return reset_demo_taxonomy(full_reindex=False)
+    return reset_demo_taxonomy()
