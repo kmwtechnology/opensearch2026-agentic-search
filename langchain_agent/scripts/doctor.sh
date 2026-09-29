@@ -109,7 +109,7 @@ else
 fi
 
 # 6. PostgreSQL reachable
-if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+if (exec 3<>/dev/tcp/localhost/5432) 2>/dev/null; then
   check_pass "PostgreSQL reachable (localhost:5432)"
 else
   check_fail "PostgreSQL not reachable — run 'docker compose up -d' from repo root"
@@ -131,7 +131,7 @@ fi
 
 echo ""
 echo "=============================================="
-echo "Summary: ${GREEN}$PASSED passed${NC}, ${RED}$FAILED failed${NC}"
+echo -e "Summary: ${GREEN}$PASSED passed${NC}, ${RED}$FAILED failed${NC}"
 echo ""
 
 if [ $FAILED -eq 0 ]; then
