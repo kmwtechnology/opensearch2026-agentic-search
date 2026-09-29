@@ -7,7 +7,7 @@ echo ""
 echo "This will PERMANENTLY remove:"
 echo "  ✗ PostgreSQL database (checkpoints, conversation history)"
 echo "  ✗ OpenSearch index (all product documents, search indexes)"
-echo "  ✗ Docker containers and volumes"
+echo "  ✗ Docker containers, volumes, and images"
 echo "  ✗ Python virtual environment (.venv)"
 echo "  ✗ Node modules (web/node_modules)"
 echo "  ✗ Log files and PID files"
@@ -29,11 +29,14 @@ PARENT_DIR="$(dirname "$PROJECT_DIR")"
 bash "$SCRIPT_DIR/stop.sh"
 echo ""
 
-# 2. Remove Docker containers and volumes (PostgreSQL + OpenSearch).
-echo "Removing Docker containers and volumes (PostgreSQL + OpenSearch)..."
+# 2. Remove all Docker containers, volumes, and images (PostgreSQL + OpenSearch + app).
+# --profile app is required: profiled services (the :8000 demo container) are
+# invisible to a bare `docker compose down`, so they'd be left behind.
+# --rmi all also removes the pulled postgres/opensearch images, not just the built app image.
+echo "Removing Docker containers, volumes, and images (PostgreSQL + OpenSearch + demo app)..."
 cd "$PARENT_DIR" || exit 1
-docker compose down -v 2>/dev/null || true
-echo "✓ Docker containers and volumes removed"
+docker compose --profile app down -v --rmi all --remove-orphans 2>/dev/null || true
+echo "✓ Docker containers, volumes, and images removed"
 
 # 3. Remove Python virtual environment
 echo "Removing Python virtual environment..."
