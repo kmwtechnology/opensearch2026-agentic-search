@@ -24,7 +24,7 @@ function createHeaders(additionalHeaders?: Record<string, string>): Record<strin
 /**
  * Make an API request; the browser's Origin header is the only credential.
  *
- * @param endpoint - API endpoint (e.g., '/api/suggest?q=nik')
+ * @param endpoint - API endpoint (e.g., '/api/admin/health')
  * @param options - Fetch options (method, body, etc.)
  * @returns Fetch response
  */

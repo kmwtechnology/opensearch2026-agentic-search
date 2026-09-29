@@ -28,7 +28,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.middleware.origin_auth import get_allowed_origins
-from api.routes import admin, chat, health, suggest
+from api.routes import admin, chat, health
 from core.config import API_VERSION
 from core.logging_config import configure_logging, get_logger
 
@@ -80,14 +80,6 @@ tags_metadata = [
         ),
     },
     {
-        "name": "suggest",
-        "description": (
-            "Typeahead autocomplete with spell correction. Edge-ngram prefix matching on "
-            "`title_suggest` and `brand_suggest` fields, with Levenshtein + SequenceMatcher "
-            "spell correction and a distance-1 fuzzy fallback for single-character typos."
-        ),
-    },
-    {
         "name": "admin",
         "description": (
             "Operational endpoints for index health and diagnostics (same-origin only). "
@@ -114,8 +106,6 @@ app = FastAPI(
         "40-doc batch, the only reranker) scores 0.0–1.0; on a "
         "low score the gate retries once with a widened retrieval pool (not just a "
         "re-weighted alpha, which alone was measured to not move the reranker's score)\n"
-        "- **Typeahead autocomplete**: `/api/suggest` edge-ngram prefix matching with "
-        "spell correction and distance-1 fuzzy fallback\n"
         "- **BM25 tuning**: phrase boosting, field boosting, bounded fuzziness\n"
         "- **Pipeline Summary**: end-of-pipeline `PipelineSummaryEvent` with per-stage latency "
         "and a self-referential confidence proxy (top-1 score, gap, variance, rank churn).\n"
@@ -224,7 +214,6 @@ app.add_middleware(
 
 # Register REST routes
 app.include_router(health.router, prefix="/api", tags=["health"])
-app.include_router(suggest.router, prefix="/api", tags=["suggest"])
 app.include_router(admin.router, tags=["admin"])
 
 # Register WebSocket route

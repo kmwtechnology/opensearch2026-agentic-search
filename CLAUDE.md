@@ -101,7 +101,7 @@ Six intent classes (`search`, `comparison`, `attribute_filter`, `refinement`, `f
 - `observability/` — embedding cache, confidence proxy, LLM content helpers
 - `checkpoints/` — `checkpoint_optimizer.py` (keeps transient fields out of persisted state)
 - `tools/` — `enrichment_tool.py` (the agent's `trigger_enrichment` tool)
-- `api/` — FastAPI app (`main.py`, `routes/` = `chat`, `health`, `suggest`, `admin`; `schemas/`, `services/`, `middleware/` = `origin_auth`)
+- `api/` — FastAPI app (`main.py`, `routes/` = `chat`, `health`, `admin`; `schemas/`, `services/`, `middleware/` = `origin_auth`)
 
 ### State access pattern
 

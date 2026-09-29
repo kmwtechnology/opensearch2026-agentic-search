@@ -18,7 +18,7 @@ cookie, no API key, no admin token.
 
 | Route | Auth |
 |---|---|
-| `GET /api/health`, `GET /api/suggest`, `GET /api/config`, `/swagger` | Public |
+| `GET /api/health`, `GET /api/config`, `/swagger` | Public |
 | `WS /ws/chat`, `GET/POST /api/admin/*` | `Origin` (or `Referer`) must be on the allow-list |
 
 The allow-list (`middleware/origin_auth.py::get_allowed_origins`) is
@@ -36,7 +36,6 @@ curl -H 'Origin: http://localhost:8080' http://localhost:8080/api/admin/health
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | Dependency probe: `status` is `ok` when PostgreSQL and Ollama are healthy, else `degraded` (always 200) |
-| GET | `/api/suggest?q=&limit=` | Typeahead over product titles and brands with spell correction |
 | GET | `/api/config` | `{"apiUrl": ...}` for the UI; empty means "same origin" |
 | WS | `/ws/chat?thread_id=` | Streaming chat with the full pipeline event stream |
 | GET | `/api/admin/health` | Product index existence and document count |
@@ -53,23 +52,6 @@ curl -H 'Origin: http://localhost:8080' http://localhost:8080/api/admin/health
 `llm` is true when Ollama answers and every configured model is pulled;
 otherwise `llm_error` explains which. `vector_store` is true when the index
 has documents.
-
-### `GET /api/suggest`
-
-`q` is 1–100 characters, `limit` 1–20 (default 8). Edge-ngram prefix matching
-on `title_suggest` and `brand_suggest`; a fuzzy fallback catches distance-1
-typos when the prefix query is empty; fails open (empty list, 200) if
-OpenSearch is unreachable.
-
-```bash
-curl 'http://localhost:8080/api/suggest?q=nikey&limit=3'
-```
-
-```json
-{"suggestions": [{"title": "Nike Air Zoom", "brand": "Nike", "score": 12.4,
-                  "highlight": ["<em>Nike</em> Air Zoom"]}],
- "spell_correction": {"title": "nike", "brand": null, "score": null, "highlight": null}}
-```
 
 ### `POST /api/admin/enrich`
 

@@ -98,18 +98,6 @@ class TestDeploymentHealth:
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_suggest_endpoint_returns_results(self):
-        """Typeahead suggest endpoint should answer a prefix query with 200."""
-        with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(f"{DEPLOYMENT_URL}/api/suggest?q=son")
-
-        assert response.status_code == 200, f"/api/suggest failed: {response.text}"
-        data = response.json()
-        assert "suggestions" in data, "Missing 'suggestions' field"
-        assert isinstance(data["suggestions"], list), "suggestions field should be a list"
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
     def test_health_reports_document_count(self):
         """Verify health endpoint reports product document count.
 

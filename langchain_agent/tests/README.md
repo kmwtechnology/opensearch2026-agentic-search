@@ -57,7 +57,6 @@ override the attribute a test needs (`agent.alpha_estimator_llm = MagicMock(...)
 | Hybrid search DSL, RRF routing, query-term truncation | `unit/test_vector_store.py`, `unit/test_issue_85_maxclausecount.py` |
 | Judge categories and retry eligibility | `unit/test_judge_categories.py` |
 | Pipeline summary and the confidence proxy | `unit/test_pipeline_summary_event.py`, `unit/test_confidence_proxy.py` |
-| Typeahead: prefix, dedup, spell correction, fuzzy fallback | `integration/test_suggest.py` |
 | Attribute-mapping store read-after-write, case-insensitivity, cache invalidation | `integration/test_attribute_mapping_store.py` |
 | The three scripted demos in `web/src/demos/registry.ts` run end to end without `agent_error` | `e2e/test_demo_queries_smoke.py::TestScriptedDemos` |
 | Every runtime package has a `COPY` line in the Dockerfile | `unit/test_dockerfile_package_copy.py` |

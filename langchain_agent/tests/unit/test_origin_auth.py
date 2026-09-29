@@ -174,7 +174,7 @@ async def test_verify_same_origin_raises_403_no_headers():
 # This was the 2026-04-29 smoke failure root cause (against the app's former
 # Cloud Run deployment, whose Host always matched *.run.app regardless of who
 # sent the request):
-#   GET /api/suggest        Origin: https://evil.example.com
+#   GET /api/health         Origin: https://evil.example.com
 #                           Host:   <service>.run.app
 #   → returned 200 instead of 403.
 #

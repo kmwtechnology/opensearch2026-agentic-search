@@ -34,7 +34,7 @@ Requests carry the browser's `Origin`, which is the backend's only auth check.
 src/
 ├── App.tsx                     routes: / (chat), /guide, /swagger
 ├── components/
-│   ├── ChatPanel/              MessageList, Message, ProductCard, MessageInput, TypeaheadSuggestions
+│   ├── ChatPanel/              MessageList, Message, ProductCard, MessageInput
 │   ├── ObservabilityPanel/     per-node StepCard + details/, PipelineSummaryCard, DslViewerModal
 │   ├── NarratorPanel/          plain-language narration of the event stream (narrate.ts)
 │   ├── DemoSelector.tsx        the scripted demos
@@ -71,5 +71,5 @@ src/
 
 Vitest suites live in `__tests__/` folders next to the code: the three
 stores, `useWebSocket` (client side of the event contract), `narrate`,
-`ProductCard` / `Message` / `MessageList` (the rendering rules above), the
-observability detail cards, and `TypeaheadSuggestions`.
+`ProductCard` / `Message` / `MessageList` (the rendering rules above), and the
+observability detail cards.

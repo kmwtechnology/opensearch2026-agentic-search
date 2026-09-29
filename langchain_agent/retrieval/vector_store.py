@@ -285,11 +285,10 @@ _shared_client_lock = threading.Lock()
 
 def get_shared_opensearch_client() -> OpenSearch:
     """Process-wide OpenSearch client for read/ops paths outside the main
-    search pipeline (suggest, health, admin diagnostics, attribute mapping
+    search pipeline (health, admin diagnostics, attribute mapping
     store). RequestsHttpConnection pools sockets internally, so constructing
     a fresh client per request (previously done in each of those call sites)
-    meant a full TCP(+TLS) handshake per call -- on suggest.py specifically,
-    per keystroke. Reusing this instance avoids that (see #25).
+    meant a full TCP(+TLS) handshake per call. Reusing this instance avoids that.
     """
     global _shared_client
     if _shared_client is None:

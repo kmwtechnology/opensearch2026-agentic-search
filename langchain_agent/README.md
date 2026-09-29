@@ -117,14 +117,12 @@ once.
 
 ## API
 
-Same-origin checking is the only auth layer: `/api/health` and `/api/suggest`
-are public; every other route (chat, WebSocket, `/api/admin/*`) requires an
+Same-origin checking is the only auth layer: `/api/health` is public; every other route (chat, WebSocket, `/api/admin/*`) requires an
 allow-listed `Origin`. The full route table, WebSocket protocol, and event
 list are in [api/README.md](api/README.md).
 
 ```bash
 curl http://localhost:8080/api/health
-curl 'http://localhost:8080/api/suggest?q=wire'
 curl -H 'Origin: http://localhost:8080' http://localhost:8080/api/admin/health
 ```
 

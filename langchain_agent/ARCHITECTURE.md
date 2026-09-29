@@ -233,7 +233,7 @@ diverge. Add an event on both sides, then handle it in
 
 Auth is same-origin only: `api/middleware/origin_auth.py` allow-lists the
 localhost ports (5173, 8000, 8080 and a few dev spares); a disallowed
-`Origin` is a 403. `/api/health` and `/api/suggest` are public.
+`Origin` is a 403. `/api/health` is public.
 
 ## OpenSearch index
 
@@ -250,7 +250,7 @@ refuses a dump whose mapping hash differs). In outline:
   re-tag to find candidate products.
 - `product_color_primary/_secondary`, `product_waterproof_primary/_secondary`,
   `product_brand_normalized`, `product_id` — `keyword` filters.
-- `title_suggest`, `brand_suggest` — edge-ngram fields for typeahead.
+- `title_suggest`, `brand_suggest` — edge-ngram fields, unused since typeahead was removed; they stay because the index mapping is pinned to the frozen dump.
 - `product_image_url` — stored, not indexed.
 
 The taxonomy lives in
@@ -261,17 +261,6 @@ Both indices are loaded verbatim from `data/precomputed/` by every
 `make setup`; the corpus is a frozen export and there is no ingest or rebuild
 path (see `../data/README.md`). The one thing that mutates the products index
 afterwards is the scoped re-tag below.
-
-## Typeahead
-
-`GET /api/suggest?q=<prefix>&limit=8` (`api/routes/suggest.py`) runs outside
-the graph: an edge-ngram prefix query on `title_suggest` + `brand_suggest`, a
-distance-1 fuzzy fallback for single-character typos, and a spell-correction
-pass (Levenshtein + `SequenceMatcher` over the corpus vocabulary, skipped when
-the query is already a token or a prefix of the candidate). The frontend
-(`ChatPanel/TypeaheadSuggestions.tsx`, `hooks/useRecentSearches.ts`) renders
-Did-you-mean / Suggestions / Recent Searches with ARIA combobox semantics and
-aborts stale fetches.
 
 ## Taxonomy growth and correction
 
