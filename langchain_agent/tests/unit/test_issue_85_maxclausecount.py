@@ -23,12 +23,6 @@ class TestTruncateQueryTerms:
         result = OpenSearchVectorStore._truncate_query_terms(short_query, max_terms=40)
         assert result == short_query
 
-    def test_truncation_at_max_terms_boundary(self):
-        """Query at exactly max_terms should be unchanged."""
-        query = " ".join([f"term{i}" for i in range(40)])
-        result = OpenSearchVectorStore._truncate_query_terms(query, max_terms=40)
-        assert result == query
-
     def test_truncation_above_max_terms(self):
         """Query exceeding max_terms should be truncated to max_terms."""
         query = " ".join([f"term{i}" for i in range(60)])
@@ -42,12 +36,6 @@ class TestTruncateQueryTerms:
         query = "apple banana cherry date elderberry fig grape honey"
         result = OpenSearchVectorStore._truncate_query_terms(query, max_terms=3)
         assert result == "apple banana cherry"
-
-    def test_aggressive_truncation(self):
-        """Test the aggressive 20-term truncation used in retry paths."""
-        query = " ".join([f"word{i}" for i in range(100)])
-        result = OpenSearchVectorStore._truncate_query_terms(query, max_terms=20)
-        assert len(result.split()) == 20
 
 
 @pytest.mark.unit

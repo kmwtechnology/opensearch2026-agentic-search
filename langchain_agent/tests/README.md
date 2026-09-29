@@ -61,7 +61,6 @@ override the attribute a test needs (`agent.alpha_estimator_llm = MagicMock(...)
 | Attribute-mapping store read-after-write, case-insensitivity, cache invalidation | `integration/test_attribute_mapping_store.py` |
 | The four scripted demos in `web/src/demos/registry.ts` run end to end without `agent_error` | `e2e/test_demo_queries_smoke.py::TestScriptedDemos` |
 | Every runtime package has a `COPY` line in the Dockerfile | `unit/test_dockerfile_package_copy.py` |
-| The e2e files use real event types, payload shapes, and routes; the smoke timeout budget fits | `unit/test_e2e_*.py`, `unit/test_smoke_test_budget.py` |
 
 ## Writing a test
 

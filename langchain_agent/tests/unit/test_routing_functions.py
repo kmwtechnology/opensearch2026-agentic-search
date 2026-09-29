@@ -28,21 +28,9 @@ class TestRouteAfterIntent:
         state = {"intent": "summary", "messages": []}
         assert self.agent._route_after_intent(state) == "summary"
 
-    def test_search_intent_returns_other(self):
-        state = {"intent": "search", "messages": []}
-        assert self.agent._route_after_intent(state) == "other"
-
-    def test_comparison_intent_returns_other(self):
-        state = {"intent": "comparison", "messages": []}
-        assert self.agent._route_after_intent(state) == "other"
-
-    def test_attribute_filter_intent_returns_other(self):
-        state = {"intent": "attribute_filter", "messages": []}
-        assert self.agent._route_after_intent(state) == "other"
-
-    def test_follow_up_intent_returns_other(self):
-        state = {"intent": "follow_up", "messages": []}
-        assert self.agent._route_after_intent(state) == "other"
+    @pytest.mark.parametrize("intent", ["search", "comparison", "attribute_filter", "follow_up"])
+    def test_retrieval_intents_return_other(self, intent):
+        assert self.agent._route_after_intent({"intent": intent, "messages": []}) == "other"
 
     def test_missing_intent_defaults_to_other(self):
         # State with no intent key should default to "search" → "other"
