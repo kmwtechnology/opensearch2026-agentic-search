@@ -1,7 +1,5 @@
 """Unit tests for _format_filter_summary DSL filter parser."""
 
-import logging
-
 import pytest
 
 
@@ -23,7 +21,7 @@ def agent():
 
 def test_format_filter_summary_with_brand_filter(agent):
     """Test filter summary formatting for brand match filter."""
-    filters = [{"match": {"product_brand": {"query": "Sony"}}}]
+    filters = [{"match": {"product_brand_normalized": {"query": "Sony"}}}]
 
     result = agent._format_filter_summary(filters)
 
@@ -65,7 +63,7 @@ def test_format_filter_summary_with_waterproof_filter(agent):
 def test_format_filter_summary_with_multiple_filters(agent):
     """Test filter summary formatting with multiple filters."""
     filters = [
-        {"match": {"product_brand": {"query": "Sony"}}},
+        {"match": {"product_brand_normalized": {"query": "Sony"}}},
         {"multi_match": {"query": "mesh", "fields": ["title", "chunk_text"]}},
     ]
 
@@ -89,33 +87,3 @@ def test_format_filter_summary_with_none_filters(agent):
     result = agent._format_filter_summary(None)
 
     assert result is None
-
-
-def test_format_filter_summary_with_malformed_filters(agent, caplog):
-    """Test filter summary handles malformed filters gracefully."""
-    filters = [
-        {"match": {"product_brand": None}},  # Malformed: None value
-        {"range": {"price": {"invalid_key": 100}}},  # Malformed: invalid key
-    ]
-
-    with caplog.at_level(logging.WARNING):
-        result = agent._format_filter_summary(filters)
-
-    # Should handle gracefully and return None (or partial result)
-    # The warning should be logged
-    assert any("filter summary" in record.message.lower() for record in caplog.records)
-
-
-def test_format_filter_summary_with_corrupted_structure(agent, caplog):
-    """Test filter summary handles corrupted data structure."""
-    # Deeply corrupted data that will cause iteration issues
-    filters = [{"match": {"product_brand": {"query": {"nested": "dict"}}}}]
-
-    with caplog.at_level(logging.WARNING):
-        result = agent._format_filter_summary(filters)
-
-    # Should fail gracefully without raising
-    assert result is None or isinstance(result, str)
-    # If exception occurred, warning should be logged
-    if result is None:
-        assert any("filter summary" in record.message.lower() for record in caplog.records)

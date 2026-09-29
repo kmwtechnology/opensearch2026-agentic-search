@@ -1228,30 +1228,23 @@ Return ONLY a JSON object (use null for missing attributes):
         if not filters:
             return None
 
-        try:
-            parts = []
-            for f in filters:
-                if "match" in f:
-                    match_obj = f["match"]
-                    if "product_brand" in match_obj:
-                        query = match_obj["product_brand"].get("query", "")
-                        parts.append(f"brand: {query}")
-                    elif "product_color_primary" in match_obj:
-                        query = match_obj["product_color_primary"].get("query", "")
-                        parts.append(f"color: {query}")
-                    elif "product_waterproof_primary" in match_obj:
-                        query = match_obj["product_waterproof_primary"].get("query", "")
-                        parts.append(f"waterproof: {query}")
-                elif "multi_match" in f:
-                    mm = f["multi_match"]
-                    query_text = mm.get("query", "")
-                    fields = mm.get("fields", [])
-                    if "chunk_text" in fields or "title" in fields:
-                        parts.append(f"feature: {query_text}")
-            return ", ".join(parts) if parts else None
-        except Exception:
-            logger.warning("Failed to format filter summary", exc_info=True)
-            return None
+        parts = []
+        for f in filters:
+            if "match" in f:
+                match_obj = f["match"]
+                if "product_brand_normalized" in match_obj:
+                    parts.append(f"brand: {match_obj['product_brand_normalized'].get('query', '')}")
+                elif "product_color_primary" in match_obj:
+                    parts.append(f"color: {match_obj['product_color_primary'].get('query', '')}")
+                elif "product_waterproof_primary" in match_obj:
+                    parts.append(
+                        f"waterproof: {match_obj['product_waterproof_primary'].get('query', '')}"
+                    )
+            elif "multi_match" in f:
+                mm = f["multi_match"]
+                if "chunk_text" in mm.get("fields", []) or "title" in mm.get("fields", []):
+                    parts.append(f"feature: {mm.get('query', '')}")
+        return ", ".join(parts) if parts else None
 
     def _classify_intent(
         self, user_input: str, messages: Sequence[BaseMessage]
@@ -1747,7 +1740,6 @@ Original query: {query}
             )
 
         retriever = self.vector_store.as_retriever(
-            search_type="hybrid",
             search_kwargs={
                 "k": k,
                 "fetch_k": fetch_k,
@@ -1783,7 +1775,6 @@ Original query: {query}
                     len(hard_filters),
                 )
                 relaxed_retriever = self.vector_store.as_retriever(
-                    search_type="hybrid",
                     search_kwargs={
                         "k": RERANKER_FETCH_K,
                         "fetch_k": RETRIEVER_FETCH_K,
@@ -1861,7 +1852,7 @@ Original query: {query}
         retrieved_documents = state.get("retrieved_documents", [])
         intent = state.get("intent", "search")
 
-        if not self.reranker or not retrieved_documents:
+        if not retrieved_documents:
             logger.debug(f"Reranker: skipped (intent={intent}, docs={len(retrieved_documents)})")
             return {
                 "retrieved_documents": retrieved_documents,

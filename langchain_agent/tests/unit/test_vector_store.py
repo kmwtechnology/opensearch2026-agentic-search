@@ -340,12 +340,11 @@ class TestTextSearch:
 
 @pytest.mark.unit
 class TestOpenSearchRetrieverInvoke:
-    def _make_retriever(self, search_type="hybrid"):
+    def _make_retriever(self):
         store, mock_client, _ = _make_full_store()
         mock_client.search.return_value = _search_resp(_hit("p1"), _hit("p2"))
         retriever = OpenSearchRetriever(
             vector_store=store,
-            search_type=search_type,
             k=2,
             fetch_k=10,
             alpha=0.5,
@@ -362,18 +361,6 @@ class TestOpenSearchRetrieverInvoke:
         results = retriever.invoke("headphones")
         assert len(results) > 0
 
-    def test_invoke_similarity_type(self):
-        retriever, mock_client = self._make_retriever(search_type="similarity")
-        mock_client.search.return_value = _search_resp(_hit("p1"))
-        results = retriever.invoke("query")
-        assert len(results) > 0
-
-    def test_invoke_unknown_search_type_raises(self):
-        retriever, _ = self._make_retriever()
-        retriever.search_type = "unknown"
-        with pytest.raises(ValueError):
-            retriever.invoke("query")
-
     def test_collapses_duplicates_for_esci(self):
         store, mock_client, _ = _make_full_store()
         # Two hits with same product_id → should collapse to 1
@@ -381,9 +368,7 @@ class TestOpenSearchRetrieverInvoke:
             _search_resp(_hit("p1", 0.9), _hit("p1", 0.7)),
             _search_resp(),
         ]
-        retriever = OpenSearchRetriever(
-            vector_store=store, search_type="hybrid", k=4, fetch_k=10, alpha=0.5
-        )
+        retriever = OpenSearchRetriever(vector_store=store, k=4, fetch_k=10, alpha=0.5)
         results = retriever.invoke("query")
         assert all(r.metadata["product_id"] == "p1" for r in results)
         assert len(results) == 1

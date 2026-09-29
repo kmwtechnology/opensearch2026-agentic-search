@@ -121,22 +121,4 @@ describe('LLMAgentDetails', () => {
     expect(screen.queryByText(/resolved to canonical bucket/i)).not.toBeInTheDocument()
   })
 
-  it('still renders the raw tool call alongside the prominent banner', () => {
-    const step = makeStep({
-      events: [
-        makeEnrichmentEvent(),
-        {
-          type: 'tool_call',
-          timestamp: new Date().toISOString(),
-          node: 'agent',
-          tool_name: 'trigger_enrichment',
-          tool_args: { variant: 'camel', canonical: 'brown', attribute_type: 'color' },
-        } as any,
-      ],
-    })
-    render(<LLMAgentDetails step={step} />)
-
-    expect(screen.getByText('Catalog Enrichment Triggered')).toBeInTheDocument()
-    expect(screen.getByText('trigger_enrichment')).toBeInTheDocument()
-  })
 })

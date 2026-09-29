@@ -169,18 +169,6 @@ export interface RerankerProgressEvent extends BaseEvent {
 }
 
 // LLM response events
-export interface LLMReasoningStartEvent extends BaseEvent {
-  type: 'llm_reasoning_start'
-  node: 'agent'
-}
-
-export interface LLMReasoningChunkEvent extends BaseEvent {
-  type: 'llm_reasoning_chunk'
-  node: 'agent'
-  content: string
-  is_complete: boolean
-}
-
 export interface LLMResponseStartEvent extends BaseEvent {
   type: 'llm_response_start'
   node: 'agent'
@@ -199,13 +187,6 @@ export interface LLMResponseCorrectedEvent extends BaseEvent {
   corrected_content: string
   original_faithfulness: number
   corrected_faithfulness: number
-}
-
-export interface ToolCallEvent extends BaseEvent {
-  type: 'tool_call'
-  node: 'agent'
-  tool_name: string
-  tool_args: Record<string, unknown>
 }
 
 // Agentic enrichment flywheel: fired when trigger_enrichment adds a new
@@ -348,12 +329,9 @@ export type AgentEvent =
   | RerankerResultEvent
   | SearchProgressEvent
   | RerankerProgressEvent
-  | LLMReasoningStartEvent
-  | LLMReasoningChunkEvent
   | LLMResponseStartEvent
   | LLMResponseChunkEvent
   | LLMResponseCorrectedEvent
-  | ToolCallEvent
   | EnrichmentTriggeredEvent
   | AgentCompleteEvent
   | AgentErrorEvent

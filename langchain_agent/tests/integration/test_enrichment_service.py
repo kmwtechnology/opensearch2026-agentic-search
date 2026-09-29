@@ -1,12 +1,12 @@
 """
 Integration tests for enrichment_service.enrich_attribute — the generic
 (color/waterproof/any future type) synchronous flow the live agent enrichment
-tool calls: classify -> write mapping -> ensure index fields -> trigger a
+tool calls: classify -> write mapping -> trigger a
 scoped re-tag (pipeline/scoped_retag.py).
 
 Most tests inject a fake ReindexTrigger (via enrich_attribute's `trigger=`
 param) so they stay fast and don't touch the real product index — the
-classification/mapping/mapping-field logic is what's under test there. One
+classification/mapping logic is what's under test there. One
 test (TestRealReindexEndToEnd) exercises the actual ScopedRetagTrigger
 end-to-end against the live index and is slow by nature; it uses a
 disposable test attribute type/variant, cleaned up after, so it never
@@ -69,10 +69,10 @@ def _fake_trigger(success: bool = True, docs_processed: int = 31, docs_scanned: 
 class TestEnrichAttributeClassification:
     """Classification/mapping logic, reindex trigger faked."""
 
-    def test_dictionary_match_succeeds_without_llm(self, store):
+    def test_dictionary_match_succeeds_without_explicit_canonical(self, store):
         # "chrome" is a real COLOR_CANONICALS variant (under the "gray"
         # bucket) — proves static dictionary matching without needing
-        # llm_classify_fn or explicit_canonical.
+        # explicit_canonical.
         result = enrichment_service.enrich_attribute(
             "color", "chrome", store=store, trigger=_fake_trigger()
         )
@@ -90,27 +90,6 @@ class TestEnrichAttributeClassification:
         assert result.success is True
         assert result.canonical == "black"
 
-    def test_llm_fallback_invoked_for_novel_term(self, store):
-        # WATERPROOF_CANONICALS ships with zero seed variants by design (see
-        # attribute_discovery.py), so ANY term -- even "weatherproof" itself
-        # -- structurally cannot dictionary-match and must go through the
-        # LLM fallback. That's a stronger guarantee than material's old
-        # sparse-dictionary version of this test ever gave.
-        def fake_llm(term, canonicals):
-            assert term == "weatherproof"
-            return "waterproof"
-
-        result = enrichment_service.enrich_attribute(
-            "waterproof",
-            "weatherproof",
-            llm_classify_fn=fake_llm,
-            store=store,
-            trigger=_fake_trigger(),
-        )
-
-        assert result.success is True
-        assert result.canonical == "waterproof"
-
     def test_unknown_attribute_type_fails_without_touching_reindex(self, store):
         result = enrichment_service.enrich_attribute("pattern", "polka-dot", store=store)
 
@@ -119,9 +98,7 @@ class TestEnrichAttributeClassification:
         assert result.reindex_triggered is False
 
     def test_unclassifiable_term_fails_gracefully_without_reindex(self, store):
-        result = enrichment_service.enrich_attribute(
-            "waterproof", "xyznonsense", llm_classify_fn=lambda t, c: None, store=store
-        )
+        result = enrichment_service.enrich_attribute("waterproof", "xyznonsense", store=store)
 
         assert result.success is False
         assert result.reindex_triggered is False
@@ -190,13 +167,9 @@ class TestEnrichAttributeClassification:
         assert result.reason == "empty term"
 
     def test_explicit_canonical_bypasses_classification(self, store):
-        def failing_classify(term, canonicals):
-            raise AssertionError("classification should be skipped when explicit_canonical is set")
-
         result = enrichment_service.enrich_attribute(
             "waterproof",
             "weatherproof",
-            llm_classify_fn=failing_classify,
             store=store,
             explicit_canonical="waterproof",
             trigger=_fake_trigger(),
@@ -247,55 +220,6 @@ class TestReindexFailureHandling:
 
         # Mapping was still persisted despite the reindex failure
         assert store.get_lookup_table("waterproof").get("weatherproof") == "waterproof"
-
-
-_MINIMAL_ANALYSIS_SETTINGS = {
-    "settings": {
-        "analysis": {
-            "analyzer": {
-                "light_english_analyzer": {"tokenizer": "standard", "filter": ["lowercase"]},
-                "heavy_english_analyzer": {"tokenizer": "standard", "filter": ["lowercase"]},
-            }
-        }
-    }
-}
-
-
-class TestEnsureAttributeFieldsMapped:
-    def test_adds_fields_when_missing(self, store):
-        # Use a throwaway index (with the same custom analyzers the real
-        # product index already has configured) so this test doesn't depend
-        # on the real product index's current mapping state.
-        test_docs_index = "test_enrichment_mapping_fields"
-        store.client.indices.delete(index=test_docs_index, ignore=[404])
-        store.client.indices.create(index=test_docs_index, body=_MINIMAL_ANALYSIS_SETTINGS)
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("core.config.OPENSEARCH_INDEX_NAME", test_docs_index)
-            enrichment_service._ensure_attribute_fields_mapped(store, "pattern")
-
-            mapping = store.client.indices.get_mapping(index=test_docs_index)
-            props = mapping[test_docs_index]["mappings"]["properties"]
-            assert "product_pattern" in props
-            assert "product_pattern_primary" in props
-            assert "product_pattern_secondary" in props
-
-        store.client.indices.delete(index=test_docs_index, ignore=[404])
-
-    def test_noop_when_fields_already_present(self, store):
-        test_docs_index = "test_enrichment_mapping_fields_existing"
-        store.client.indices.delete(index=test_docs_index, ignore=[404])
-        store.client.indices.create(
-            index=test_docs_index,
-            body={"mappings": {"properties": {"product_waterproof_primary": {"type": "keyword"}}}},
-        )
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("core.config.OPENSEARCH_INDEX_NAME", test_docs_index)
-            # Should not raise, should not error on an existing field
-            enrichment_service._ensure_attribute_fields_mapped(store, "waterproof")
-
-        store.client.indices.delete(index=test_docs_index, ignore=[404])
 
 
 class TestRealReindexEndToEnd:

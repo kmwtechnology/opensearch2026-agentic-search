@@ -214,7 +214,7 @@ documents) out of the persisted state.
 `NodeEnd`, `ConversationContext`, `IntentClassification`, `QueryEvaluation`,
 `QueryExpansion`, `OpenSearchQuery`, `HybridSearchStart/Result`,
 `RerankerStart/Progress/Result`, `SearchProgress`, `QualityGate`, `Summary`,
-`LLMReasoningStart/Chunk`, `LLMResponseStart/Chunk/Corrected`, `ToolCall`,
+`LLMResponseStart/Chunk/Corrected`,
 `AgentComplete`, `AgentError`, `PipelineSummary`, `Metrics`,
 `EnrichmentTriggered`). Each carries `type`, `node`, and a timestamp.
 `web/src/types/events.ts` mirrors them field for field;

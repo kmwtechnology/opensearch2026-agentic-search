@@ -3,14 +3,13 @@
 
 1. Classify the term against the type's canonical buckets, or accept an explicit canonical.
 2. Write the variant->canonical mapping to the OpenSearch-backed mapping store.
-3. Ensure the index has the product_<type> fields (additive; only for a new type).
-4. Run a scoped re-tag (pipeline/scoped_retag.py) over the products whose text mentions the
+3. Run a scoped re-tag (pipeline/scoped_retag.py) over the products whose text mentions the
    variant: seconds, no re-embedding, no full-corpus pass.
 """
 
 import logging
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
 
 from pipeline.reindex_trigger import ScopedRetagTrigger, build_reindex_trigger
 from retrieval.attribute_discovery import CANONICALS_BY_TYPE, single_term_classify
@@ -42,15 +41,12 @@ class EnrichmentResult:
 def enrich_attribute(
     attribute_type: str,
     variant: str,
-    llm_classify_fn: Optional[Callable[[str, list], Optional[str]]] = None,
     store: Optional[AttributeMappingStore] = None,
     explicit_canonical: Optional[str] = None,
     trigger: Optional[ScopedRetagTrigger] = None,
 ) -> EnrichmentResult:
-    """Classify a variant, write it to the mapping store, ensure the index fields, and run a
-    scoped re-tag.
+    """Classify a variant, write it to the mapping store, and run a scoped re-tag.
 
-    `llm_classify_fn(term, canonical_names)` is consulted only when dictionary matching fails.
     `explicit_canonical` skips classification (still validated against the buckets) and may
     correct an existing mapping. `trigger` lets tests inject a stand-in for the re-tag.
 
@@ -104,7 +100,6 @@ def enrich_attribute(
             variant_lower,
             canonical_seeds,
             existing_lookup=existing_lookup,
-            llm_classify_fn=llm_classify_fn,
         )
 
     if canonical is None:
@@ -129,8 +124,6 @@ def enrich_attribute(
             "Enrichment: mapped '%s' (%s) -> '%s'", variant_lower, attribute_type, canonical
         )
 
-    _ensure_attribute_fields_mapped(store, attribute_type)
-
     outcome = (trigger or build_reindex_trigger()).trigger(attribute_type, [variant_lower])
 
     return EnrichmentResult(
@@ -147,36 +140,3 @@ def enrich_attribute(
         reindex_error=outcome.error,
         corrected_from=existing_canonical,
     )
-
-
-def _ensure_attribute_fields_mapped(store: AttributeMappingStore, attribute_type: str) -> None:
-    """Additively PUT the index fields for a new attribute type; a no-op if already present."""
-    from core.config import OPENSEARCH_INDEX_NAME
-
-    client = store.client
-    current_mapping = client.indices.get_mapping(index=OPENSEARCH_INDEX_NAME)
-    index_key = next(iter(current_mapping))
-    properties = current_mapping[index_key].get("mappings", {}).get("properties", {})
-
-    primary_field = f"product_{attribute_type}_primary"
-    if primary_field in properties:
-        return
-
-    client.indices.put_mapping(
-        index=OPENSEARCH_INDEX_NAME,
-        body={
-            "properties": {
-                f"product_{attribute_type}": {
-                    "type": "text",
-                    "analyzer": "light_english_analyzer",
-                    "fields": {
-                        "keyword": {"type": "keyword"},
-                        "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
-                    },
-                },
-                f"product_{attribute_type}_primary": {"type": "keyword"},
-                f"product_{attribute_type}_secondary": {"type": "keyword"},
-            }
-        },
-    )
-    logger.info("Enrichment: added index mapping fields for attribute_type '%s'", attribute_type)

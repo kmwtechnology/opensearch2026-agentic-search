@@ -335,7 +335,6 @@ class OpenSearchVectorStore:
 
     def as_retriever(
         self,
-        search_type: str = "similarity",
         search_kwargs: Optional[Dict[str, Any]] = None,
     ) -> "OpenSearchRetriever":
         """Return a retriever interface with optional attribute filters."""
@@ -348,7 +347,6 @@ class OpenSearchVectorStore:
 
         return OpenSearchRetriever(
             self,
-            search_type=search_type,
             k=search_kwargs.get("k", RETRIEVER_K),
             fetch_k=search_kwargs.get("fetch_k", RETRIEVER_FETCH_K),
             alpha=search_kwargs.get("alpha", RETRIEVER_ALPHA),
@@ -613,8 +611,8 @@ class OpenSearchVectorStore:
 
 
 class OpenSearchRetriever:
-    """Retriever over OpenSearchVectorStore: `hybrid` (kNN + BM25; alpha 0 is pure BM25, 1 pure
-    vector) or `similarity` (kNN only).
+    """Hybrid retriever over OpenSearchVectorStore (kNN + BM25; alpha 0 is pure BM25, 1 pure
+    vector).
 
     `fetch_k` is the per-method candidate pool, `k` the count returned; `filters` are
     OpenSearch clauses, AND'd. Chunks of one product collapse to the top-scoring one.
@@ -623,7 +621,6 @@ class OpenSearchRetriever:
     def __init__(
         self,
         vector_store: OpenSearchVectorStore,
-        search_type: str = "similarity",
         k: int = 4,
         fetch_k: int = 20,
         alpha: float = 0.5,
@@ -631,7 +628,6 @@ class OpenSearchRetriever:
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.vector_store = vector_store
-        self.search_type = search_type
         self.k = k
         self.fetch_k = fetch_k
         self.alpha = alpha
@@ -665,19 +661,14 @@ class OpenSearchRetriever:
         else:
             query = str(input_dict)
 
-        if self.search_type == "hybrid":
-            documents = self.vector_store.hybrid_search(
-                query,
-                k=self.k,
-                fetch_k=self.fetch_k,
-                alpha=self.alpha,
-                filters=self.filters,
-                capture_body=self.capture_body,
-            )
-        elif self.search_type == "similarity":
-            documents = self.vector_store.similarity_search(query, k=self.k)
-        else:
-            raise ValueError(f"Unknown search_type: {self.search_type}")
+        documents = self.vector_store.hybrid_search(
+            query,
+            k=self.k,
+            fetch_k=self.fetch_k,
+            alpha=self.alpha,
+            filters=self.filters,
+            capture_body=self.capture_body,
+        )
 
         if self.vector_store.collection_id == "esci_products":
             documents = self.collapse_by_document(documents, "product_id")

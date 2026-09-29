@@ -1,8 +1,7 @@
 """
 Attribute classification for the OS-backed attribute taxonomies (see
 attribute_mapping_store.py): single_term_classify maps one unmapped term to
-its best-fit canonical bucket, dictionary match first with an optional LLM
-fallback for novel terms. Used live by the agent enrichment tool when a query
+its best-fit canonical bucket, dictionary match against the canonical seeds. Used live by the agent enrichment tool when a query
 mentions an attribute value that isn't in the taxonomy yet.
 
 The canonical seed dictionaries here (e.g. WATERPROOF_CANONICALS) are the
@@ -11,7 +10,7 @@ itself — the OpenSearch-backed mapping store (loaded from the committed
 data/precomputed dump) is the source of truth.
 """
 
-from typing import Callable, Dict, List, Optional
+from typing import Dict, List, Optional
 
 # Seed vocabulary for the waterproof attribute type. Deliberately a single
 # bucket with NO seed variants (unlike COLOR_CANONICALS below) — this is the
@@ -90,7 +89,6 @@ def single_term_classify(
     term: str,
     canonical_seeds: Dict[str, List[str]],
     existing_lookup: Optional[Dict[str, str]] = None,
-    llm_classify_fn: Optional[Callable[[str, List[str]], Optional[str]]] = None,
 ) -> Optional[str]:
     """
     Classify one term to its best-fit canonical bucket.
@@ -98,8 +96,6 @@ def single_term_classify(
     Resolution order:
         1. Already-known mapping (existing_lookup)
         2. Dictionary/substring match against canonical_seeds
-        3. LLM fallback (llm_classify_fn), if provided, for novel terms that
-           don't match any seed variant
 
     Args:
         term: the unmapped term to classify (e.g. "vegan leather")
@@ -107,9 +103,6 @@ def single_term_classify(
         existing_lookup: {variant: canonical} mappings already known (e.g.
             from the live OS-backed store, so an already-classified term
             short-circuits without re-running discovery logic)
-        llm_classify_fn: optional callable(term, canonical_bucket_names) ->
-            canonical or None, used only when dictionary matching fails.
-            Kept injectable so this module has no LLM/langchain dependency.
 
     Returns:
         canonical bucket name, or None if unclassifiable
@@ -129,8 +122,5 @@ def single_term_classify(
                 or term_lower in variant_lower
             ):
                 return canonical
-
-    if llm_classify_fn is not None:
-        return llm_classify_fn(term_lower, list(canonical_seeds.keys()))
 
     return None

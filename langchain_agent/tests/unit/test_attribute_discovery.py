@@ -38,30 +38,6 @@ class TestSingleTermClassify:
     def test_unclassifiable_returns_none_without_llm_fallback(self, seeds):
         assert single_term_classify("chartreuse polka dots", seeds) is None
 
-    def test_llm_fallback_invoked_when_no_dictionary_match(self, seeds):
-        calls = []
-
-        def fake_llm(term, canonicals):
-            calls.append((term, canonicals))
-            return "leather"
-
-        result = single_term_classify("cruelty-free hide", seeds, llm_classify_fn=fake_llm)
-        assert result == "leather"
-        assert calls == [("cruelty-free hide", ["leather", "cotton", "metal"])]
-
-    def test_llm_fallback_not_invoked_when_dictionary_matches(self, seeds):
-        def failing_llm(term, canonicals):
-            raise AssertionError("LLM fallback should not be called when dictionary matches")
-
-        result = single_term_classify("cowhide", seeds, llm_classify_fn=failing_llm)
-        assert result == "leather"
-
-    def test_llm_fallback_can_return_none(self, seeds):
-        result = single_term_classify(
-            "unidentifiable substance", seeds, llm_classify_fn=lambda t, c: None
-        )
-        assert result is None
-
 
 class TestWaterproofCanonicals:
     def test_seed_dict_has_the_registered_bucket(self):

@@ -321,22 +321,6 @@ class RerankerProgressEvent(BaseEvent):
 # ============================================================================
 
 
-class LLMReasoningStartEvent(BaseEvent):
-    """Emitted when LLM starts generating reasoning."""
-
-    type: Literal["llm_reasoning_start"] = "llm_reasoning_start"
-    node: Literal["agent"] = "agent"
-
-
-class LLMReasoningChunkEvent(BaseEvent):
-    """Emitted for each chunk of LLM reasoning (streamed)."""
-
-    type: Literal["llm_reasoning_chunk"] = "llm_reasoning_chunk"
-    node: Literal["agent"] = "agent"
-    content: str
-    is_complete: bool = False
-
-
 class LLMResponseStartEvent(BaseEvent):
     """Emitted when LLM starts generating response."""
 
@@ -361,15 +345,6 @@ class LLMResponseCorrectedEvent(BaseEvent):
     corrected_content: str
     original_faithfulness: float
     corrected_faithfulness: float
-
-
-class ToolCallEvent(BaseEvent):
-    """Emitted when agent decides to call a tool."""
-
-    type: Literal["tool_call"] = "tool_call"
-    node: Literal["agent"] = "agent"
-    tool_name: str
-    tool_args: Dict[str, Any]
 
 
 # ============================================================================
@@ -504,10 +479,8 @@ class MetricsEvent(BaseEvent):
 class EnrichmentTriggeredEvent(BaseEvent):
     """Emitted when the agent's trigger_enrichment tool fires — a color or
     waterproof taxonomy gap was detected and a scoped re-tag was triggered
-    live. Richer than the generic ToolCallEvent (which this
-    doesn't fire, since the enrichment tool loop is a manual two-call
-    binding inside agent_node, not a ToolNode-executed call the standard
-    astream_events tool-start/tool-call machinery would see)."""
+    live. The enrichment tool loop is a manual two-call binding inside
+    agent_node, so it has no generic tool-call event of its own."""
 
     type: Literal["enrichment_triggered"] = "enrichment_triggered"
     node: Literal["agent"] = "agent"
@@ -560,12 +533,9 @@ AgentEvent = (
     | QueryExpansionEvent
     | OpenSearchQueryEvent
     | QualityGateEvent
-    | LLMReasoningStartEvent
-    | LLMReasoningChunkEvent
     | LLMResponseStartEvent
     | LLMResponseChunkEvent
     | LLMResponseCorrectedEvent
-    | ToolCallEvent
     | AgentCompleteEvent
     | AgentErrorEvent
     | PipelineSummaryEvent

@@ -1,14 +1,12 @@
 /**
- * LLMAgentDetails - Display LLM agent execution details including reasoning, tool calls, and responses
+ * LLMAgentDetails - Display the agent step: enrichment banner and streamed response
  */
 
 import { RefreshCw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type {
-  LLMReasoningChunkEvent,
   LLMResponseChunkEvent,
-  ToolCallEvent,
   EnrichmentTriggeredEvent,
   ObservabilityStep,
 } from '../../../types/events'
@@ -40,17 +38,9 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
   }
 
   // Extract different event types from the step's events
-  const reasoningChunks = agentStep.events.filter(
-    (e) => e.type === 'llm_reasoning_chunk'
-  ) as LLMReasoningChunkEvent[]
-
   const responseChunks = agentStep.events.filter(
     (e) => e.type === 'llm_response_chunk'
   ) as LLMResponseChunkEvent[]
-
-  const toolCalls = agentStep.events.filter(
-    (e) => e.type === 'tool_call'
-  ) as ToolCallEvent[]
 
   const enrichmentEvent = agentStep.events.find(
     (e) => e.type === 'enrichment_triggered'
@@ -58,12 +48,11 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
 
   // Combine response chunks into full response
   const fullResponse = responseChunks.map((c) => c.content).join('')
-  const fullReasoning = reasoningChunks.map((c) => c.content).join('')
 
   return (
     <div className="space-y-4 text-[1.375rem] min-w-0 w-full">
       {/* Enrichment flywheel — shown first and distinctly, not buried among
-          the generic Tool Calls list. This is the "agent fixes the catalog,
+          the response text. This is the "agent fixes the catalog,
           not just the query" moment the demo centers on. */}
       {enrichmentEvent && (
         <div className="flex items-start gap-3 rounded-lg border-2 border-[#065F46] bg-emerald-500/15 p-3">
@@ -102,40 +91,6 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
                 'New mapping written; catalog re-indexed. This query — and future ones — now resolve it.'
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Reasoning Section */}
-      {fullReasoning && (
-        <div>
-          <div className="text-[1.25rem] font-medium text-[var(--color-stage-ink-soft)] mb-2">LLM Reasoning</div>
-          <div className="bg-[var(--color-stage-raised)] rounded border border-[var(--color-stage-border)]/30 p-3 text-[1.25rem] text-[var(--color-stage-ink-muted)] max-h-48 overflow-y-auto leading-relaxed whitespace-pre-wrap break-words">
-            {fullReasoning}
-          </div>
-        </div>
-      )}
-
-      {/* Tool Calls Section */}
-      {toolCalls.length > 0 && (
-        <div>
-          <div className="text-[1.25rem] font-medium text-[var(--color-stage-ink-soft)] mb-2">
-            Tool Calls ({toolCalls.length})
-          </div>
-          <div className="space-y-2">
-            {toolCalls.map((toolCall, idx) => (
-              <div
-                key={idx}
-                className="bg-white border border-[#5B21B6] rounded p-3"
-              >
-                <div className="text-[1.25rem] font-medium text-[#5B21B6] mb-2">
-                  {toolCall.tool_name}
-                </div>
-                <div className="bg-black/30 rounded p-2 font-mono text-[1.25rem] text-[var(--color-stage-ink-muted)] max-h-24 overflow-y-auto break-words">
-                  {JSON.stringify(toolCall.tool_args, null, 2)}
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       )}
@@ -191,12 +146,6 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
               {responseChunks[responseChunks.length - 1]?.is_complete ? '✓' : 'Streaming...'}
             </div>
           </>
-        )}
-        {reasoningChunks.length > 0 && (
-          <div>
-            Reasoning complete:{' '}
-            {reasoningChunks[reasoningChunks.length - 1]?.is_complete ? '✓' : 'Processing...'}
-          </div>
         )}
       </div>
     </div>
