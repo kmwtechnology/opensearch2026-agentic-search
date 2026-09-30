@@ -70,7 +70,8 @@ class ConnectionManager:
                     await task
                 except asyncio.CancelledError:
                     pass  # Expected
-            del self.running_tasks[thread_id]
+            # process_task's finally has usually removed the entry already.
+            self.running_tasks.pop(thread_id, None)
 
     async def emit_event(self, thread_id: str, event: BaseEvent):
         """
@@ -251,12 +252,9 @@ async def websocket_chat(websocket: WebSocket):
                             emit=emit_callback,
                         )
                     except asyncio.CancelledError:
+                        # The client already reset its own state when it sent the stop;
+                        # an agent_error here would mark the live socket as disconnected.
                         logger.info("agent_task_cancelled", thread_id=msg_thread_id)
-                        # Notify client that execution was cancelled
-                        await manager.emit_event(
-                            msg_thread_id,
-                            AgentErrorEvent(error="Execution stopped by user"),
-                        )
                     except Exception as e:
                         logger.error(
                             "agent_processing_error", thread_id=msg_thread_id, error=str(e)

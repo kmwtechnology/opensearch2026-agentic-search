@@ -165,6 +165,18 @@ describe('useWebSocket', () => {
     })
   })
 
+  describe('stopExecution', () => {
+    it('sends the thread connect() set, even from a hook instance that never connected', () => {
+      // App connects; ChatPanel's Stop button lives in a different hook instance (#157).
+      setupConnected()
+      const { result: panel } = renderHook(() => useWebSocket())
+      act(() => { panel.current.stopExecution() })
+      expect(mockWs.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'stop_execution', thread_id: 'thread-1' }),
+      )
+    })
+  })
+
   describe('llm_response_chunk', () => {
     it('appends content to streamingContent', () => {
       setupConnected()

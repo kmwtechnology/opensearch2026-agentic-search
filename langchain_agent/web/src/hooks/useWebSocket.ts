@@ -3,7 +3,7 @@
  * Handles connection, message sending, and event processing.
  */
 
-import { useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 import { useChatStore, type ChatMessage } from '../stores/chatStore'
 import { useObservabilityStore } from '../stores/observabilityStore'
 import type { AgentEvent, NodeName } from '../types/events'
@@ -21,8 +21,6 @@ interface UseWebSocketReturn {
 
 export function useWebSocket(): UseWebSocketReturn {
   const setConnectionState = useChatStore((s) => s.setConnectionState)
-
-  const threadIdRef = useRef<string | null>(null)
 
   const sendOverWebSocket = useCallback((message: string, options?: { messageId?: string }) => {
     if (!wsInstance || wsInstance.readyState !== WebSocket.OPEN) {
@@ -177,7 +175,6 @@ export function useWebSocket(): UseWebSocketReturn {
 
       // Set connecting state
       setConnectionState(false, true, null)
-      threadIdRef.current = threadId
       currentThreadId = threadId
 
       // Build WebSocket URL using current window location
@@ -232,10 +229,7 @@ export function useWebSocket(): UseWebSocketReturn {
         wsInstance.close()
         wsInstance = null
       }
-      if (options?.preserveThreadId) {
-        currentThreadId = threadIdRef.current
-      } else {
-        threadIdRef.current = null
+      if (!options?.preserveThreadId) {
         currentThreadId = null
       }
       setConnectionState(false, false, null)
@@ -284,7 +278,7 @@ export function useWebSocket(): UseWebSocketReturn {
     try {
       wsInstance.send(JSON.stringify({
         type: 'stop_execution',
-        thread_id: threadIdRef.current,
+        thread_id: currentThreadId,
       }))
     } catch (e) {
       console.error('Failed to send stop signal:', e)
