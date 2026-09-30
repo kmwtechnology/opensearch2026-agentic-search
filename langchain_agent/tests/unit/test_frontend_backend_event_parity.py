@@ -12,8 +12,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 EVENTS_PY = REPO_ROOT / "api" / "schemas" / "events.py"
 EVENTS_TS = REPO_ROOT / "web" / "src" / "types" / "events.ts"
@@ -28,7 +26,6 @@ PY_NODE_LITERAL = re.compile(r"""\bnode:\s*Literal\[\s*["']([a-z0-9_]+)["']\s*\]
 TS_NODE_LITERAL = re.compile(r"""\bnode:\s*['"]([a-z0-9_]+)['"]""")
 
 
-@pytest.mark.unit
 def test_backend_event_types_exist_in_frontend() -> None:
     """Symmetric: a type declared on only one side is drift either way.
 
@@ -59,7 +56,6 @@ def test_backend_event_types_exist_in_frontend() -> None:
     )
 
 
-@pytest.mark.unit
 def test_no_python_builtin_in_event_union() -> None:
     """Catch unions that reference Python builtins instead of the renamed
     *Event class — e.g. `| ConnectionError` (builtin) vs
@@ -79,7 +75,6 @@ def test_no_python_builtin_in_event_union() -> None:
     )
 
 
-@pytest.mark.unit
 def test_event_node_names_match_between_backend_and_frontend() -> None:
     """Per-event-type, the backend `node: Literal[...]` must equal the
     frontend `node: '...'` value. Mismatches mean events route to the wrong
@@ -136,7 +131,6 @@ def test_event_node_names_match_between_backend_and_frontend() -> None:
     )
 
 
-@pytest.mark.unit
 def test_shared_model_fields_match_between_backend_and_frontend() -> None:
     """Field-level parity for every Python/TypeScript class pair that shares
     a name -- not just event types, but nested models referenced by events

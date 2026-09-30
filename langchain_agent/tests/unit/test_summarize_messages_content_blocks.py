@@ -18,7 +18,6 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from observability.llm_content import _flatten_llm_content
@@ -31,8 +30,6 @@ class _Resp:
         self.content = content
 
 
-@pytest.mark.unit
-@pytest.mark.phase1
 class TestFlattenLLMContent:
     def test_flat_string_passes_through(self) -> None:
         assert _flatten_llm_content(_Resp("hello world")) == "hello world"
@@ -72,8 +69,6 @@ class TestFlattenLLMContent:
         assert _flatten_llm_content(_Resp(42)) == "42"
 
 
-@pytest.mark.unit
-@pytest.mark.phase1
 class TestSummarizeMessagesReturnsString:
     """summarize_messages must always return a str, even when the LLM
     returns a list of content blocks."""

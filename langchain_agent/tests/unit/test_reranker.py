@@ -7,7 +7,6 @@ CrossEncoder.predict() is fully mocked; no real model calls are made.
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 from langchain_core.documents import Document
 from pydantic import ValidationError
 
@@ -37,7 +36,6 @@ def _make_cross_reranker() -> CrossEncoderReranker:
     return reranker
 
 
-@pytest.mark.unit
 class TestCrossEncoderReranker:
     def test_empty_documents_returns_empty_list(self):
         reranker = _make_cross_reranker()

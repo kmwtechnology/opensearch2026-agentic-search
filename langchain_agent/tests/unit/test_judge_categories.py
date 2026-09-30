@@ -18,7 +18,6 @@ from quality.judge import (
 )
 
 
-@pytest.mark.unit
 class TestFlaggedClaimValidation:
     def test_accepts_all_four_categories(self):
         for cat in (
@@ -43,7 +42,6 @@ class TestFlaggedClaimValidation:
         )
 
 
-@pytest.mark.unit
 class TestJudgmentResultHallucinationsField:
     def _kwargs(self, hallucinations):
         return dict(
@@ -109,7 +107,6 @@ class TestJudgmentResultHallucinationsField:
         assert round_tripped.hallucinations[0].category == HallucinationCategory.inference
 
 
-@pytest.mark.unit
 class TestFormatDocsForPrompt:
     def _doc(self, text, title="Product", product_id="ID1"):
         return Document(page_content=text, metadata={"title": title, "product_id": product_id})

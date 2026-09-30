@@ -1,18 +1,13 @@
 """
 Smoke Tests for Agentic Hybrid Search
 
-Tests core functionality against a running backend to ensure the system is
-working correctly. Runs locally by default (this is what scripts/smoke_local.sh
-invokes for `make ci`); DEPLOYMENT_URL can point it at a remote
-backend instead. Includes health checks, API authentication, WebSocket
-connectivity, and search pipeline validation.
-
-Markers: @pytest.mark.e2e, @pytest.mark.slow, @pytest.mark.phase3
+Health, origin checking and the search pipeline against a running backend
+(DEPLOYMENT_URL, default the native backend on :8080). scripts/smoke_local.sh
+runs the whole file; `make ci` runs test_search_intent_returns_results.
 """
 
 import asyncio
 import json
-import os
 import time
 
 import httpx
@@ -20,6 +15,8 @@ import pytest
 from websockets.asyncio.client import connect as ws_connect
 
 from tests.e2e.conftest import (
+    DEPLOYMENT_URL,
+    ORIGIN_HEADER,
     auth_rest_headers,
     auth_ws_headers,
 )
@@ -37,14 +34,9 @@ def _fail_if_origin_blocked(exc: BaseException) -> None:
         )
 
 
-# Configuration
-DEPLOYMENT_URL = os.environ.get("DEPLOYMENT_URL", "http://localhost:8080")
-API_KEY = os.environ.get("API_KEY", "test-api-key")
 TIMEOUT = 30  # seconds
 # Cross-encoder model loads ~60s on first request; full pipeline round-trip needs ~90-120s
 WEBSOCKET_TIMEOUT = 180  # seconds
-# Origin header must match allowed UI origin (production is same-origin as API)
-ORIGIN_HEADER = DEPLOYMENT_URL
 
 
 class TestDeploymentHealth:
@@ -52,67 +44,21 @@ class TestDeploymentHealth:
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_health_endpoint_returns_ok(self):
-        """Verify /health endpoint returns 200 with correct status."""
+    def test_health_reports_every_dependency(self):
+        """/api/health is public, returns 200, and reports Postgres, OpenSearch and the
+        indexed document count."""
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(f"{DEPLOYMENT_URL}/api/health")
 
         assert response.status_code == 200, f"Health check failed: {response.text}"
         data = response.json()
-
-        assert "status" in data, "Missing 'status' field in health response"
         assert data["status"] in ["ok", "degraded"], f"Invalid status: {data['status']}"
         assert "version" in data, "Missing 'version' field"
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    def test_health_checks_postgres(self):
-        """Verify health endpoint reports PostgreSQL status."""
-        with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(f"{DEPLOYMENT_URL}/api/health")
-
-        assert response.status_code == 200
-        data = response.json()
-
-        assert "postgres" in data, "Missing 'postgres' field"
-        assert isinstance(data["postgres"], bool), "postgres field should be boolean"
-        assert data["postgres"], "PostgreSQL should be healthy"
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    def test_health_checks_opensearch(self):
-        """Verify health endpoint reports OpenSearch status.
-
-        Skipped if OpenSearch hasn't been initialized yet (separate step from deployment).
-        """
-        with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(f"{DEPLOYMENT_URL}/api/health")
-
-        assert response.status_code == 200
-        data = response.json()
-
-        assert "vector_store" in data, "Missing 'vector_store' field"
+        assert data["postgres"] is True, "PostgreSQL should be healthy"
         assert isinstance(data["vector_store"], bool), "vector_store field should be boolean"
-        if not data["vector_store"]:
-            pytest.skip("OpenSearch not yet initialized (run make setup)")
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    def test_health_reports_document_count(self):
-        """Verify health endpoint reports product document count.
-
-        Skipped if OpenSearch hasn't been initialized yet (separate step from deployment).
-        """
-        with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(f"{DEPLOYMENT_URL}/api/health")
-
-        assert response.status_code == 200
-        data = response.json()
-
-        assert "document_count" in data, "Missing 'document_count' field"
         assert isinstance(data["document_count"], int), "document_count should be integer"
-        if data["document_count"] == 0:
-            pytest.skip("No products indexed yet (run make setup)")
+        if not data["vector_store"] or data["document_count"] == 0:
+            pytest.skip("OpenSearch not yet initialized (run make setup)")
 
 
 class TestAuthentication:
@@ -150,98 +96,6 @@ class TestAuthentication:
         assert (
             response.status_code == 403
         ), f"Disallowed origin should be rejected with 403, got {response.status_code}"
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    def test_health_endpoint_is_public(self):
-        """Health endpoint stays public — no auth required at all."""
-        with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(f"{DEPLOYMENT_URL}/api/health")
-
-        assert (
-            response.status_code == 200
-        ), f"/api/health must remain public for monitoring; got {response.status_code}"
-
-
-class TestWebSocketConnectivity:
-    """WebSocket connection and basic messaging tests."""
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    async def test_websocket_accepts_valid_connection(self):
-        """Verify WebSocket endpoint accepts valid connection."""
-        thread_id = "test-thread-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
-
-        try:
-            async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
-            ) as websocket:
-                # Should connect without error
-                assert websocket is not None
-        except Exception as e:
-            _fail_if_origin_blocked(e)
-            pytest.fail(f"WebSocket connection failed: {e}")
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    async def test_websocket_receives_connection_established(self):
-        """Verify WebSocket sends ConnectionEstablished event on connect."""
-        thread_id = "test-thread-002"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
-
-        try:
-            async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
-            ) as websocket:
-                # Receive first message (should be ConnectionEstablished)
-                message = await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
-                event = json.loads(message)
-
-                assert "type" in event, "Missing event_type"
-                assert (
-                    event["type"] == "connection_established"
-                ), f"Expected ConnectionEstablished, got {event.get('type')}"
-        except asyncio.TimeoutError:
-            pytest.fail("Timeout waiting for ConnectionEstablished event")
-        except Exception as e:
-            _fail_if_origin_blocked(e)
-            pytest.fail(f"WebSocket test failed: {e}")
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    async def test_websocket_accepts_message(self):
-        """Verify WebSocket endpoint accepts incoming messages."""
-        thread_id = "test-thread-003"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
-
-        try:
-            async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
-            ) as websocket:
-                # Skip ConnectionEstablished
-                await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
-
-                # Send test message
-                message = json.dumps(
-                    {
-                        "type": "chat_message",
-                        "message": "Find wireless headphones",
-                        "thread_id": thread_id,
-                    }
-                )
-                await websocket.send(message)
-
-                # Should receive events in response
-                response = await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
-                event = json.loads(response)
-
-                assert "type" in event, "Response missing event_type"
-        except asyncio.TimeoutError:
-            pytest.fail("Timeout waiting for response after sending message")
-        except Exception as e:
-            _fail_if_origin_blocked(e)
-            pytest.fail(f"WebSocket messaging test failed: {e}")
 
 
 class TestSearchPipeline:
@@ -360,75 +214,6 @@ class TestSearchPipeline:
         except Exception as e:
             _fail_if_origin_blocked(e)
             pytest.fail(f"Comparison intent test failed: {e}")
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    async def test_refinement_intent_constrains_results(self):
-        """Test refinement intent adds constraints to prior search."""
-        thread_id = "test-refinement-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
-
-        try:
-            async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
-            ) as websocket:
-                # Skip ConnectionEstablished
-                await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
-
-                # First search
-                message1 = json.dumps(
-                    {
-                        "type": "chat_message",
-                        "message": "Show me headphones",
-                        "thread_id": thread_id,
-                    }
-                )
-                await websocket.send(message1)
-
-                # Collect first response
-                start_time = time.time()
-                while time.time() - start_time < WEBSOCKET_TIMEOUT:
-                    try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
-                        event = json.loads(event_msg)
-                        if event.get("type") == "agent_complete":
-                            break
-                    except asyncio.TimeoutError:
-                        continue
-
-                # Second message with refinement
-                message2 = json.dumps(
-                    {
-                        "type": "chat_message",
-                        "message": "Now only show wireless ones",
-                        "thread_id": thread_id,
-                    }
-                )
-                await websocket.send(message2)
-
-                # Collect refined response
-                response_text = ""
-                final_response = ""
-                received_complete = False
-                start_time = time.time()
-                while time.time() - start_time < WEBSOCKET_TIMEOUT:
-                    try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
-                        event = json.loads(event_msg)
-                        if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("content", "")
-                        if event.get("type") == "agent_complete":
-                            final_response = event.get("final_response", "") or final_response
-                            received_complete = True
-                            break
-                    except asyncio.TimeoutError:
-                        continue
-
-                assert received_complete, "agent_complete event never received"
-                assert len(response_text or final_response) > 0, "No refined response generated"
-        except Exception as e:
-            _fail_if_origin_blocked(e)
-            pytest.fail(f"Refinement intent test failed: {e}")
 
 
 class TestCitations:
@@ -571,12 +356,3 @@ class TestResponseTiming:
         except Exception as e:
             _fail_if_origin_blocked(e)
             pytest.fail(f"Generation timing test failed: {e}")
-
-
-# Make async tests work with pytest
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()

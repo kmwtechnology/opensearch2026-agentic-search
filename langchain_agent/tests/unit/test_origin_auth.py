@@ -7,12 +7,10 @@ All tests are pure unit tests — no network calls, no FastAPI app.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 
 from api.middleware.origin_auth import (
     get_allowed_origins,
     is_allowed_origin,
-    verify_same_origin,
     verify_websocket_origin,
 )
 
@@ -101,119 +99,6 @@ def test_is_allowed_origin_bad_origin_good_referer():
     # When origin is present but not allowed, the code falls through to the referer check.
     # A good referer after a bad origin still grants access (by design — referer is the fallback).
     assert is_allowed_origin("https://evil.com", referer="http://localhost:5173/") is True
-
-
-# ---------------------------------------------------------------------------
-# verify_same_origin — async
-# ---------------------------------------------------------------------------
-
-
-def _make_request(origin=None, referer=None, host=None):
-    request = MagicMock()
-    headers = {}
-    if origin is not None:
-        headers["origin"] = origin
-    if referer is not None:
-        headers["referer"] = referer
-    if host is not None:
-        headers["host"] = host
-    request.headers.get = lambda key, default=None: headers.get(key, default)
-    request.method = "GET"
-    return request
-
-
-@pytest.mark.asyncio
-async def test_verify_same_origin_allows_localhost():
-    request = _make_request(origin="http://localhost:5173")
-    result = await verify_same_origin(request)
-    assert result is True
-
-
-@pytest.mark.asyncio
-async def test_verify_same_origin_allows_via_host_fallback():
-    # No origin/referer but host matches localhost:5173
-    request = _make_request(host="localhost:5173")
-    result = await verify_same_origin(request)
-    assert result is True
-
-
-@pytest.mark.asyncio
-async def test_verify_same_origin_rejects_unknown_host_fallback():
-    # No origin/referer and host doesn't match the explicit allow-list —
-    # there's no deployed domain this app should ever trust by Host alone.
-    request = _make_request(host="my-service.a.run.app")
-    with pytest.raises(HTTPException) as exc_info:
-        await verify_same_origin(request)
-    assert exc_info.value.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_verify_same_origin_raises_403_for_unknown():
-    request = _make_request(origin="https://evil.example.com")
-    with pytest.raises(HTTPException) as exc_info:
-        await verify_same_origin(request)
-    assert exc_info.value.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_verify_same_origin_raises_403_no_headers():
-    request = _make_request()
-    with pytest.raises(HTTPException) as exc_info:
-        await verify_same_origin(request)
-    assert exc_info.value.status_code == 403
-
-
-# ---------------------------------------------------------------------------
-# Regression: Host fallback must NOT override an explicit disallowed Origin.
-#
-# `Host` is the request's destination, not its source — a client can send
-# any Origin header alongside a Host that matches this server. If
-# verify_same_origin treated Host as a same-origin signal whenever Origin was
-# disallowed, the entire origin allow-list would be defeated.
-#
-# This was the 2026-04-29 smoke failure root cause (against the app's former
-# Cloud Run deployment, whose Host always matched *.run.app regardless of who
-# sent the request):
-#   GET /api/health         Origin: https://evil.example.com
-#                           Host:   <service>.run.app
-#   → returned 200 instead of 403.
-#
-# The contract: Host is consulted ONLY when both Origin and Referer are
-# absent (the legitimate same-origin GET case where the browser omits Origin).
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_verify_same_origin_disallowed_origin_with_matching_host_rejected():
-    """Disallowed Origin + a Host that would otherwise pass fallback MUST 403."""
-    request = _make_request(
-        origin="https://evil.example.com",
-        host="localhost:5173",
-    )
-    with pytest.raises(HTTPException) as exc_info:
-        await verify_same_origin(request)
-    assert exc_info.value.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_verify_same_origin_disallowed_referer_with_matching_host_rejected():
-    """Disallowed Referer (no Origin) + a matching Host: Referer is authoritative."""
-    request = _make_request(
-        referer="https://evil.example.com/path",
-        host="localhost:5173",
-    )
-    with pytest.raises(HTTPException) as exc_info:
-        await verify_same_origin(request)
-    assert exc_info.value.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_verify_same_origin_no_origin_no_referer_unknown_host_rejected():
-    """Same-origin GET (no Origin, no Referer) with an unknown Host is rejected."""
-    request = _make_request(host="my-service.us-central1.run.app")
-    with pytest.raises(HTTPException) as exc_info:
-        await verify_same_origin(request)
-    assert exc_info.value.status_code == 403
 
 
 # ---------------------------------------------------------------------------

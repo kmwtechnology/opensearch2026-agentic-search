@@ -13,8 +13,6 @@ import pytest
 from retrieval import attribute_mapping_store as store_module
 from retrieval.attribute_mapping_store import AttributeMappingStore
 
-pytestmark = pytest.mark.integration
-
 TEST_INDEX = "test_attribute_mappings"
 
 

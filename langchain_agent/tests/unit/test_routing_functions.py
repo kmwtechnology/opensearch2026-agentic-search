@@ -14,7 +14,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRouteAfterIntent:
     @pytest.fixture(autouse=True)
     def _setup(self, bare_agent):
@@ -43,7 +42,6 @@ class TestRouteAfterIntent:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestQualityGateRoute:
     @pytest.fixture(autouse=True)
     def _setup(self, bare_agent):
@@ -109,7 +107,6 @@ class TestQualityGateRoute:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestLlmJudgeNodeSkips:
     @pytest.fixture(autouse=True)
     def _setup(self, bare_agent):
@@ -149,7 +146,6 @@ class TestLlmJudgeNodeSkips:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestLlmJudgeNodeNormalPath:
     @pytest.fixture(autouse=True)
     def _setup(self, bare_agent):
@@ -207,7 +203,6 @@ class TestLlmJudgeNodeNormalPath:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestLlmJudgeNodeHallucinationRetry:
     @pytest.fixture(autouse=True)
     def _setup(self, bare_agent):
@@ -462,7 +457,6 @@ class TestLlmJudgeNodeHallucinationRetry:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIntentClassifierNodeStateReset:
     """Verify that intent_classifier_node resets per-turn guards so a retry
     fired in turn N doesn't permanently disable the gate for turns N+1, N+2…"""

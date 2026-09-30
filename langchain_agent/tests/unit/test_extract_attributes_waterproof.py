@@ -23,8 +23,6 @@ import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from main import EcommerceSearchAgent
 
 
@@ -40,8 +38,6 @@ def _agent_returning_attributes(payload: dict) -> EcommerceSearchAgent:
     return agent
 
 
-@pytest.mark.unit
-@pytest.mark.phase1
 class TestWaterproofClassification:
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_unmapped_term_hard_filters_on_raw_value(self, mock_store_cls) -> None:

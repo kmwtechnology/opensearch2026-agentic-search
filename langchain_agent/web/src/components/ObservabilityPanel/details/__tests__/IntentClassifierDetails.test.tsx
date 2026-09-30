@@ -8,305 +8,88 @@ import { render, screen } from '@testing-library/react'
 import { IntentClassifierDetails } from '../IntentClassifierDetails'
 import type { IntentClassificationEvent, QueryExpansionEvent } from '../../../../types/events'
 
+function intentEvent(overrides: Partial<IntentClassificationEvent> = {}): IntentClassificationEvent {
+  return {
+    type: 'intent_classification',
+    node: 'intent_classifier',
+    timestamp: new Date().toISOString(),
+    intent: 'search',
+    confidence: 0.95,
+    reasoning: 'User is searching for a product',
+    user_query: 'Find wireless headphones',
+    ...overrides,
+  }
+}
+
+const expansion: QueryExpansionEvent = {
+  type: 'query_expansion',
+  node: 'retriever',
+  timestamp: new Date().toISOString(),
+  original_query: 'Any cheaper?',
+  expanded_query: 'Find cheaper product alternatives',
+  expansion_reason: 'Resolved pronoun reference',
+}
+
 describe('IntentClassifierDetails Component', () => {
-  describe('Loading State', () => {
-    it('renders loading state when no event provided', () => {
-      render(<IntentClassifierDetails />)
-      expect(screen.getByText(/Classifying intent/i)).toBeInTheDocument()
-    })
-
-    it('shows animated pulse during loading', () => {
-      const { container } = render(<IntentClassifierDetails />)
-      const loadingElement = container.querySelector('.animate-pulse')
-      expect(loadingElement).toBeInTheDocument()
-    })
+  it('renders loading state when no event provided', () => {
+    const { container } = render(<IntentClassifierDetails />)
+    expect(screen.getByText(/Classifying intent/i)).toBeInTheDocument()
+    expect(container.querySelector('.animate-pulse')).toBeInTheDocument()
   })
 
-  describe('Intent Display', () => {
-    const mockEvent: IntentClassificationEvent = {
-      type: 'intent_classification',
-      node: 'intent_classifier',
-      timestamp: new Date().toISOString(),
-      intent: 'search',
-      confidence: 0.95,
-      reasoning: 'User is searching for a product',
-      user_query: 'Find wireless headphones',
-    }
-
-    it('renders intent label and value', () => {
-      render(<IntentClassifierDetails event={mockEvent} />)
-      expect(screen.getByText(/Intent:/i)).toBeInTheDocument()
-      expect(screen.getByText('search')).toBeInTheDocument()
-    })
-
-    it('displays different intent types', () => {
-      const intents = ['search', 'comparison', 'attribute_filter', 'follow_up', 'summary']
-      
-      intents.forEach(intent => {
-        const event: IntentClassificationEvent = {
-          ...mockEvent,
-          intent: intent as any,
-        }
-        const { unmount } = render(<IntentClassifierDetails event={event} />)
-        expect(screen.getByText(intent)).toBeInTheDocument()
-        unmount()
-      })
-    })
+  it('renders intent, reasoning and query', () => {
+    render(<IntentClassifierDetails event={intentEvent()} />)
+    expect(screen.getByText('search')).toBeInTheDocument()
+    expect(screen.getByText('User is searching for a product')).toBeInTheDocument()
+    expect(screen.getByText('Find wireless headphones')).toBeInTheDocument()
   })
 
-  describe('Confidence Display', () => {
-    it('shows confidence as percentage', () => {
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: 0.85,
-        reasoning: 'Test',
-        user_query: 'Find headphones',
-        }
-      render(<IntentClassifierDetails event={event} />)
-      expect(screen.getByText(/Confidence:/i)).toBeInTheDocument()
-      expect(screen.getByText('85%')).toBeInTheDocument()
-    })
-
-    it('displays confidence bar with correct width', () => {
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: 0.75,
-        reasoning: 'Test',
-        user_query: 'Test',
-        }
-      const { container } = render(<IntentClassifierDetails event={event} />)
-      const confidenceBar = container.querySelector('div[style*="width"]')
-      expect(confidenceBar).toBeInTheDocument()
-    })
-
-    it('uses green color for high confidence (>= 0.7)', () => {
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: 0.95,
-        reasoning: 'Test',
-        user_query: 'Test',
-        }
-      render(<IntentClassifierDetails event={event} />)
-      const confidenceText = screen.getByText('95%')
-      // Projector palette (#103): the dark-theme green-400 became #065F46,
-      // which clears 7:1 on the light ground.
-      expect(confidenceText.className).toContain('#065F46')
-    })
-
-    it('uses yellow color for low confidence (< 0.7)', () => {
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: 0.65,
-        reasoning: 'Test',
-        user_query: 'Test',
-        }
-      render(<IntentClassifierDetails event={event} />)
-      const confidenceText = screen.getByText('65%')
-      // Low-confidence warning is now the same rust the quality gate uses.
-      expect(confidenceText.className).toContain('#9A3412')
-    })
+  it('shows dash for empty query', () => {
+    render(<IntentClassifierDetails event={intentEvent({ user_query: '' })} />)
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 
-  describe('Low Confidence Warning', () => {
-    it('shows warning for low confidence (< 0.7)', () => {
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: 0.55,
-        reasoning: 'Test',
-        user_query: 'Test',
-        }
-      render(<IntentClassifierDetails event={event} />)
-      expect(screen.getByText(/Low confidence/i)).toBeInTheDocument()
-      expect(screen.getByText(/clarification/i)).toBeInTheDocument()
-    })
-
-    it('does not show warning for high confidence', () => {
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: 0.95,
-        reasoning: 'Test',
-        user_query: 'Test',
-        }
-      render(<IntentClassifierDetails event={event} />)
+  describe('Confidence', () => {
+    it('shows high confidence (>= 0.7) as a green percentage with no warning', () => {
+      render(<IntentClassifierDetails event={intentEvent({ confidence: 0.85 })} />)
+      // Projector palette (#103): #065F46 clears 7:1 on the light ground.
+      expect(screen.getByText('85%').className).toContain('#065F46')
       expect(screen.queryByText(/Low confidence/i)).not.toBeInTheDocument()
     })
-  })
 
-  describe('Reasoning and Query Display', () => {
-    it('displays reasoning text', () => {
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: 0.9,
-        reasoning: 'User is searching for products',
-        user_query: 'Find headphones',
-        }
-      render(<IntentClassifierDetails event={event} />)
-      expect(screen.getByText(/Reason:/i)).toBeInTheDocument()
-      expect(screen.getByText('User is searching for products')).toBeInTheDocument()
+    it('shows low confidence (< 0.7) in rust with the clarification warning', () => {
+      render(<IntentClassifierDetails event={intentEvent({ confidence: 0.65 })} />)
+      // The same rust the quality gate uses.
+      expect(screen.getByText('65%').className).toContain('#9A3412')
+      expect(screen.getByText(/Low confidence may trigger clarification/i)).toBeInTheDocument()
     })
 
-    it('displays user query', () => {
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: 0.9,
-        reasoning: 'Test',
-        user_query: 'Find wireless headphones',
-        }
-      render(<IntentClassifierDetails event={event} />)
-      expect(screen.getByText(/Query:/i)).toBeInTheDocument()
-      expect(screen.getByText('Find wireless headphones')).toBeInTheDocument()
+    it('handles boundary confidence values', () => {
+      for (const confidence of [0, 0.01, 0.69, 0.7, 1.0]) {
+        const { unmount } = render(<IntentClassifierDetails event={intentEvent({ confidence })} />)
+        expect(screen.getByText(`${Math.round(confidence * 100)}%`)).toBeInTheDocument()
+        unmount()
+      }
     })
 
-    it('shows dash for empty query', () => {
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: 0.9,
-        reasoning: 'Test',
-        user_query: '',
-        }
-      render(<IntentClassifierDetails event={event} />)
-      expect(screen.getByText('—')).toBeInTheDocument()
+    it('defaults a missing confidence to 100%', () => {
+      render(<IntentClassifierDetails event={intentEvent({ confidence: undefined })} />)
+      expect(screen.getByText('100%')).toBeInTheDocument()
     })
   })
 
   describe('Query Expansion', () => {
-    const baseEvent: IntentClassificationEvent = {
-      type: 'intent_classification',
-      node: 'intent_classifier',
-      timestamp: new Date().toISOString(),
-      intent: 'follow_up',
-      confidence: 0.88,
-      reasoning: 'Follow-up',
-      user_query: 'Cheaper?',
-    }
-
-    it('displays query expansion section when provided', () => {
-      const expansion: QueryExpansionEvent = {
-        type: 'query_expansion',
-        node: 'retriever',
-        timestamp: new Date().toISOString(),
-        original_query: 'Cheaper?',
-        expanded_query: 'Find cheaper wireless headphones',
-        expansion_reason: 'Expanded vague reference',
-      }
-      render(<IntentClassifierDetails event={baseEvent} queryExpansion={expansion} />)
+    it('displays original query, expanded query and reason when provided', () => {
+      render(<IntentClassifierDetails event={intentEvent()} queryExpansion={expansion} />)
       expect(screen.getByText(/QUERY EXPANDED/i)).toBeInTheDocument()
-    })
-
-    it('displays original and expanded queries', () => {
-      const expansion: QueryExpansionEvent = {
-        type: 'query_expansion',
-        node: 'retriever',
-        timestamp: new Date().toISOString(),
-        original_query: 'Any cheaper?',
-        expanded_query: 'Find cheaper product alternatives',
-        expansion_reason: 'Resolved pronoun reference',
-      }
-      render(<IntentClassifierDetails event={baseEvent} queryExpansion={expansion} />)
       expect(screen.getByText('Any cheaper?')).toBeInTheDocument()
       expect(screen.getByText('Find cheaper product alternatives')).toBeInTheDocument()
-    })
-
-    it('displays expansion reason', () => {
-      const expansion: QueryExpansionEvent = {
-        type: 'query_expansion',
-        node: 'retriever',
-        timestamp: new Date().toISOString(),
-        original_query: 'Cheaper?',
-        expanded_query: 'Find cheaper products',
-        expansion_reason: 'Resolved vague pronoun to product category',
-      }
-      render(<IntentClassifierDetails event={baseEvent} queryExpansion={expansion} />)
-      expect(screen.getByText('Resolved vague pronoun to product category')).toBeInTheDocument()
+      expect(screen.getByText('Resolved pronoun reference')).toBeInTheDocument()
     })
 
     it('does not display expansion when null', () => {
-      render(<IntentClassifierDetails event={baseEvent} queryExpansion={null} />)
+      render(<IntentClassifierDetails event={intentEvent()} queryExpansion={null} />)
       expect(screen.queryByText(/QUERY EXPANDED/i)).not.toBeInTheDocument()
-    })
-
-    it('does not display expansion when undefined', () => {
-      render(<IntentClassifierDetails event={baseEvent} />)
-      expect(screen.queryByText(/QUERY EXPANDED/i)).not.toBeInTheDocument()
-    })
-  })
-
-  describe('Edge Cases', () => {
-    it('handles boundary confidence values', () => {
-      const confidences = [0, 0.01, 0.7, 0.69, 1.0]
-      
-      confidences.forEach(confidence => {
-        const event: IntentClassificationEvent = {
-          type: 'intent_classification',
-          node: 'intent_classifier',
-          timestamp: new Date().toISOString(),
-          intent: 'search',
-          confidence,
-          reasoning: 'Test',
-          user_query: 'Test',
-            }
-        const { unmount } = render(<IntentClassifierDetails event={event} />)
-        const percent = Math.round(confidence * 100)
-        expect(screen.getByText(`${percent}%`)).toBeInTheDocument()
-        unmount()
-      })
-    })
-
-    it('handles very long reasoning text', () => {
-      const longText = 'A'.repeat(500)
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: 0.9,
-        reasoning: longText,
-        user_query: 'Test',
-      }
-      render(<IntentClassifierDetails event={event} />)
-      expect(screen.getByText(longText)).toBeInTheDocument()
-    })
-
-    it('handles missing confidence gracefully', () => {
-      const event: IntentClassificationEvent = {
-        type: 'intent_classification',
-        node: 'intent_classifier',
-        timestamp: new Date().toISOString(),
-        intent: 'search',
-        confidence: undefined as any,
-        reasoning: 'Test',
-        user_query: 'Test',
-      }
-      render(<IntentClassifierDetails event={event} />)
-      // Should default to 1.0 (100%)
-      expect(screen.getByText('100%')).toBeInTheDocument()
     })
   })
 })

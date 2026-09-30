@@ -4,14 +4,11 @@ Unit tests for EmbeddingCache — thread-safe LRU cache for query embeddings.
 
 import threading
 
-import pytest
-
 from observability.embedding_cache import EmbeddingCache
 
 EMBEDDING = [0.1] * 768
 
 
-@pytest.mark.unit
 class TestEmbeddingCacheBasics:
     def test_cold_cache_returns_none(self):
         cache = EmbeddingCache()
@@ -44,7 +41,6 @@ class TestEmbeddingCacheBasics:
         assert cache.get("laptop") == emb_b
 
 
-@pytest.mark.unit
 class TestEmbeddingCacheLRUEviction:
     def test_lru_eviction_removes_oldest_on_overflow(self):
         cache = EmbeddingCache(max_size=3)
@@ -68,7 +64,6 @@ class TestEmbeddingCacheLRUEviction:
         assert cache.get("b") is not None
 
 
-@pytest.mark.unit
 class TestEmbeddingCacheDisabled:
     def test_disabled_get_always_returns_none(self):
         cache = EmbeddingCache(enabled=False)

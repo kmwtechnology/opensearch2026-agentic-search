@@ -7,13 +7,11 @@ Covers:
 
 from unittest.mock import MagicMock
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from retrieval.vector_store import OpenSearchVectorStore
 
 
-@pytest.mark.unit
 class TestTruncateQueryTerms:
     """Unit tests for _truncate_query_terms static method."""
 
@@ -38,7 +36,6 @@ class TestTruncateQueryTerms:
         assert result == "apple banana cherry"
 
 
-@pytest.mark.unit
 class TestExpandVagueQueryMessageFiltering:
     """Tests for HumanMessage-only filtering in _expand_vague_query."""
 

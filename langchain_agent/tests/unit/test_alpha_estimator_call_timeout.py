@@ -49,8 +49,6 @@ def _agent_with_slow_llm(delay_seconds: float) -> EcommerceSearchAgent:
     return agent
 
 
-@pytest.mark.unit
-@pytest.mark.phase1
 class TestAlphaEstimatorCallTimeout:
     def test_invoke_with_timeout_raises_on_hang(self) -> None:
         agent = _agent_with_slow_llm(delay_seconds=5)

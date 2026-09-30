@@ -28,8 +28,6 @@ from retrieval import attribute_mapping_store as store_module
 from retrieval.attribute_discovery import CANONICALS_BY_TYPE
 from retrieval.attribute_mapping_store import AttributeMappingStore
 
-pytestmark = pytest.mark.integration
-
 MAPPING_TEST_INDEX = "test_attribute_mappings_enrichment_v2"
 
 

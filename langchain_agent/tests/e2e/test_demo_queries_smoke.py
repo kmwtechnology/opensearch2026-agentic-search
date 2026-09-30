@@ -147,7 +147,7 @@ def _summarize(events: List[Dict[str, Any]]) -> str:
             )
         elif t == "quality_gate":
             lines.append(
-                f"  quality_gate decision={e.get('decision')} max_score={e.get('max_score')} "
+                f"  quality_gate triggered={e.get('triggered')} max_score={e.get('max_score')} "
                 f"retry_alpha={e.get('new_alpha')}"
             )
         elif t == "query_expansion":

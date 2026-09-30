@@ -10,7 +10,6 @@ def _msgs(n=2):
     return [HumanMessage(content=f"msg {i}") for i in range(n)]
 
 
-@pytest.mark.unit
 class TestSummaryNode:
     def test_summary_intent_calls_summarize_messages(self, bare_agent):
         agent = bare_agent
@@ -29,7 +28,6 @@ class TestSummaryNode:
         assert result["summary_text"] == "No additional context available for summary."
 
 
-@pytest.mark.unit
 class TestQualityGateNode:
     def _docs(self):
         return [MagicMock()]

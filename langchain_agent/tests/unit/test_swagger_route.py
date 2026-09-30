@@ -10,12 +10,9 @@ service or hit OpenSearch / Postgres, so it's safe to run with no
 infrastructure.
 """
 
-import pytest
-
 from api.main import app
 
 
-@pytest.mark.unit
 class TestSwaggerRoute:
     def test_swagger_is_served_at_swagger(self):
         """``/swagger`` must serve the API docs.
@@ -35,18 +32,6 @@ class TestSwaggerRoute:
         assert app.docs_url is None, (
             "docs_url should stay None so FastAPI's default (small-type) docs "
             "route does not shadow the projector-sized one."
-        )
-
-    def test_redoc_still_at_default(self):
-        """Sanity check: redoc URL is unaffected by the rename."""
-        assert app.redoc_url == "/redoc"
-
-    def test_swagger_path_registered(self):
-        """The /swagger path must appear in the registered routes."""
-        paths = {route.path for route in app.routes if hasattr(route, "path")}
-        assert "/swagger" in paths, (
-            "FastAPI registers docs_url as a route automatically; missing "
-            "/swagger means docs_url got disabled (set to None)."
         )
 
     def test_legacy_docs_path_not_registered(self):

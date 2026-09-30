@@ -82,8 +82,6 @@ def _all_query_fields_are_strings(filters: list) -> None:
             )
 
 
-@pytest.mark.unit
-@pytest.mark.phase1
 class TestExtractAttributesCoercion:
     def test_string_attributes_pass_through(self) -> None:
         agent = _agent_returning_attributes(

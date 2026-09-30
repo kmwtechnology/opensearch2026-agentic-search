@@ -11,8 +11,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-@pytest.mark.unit
-@pytest.mark.phase1
 class TestConfig:
     def test_llm_temperature_is_a_real_float_config_attribute(self):
         """Regression: `int(os.getenv("LLM_TEMPERATURE", 0))` made LLM_TEMPERATURE=0.7
@@ -30,8 +28,6 @@ class TestConfig:
                 importlib.reload(config)
 
 
-@pytest.mark.unit
-@pytest.mark.phase1
 class TestModelNameConfiguration:
     """Model settings: local Ollama models, one embedding model on both sides."""
 

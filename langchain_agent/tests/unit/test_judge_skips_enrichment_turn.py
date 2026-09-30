@@ -17,7 +17,6 @@ correction removed.
 These tests pin the skip at the node's entry, before the judge is constructed.
 """
 
-import pytest
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 
@@ -60,7 +59,6 @@ def _state(**overrides):
     return state
 
 
-@pytest.mark.unit
 class TestJudgeSkipsEnrichmentTurn:
     def test_enrichment_turn_is_not_judged(self):
         node = _Node()

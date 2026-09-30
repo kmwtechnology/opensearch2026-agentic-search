@@ -19,8 +19,6 @@ import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from main import EcommerceSearchAgent
 
 
@@ -36,8 +34,6 @@ def _agent_returning_attributes(payload: dict) -> EcommerceSearchAgent:
     return agent
 
 
-@pytest.mark.unit
-@pytest.mark.phase1
 class TestColorClassification:
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     def test_canonical_color_resolves_to_itself(self, mock_store_cls) -> None:

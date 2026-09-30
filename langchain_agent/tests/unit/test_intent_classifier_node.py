@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 # ---------------------------------------------------------------------------
@@ -20,7 +19,6 @@ def _state(messages, **kwargs):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIntentClassifierNodeExtractsQuery:
 
     def test_extracts_last_human_message(self, bare_agent):
@@ -52,7 +50,6 @@ class TestIntentClassifierNodeExtractsQuery:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIntentClassifierNodeReturnsFields:
 
     def test_returns_all_required_fields(self, bare_agent):
@@ -97,7 +94,6 @@ class TestIntentClassifierNodeReturnsFields:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIntentClassifierNodeRefinementValidation:
 
     def test_refinement_with_no_prior_docs_passes_through(self, bare_agent):

@@ -42,7 +42,6 @@ def _make_store():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCollapseByDocument:
 
     def test_deduplicates_by_product_id(self):
@@ -79,7 +78,6 @@ class TestCollapseByDocument:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHitToDocument:
 
     def _make_hit(self, chunk_text="hello world", score=0.75, **extra_src):
@@ -199,7 +197,6 @@ def _search_resp(*hits):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetEmbedding:
     def test_calls_embed_query(self):
         store, _, mock_emb = _make_full_store()
@@ -221,7 +218,6 @@ class TestGetEmbedding:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSimilaritySearch:
     def test_returns_documents(self):
         store, mock_client, _ = _make_full_store()
@@ -249,7 +245,6 @@ class TestSimilaritySearch:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHybridSearch:
     def test_raises_on_invalid_k(self):
         from core.exceptions import SearchValidationError
@@ -292,7 +287,6 @@ class TestHybridSearch:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTextSearch:
     def test_returns_documents(self):
         store, mock_client, _ = _make_full_store()

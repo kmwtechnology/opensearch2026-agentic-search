@@ -19,7 +19,6 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
 from langchain_core.documents import Document
 
 from main import EcommerceSearchAgent
@@ -37,8 +36,6 @@ def _agent_returning(category_text: str) -> EcommerceSearchAgent:
     return agent
 
 
-@pytest.mark.unit
-@pytest.mark.phase1
 class TestExtractProductCategoryFromDocuments:
     def test_single_word_category_accepted(self) -> None:
         agent = _agent_returning("boots")
@@ -71,8 +68,6 @@ class TestExtractProductCategoryFromDocuments:
         agent.alpha_estimator_llm.invoke.assert_not_called()
 
 
-@pytest.mark.unit
-@pytest.mark.phase1
 class TestExtractProductCategoryFromQuery:
     def test_keyword_pattern_short_circuits_llm(self) -> None:
         agent = _agent_returning("should not be used")
