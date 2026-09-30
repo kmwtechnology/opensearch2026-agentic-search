@@ -152,7 +152,7 @@ hook `setup.sh` installs (black, isort, flake8 on staged `.py` files).
 ```text
 langchain_agent/
 ├── main.py                 EcommerceSearchAgent: setup, graph wiring, lifecycle
-├── setup.py                DB tables, index + search pipeline, precomputed load
+├── setup.py                DB tables, index, precomputed load
 ├── core/                   agent_state.py, config.py, exceptions.py, llm.py, logging_config.py
 ├── pipeline/               pipeline_nodes.py (the 8 nodes), conversation_management.py,
 │                           enrichment_events.py, reindex_trigger.py, scoped_retag.py

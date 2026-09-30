@@ -155,10 +155,6 @@ class OpenSearchQueryEvent(BaseEvent):
     body: Optional[Dict[str, Any]] = None
     # Index the search ran against (e.g. ``agentic_hybrid_search_docs``).
     index: Optional[str] = None
-    # Query-string params (e.g. ``{"search_pipeline": "hybrid_search_pipeline"}``).
-    # Rendered above the body in the DSL viewer so users can reproduce the
-    # exact request line.
-    params: Optional[Dict[str, str]] = None
 
 
 class QualityGateEvent(BaseEvent):

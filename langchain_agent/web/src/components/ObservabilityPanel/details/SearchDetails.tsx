@@ -155,7 +155,6 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
         subtitle={`Intent: ${opensearchQueryEvent?.intent ?? '—'} · alpha ${((opensearchQueryEvent?.alpha ?? 0) * 100).toFixed(0)}%`}
         body={opensearchQueryEvent?.body ?? null}
         index={opensearchQueryEvent?.index}
-        params={opensearchQueryEvent?.params}
         onClose={() => setHybridDslOpen(false)}
       />
       <DslViewerModal
@@ -164,7 +163,6 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
         subtitle={`alpha ${((retryQueryEvent?.alpha ?? 0) * 100).toFixed(0)}%`}
         body={retryQueryEvent?.body ?? null}
         index={retryQueryEvent?.index}
-        params={retryQueryEvent?.params}
         onClose={() => setRetryDslOpen(false)}
       />
 

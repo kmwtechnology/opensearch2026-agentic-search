@@ -1728,7 +1728,6 @@ Original query: {query}
                 query_type="quality_gate_retry" if is_gate_retry else "hybrid",
                 body=hybrid_capture.get("body"),
                 index=hybrid_capture.get("index"),
-                params=hybrid_capture.get("params"),
             )
         )
 

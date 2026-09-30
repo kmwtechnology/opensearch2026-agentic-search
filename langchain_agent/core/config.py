@@ -92,7 +92,6 @@ OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "")
 OPENSEARCH_USE_SSL = os.getenv("OPENSEARCH_USE_SSL", "true").lower() == "true"
 OPENSEARCH_VERIFY_CERTS = os.getenv("OPENSEARCH_VERIFY_CERTS", "false").lower() == "true"
 OPENSEARCH_INDEX_NAME = os.getenv("OPENSEARCH_INDEX_NAME", "agentic_hybrid_search_docs")
-OPENSEARCH_SEARCH_PIPELINE = os.getenv("OPENSEARCH_SEARCH_PIPELINE", "hybrid_search_pipeline")
 OPENSEARCH_TIMEOUT = int(os.getenv("OPENSEARCH_TIMEOUT", 30))
 
 # ============================================================================
@@ -122,8 +121,7 @@ ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS = float(os.getenv("ALPHA_ESTIMATOR_CALL_TIM
 # Candidates handed to the reranker.
 RERANKER_FETCH_K = 40
 
-# How much wider the quality gate's retry searches. Re-weighting alpha alone measurably
-# changed nothing: the best reranker score was identical at alpha 0.1-1.0.
+# How much wider the quality gate's retry searches, on top of its alpha shift.
 RETRY_FETCH_MULTIPLIER = 4
 
 # Documents the agent receives after reranking.

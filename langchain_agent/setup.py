@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Setup: initializes the PostgreSQL checkpoint tables, the OpenSearch index and
-search pipeline, validates the local Ollama models, and bulk-loads the
+Setup: initializes the PostgreSQL checkpoint tables and the OpenSearch index,
+validates the local Ollama models, and bulk-loads the
 precomputed corpus dump. Invoked by scripts/setup.sh; takes no arguments.
 """
 
@@ -22,7 +22,6 @@ from core.config import (
     LLM_MODEL,
     OLLAMA_HOST,
     OPENSEARCH_INDEX_NAME,
-    OPENSEARCH_SEARCH_PIPELINE,
     POSTGRES_DB,
     POSTGRES_HOST,
     POSTGRES_PASSWORD,
@@ -39,7 +38,7 @@ from core.config import (
 
 def create_database():
     """Create the langchain_agent database if it doesn't exist"""
-    print("\n[1/5] Creating PostgreSQL database and checkpoint tables...")
+    print("\n[1/4] Creating PostgreSQL database and checkpoint tables...")
 
     try:
         # Connect to the default postgres database to create our database
@@ -76,7 +75,7 @@ def verify_connection():
 
 def create_opensearch_index():
     """Create the OpenSearch index with knn and text mappings."""
-    print("\n[2/5] Creating OpenSearch index...")
+    print("\n[2/4] Creating OpenSearch index...")
 
     try:
         from retrieval.vector_store import INDEX_MAPPING, create_opensearch_client
@@ -96,27 +95,6 @@ def create_opensearch_index():
 
     except Exception as e:
         print(f"      ✗ Error creating OpenSearch index: {e}")
-        raise
-
-
-def create_search_pipeline():
-    """Create the hybrid search pipeline with normalization"""
-    print("\n[3/5] Creating search pipeline...")
-
-    try:
-        from retrieval.vector_store import SEARCH_PIPELINE, create_opensearch_client
-
-        client = create_opensearch_client()
-
-        client.transport.perform_request(
-            "PUT",
-            f"/_search/pipeline/{OPENSEARCH_SEARCH_PIPELINE}",
-            body=SEARCH_PIPELINE,
-        )
-        print(f"      ✓ Search pipeline '{OPENSEARCH_SEARCH_PIPELINE}' created")
-
-    except Exception as e:
-        print(f"      ✗ Error creating search pipeline: {e}")
         raise
 
 
@@ -149,7 +127,7 @@ def validate_ollama_models():
     """Check Ollama is up, every configured model is pulled, and embeddings fit the index."""
     from core.llm import missing_ollama_models
 
-    print("\n[4/5] Validating local Ollama models...")
+    print("\n[3/4] Validating local Ollama models...")
     try:
         missing = missing_ollama_models([LLM_MODEL, QUERY_EVAL_MODEL, EMBEDDINGS_MODEL])
     except OSError as e:
@@ -195,9 +173,8 @@ def main():
     print("\nThis script will:")
     print("  1. Create PostgreSQL database (for checkpoints)")
     print("  2. Create OpenSearch index (for products)")
-    print("  3. Create search pipeline (for hybrid search)")
-    print("  4. Validate local Ollama models")
-    print("  5. Load the precomputed ESCI corpus")
+    print("  3. Validate local Ollama models")
+    print("  4. Load the precomputed ESCI corpus")
     print("\n" + "=" * 70)
 
     try:
@@ -206,13 +183,12 @@ def main():
         init_checkpoint_tables()
 
         create_opensearch_index()
-        create_search_pipeline()
 
         if not validate_ollama_models():
             print("\n✗ SETUP INCOMPLETE — fix the Ollama problem above, then re-run `make setup`.")
             return 1
 
-        print("\n[5/5] Loading precomputed products and attribute taxonomy...")
+        print("\n[4/4] Loading precomputed products and attribute taxonomy...")
         print(
             "      Bulk-loading data/precomputed/*.parquet — embeddings and attribute "
             "detection were already run once and committed (Git LFS). No Ollama call, "

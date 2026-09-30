@@ -144,7 +144,7 @@ step "Starting Docker services (PostgreSQL + OpenSearch)"
 (cd "$PARENT_DIR" && docker compose up -d --wait postgres opensearch)
 echo "✓ PostgreSQL and OpenSearch healthy"
 
-# 7. Schema + corpus load (setup.py creates the tables, index, and search pipeline, then runs the bulk loader)
+# 7. Schema + corpus load (setup.py creates the tables and index, then runs the bulk loader)
 step "Initializing the database and loading the corpus"
 cd "$PROJECT_DIR"
 PYTHONPATH=. python setup.py

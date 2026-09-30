@@ -143,7 +143,7 @@ The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns
 | Embeddings | `nomic-embed-text` via local Ollama (768-dim; `search_document:` when the corpus was originally embedded, `search_query:` at query time via `retrieval/embeddings.py`) |
 | Corpus | 158,637 ESCI US test/small products (query-first, every query fully judged), 95.5% with a SQID image URL |
 | Agent framework | LangGraph + LangChain |
-| Vector DB | OpenSearch (HNSW knn + BM25; the `hybrid` query is fused by a search pipeline at fixed equal weights — `alpha` only matters at exactly 0.0/1.0, see ARCHITECTURE.md) |
+| Vector DB | OpenSearch (HNSW knn + BM25; the `hybrid` query is fused by a per-request inline search pipeline with weights `[alpha, 1 - alpha]` — kNN first, BM25 second) |
 | Checkpoints | PostgreSQL 18 via `langgraph-checkpoint-postgres` (compose image `pgvector/pgvector:0.8.6-pg18`; the vector extension is unused) |
 | API | FastAPI + WebSocket |
 | Frontend | React 19 + TypeScript + Vite + Zustand, Vitest + ESLint |

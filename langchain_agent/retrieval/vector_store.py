@@ -16,7 +16,6 @@ from core.config import (
     OPENSEARCH_INDEX_NAME,
     OPENSEARCH_PASSWORD,
     OPENSEARCH_PORT,
-    OPENSEARCH_SEARCH_PIPELINE,
     OPENSEARCH_TIMEOUT,
     OPENSEARCH_USE_SSL,
     OPENSEARCH_USER,
@@ -223,21 +222,25 @@ INDEX_MAPPING = {
     },
 }
 
-# Search pipeline definition for hybrid search
-SEARCH_PIPELINE = {
-    "description": "Hybrid search with min-max normalization and weighted combination",
-    "phase_results_processors": [
-        {
-            "normalization-processor": {
-                "normalization": {"technique": "min_max"},
-                "combination": {
-                    "technique": "arithmetic_mean",
-                    "parameters": {"weights": [0.5, 0.5]},
-                },
+
+def hybrid_search_pipeline(alpha: float) -> Dict[str, Any]:
+    """Inline search pipeline for one `hybrid` query: min-max normalize the two score
+    lists, then blend them. The query lists kNN first and BM25 second, so the weights
+    are [alpha, 1 - alpha] (alpha 1.0 = all vector), rounded so the DSL viewer stays readable."""
+    vector_weight = round(alpha, 4)
+    return {
+        "phase_results_processors": [
+            {
+                "normalization-processor": {
+                    "normalization": {"technique": "min_max"},
+                    "combination": {
+                        "technique": "arithmetic_mean",
+                        "parameters": {"weights": [vector_weight, round(1.0 - vector_weight, 4)]},
+                    },
+                }
             }
-        }
-    ],
-}
+        ]
+    }
 
 
 def create_opensearch_client(
@@ -290,8 +293,8 @@ def reset_shared_opensearch_client() -> None:
 class OpenSearchVectorStore:
     """kNN, BM25 and hybrid search over the products index.
 
-    Hybrid uses OpenSearch's native `hybrid` query with the min-max normalization search
-    pipeline (created by setup.py).
+    Hybrid uses OpenSearch's native `hybrid` query, fused by a per-request search pipeline
+    whose weights come from alpha.
     """
 
     def __init__(
@@ -306,7 +309,6 @@ class OpenSearchVectorStore:
         self.collection_id = collection_id
         self.client = client or create_opensearch_client()
         self.index_name = OPENSEARCH_INDEX_NAME
-        self.search_pipeline = OPENSEARCH_SEARCH_PIPELINE
         self._embedding_cache = EmbeddingCache(
             max_size=EMBEDDING_CACHE_MAX_SIZE,
             enabled=ENABLE_EMBEDDING_CACHE,
@@ -414,8 +416,8 @@ class OpenSearchVectorStore:
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Hybrid kNN + BM25 search. alpha 0.0 is pure BM25, 1.0 pure vector; anything
-        between runs the native hybrid query, which the search pipeline fuses at fixed
-        equal weights.
+        between runs the native hybrid query, blending the two normalized score lists
+        with weights [alpha, 1 - alpha].
 
         `filters` are OpenSearch clauses, implicitly AND'd.
         """
@@ -437,7 +439,7 @@ class OpenSearchVectorStore:
             query_embedding = self._get_embedding(query)
 
             return self._hybrid_search_native(
-                query, query_embedding, k, fetch_k, filters, capture_body=capture_body
+                query, query_embedding, k, fetch_k, alpha, filters, capture_body=capture_body
             )
 
         except EmbeddingError:
@@ -451,23 +453,20 @@ class OpenSearchVectorStore:
         self,
         query: str,
         build_body: Callable[[str], Dict[str, Any]],
-        params: Optional[Dict[str, Any]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Run the search built by `build_body(query)`.
 
         On a maxClauseCount error, retries once with the query cut to 20 terms. When
         `capture_body` is given it receives the first body (embedding scrubbed), the
-        search params and the index name, for the observability panel.
+        index name, for the observability panel.
         """
         body = build_body(query)
         if capture_body is not None:
             capture_body["body"] = _scrub_body_for_display(body)
-            if params is not None:
-                capture_body["params"] = dict(params)
             capture_body["index"] = self.index_name
         try:
-            return self.client.search(index=self.index_name, body=body, params=params)
+            return self.client.search(index=self.index_name, body=body)
         except Exception as e:
             if "max_clause_count" not in str(e).lower():
                 raise
@@ -475,9 +474,7 @@ class OpenSearchVectorStore:
             if shorter == query:
                 raise
             logger.warning(f"maxClauseCount error, retrying with a shorter query: {e}")
-            return self.client.search(
-                index=self.index_name, body=build_body(shorter), params=params
-            )
+            return self.client.search(index=self.index_name, body=build_body(shorter))
 
     def _hybrid_search_native(
         self,
@@ -485,10 +482,11 @@ class OpenSearchVectorStore:
         query_embedding: List[float],
         k: int,
         fetch_k: int,
+        alpha: float,
         filters: Optional[List[Dict[str, Any]]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
-        """OpenSearch `hybrid` query fused by the search pipeline."""
+        """OpenSearch `hybrid` query, fused by an inline pipeline weighted by alpha."""
         filter_list = [{"term": {"collection_id": self.collection_id}}, *(filters or [])]
         knn_filter = {"bool": {"must": filter_list}} if len(filter_list) > 1 else filter_list[0]
 
@@ -496,6 +494,7 @@ class OpenSearchVectorStore:
             return {
                 "size": k,
                 "_source": {"excludes": ["embedding"]},
+                "search_pipeline": hybrid_search_pipeline(alpha),
                 "query": {
                     "hybrid": {
                         "queries": [
@@ -519,12 +518,7 @@ class OpenSearchVectorStore:
                 },
             }
 
-        response = self._search(
-            query,
-            build_body,
-            params={"search_pipeline": self.search_pipeline},
-            capture_body=capture_body,
-        )
+        response = self._search(query, build_body, capture_body=capture_body)
         return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
 
     def _text_search(

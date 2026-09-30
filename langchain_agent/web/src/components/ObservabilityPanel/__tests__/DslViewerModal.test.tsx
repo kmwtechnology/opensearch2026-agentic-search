@@ -51,12 +51,11 @@ describe('DslViewerModal', () => {
         title="Hybrid query DSL"
         body={SAMPLE_BODY}
         index="agentic_hybrid_search_docs"
-        params={{ search_pipeline: 'hybrid_search_pipeline' }}
         onClose={() => undefined}
       />
     )
     expect(
-      screen.getByText('POST /agentic_hybrid_search_docs/_search?search_pipeline=hybrid_search_pipeline')
+      screen.getByText('POST /agentic_hybrid_search_docs/_search')
     ).toBeInTheDocument()
   })
 
@@ -123,14 +122,13 @@ describe('DslViewerModal', () => {
         title="Test"
         body={SAMPLE_BODY}
         index="my_index"
-        params={{ search_pipeline: 'hybrid_search_pipeline' }}
         onClose={() => undefined}
       />
     )
     await userEvent.click(screen.getByLabelText('Copy DSL to clipboard'))
     expect(writeText).toHaveBeenCalledOnce()
     const written = writeText.mock.calls[0][0] as string
-    expect(written).toContain('POST /my_index/_search?search_pipeline=hybrid_search_pipeline')
+    expect(written).toContain('POST /my_index/_search')
     expect(written).toContain('multi_match')
   })
 })

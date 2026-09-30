@@ -164,7 +164,6 @@ def _make_full_store():
     store.client = mock_client
     store.index_name = "test_index"
     store.collection_id = "esci_products"
-    store.search_pipeline = "hybrid-search-pipeline"
     store.embeddings = mock_embeddings
 
     # Attach a disabled embedding cache so _get_embedding always hits the mock
@@ -267,6 +266,17 @@ class TestHybridSearch:
         assert len(results) == 1
         # Text-only: only one search call
         assert mock_client.search.call_count == 1
+
+    def test_alpha_between_zero_and_one_weights_the_fusion(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp(_hit())
+        store.hybrid_search("query", k=1, fetch_k=10, alpha=0.3)
+        body = mock_client.search.call_args.kwargs["body"]
+        weights = body["search_pipeline"]["phase_results_processors"][0]["normalization-processor"][
+            "combination"
+        ]["parameters"]["weights"]
+        # The hybrid query lists kNN first, so the vector weight is alpha itself.
+        assert weights == [0.3, 0.7]
 
     def test_alpha_one_uses_similarity_search(self):
         store, mock_client, _ = _make_full_store()
@@ -388,7 +398,6 @@ class TestCaptureBody:
 
     def test_hybrid_native_captures_body_with_scrubbed_vector(self):
         store, mock_client = _make_store()
-        store.search_pipeline = "hybrid_search_pipeline"
         mock_client.search.return_value = {"hits": {"hits": []}}
 
         capture: dict = {}
@@ -397,6 +406,7 @@ class TestCaptureBody:
             query_embedding=[0.42] * 768,
             k=4,
             fetch_k=20,
+            alpha=0.25,
             capture_body=capture,
         )
 
@@ -404,7 +414,11 @@ class TestCaptureBody:
         # The full body is captured but the 768-dim vector is replaced.
         knn_clause = body["query"]["hybrid"]["queries"][0]["knn"]
         assert knn_clause["embedding"]["vector"] == "<EMBEDDING_OMITTED_768_DIMS>"
-        assert capture["params"]["search_pipeline"] == "hybrid_search_pipeline"
+        # The fusion weights travel in the body: [kNN, BM25] = [alpha, 1 - alpha].
+        combination = body["search_pipeline"]["phase_results_processors"][0][
+            "normalization-processor"
+        ]["combination"]
+        assert combination["parameters"]["weights"] == [0.25, 0.75]
         assert capture["index"] == "test_index"
 
     def test_capture_body_is_pure_dsl(self):

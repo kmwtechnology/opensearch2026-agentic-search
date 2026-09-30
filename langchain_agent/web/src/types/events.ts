@@ -76,7 +76,6 @@ export interface OpenSearchQueryEvent extends BaseEvent {
   query_type?: OpenSearchQueryType  // Which kind of query this event represents
   body?: Record<string, unknown>  // Full DSL body sent to OpenSearch (embeddings scrubbed)
   index?: string  // Index the search ran against
-  params?: Record<string, string>  // Query-string params (e.g. search_pipeline)
 }
 
 export interface QualityGateEvent extends BaseEvent {

@@ -16,19 +16,14 @@ interface DslViewerModalProps {
   subtitle?: string
   body: Record<string, unknown> | null | undefined
   index?: string
-  params?: Record<string, string>
   onClose: () => void
 }
 
-function buildRequestLine(index?: string, params?: Record<string, string>): string | null {
-  if (!index) return null
-  const qs = params && Object.keys(params).length > 0
-    ? '?' + Object.entries(params).map(([k, v]) => `${k}=${v}`).join('&')
-    : ''
-  return `POST /${index}/_search${qs}`
+function buildRequestLine(index?: string): string | null {
+  return index ? `POST /${index}/_search` : null
 }
 
-export function DslViewerModal({ isOpen, title, subtitle, body, index, params, onClose }: DslViewerModalProps) {
+export function DslViewerModal({ isOpen, title, subtitle, body, index, onClose }: DslViewerModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
 
@@ -53,7 +48,7 @@ export function DslViewerModal({ isOpen, title, subtitle, body, index, params, o
   if (!isOpen) return null
 
   const json = body ? JSON.stringify(body, null, 2) : '// no DSL body available'
-  const requestLine = buildRequestLine(index, params)
+  const requestLine = buildRequestLine(index)
   const copyText = requestLine ? `${requestLine}\n${json}` : json
 
   const handleCopy = async () => {

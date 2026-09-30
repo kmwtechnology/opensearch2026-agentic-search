@@ -99,8 +99,8 @@ flowchart TB
 - **Retrieval** — the retriever rewrites vague follow-ups against the
   conversation ("what about trail running?" becomes a full query), extracts
   color / waterproof / brand / feature filters, and runs vector + BM25 in
-  one OpenSearch `hybrid` query, fused by a search pipeline (min-max
-  normalization, equal weights).
+  one OpenSearch `hybrid` query, fused by an inline search pipeline (min-max
+  normalization, weighted by alpha).
 - **Reranker + quality gate** — a local `ms-marco-MiniLM-L-12-v2`
   cross-encoder scores the candidates. If the best score is under the intent's
   threshold (comparison 0.55, search/follow_up 0.50, attribute_filter/refinement

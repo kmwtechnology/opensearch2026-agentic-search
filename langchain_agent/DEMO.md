@@ -176,11 +176,10 @@ Each of these was tested; the measurements are in the commit history.
 - **Never mention price, cost, or budget.** The catalog has **no price field in
   any form**. The agent is instructed to refuse and redirect. An invented dollar
   figure is the worst thing this demo could put on a screen.
-- **Do not say dynamic alpha makes the results better.** Between 0 and 1 the
-  fused query is identical (see the FAQ); at α 0.25 the first page of "blue running shoes" includes blue
-  *jeans*, while a pure-semantic run of the same query returns five actual
-  running shoes. Alpha is *how literally it read the question*, not a quality
-  win. **The reranker** is what removes the jeans.
+- **Do not say dynamic alpha makes the results better.** Alpha is *how
+  literally it read the question*, not a quality win; a keyword-heavy alpha can
+  pull in look-alikes (blue *jeans* for "blue running shoes"). **The reranker**
+  is what removes them.
 - **Do not promise a quality-gate recovery.** Arc 2 turn 2 *does* fire the gate
   and retry, and the retry *fails* — the narrator reads "Still under the bar
   after retrying — 0.30 against 0.45", directly above the correction card. Have
@@ -247,9 +246,9 @@ classification, query evaluation, and judging — no cloud API key needed.
 into the image, no added latency.
 
 **How are the two searches fused?** One OpenSearch `hybrid` query runs kNN and
-BM25; a search pipeline min-max normalizes each score list and averages them
-at equal weights. `alpha` switches to pure BM25 at exactly 0 and pure kNN at
-exactly 1; in between the fused query is the same.
+BM25; an inline search pipeline min-max normalizes each score list and
+averages them with weights `[alpha, 1 - alpha]`, so alpha is a real dial from
+pure keyword (0) to pure meaning (1).
 
 **Was that re-index real, or just the affected products?** Just the affected
 products — a scoped re-tag (`pipeline/scoped_retag.py`) re-detects the

@@ -86,11 +86,12 @@ Writes: `alpha`, `query_analysis`. Emits `QueryEvaluationEvent`.
 4. **Hybrid search** (`retrieval/vector_store.py`) — the query is embedded
    with `nomic-embed-text` (prefix `search_query:`; the corpus was embedded
    with `search_document:`), then one OpenSearch `hybrid` query runs kNN and
-   BM25 and the `hybrid_search_pipeline` fuses them (min-max normalization,
-   arithmetic mean, equal weights). `alpha` only changes behaviour at the
-   extremes — exactly 0.0 runs pure BM25 and exactly 1.0 pure kNN; anything
-   between runs the same fixed-weight hybrid query. `RETRIEVER_FETCH_K`
-   candidates, collapsed to one hit per product.
+   BM25 and an inline per-request search pipeline fuses them (min-max
+   normalization, then an arithmetic mean weighted `[alpha, 1 - alpha]` —
+   kNN first, BM25 second, so the pipeline travels in the query body and shows
+   in the DSL viewer). Exactly 0.0 skips the hybrid query and runs pure BM25,
+   exactly 1.0 pure kNN. `RETRIEVER_FETCH_K` candidates, collapsed to one hit
+   per product.
 5. **Filter relaxation** — if fewer than 3 documents survive all filters, the
    soft `multi_match` filters are dropped and the search retried; hard
    color/waterproof/brand filters are never relaxed, because the user named
