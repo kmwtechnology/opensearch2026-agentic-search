@@ -1,4 +1,8 @@
-# Development dependencies — installed by scripts/setup.sh; everything `make ci` needs.
+# Development dependencies — installed by scripts/setup.sh; everything `make setup` and
+# `make ci` need beyond the runtime image.
+
+# Parquet loader for the precomputed corpus dump (scripts/load_precomputed_indices.py)
+pyarrow>=10.0.0
 
 # Testing
 pytest>=7.0.0

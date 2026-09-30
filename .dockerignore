@@ -1,16 +1,14 @@
 # Build context is the repo root (docker-compose.yml: `context: .`), but the
-# Dockerfile only COPYs langchain_agent/{requirements.txt,*.py,api/,web/}.
+# Dockerfile only COPYs from langchain_agent/ (requirements.txt, *.py, the packages, web/).
 # Without this file, BuildKit uploads the entire repo on every build.
 # BuildKit only reads <context>/.dockerignore, so this is the one that counts.
 
 .git/
 
-# Large data directories never referenced by the Dockerfile
+# Large data directory never referenced by the Dockerfile
 data/
-docs/
 
 # Local dev / tooling, not part of the image
-.venv/
 **/node_modules/
 .pytest_cache/
 

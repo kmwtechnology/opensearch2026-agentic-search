@@ -1,77 +1,22 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# Additions to the repo-root .gitignore for this directory.
 
-# Virtual Environments
-.venv/
-venv/
-env/
-ENV/
-env.bak/
-venv.bak/
-
-# IDE & Editors
-.vscode/
+# Editors / OS
 .idea/
-.project
-.pydevproject
-.settings/
 *.swp
 *.swo
-*~
 .DS_Store
-.sublime-project
-.sublime-workspace
+Thumbs.db
 
-# Environment Variables
-.env
+# Local environment overrides
 .env.local
 .env.*.local
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Logs
-*.log
+# Runtime output
 logs/
-*.pot
+*.log
+*.pid
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# MyPy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Project-specific
-*.pyc
+# Claude Code local state
 .claude/
 
 # Web UI
@@ -82,8 +27,3 @@ web/dist/
 web/vite.config.js
 web/vite.config.d.ts
 web/*.tsbuildinfo
-
-# OS-specific
-.DS_Store
-Thumbs.db
-*.pid

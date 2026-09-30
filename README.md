@@ -164,7 +164,6 @@ docker-compose.yml      postgres, opensearch, and the demo `app` container
 | [langchain_agent/scripts/README.md](langchain_agent/scripts/README.md) | Lifecycle scripts |
 | [langchain_agent/tests/README.md](langchain_agent/tests/README.md) | Test suites |
 | [data/README.md](data/README.md) | The corpus export and its provenance |
-| [docs/contributing/README.md](docs/contributing/README.md) | Contribution flow, the `make ci` gate, code patterns |
 | [CLAUDE.md](CLAUDE.md) | Guidance for Claude Code sessions |
 
 License: see [LICENSE](LICENSE).

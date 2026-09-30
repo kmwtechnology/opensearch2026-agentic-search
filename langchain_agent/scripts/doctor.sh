@@ -5,7 +5,6 @@ set -e
 # Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Counters
@@ -23,10 +22,6 @@ check_pass() {
 check_fail() {
   echo -e "${RED}✗${NC} $1"
   FAILED=$((FAILED + 1))
-}
-
-check_warn() {
-  echo -e "${YELLOW}⚠${NC} $1"
 }
 
 echo "🏥 Agentic Hybrid Search - System Health Check"
@@ -65,7 +60,7 @@ PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
 if [[ "$PYTHON_VERSION" =~ ^3\.1[4-9] ]] || [[ "$PYTHON_VERSION" =~ ^3\.[2-9][0-9] ]]; then
   check_pass "Python 3.14+ ($PYTHON_VERSION)"
 else
-  check_fail "Python 3.14+ required (found $PYTHON_VERSION) — see CLAUDE.md for setup"
+  check_fail "Python 3.14+ required (found $PYTHON_VERSION)"
 fi
 
 # 3. Node version (require 24+)
@@ -139,17 +134,16 @@ if [ $FAILED -eq 0 ]; then
   echo ""
   echo "Next steps:"
   echo "  • make dev   (dev UI http://localhost:5173, backend :8080, demo container http://localhost:8000)"
-  echo "  • Both:     make dev        (starts both, backend in background)"
   exit 0
 else
   echo -e "${RED}❌ System checks failed. See errors above.${NC}"
   echo ""
   echo "Quick fixes:"
   echo "  • Docker:       docker compose up -d         (from repo root)"
-  echo "  • Python 3.13+: see CLAUDE.md setup section"
+  echo "  • Python 3.14+: brew install python@3.14  OR  pyenv install 3.14"
   echo "  • Node 24+:     brew install node  OR  nvm install 24"
   echo "  • .venv:        ./scripts/setup.sh  OR  make setup"
   echo ""
-  echo "Full setup: ./scripts/setup.sh (non-interactive, ~5 min)"
+  echo "Full setup: ./scripts/setup.sh (non-interactive, ~1-2 min once the Ollama models are pulled)"
   exit 1
 fi

@@ -35,7 +35,6 @@ services:
       - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
     ports:
       - "9200:9200"
-      - "9600:9600"
     volumes:
       - opensearch_data:/usr/share/opensearch/data
     healthcheck:

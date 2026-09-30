@@ -30,7 +30,7 @@ if ! curl -sf http://localhost:9200 >/dev/null 2>&1; then
   echo "❌ OpenSearch not reachable on :9200 — run 'docker compose up -d' from repo root" >&2
   exit 2
 fi
-if ! pg_isready -h localhost -p 5432 >/dev/null 2>&1 && ! curl -sf http://localhost:5432 >/dev/null 2>&1; then
+if ! pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
   # pg_isready may not be installed; fall back to checking listen port via nc/lsof
   if ! lsof -nP -i :5432 >/dev/null 2>&1; then
     echo "❌ PostgreSQL not reachable on :5432 — run 'docker compose up -d' from repo root" >&2

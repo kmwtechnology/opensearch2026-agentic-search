@@ -4,8 +4,9 @@
 #   dev       everything, side by side: Postgres+OpenSearch, the native backend :8080 with the
 #             live-reloading Vite UI :5173, and the demo container :8000 (backend + built UI,
 #             rebuilt from the current tree on each start — later edits show on :5173 only)
-#   ci        THE pre-push gate: format/lint/types, unit tests, collect-only integration+e2e,
-#             frontend test/lint/tsc/build, then a live smoke round-trip (brings Docker up)
+#   ci        THE pre-push gate: format/lint/types, unit tests, collect-only e2e, frontend
+#             test/lint/build, then the integration suite and a live smoke round-trip
+#             (brings Docker up)
 #   teardown  DESTRUCTIVE: .venv, node_modules, Docker volumes, logs
 #
 # Not targets, on purpose:

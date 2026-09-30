@@ -133,9 +133,5 @@ cython_debug/
 # Claude Code local state
 .claude/state/
 
-# esci directory — raw ESCI dataset (external, not tracked). Anchored (leading /)
-# to keep this scoped to the repo-root dataset checkout.
-/esci/
-
 .claude/settings.local.json
 .claude/scheduled_tasks.lock

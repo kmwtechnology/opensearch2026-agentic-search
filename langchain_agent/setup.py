@@ -212,26 +212,6 @@ def main():
             print("\n✗ SETUP INCOMPLETE — fix the Ollama problem above, then re-run `make setup`.")
             return 1
 
-        docs_ingest_failed = False
-        precomputed_dump = (
-            Path(__file__).parent.parent / "data" / "precomputed" / "dump_metadata.json"
-        )
-
-        if not precomputed_dump.exists():
-            print("\n" + "=" * 70)
-            print("✗ SETUP INCOMPLETE — data/precomputed/ is missing")
-            print("=" * 70)
-            print(
-                "\nThe product corpus is a permanent, one-time export committed to this "
-                "repo via Git LFS. It is not rebuilt locally — there is no ingest "
-                "pipeline for it any more (see data/README.md)."
-            )
-            print("\nMost likely cause: Git LFS objects were never pulled. Run:")
-            print("  git lfs pull")
-            print("\nThen re-run setup.")
-            print("\n" + "=" * 70)
-            return 1
-
         print("\n[5/5] Loading precomputed products and attribute taxonomy...")
         print(
             "      Bulk-loading data/precomputed/*.parquet — embeddings and attribute "
@@ -242,23 +222,16 @@ def main():
             import subprocess
 
             loader_script = Path(__file__).parent / "scripts" / "load_precomputed_indices.py"
-            python = Path(__file__).parent / ".venv" / "bin" / "python"
-            if not python.exists():
-                python = Path(sys.executable)
             subprocess.run(
-                [str(python), str(loader_script)],
+                [sys.executable, str(loader_script)],
                 cwd=str(Path(__file__).parent),
                 check=True,
                 env={**os.environ, "PYTHONPATH": "."},
             )
             print("      ✓ Products and attribute taxonomy loaded from precomputed dump")
         except subprocess.CalledProcessError as e:
-            docs_ingest_failed = True
+            # A failed load means zero (or stale) products are indexed: fail loud.
             print(f"      ✗ Precomputed load failed (exit {e.returncode})")
-
-        # A failed load means zero (or stale) products are indexed — that's not
-        # a state to report as "SETUP COMPLETE". Fail loud instead.
-        if docs_ingest_failed:
             print("\n" + "=" * 70)
             print("✗ SETUP INCOMPLETE — precomputed load failed, no products indexed")
             print("=" * 70)
@@ -285,7 +258,7 @@ def main():
         print("   docker compose up -d")
         print("2. Ollama: ensure it is running and the models are pulled (scripts/doctor.sh)")
         print("3. Product data: Ensure data/precomputed/ is populated (git lfs pull)")
-        print("4. Connection: Verify config.py settings")
+        print("4. Connection: Verify core/config.py settings")
         print("\n" + "=" * 70)
         return 1
 

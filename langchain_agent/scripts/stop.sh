@@ -2,8 +2,7 @@
 # Agentic Hybrid Search Stop Script
 # Stops backend API and frontend development server
 #
-# Strategy: Kill by port (most reliable) → fallback to PID file → fallback to process name
-# This ensures even stale .pid files don't prevent proper shutdown.
+# Strategy: kill by port (most reliable), then by process name; stale .pid files are removed.
 
 echo "🛑 Stopping Agentic Hybrid Search..."
 echo ""
