@@ -1,10 +1,8 @@
 """Conversation summarization for EcommerceSearchAgent (split out of main.py in #47)."""
 
-import json
 import logging
 from typing import Sequence
 
-import httpx
 from langchain_core.messages import BaseMessage
 
 from observability.llm_content import _flatten_llm_content
@@ -36,16 +34,10 @@ class ConversationManagementMixin:
         for msg in messages_to_summarize:
             if hasattr(msg, "content") and msg.content:
                 content_preview = str(msg.content)[:100].strip()
-                if hasattr(msg, "type"):
-                    if msg.type == "human":
-                        user_topics.append(content_preview)
-                    else:
-                        assistant_topics.append(content_preview)
+                if msg.type == "human":
+                    user_topics.append(content_preview)
                 else:
-                    if "human" in str(type(msg)).lower():
-                        user_topics.append(content_preview)
-                    else:
-                        assistant_topics.append(content_preview)
+                    assistant_topics.append(content_preview)
 
         # Build simple summary
         summary_parts = [f"Earlier conversation ({len(messages_to_summarize)} messages):"]
@@ -82,11 +74,7 @@ class ConversationManagementMixin:
             context = ""
             for msg in messages_to_summarize:
                 if hasattr(msg, "content") and msg.content:
-                    # Determine role from message type
-                    if hasattr(msg, "type"):
-                        role = "User" if msg.type == "human" else "Assistant"
-                    else:
-                        role = "Assistant" if "assistant" in str(type(msg)).lower() else "User"
+                    role = "User" if msg.type == "human" else "Assistant"
                     context += f"{role}: {msg.content}\n\n"
 
             if not context.strip():
@@ -107,22 +95,6 @@ Summary:"""
             # so the SummaryEvent's `summary_text: str` field accepts it.
             response = self.llm.invoke(summary_prompt)
             return _flatten_llm_content(response)
-
-        except httpx.ConnectError as e:
-            logger.error(
-                f"Connection error while summarizing {len(messages_to_summarize)} messages: {e}",
-                exc_info=True,
-            )
-            logger.info("Falling back to simple concatenation summary")
-            return self._fallback_summarize(messages_to_summarize)
-
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(
-                f"JSON/parsing error while summarizing {len(messages_to_summarize)} messages: {e}",
-                exc_info=True,
-            )
-            logger.info("Falling back to word count summary")
-            return self._fallback_summarize(messages_to_summarize)
 
         except TimeoutError as e:
             logger.error(
@@ -147,8 +119,7 @@ Summary:"""
 
         except Exception as e:
             logger.error(
-                f"Unexpected error while summarizing {len(messages_to_summarize)} messages: {type(e).__name__}: {e}",
+                f"Error while summarizing {len(messages_to_summarize)} messages: {type(e).__name__}: {e}",
                 exc_info=True,
             )
-            logger.info("Falling back to basic summary")
             return self._fallback_summarize(messages_to_summarize)

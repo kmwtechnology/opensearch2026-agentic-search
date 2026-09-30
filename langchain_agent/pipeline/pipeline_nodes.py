@@ -41,7 +41,7 @@ from core.config import (
     RETRIEVER_FETCH_K,
     RETRY_FETCH_MULTIPLIER,
 )
-from observability.llm_content import _flatten_llm_content
+from observability.llm_content import _flatten_llm_content, snippet
 from pipeline import enrichment_events
 from quality.enrichment_value_judge import EnrichmentValueJudge
 from quality.judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
@@ -98,6 +98,14 @@ class PipelineNodesMixin:
     judge: Optional[LLMJudge]
     enrichment_value_judge: Optional[EnrichmentValueJudge]
 
+    @staticmethod
+    def _latest_user_query(messages: Sequence[BaseMessage]) -> str:
+        """Text of the most recent HumanMessage, or "" when there is none."""
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                return _flatten_llm_content(msg)
+        return ""
+
     def intent_classifier_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """Classify the latest user message with one structured LLM call.
 
@@ -106,11 +114,7 @@ class PipelineNodesMixin:
         question. Also resets the per-turn hallucination-retry guard.
         """
         messages = state["messages"]
-        user_query = ""
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage) and hasattr(msg, "content") and msg.content:
-                user_query = _flatten_llm_content(msg)
-                break
+        user_query = self._latest_user_query(messages)
 
         intent, reasoning, confidence, clarifying_questions = self._classify_intent(
             user_query, messages
@@ -171,12 +175,7 @@ class PipelineNodesMixin:
         """
         start_time = time.time()
 
-        last_user_msg = None
-        for msg in reversed(state["messages"]):
-            if isinstance(msg, HumanMessage):
-                last_user_msg = _flatten_llm_content(msg)
-                break
-
+        last_user_msg = self._latest_user_query(state["messages"])
         if not last_user_msg:
             return {"alpha": EVALUATOR_FALLBACK_ALPHA, "query_analysis": "No query detected"}
 
@@ -422,12 +421,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         logger.info(f"Agent: processing with {len(retrieved_documents)} retrieved documents")
 
-        # Extract user query
-        user_query = None
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage):
-                user_query = _flatten_llm_content(msg)
-                break
+        user_query = self._latest_user_query(messages)
 
         # Taxonomy correction: the shopper disputes a tag from a prior turn. Checked
         # before gap detection because it is independent of this turn's retrieval.
@@ -931,19 +925,21 @@ Do not include any explanation.
 Titles:
 {chr(10).join(titles)}"""
 
-            response = self._invoke_with_timeout(
-                self.alpha_estimator_llm, prompt, ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS
-            )
-            category = _flatten_llm_content(response).strip().lower()
-
-            # A short name (multi-word allowed: "trail running shoes"), not an explanation.
-            if category and len(category) < 50 and category.count(" ") <= 2:
-                return category
-
-            return ""
+            return self._ask_category(prompt)
         except Exception as e:
             logger.debug(f"Category extraction from documents failed: {e}")
             return ""
+
+    def _ask_category(self, prompt: str) -> str:
+        """The LLM's category answer, or "" unless it is a short name (multi-word allowed:
+        "trail running shoes") rather than an explanation."""
+        response = self._invoke_with_timeout(
+            self.alpha_estimator_llm, prompt, ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS
+        )
+        category = _flatten_llm_content(response).strip().lower()
+        if category and len(category) < 50 and category.count(" ") <= 2:
+            return category
+        return ""
 
     def _extract_product_category_from_query(self, query: str) -> str:
         """Category named in the query: keyword patterns first, then the LLM; "" if none."""
@@ -977,17 +973,10 @@ Do not include any explanation.
 
 Query: "{query}" """
 
-            response = self._invoke_with_timeout(
-                self.alpha_estimator_llm, prompt, ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS
-            )
-            category = _flatten_llm_content(response).strip().lower()
-
-            if category and len(category) < 50 and category.count(" ") <= 2:
-                return category
+            return self._ask_category(prompt)
         except Exception as e:
             logger.debug(f"Category extraction from query (LLM) failed: {e}")
-
-        return ""
+            return ""
 
     def _validate_category_continuity(
         self,
@@ -1613,12 +1602,7 @@ Original query: {query}
 
         prior_search_documents = state.get("retrieved_documents", [])
 
-        query = None
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage):
-                query = _flatten_llm_content(msg)
-                break
-
+        query = self._latest_user_query(messages)
         if query:
             query = self._expand_vague_query(query, messages)
 
@@ -1756,11 +1740,7 @@ Original query: {query}
                     candidates=[
                         SearchCandidate(
                             source=doc.metadata.get("source", "unknown"),
-                            snippet=(
-                                doc.page_content[:200] + "..."
-                                if len(doc.page_content) > 200
-                                else doc.page_content
-                            ),
+                            snippet=snippet(doc.page_content),
                         )
                         for doc in results[:10]
                     ],
@@ -1796,12 +1776,7 @@ Original query: {query}
                 "reranker_latency_ms": 0.0,
             }
 
-        query = state.get("user_query", "")
-        if not query:
-            for msg in reversed(state["messages"]):
-                if isinstance(msg, HumanMessage):
-                    query = _flatten_llm_content(msg)
-                    break
+        query = state.get("user_query", "") or self._latest_user_query(state["messages"])
 
         self._emit_event_from_sync(RerankerStartEvent())
 

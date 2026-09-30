@@ -26,3 +26,8 @@ def _flatten_llm_content(response: Any) -> str:
                 parts.append(block)
         return "".join(parts)
     return content if isinstance(content, str) else str(content)
+
+
+def snippet(text: str, limit: int = 200) -> str:
+    """`text` cut to `limit` characters, with an ellipsis when it was longer."""
+    return text[:limit] + "..." if len(text) > limit else text

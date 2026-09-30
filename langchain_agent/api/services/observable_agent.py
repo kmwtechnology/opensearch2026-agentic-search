@@ -38,7 +38,7 @@ from core.config import (
 )
 from main import EcommerceSearchAgent
 from observability.confidence_proxy import confidence_from_scores, count_rank_changes
-from observability.llm_content import _flatten_llm_content
+from observability.llm_content import _flatten_llm_content, snippet
 from pipeline import enrichment_events
 
 logger = logging.getLogger(__name__)
@@ -566,16 +566,13 @@ class ObservableAgentService:
 
         for rank, doc in enumerate(documents, 1):
             original_rank = doc.metadata.get("original_rank", rank)
-            snippet = (
-                doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
-            )
             reranked_docs.append(
                 RerankedDocument(
                     source=doc.metadata.get("source", "unknown"),
                     score=doc.metadata.get("reranker_score", 0.0),
                     rank=rank,
                     original_rank=original_rank,
-                    snippet=snippet,
+                    snippet=snippet(doc.page_content),
                     rank_change=rank - original_rank,
                     url=doc.metadata.get("url"),
                 )

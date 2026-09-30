@@ -3,7 +3,9 @@
 from unittest.mock import MagicMock
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
+
+from observability.llm_content import snippet
 
 
 def _msgs(n=2):
@@ -222,3 +224,34 @@ class TestQualityGateNode:
         result = agent.quality_gate_node(state)
         threshold = result["quality_gate_threshold_used"]
         assert f"{threshold:.2f}" in result["quality_gate_reason"]
+
+
+class TestLatestUserQuery:
+    def test_returns_most_recent_human_message(self, bare_agent):
+        messages = [
+            HumanMessage(content="tan boots"),
+            AIMessage(content="Here are some boots"),
+            HumanMessage(content="make them waterproof"),
+        ]
+        assert bare_agent._latest_user_query(messages) == "make them waterproof"
+
+    def test_skips_trailing_ai_messages(self, bare_agent):
+        messages = [HumanMessage(content="tan boots"), AIMessage(content="answer")]
+        assert bare_agent._latest_user_query(messages) == "tan boots"
+
+    def test_empty_string_when_no_human_message(self, bare_agent):
+        assert bare_agent._latest_user_query([]) == ""
+        assert bare_agent._latest_user_query([AIMessage(content="hello")]) == ""
+
+    def test_flattens_content_blocks(self, bare_agent):
+        messages = [HumanMessage(content=[{"type": "text", "text": "blue "}, "shoes"])]
+        assert bare_agent._latest_user_query(messages) == "blue shoes"
+
+
+class TestSnippet:
+    def test_short_text_unchanged(self):
+        assert snippet("short") == "short"
+        assert snippet("x" * 200) == "x" * 200
+
+    def test_long_text_truncated_with_ellipsis(self):
+        assert snippet("x" * 201) == "x" * 200 + "..."
