@@ -68,6 +68,20 @@ class TestIntentClassifierNodeReturnsFields:
         ):
             assert field in result, f"Missing field: {field}"
 
+    def test_resets_per_turn_flags_carried_by_checkpointed_state(self, bare_agent):
+        # A spent enrichment would make llm_judge_node skip every later turn (#156).
+        agent = bare_agent
+        with patch.object(agent, "_classify_intent", return_value=("search", "reason", 0.9, [])):
+            result = agent.intent_classifier_node(
+                _state(
+                    [HumanMessage(content="query")],
+                    enrichment_triggered=True,
+                    hallucination_retry_used=True,
+                )
+            )
+        assert result["enrichment_triggered"] is False
+        assert result["hallucination_retry_used"] is False
+
     def test_confidence_matches_intent_confidence(self, bare_agent):
         agent = bare_agent
         with patch.object(agent, "_classify_intent", return_value=("search", "reason", 0.82, [])):

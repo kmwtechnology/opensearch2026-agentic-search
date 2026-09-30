@@ -160,8 +160,10 @@ class PipelineNodesMixin:
             "confidence": confidence,  # For UI display
             "intent_confidence": confidence,
             "clarifying_questions": clarifying_questions,
-            # Checkpointed state would otherwise carry a spent retry into every later turn.
+            # Checkpointed state would otherwise carry a spent retry, or an earlier
+            # turn's enrichment (which makes llm_judge_node skip), into every later turn.
             "hallucination_retry_used": False,
+            "enrichment_triggered": False,
         }
 
     def query_evaluator_node(self, state: CustomAgentState) -> Dict[str, Any]:
