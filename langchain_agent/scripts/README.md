@@ -2,8 +2,8 @@
 
 > **Parent**: [../README.md](../README.md)
 
-Run from `langchain_agent/`. The Makefile targets wrap the first five; the
-rest are direct commands.
+Run from `langchain_agent/`. `make doctor|setup|dev|teardown` wrap the first
+four (not `stop.sh`); `make ci` runs `smoke_local.sh`; the rest are direct commands.
 
 | Script | Does | Use it when |
 |---|---|---|

@@ -32,9 +32,9 @@
 export interface DemoTurn {
   /** Typed verbatim. Several of these are exact for a reason; see `note`. */
   query: string
-  /** One line: what the audience should watch for. Shown to the presenter. */
+  /** One line: what the turn proves. Not rendered; this file is the demo spec. */
   watchFor: string
-  /** Presenter-only caveat, shown small. Omit when there is nothing to warn about. */
+  /** Presenter caveat. Not rendered. Omit when there is nothing to warn about. */
   note?: string
   /** Turn must begin a brand-new conversation (see the taxonomy proof turn). */
   requiresNewConversation?: boolean
@@ -191,7 +191,7 @@ export const DEMOS: Demo[] = [
      * (see pipeline_nodes.py's zero_result_filter_gap). That means turn 1
      * below can plausibly notice AND fix the gap in one response: the
      * agent proposes trigger_enrichment on its own initiative, a second
-     * model approves it, and the real ~20s reindex happens right there —
+     * model approves it, and the real scoped re-tag happens right there —
      * no shopper has to ask for the fix, which is the point this demo
      * makes that Arc 2 doesn't (Arc 2 needs a human to dispute the tag;
      * this needs nobody). If the model declines to call the tool on a

@@ -1,7 +1,7 @@
 # Agentic Hybrid Search
 
 A LangGraph RAG agent for e-commerce product search over the Amazon ESCI
-corpus. It fuses vector and BM25 retrieval with Reciprocal Rank Fusion, picks
+corpus. It runs vector and BM25 retrieval as one OpenSearch hybrid query, picks
 the lexical/semantic balance per query, reranks with a local cross-encoder
 behind a quality gate, streams every pipeline stage to a React observability
 panel over WebSocket, and can grow or correct its own catalog taxonomy from a
@@ -99,8 +99,8 @@ flowchart TB
 - **Retrieval** — the retriever rewrites vague follow-ups against the
   conversation ("what about trail running?" becomes a full query), extracts
   color / waterproof / brand / feature filters, and runs vector + BM25 in
-  parallel, fused with RRF (k=60). A BM25-only baseline runs alongside so every
-  turn can be scored stage by stage.
+  one OpenSearch `hybrid` query, fused by a search pipeline (min-max
+  normalization, equal weights).
 - **Reranker + quality gate** — a local `ms-marco-MiniLM-L-12-v2`
   cross-encoder scores the candidates. If the best score is under the intent's
   threshold (comparison 0.55, search/follow_up 0.50, attribute_filter/refinement
@@ -124,7 +124,7 @@ Deeper: [`langchain_agent/ARCHITECTURE.md`](langchain_agent/ARCHITECTURE.md).
 | LLM (all calls) | `qwen3.6:35b-a3b-q4_K_M` via Ollama |
 | Embeddings | `nomic-embed-text` via Ollama, 768-dim |
 | Reranker | `cross-encoder/ms-marco-MiniLM-L-12-v2`, local |
-| Search | OpenSearch 3.8 — HNSW `knn_vector` + BM25, RRF fusion |
+| Search | OpenSearch 3.8 — HNSW `knn_vector` + BM25, hybrid query + search pipeline |
 | Checkpoints | PostgreSQL 18 (LangGraph) |
 | Agent | LangGraph + LangChain |
 | API | FastAPI, WebSocket streaming |
@@ -139,7 +139,7 @@ langchain_agent/        the application (Makefile lives here)
   setup.py              database + index init, invoked by scripts/setup.sh
   core/                 agent state, config, exceptions, logging
   pipeline/             the LangGraph nodes, conversation management, scoped re-tag
-  retrieval/            vector store (RRF), reranker, embeddings, attribute taxonomy
+  retrieval/            vector store, reranker, embeddings, attribute taxonomy
   quality/              LLM judge, enrichment service and value judge, demo reset
   observability/        confidence proxy, embedding cache
   checkpoints/          checkpoint optimizer

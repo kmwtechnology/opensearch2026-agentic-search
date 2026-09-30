@@ -3,7 +3,7 @@
 > **Parent**: [../README.md](../README.md) · Design: [ARCHITECTURE.md](ARCHITECTURE.md) · Demo script: [DEMO.md](DEMO.md) · API: [api/README.md](api/README.md) · UI: [web/README.md](web/README.md) · Tests: [tests/README.md](tests/README.md)
 
 A LangGraph RAG agent over 158,637 Amazon ESCI products: hybrid BM25 + vector
-retrieval (RRF), a dynamic alpha per intent, cross-encoder reranking behind a
+retrieval, a dynamic alpha per intent, cross-encoder reranking behind a
 quality gate, an LLM judge, streamed pipeline events over WebSocket, and a
 taxonomy the agent grows and corrects live. Everything runs locally: Docker
 Compose for PostgreSQL and OpenSearch, native [Ollama](https://ollama.com/)
@@ -52,8 +52,8 @@ against :8080. Run it before every push.
 ## How a turn works
 
 ```
-intent_classifier ─┬─(summary)──► summary ─┬─(continue)──► retriever
-                    ├─(clarify)──► agent    └─(done)──────► agent
+intent_classifier ─┬─(summary)──► summary ──► agent
+                    ├─(clarify)──► agent
                     └─(other)────► query_evaluator ──► retriever ──► reranker ──► quality_gate ─┬─(retry)───► retriever
                                                                                                   └─(continue)► agent ──► llm_judge ──► END
 ```
@@ -66,8 +66,7 @@ Eight LangGraph nodes (`main.py::create_agent_graph`):
 2. **query_evaluator** — estimates the hybrid alpha (0 = pure BM25, 1 = pure
    vector); comparison/attribute_filter/refinement take a fast-path alpha.
 3. **retriever** — rewrites vague queries against history, extracts color /
-   waterproof / category filters, runs hybrid search plus a BM25 baseline in
-   parallel. Unresolved color and waterproof terms are hard filters, so an
+   waterproof / brand filters, and runs one OpenSearch hybrid query. Unresolved color and waterproof terms are hard filters, so an
    unknown term produces a genuine zero-result query — that is what triggers
    taxonomy growth.
 4. **reranker** — local cross-encoder (`ms-marco-MiniLM-L-12-v2`), scores
@@ -157,19 +156,18 @@ langchain_agent/
 ├── core/                   agent_state.py, config.py, exceptions.py, llm.py, logging_config.py
 ├── pipeline/               pipeline_nodes.py (the 8 nodes), conversation_management.py,
 │                           enrichment_events.py, reindex_trigger.py, scoped_retag.py
-├── retrieval/              vector_store.py (OpenSearch, RRF), reranker.py, embeddings.py,
+├── retrieval/              vector_store.py (OpenSearch), reranker.py, embeddings.py,
 │                           attribute_discovery.py, attribute_mapping_store.py
 ├── quality/                judge.py, enrichment_service.py, enrichment_value_judge.py, demo_reset.py
 ├── tools/enrichment_tool.py
 ├── observability/          confidence_proxy.py, embedding_cache.py, llm_content.py
-├── checkpoints/            checkpoint_optimizer.py (Postgres checkpoint tuning)
 ├── api/                    FastAPI app — see api/README.md
 ├── web/                    React UI — see web/README.md
 ├── scripts/                lifecycle scripts — see scripts/README.md
 ├── tests/                  unit / integration / e2e — see tests/README.md
 ├── Dockerfile              the demo image (built UI + backend, one process)
 ├── Makefile                doctor · setup · dev · ci · teardown
-└── .env.example            every environment variable the app reads
+└── .env.example            the environment variables the app reads
 ```
 
 ## Troubleshooting
@@ -192,7 +190,7 @@ lsof -ti :8080 | xargs kill -9
 make dev
 ```
 
-- `ModuleNotFoundError: No module named 'config'` — you forgot `PYTHONPATH=.`.
+- `ModuleNotFoundError: No module named 'core'` — you forgot `PYTHONPATH=.`.
 - `make ci` fails at "docker services" — Docker Desktop isn't running: `open -a Docker`.
 - `make setup` says `data/precomputed/` is missing — `git lfs pull`.
 - Ollama errors — `ollama pull qwen3.6:35b-a3b-q4_K_M && ollama pull nomic-embed-text`.

@@ -6,9 +6,7 @@
  * watches it happen. Four phases, each visually distinct from the back of the
  * room:
  *
- *   started  → a live elapsed counter, because the re-index used to be a
- *              completely silent ~20s freeze and silence reads as a crash (now a
- *              scoped re-tag of the matching products, #147 -- usually seconds)
+ *   started  → a live elapsed counter, because a silent re-tag reads as a crash
  *   complete → what changed, plus the real doc count
  *   failed   → says plainly that the tag is unchanged
  *   declined → the guardrail firing, which is a feature worth showing

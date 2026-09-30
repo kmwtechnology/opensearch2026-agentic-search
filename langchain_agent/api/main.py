@@ -95,9 +95,10 @@ app = FastAPI(
         "Production-grade RAG agent for Amazon ESCI e-commerce product search, "
         "running local-only (Docker Compose).\n\n"
         "**Features:**\n"
-        "- **Hybrid search**: BM25 + vector (RRF fusion, k=60) with dynamic alpha per intent\n"
-        "- **Intent routing**: 7 classes (search, comparison, attribute_filter, refinement, "
-        "follow_up, summary, clarify)\n"
+        "- **Hybrid search**: one OpenSearch hybrid query (kNN + BM25, search-pipeline fusion) "
+        "with dynamic alpha per intent\n"
+        "- **Intent routing**: 6 classes (search, comparison, attribute_filter, refinement, "
+        "follow_up, summary); low confidence routes to a clarifying question\n"
         "- **Reranking + quality gate**: Cross-encoder (ms-marco-MiniLM-L-12-v2, ~2s for a "
         "40-doc batch, the only reranker) scores 0.0–1.0; on a "
         "low score the gate retries once with a widened retrieval pool (not just a "
@@ -192,12 +193,8 @@ async def projector_swagger_ui() -> HTMLResponse:
     return HTMLResponse(html.replace("</head>", f"{_SWAGGER_PROJECTOR_CSS}</head>"))
 
 
-# CORS configuration
-# Reuses the same allow-list api/middleware/origin_auth.py's verify_same_origin
-# enforces -- these used to be two independently-maintained origin lists (this
-# one had its own hardcoded Cloud Run allowance, `get_allowed_origins()` had a
-# separate one) that had already drifted apart (this one was missing the
-# :5174/:8000/:8080 dev origins the other allows).
+# CORS uses the same allow-list api/middleware/origin_auth.py's verify_same_origin
+# enforces, so the two cannot drift apart.
 cors_origins = get_allowed_origins()
 
 app.add_middleware(

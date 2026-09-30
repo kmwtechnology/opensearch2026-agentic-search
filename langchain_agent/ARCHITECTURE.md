@@ -12,8 +12,8 @@ Browser (React 19)  <-- WebSocket /ws/chat -->  FastAPI (api/)
                                                      |
                                           LangGraph StateGraph (main.py::create_agent_graph)
                                                      |
-   intent_classifier -+-(summary)-> summary -+-(continue)-> retriever
-                      +-(clarify)-> agent    +-(done)-----> agent
+   intent_classifier -+-(summary)-> summary -> agent
+                      +-(clarify)-> agent
                       +-(other)---> query_evaluator -> retriever -> reranker -> quality_gate -+-(retry)--> retriever
                                                                                              +-(pass)---> agent -> llm_judge -> END
                                                      |
@@ -85,8 +85,12 @@ Writes: `alpha`, `query_analysis`. Emits `QueryEvaluationEvent`.
    document overlap say the user is narrowing rather than pivoting.
 4. **Hybrid search** (`retrieval/vector_store.py`) — the query is embedded
    with `nomic-embed-text` (prefix `search_query:`; the corpus was embedded
-   with `search_document:`), then vector and BM25 run in parallel and are
-   fused with RRF, `score = sum 1/(rank + 60)`. `RETRIEVER_FETCH_K` candidates, collapsed to one hit per product.
+   with `search_document:`), then one OpenSearch `hybrid` query runs kNN and
+   BM25 and the `hybrid_search_pipeline` fuses them (min-max normalization,
+   arithmetic mean, equal weights). `alpha` only changes behaviour at the
+   extremes — exactly 0.0 runs pure BM25 and exactly 1.0 pure kNN; anything
+   between runs the same fixed-weight hybrid query. `RETRIEVER_FETCH_K`
+   candidates, collapsed to one hit per product.
 5. **Filter relaxation** — if fewer than 3 documents survive all filters, the
    soft `multi_match` filters are dropped and the search retried; hard
    color/waterproof/brand filters are never relaxed, because the user named
@@ -204,9 +208,8 @@ filters each node's output to declared channels, so a new field must be added
 there or it silently never reaches `astream_events`.
 
 Checkpoints are stored in PostgreSQL by `langgraph-checkpoint-postgres`,
-keyed by `thread_id`; the next turn on the same thread resumes from them.
-`checkpoints/checkpoint_optimizer.py` keeps large transient fields (retrieved
-documents) out of the persisted state.
+keyed by `thread_id`; the next turn on the same thread resumes from them,
+including `retrieved_documents`, which refinements constrain to.
 
 ## Events and the WebSocket contract
 
@@ -328,7 +331,7 @@ in `observabilityStore.ts`, render it in the panel, and unit-test it with the
 
 **A new attribute type.** There is no corpus-wide detection pass any more, so
 a new type can only start the way `waterproof` does — registered in
-`_CANONICAL_SEEDS_BY_TYPE` with an empty variant list and grown live. Add its
+`CANONICALS_BY_TYPE` with an empty variant list and grown live. Add its
 extraction field and filter in `_extract_attributes` (decide: hard filter like
 color/waterproof, or soft like `feature`), give its field a BM25 boost in
 `_build_multi_match`, and the tool and admin route accept the new
@@ -347,14 +350,14 @@ export, since the index holds 768-dim `nomic-embed-text` vectors.
 | --- | --- |
 | Intent classification | ~300–500 ms |
 | Query evaluation | 0 (fast path) – 500 ms |
-| Vector + BM25 + RRF | ~300–800 ms |
+| Hybrid query (kNN + BM25) | ~300–800 ms |
 | Cross-encoder rerank (40 docs) | ~1.5–2 s |
 | Quality-gate retry | +1–2 s when it fires |
 | Answer generation (streaming) | ~3–8 s |
 | LLM judge (+ one regeneration) | ~5–30 s |
 | **Per turn** | **~6–21 s** measured across the three demos |
 
-Query embeddings are cached for 60 minutes (`observability/embedding_cache.py`).
+The last 100 query embeddings are cached in memory (`observability/embedding_cache.py`).
 
 ## Debugging
 

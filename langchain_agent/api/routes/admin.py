@@ -33,14 +33,13 @@ async def admin_health(request: Request) -> dict:
     of the application's primary index: whether it exists, whether
     OpenSearch is reachable, and the current document count.
 
-    Useful to confirm the index has documents after a re-ingestion run
-    (there is no CI to automate this check against -- see #113).
+    Useful to confirm the index has documents after `make setup`.
 
     **Status values:**
         - ``healthy`` — index exists and is queryable; ``documents`` reflects
           the current count.
         - ``degraded`` — OpenSearch reachable but the index is missing
-          (typical after a fresh deploy before ingestion runs).
+          (`make setup` has not loaded the precomputed dump yet).
         - ``unhealthy`` — OpenSearch is unreachable; ``error`` carries the
           exception message for debugging.
     """
@@ -177,14 +176,11 @@ async def demo_reset(request: Request) -> dict:
     are cheap, idempotent, and safe to run even when the other demo doesn't
     need it.
 
-    This restores ``tan -> yellow`` and re-tags the affected products (fast
-    path — one mapping row plus an ``_update_by_query`` over the ~35
-    products actually listed as tan, not a full 20s re-ingest), and deletes
-    any ``waterproof`` mapping rows plus strips the fields they tagged onto
-    products (also ``_by_query``, no reindex). Deliberately surgical: each
-    undoes its own demo and nothing else, unlike seeding, which rediscovers
-    the color taxonomy from scratch and discards everything the agent has
-    learned.
+    This restores ``tan -> yellow`` and re-tags the affected products (one
+    mapping row plus an ``_update_by_query`` over the products actually listed
+    as tan), and deletes any ``waterproof`` mapping rows plus strips the fields
+    they tagged onto products (also ``_by_query``). Deliberately surgical: each
+    undoes its own demo and nothing else the agent has learned.
 
     Gated on ENABLE_ENRICHMENT_TOOL — same switch as the rest of the demo
     machinery, so a deployment that cannot run the demo cannot reset it either.
@@ -203,13 +199,8 @@ async def demo_reset(request: Request) -> dict:
 
 
 def _demo_reset_sync() -> dict:
-    """Blocking mapping write + re-tag, kept off the event loop.
-
-    Defaults to the FAST path: the demo is reset by a presenter clicking a
-    button between rehearsals, and a 20s full re-ingest on every click is not
-    something anyone will wait through. The fast path is a surgical undo of
-    exactly what the demo changed — see quality.demo_reset.
-    """
+    """Blocking mapping write + re-tag, kept off the event loop — a surgical undo of
+    exactly what the demos changed (see quality.demo_reset)."""
     from quality.demo_reset import reset_demo_taxonomy
 
     return reset_demo_taxonomy()

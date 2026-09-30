@@ -1,4 +1,4 @@
-"""Conversation summarization for EcommerceSearchAgent (split out of main.py in #47)."""
+"""Conversation summarization for EcommerceSearchAgent."""
 
 import logging
 from typing import Sequence

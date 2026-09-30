@@ -419,9 +419,8 @@ class EnrichmentTriggeredEvent(BaseEvent):
     canonical: Optional[str] = None  # the canonical bucket it resolved to, e.g. "brown"
     # Lifecycle phase (#103). This event is emitted MORE THAN ONCE per
     # enrichment: "started" immediately before the reindex is kicked off, then
-    # exactly one terminal event ("complete" / "failed" / "declined"). Before
-    # #103 only the terminal event existed, which meant the ~20s reindex window
-    # was invisible to the UI and the value judge's rejection was silent.
+    # exactly one terminal event ("complete" / "failed" / "declined"), so the
+    # UI can show the re-tag window and the value judge's rejection.
     status: Literal["started", "complete", "failed", "declined"] = "complete"
     # Set when this replaced an EXISTING wrong mapping rather than adding a new
     # one — the difference between "learned tan → brown" and "corrected tan

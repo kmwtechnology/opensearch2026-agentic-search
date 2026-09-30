@@ -1,7 +1,7 @@
 /**
  * DslViewerModal - Shows the raw OpenSearch DSL JSON body for a query that
  * the retriever sent to the cluster. Used by the eye-icon triggers on the
- * hybrid query, BM25 baseline query, and quality-gate retry cards.
+ * hybrid query and quality-gate retry cards.
  *
  * The body is shown verbatim except for embedding vectors, which are
  * replaced upstream with a placeholder string for readability.

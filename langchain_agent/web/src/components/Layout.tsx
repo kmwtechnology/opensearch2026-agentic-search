@@ -13,15 +13,14 @@
  *
  *  - The conversations sidebar is gone, along with the presentation-mode
  *    toggle that used to hide it. The app is now permanently in the mode the
- *    toggle produced, so the toggle has nothing left to say. The links and
- *    the sign-out the sidebar hosted moved into the header rather than being
- *    quietly dropped.
+ *    toggle produced, so the toggle has nothing left to say. The links the
+ *    sidebar hosted moved into the header.
  *  - No resizable panes. A drag handle is a thing to fumble on stage, and the
  *    45/55 split is already sized for 1920×1080.
  *  - Nothing scrolls except the chat message list. The narrator caps its own
  *    line count for exactly this reason.
  *
- * The dense observability panel is intact and one keypress (D) away.
+ * The dense observability panel is intact and one keypress (F2) away.
  */
 
 import { useCallback, useEffect, useState } from 'react'

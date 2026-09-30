@@ -40,7 +40,7 @@ src/
 │   ├── DemoSelector.tsx        the scripted demos
 │   └── Layout.tsx
 ├── demos/registry.ts           SOURCE OF TRUTH for the three scripted demos (queries, steps, expectations)
-├── hooks/                      useWebSocket (event dispatch into the stores), useRecentSearches
+├── hooks/                      useWebSocket (event dispatch into the stores)
 ├── stores/                     Zustand
 ├── pages/                      GuidePage (presenter notes), SwaggerPage
 ├── types/events.ts             mirrors api/schemas/events.py — enforced by a Python parity test
@@ -69,7 +69,7 @@ src/
 
 ## Tests
 
-Vitest suites live in `__tests__/` folders next to the code: the three
+Vitest suites live in `__tests__/` folders next to the code: the two
 stores, `useWebSocket` (client side of the event contract), `narrate`,
 `ProductCard` / `Message` / `MessageList` (the rendering rules above), and the
 observability detail cards.

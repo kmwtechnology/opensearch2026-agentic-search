@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval fused via RRF, dynamic alpha per intent, cross-encoder reranking with a quality gate, real-time WebSocket streaming, and an agentic taxonomy self-correction loop. Runs **fully local** — Docker Compose + native Ollama for every model (chat and embeddings), no cloud API key. `make dev` starts everything side by side: the native backend (:8080) with the live-reloading Vite UI (:5173), and the demo container (:8000, backend + built UI, rebuilt from the tree on each start) — see "Local dev lifecycle" and "Deploy & CI reality" below.
+**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval fused by an OpenSearch search pipeline, dynamic alpha per intent, cross-encoder reranking with a quality gate, real-time WebSocket streaming, and an agentic taxonomy self-correction loop. Runs **fully local** — Docker Compose + native Ollama for every model (chat and embeddings), no cloud API key. `make dev` starts everything side by side: the native backend (:8080) with the live-reloading Vite UI (:5173), and the demo container (:8000, backend + built UI, rebuilt from the tree on each start) — see "Local dev lifecycle" and "Deploy & CI reality" below.
 
 ## New Session Checklist
 
@@ -82,13 +82,13 @@ Spoken triggers "start local dev" / "stop local dev" / "teardown local dev" map 
 The agent is a LangGraph `StateGraph(CustomAgentState)` built in `main.py::create_agent_graph()`:
 
 ```
-intent_classifier ─┬─(summary)──► summary ─┬─(continue)──► retriever
-                    ├─(clarify)──► agent    └─(done)──────► agent
+intent_classifier ─┬─(summary)──► summary ──► agent
+                    ├─(clarify)──► agent
                     └─(other)────► query_evaluator ──► retriever ──► reranker ──► quality_gate ─┬─(retry)───► retriever
                                                                                                   └─(continue)► agent ──► llm_judge ──► END
 ```
 
-Six intent classes (`search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary`) come from a single structured-output LLM call in `intent_classifier_node` — no keyword fast-path. Confidence < 0.7 routes to `agent` for clarification instead of retrieving. Conversational query rewriting (resolving pronouns/comparatives against history) happens *inside* `retriever_node` (via `_expand_vague_query`), not as a separate graph node. `quality_gate_node` can loop back to `retriever` exactly once with an adjusted alpha and a 4x wider candidate pool (`RETRY_FETCH_MULTIPLIER`; intent-specific thresholds: comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45); `quality_gate_status` must be explicitly set to `"pass"`/`"retry"` on every return path or a prior turn's `"retry"` can leak forward through checkpointed state. The `agent` node is registered with both a sync and async callable (`RunnableCallable(self.agent_node, self.aagent_node, name="agent")`) — `agent_node` is the body (and what unit tests call directly), `aagent_node` hands it to a worker thread; the API drives the graph via `astream_events()` and needs that async path or a taxonomy re-tag blocks every WebSocket frame. `llm_judge_node` (post-agent, optional) flags hallucinations and auto-retries generation for `fabrication`/`cross_product_bleed` categories only; `hallucination_retry_used` must be reset to `False` at the top of every new user turn.
+Six intent classes (`search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary`) come from a single structured-output LLM call in `intent_classifier_node` — no keyword fast-path. Confidence < 0.7 routes to `agent` for clarification instead of retrieving. A `summary` turn goes `summary → agent` and never retrieves. Conversational query rewriting (resolving pronouns/comparatives against history) happens *inside* `retriever_node` (via `_expand_vague_query`), not as a separate graph node. `quality_gate_node` can loop back to `retriever` exactly once with an adjusted alpha and a 4x wider candidate pool (`RETRY_FETCH_MULTIPLIER`; intent-specific thresholds: comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45); `quality_gate_status` must be explicitly set to `"pass"`/`"retry"` on every return path or a prior turn's `"retry"` can leak forward through checkpointed state. The `agent` node is registered with both a sync and async callable (`RunnableCallable(self.agent_node, self.aagent_node, name="agent")`) — `agent_node` is the body (and what unit tests call directly), `aagent_node` hands it to a worker thread; the API drives the graph via `astream_events()` and needs that async path or a taxonomy re-tag blocks every WebSocket frame. `llm_judge_node` (post-agent, always on for retrieval turns) flags hallucinations and auto-retries generation for `fabrication`/`cross_product_bleed` categories only; `hallucination_retry_used` must be reset to `False` at the top of every new user turn.
 
 ### Module layout (post issue #91 reorg)
 
@@ -99,7 +99,6 @@ Six intent classes (`search`, `comparison`, `attribute_filter`, `refinement`, `f
 - `retrieval/` — vector store, reranker, embeddings, attribute discovery/mapping store
 - `quality/` — LLM judge, enrichment service + value judge, demo reset
 - `observability/` — embedding cache, confidence proxy, LLM content helpers
-- `checkpoints/` — `checkpoint_optimizer.py` (keeps transient fields out of persisted state)
 - `tools/` — `enrichment_tool.py` (the agent's `trigger_enrichment` tool)
 - `api/` — FastAPI app (`main.py`, `routes/` = `chat`, `health`, `admin`; `schemas/`, `services/`, `middleware/` = `origin_auth`)
 
@@ -109,7 +108,7 @@ Six intent classes (`search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 ### Error hierarchy
 
-All custom exceptions (`core/exceptions.py`) inherit from `AgenticHybridSearchError` (message, optional `details`, `recoverable` flag) — catch that one type to handle any agent-related error uniformly. Subclasses (only the ones production code raises): `LLMError`, `SearchValidationError`, `SearchFailureError`, `EmbeddingError`, `SearchTimeoutError`.
+All custom exceptions (`core/exceptions.py`) inherit from `AgenticHybridSearchError` — plain `Exception` subclasses carrying only a message. The four subclasses, all raised in `retrieval/vector_store.py`: `SearchValidationError`, `SearchFailureError`, `EmbeddingError`, `SearchTimeoutError`. `str(e)` is what reaches the UI in `agent_error`.
 
 ### Auth model
 
@@ -127,7 +126,7 @@ Beyond that one-time historical tagging, the agent can grow *or fix* the live ta
 
 ### Product images (issues #144, #147)
 
-Every product carries its own photo URL. The corpus is the ESCI US `test` + `small_version` subset (158,637 products). [SQID](https://github.com/Crossing-Minds/shopping-queries-image-dataset) scraped Amazon image URLs for exactly that subset, joined into the corpus as `product_image_url` when it was built (95.5% coverage; SQID's `Default_Background_Art` placeholder was treated as no image). The index stores the field as `keyword`, `index: false`: it is displayed, never searched. `_hit_to_document` exposes it as `metadata["image_url"]`, and each citation carries `image_url` next to `asin`. `citations` is typed `List[Dict[str, str]]`, so the event schema needs no change. The strict REST `Citation` model in `api/routes/chat.py` and both frontend types do declare it.
+Every product carries its own photo URL. The corpus is the ESCI US `test` + `small_version` subset (158,637 products). [SQID](https://github.com/Crossing-Minds/shopping-queries-image-dataset) scraped Amazon image URLs for exactly that subset, joined into the corpus as `product_image_url` when it was built (95.5% coverage; SQID's `Default_Background_Art` placeholder was treated as no image). The index stores the field as `keyword`, `index: false`: it is displayed, never searched. `_hit_to_document` exposes it as `metadata["image_url"]`, and each citation carries `image_url` next to `asin`. `citations` is typed `List[Dict[str, str]]`, so the event schema needs no change; the frontend `Citation` type (`web/src/stores/chatStore.ts`) declares it.
 
 Images are **not** bundled or curated. They load straight from Amazon's CDN (`referrerPolicy="no-referrer"`). The old committed-JPG approach (`web/src/assets/products/`, `fetch_product_images.py`, hand-picked substitute ASINs) was removed in #147. A URL that 404s (a product delisted since the SQID scrape) trips `ProductCard`'s `onError`, and that bullet falls back to plain text.
 
@@ -144,7 +143,7 @@ The photos are **inline, not a strip**: the `li` renderer in `Message.tsx` turns
 | Embeddings | `nomic-embed-text` via local Ollama (768-dim; `search_document:` when the corpus was originally embedded, `search_query:` at query time via `retrieval/embeddings.py`) |
 | Corpus | 158,637 ESCI US test/small products (query-first, every query fully judged), 95.5% with a SQID image URL |
 | Agent framework | LangGraph + LangChain |
-| Vector DB | OpenSearch (HNSW knn + BM25) |
+| Vector DB | OpenSearch (HNSW knn + BM25; the `hybrid` query is fused by a search pipeline at fixed equal weights — `alpha` only matters at exactly 0.0/1.0, see ARCHITECTURE.md) |
 | Checkpoints | PostgreSQL 18 via `langgraph-checkpoint-postgres` (compose image `pgvector/pgvector:0.8.6-pg18`; the vector extension is unused) |
 | API | FastAPI + WebSocket |
 | Frontend | React 19 + TypeScript + Vite + Zustand, Vitest + ESLint |

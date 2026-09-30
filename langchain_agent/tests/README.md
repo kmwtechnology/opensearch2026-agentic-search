@@ -9,7 +9,7 @@ itself is cruft, not coverage.
 | Suite | Needs | Run by `make ci`? |
 |---|---|---|
 | `tests/unit/` | nothing (mocks, `bare_agent`) | yes |
-| `tests/integration/` | live PostgreSQL + OpenSearch (`docker compose up -d`); Ollama for the enrichment classifier | yes — `make ci` brings Docker up first. They create and drop their own throwaway indices |
+| `tests/integration/` | live PostgreSQL + OpenSearch (`docker compose up -d`) | yes — `make ci` brings Docker up first. They create and drop their own throwaway indices |
 | `tests/e2e/` | a running backend on :8080 (`make dev`, or `smoke_local.sh` starts one) | one test — the search-intent smoke round-trip. `bash scripts/smoke_local.sh` runs the rest |
 | `web/src/**/__tests__/` | Node | yes (`vitest`) |
 
@@ -21,9 +21,8 @@ bash scripts/smoke_local.sh                                 # full e2e
 bash scripts/smoke_local.sh -k test_search_intent_returns_results
 ```
 
-Markers (`pytest.ini`, `--strict-markers`): `unit`, `integration`, `e2e`,
-`slow`, `phase1`. Only `e2e` and `slow` drive selection (`smoke_local.sh`
-runs `-m "e2e and slow"`); the others are labels. `timeout = 30` per test.
+Markers (`pytest.ini`, `--strict-markers`): `e2e` and `slow`, which
+`smoke_local.sh` selects with `-m "e2e and slow"`. `timeout = 30` per test.
 
 E2E tests read `DEPLOYMENT_URL` (default `http://localhost:8080`, the native
 backend — the working tree). Don't point them at :8000: that is the demo image,

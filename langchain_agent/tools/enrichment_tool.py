@@ -3,10 +3,10 @@ trigger_enrichment — the real LangChain tool the agent uses to grow the
 color or waterproof taxonomy live, on stage. The calling LLM decides the
 attribute_type, the raw variant term, and its canonical bucket itself (the
 model already understands colors/waterproofing semantically); the tool just
-executes: write the mapping, ensure index fields, trigger a scoped re-tag.
+executes: write the mapping and trigger a scoped re-tag.
 
 Gated by config.ENABLE_ENRICHMENT_TOOL — bind this tool in agent_node only
-when that flag is on (see main.py's agent_node gap-signal branch).
+when that flag is on (see pipeline/pipeline_nodes.py's _try_enrichment_tool).
 """
 
 from langchain_core.tools import tool

@@ -103,7 +103,7 @@ export function GuidePage() {
             <pre className="bg-[var(--color-stage-bg)] text-[var(--color-stage-ink)] p-3 rounded text-[1.375rem] overflow-x-auto">
               <code>cd langchain_agent{'\n'}make ci</code>
             </pre>
-            <p className="text-[1.375rem] text-gray-600 mt-1">Runs the full local gate: lint, unit tests, frontend build, and a live smoke round-trip (~1-2 min)</p>
+            <p className="text-[1.375rem] text-gray-600 mt-1">Runs the full local gate: lint and types, unit tests, frontend checks and build, integration tests, and a live smoke round-trip (~2-3 min)</p>
           </div>
         </div>
       ),
@@ -293,7 +293,7 @@ export function GuidePage() {
             </div>
           </div>
 
-          <h4 className="font-semibold text-gray-900 mt-2">Auto-correction retry (Layer 3a)</h4>
+          <h4 className="font-semibold text-gray-900 mt-2">Auto-correction retry</h4>
           <p className="text-[1.375rem] text-gray-600">
             The judge triggers a regenerate-and-re-judge pass whenever at least one flag is fabrication or cross-product bleed, regardless of the faithfulness score. The agent re-prompts the LLM with explicit "do NOT include claim X" instructions, then re-judges; the UI shows both the original and corrected verdicts with an <em>Auto-corrected</em> badge.
           </p>
@@ -398,7 +398,7 @@ export function GuidePage() {
             <div className="border-l-4 border-red-500 pl-3">
               <p className="font-semibold text-gray-900">ConnectionError: Error connecting to OpenSearch</p>
               <p className="text-gray-600">OpenSearch not running</p>
-              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Fix: <code className="bg-gray-100 px-1">cd langchain_agent && make dev</code> from repo root to start all services</p>
+              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Fix: <code className="bg-gray-100 px-1">cd langchain_agent && make dev</code> to start all services</p>
             </div>
 
             <div className="border-l-4 border-red-500 pl-3">
@@ -422,19 +422,13 @@ export function GuidePage() {
             <div className="border-l-4 border-yellow-500 pl-3">
               <p className="font-semibold text-gray-900">Demo: Taxonomy demo turn 1 shows nothing wrong</p>
               <p className="text-gray-600">Demo not re-armed after previous run</p>
-              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">The demo consumes a data defect (tan mis-tagged as yellow) and the prior run fixed it. The UI auto-re-arms on selection, but if you run turn 1 twice in one session, the second run shows no issue because the catalog no longer has the bug. Re-select the demo in the dropdown to re-arm.</p>
+              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">The demo consumes a data defect (tan mis-tagged as yellow) and the prior run fixed it. Next re-arms the catalog before turn 1 and Restart re-arms it too; only a hand-typed turn 1 skips the re-arm. Use Restart, or the reset endpoint, before typing turn 1 yourself.</p>
             </div>
 
             <div className="border-l-4 border-yellow-500 pl-3">
               <p className="font-semibold text-gray-900">Demo: Taxonomy demo turn 3 shows wrong results</p>
               <p className="text-gray-600">Query is being rewritten down a lexical path instead of showing the fixed tag</p>
-              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Turn 3 must be run in a brand-new conversation — reusing the same thread causes the query rewriter to take a lexical shortcut instead of re-searching. Close the conversation and start a new one before running turn 3.</p>
-            </div>
-
-            <div className="border-l-4 border-yellow-500 pl-3">
-              <p className="font-semibold text-gray-900">Demo: F2 key not toggling detail panel</p>
-              <p className="text-gray-600">Chat input has focus</p>
-              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Keyboard shortcuts only work when the detail panel or main page has focus. If the chat input field is active (cursor blinking), F2 will type into the message instead of toggling the panel. Click elsewhere first or submit your message.</p>
+              <p className="text-[var(--color-stage-ink-soft)] text-[1.25rem] mt-1">Turn 3 must run in a brand-new conversation — reusing the same thread lets the query rewriter take a lexical shortcut instead of re-searching. Next opens the new conversation itself; if you type turn 3 by hand, start a new conversation first.</p>
             </div>
 
             <div className="border-l-4 border-yellow-500 pl-3">

@@ -68,7 +68,7 @@ INDEX_MAPPING = {
         },
         "analysis": {
             # Splits on every non-[A-Za-z0-9] character -- the same word
-            # boundaries as Java 21's ASCII \b in AttributeDetectorStage. The
+            # boundaries as the ASCII \b of the detector regex (pipeline/scoped_retag.py). The
             # standard tokenizer keeps "Color:black" / "Brown.All" as ONE token
             # (Unicode MidLetter rules), so a phrase query on chunk_text misses
             # text the detector regex matches; chunk_text.words doesn't. Used

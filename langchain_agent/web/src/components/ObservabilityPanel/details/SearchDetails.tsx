@@ -14,7 +14,7 @@ interface SearchDetailsProps {
    * Which pipeline step is rendering this view.
    * - `retriever` (default): always show pre-rerank candidates — even after
    *   reranking completes — so the card represents what the retriever produced.
-   * - `reranker`: show the reranked document list (post-LLM scoring).
+   * - `reranker`: show the reranked document list (cross-encoder scores).
    */
   mode?: 'retriever' | 'reranker'
 }
@@ -25,10 +25,9 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
   const [hybridDslOpen, setHybridDslOpen] = useState(false)
   const [retryDslOpen, setRetryDslOpen] = useState(false)
 
-  // The retriever step now emits multiple opensearch_query events (one per
-  // query type). Pick the hybrid event for the main query banner; the
-  // BM25 baseline shows up on PipelineSummaryCard, and the quality-gate
-  // retry surfaces below as a second banner when present.
+  // The retriever step emits one opensearch_query event per query type. Pick
+  // the hybrid event for the main query banner; the quality-gate retry surfaces
+  // below as a second banner when present.
   const retrieverStep = steps.find(s => s.node === 'retriever')
   const opensearchEvents = (retrieverStep?.events ?? []).filter(
     (e): e is OpenSearchQueryEvent => e.type === 'opensearch_query'

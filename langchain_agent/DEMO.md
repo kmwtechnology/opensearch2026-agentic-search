@@ -163,12 +163,9 @@ The closing beat is what the agent *stops* saying: in turn 1 it volunteered a
 tagging error; here it says nothing, because there is nothing left to flag.
 
 > **Heads-up:** turn 3 can sit on the status card longer than other turns before
-> streaming — despite retrieving the same 10 documents as turn 1 in a plain
-> `attribute_filter` query with no tool-offer/correction check running (see #106:
-> the earlier "reasoning about the correction" explanation was wrong — nothing is
-> checking anything on this turn). The cause of the spike itself is still
-> unconfirmed (TODO: re-measure); treat it as ordinary answer-generation latency
-> and have a sentence ready rather than narrating what the status card says.
+> streaming. Nothing is checking anything on this turn (it is a plain
+> `attribute_filter` query); treat it as ordinary answer-generation latency and
+> have a sentence ready.
 
 ---
 
@@ -179,8 +176,8 @@ Each of these was tested; the measurements are in the commit history.
 - **Never mention price, cost, or budget.** The catalog has **no price field in
   any form**. The agent is instructed to refuse and redirect. An invented dollar
   figure is the worst thing this demo could put on a screen.
-- **Do not say dynamic alpha makes the results better.** It provably changes the
-  *ranking*, but at α 0.25 the first page of "blue running shoes" includes blue
+- **Do not say dynamic alpha makes the results better.** Between 0 and 1 the
+  fused query is identical (see the FAQ); at α 0.25 the first page of "blue running shoes" includes blue
   *jeans*, while a pure-semantic run of the same query returns five actual
   running shoes. Alpha is *how literally it read the question*, not a quality
   win. **The reranker** is what removes the jeans.
@@ -249,9 +246,10 @@ classification, query evaluation, and judging — no cloud API key needed.
 **local cross-encoder** (`ms-marco-MiniLM-L-12-v2`), not an LLM call — baked
 into the image, no added latency.
 
-**How does RRF fusion work?** Per document,
-`score = 1/(rank_vector + 60) + 1/(rank_lexical + 60)`. Normalizes ranks from
-both methods without needing probability calibration.
+**How are the two searches fused?** One OpenSearch `hybrid` query runs kNN and
+BM25; a search pipeline min-max normalizes each score list and averages them
+at equal weights. `alpha` switches to pure BM25 at exactly 0 and pure kNN at
+exactly 1; in between the fused query is the same.
 
 **Was that re-index real, or just the affected products?** Just the affected
 products — a scoped re-tag (`pipeline/scoped_retag.py`) re-detects the
@@ -280,15 +278,11 @@ tool is behind `ENABLE_ENRICHMENT_TOOL` (off in code, on in this repo's `.env`).
 evolution" above, which walks it end to end as a growth story), and the
 correction path is generic over `attribute_type`.
 
-**Non-e-commerce domains?** Yes. Swap ESCI products for your own documents; the
-pipeline is domain-agnostic.
-
 **Conversation memory?** LangGraph checkpoints in PostgreSQL, one thread per
 conversation; the `summary` intent summarizes from them on request.
 
-**Latency?** Intent 10–500ms → query eval 10–500ms → retrieval 200–500ms →
-reranking 1–2s → agent 3–8s. Roughly 6–15s per turn, and you will see the agent
-step dominate.
+**Latency?** See the table in ARCHITECTURE.md — roughly 6–21 s per turn, and
+you will see answer generation and the judge dominate.
 
 **Index size?** Amazon ESCI (~1.2M US products); the demo uses a corpus of
 158,637 products — every judged product of the ESCI US test + small_version

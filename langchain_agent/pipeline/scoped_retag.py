@@ -27,9 +27,7 @@ product keeps. So a scoped re-tag sets ``_primary``/``_secondary`` exactly
 (set or remove) but only writes the raw field when something was detected.
 
 ``tests/unit/test_scoped_retag.py`` pins the port to the Java stage's own test
-cases. (The one-time ``scripts/check_retag_parity.py`` tool, which checked
-parity against a real index while this port was being validated, was retired
-after that validation was done.)
+cases.
 """
 
 import logging
@@ -114,8 +112,7 @@ def candidate_query(attribute_type: str, variants: Iterable[str]) -> dict:
     A superset is fine (detection re-runs exactly); a miss is not. Products
     whose chunk_text contains the variant as a phrase can gain or change a
     tag; products whose raw tag *is* the variant can lose one (e.g. the
-    mapping was deleted). The since-retired ``scripts/check_retag_parity.py``
-    tool measured this candidate recall against a real index.
+    mapping was deleted).
     """
     should = []
     for variant in variants:
