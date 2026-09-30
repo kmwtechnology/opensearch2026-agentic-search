@@ -4,41 +4,12 @@
  * via iframe.
  */
 
-import { useEffect, useState } from 'react'
-
 export function SwaggerPage() {
-  const [swaggerUrl, setSwaggerUrl] = useState<string>('')
-
-  useEffect(() => {
-    const determineSwaggerUrl = async () => {
-      let apiUrl = ''
-
-      try {
-        const response = await fetch('/api/config')
-        const config = await response.json()
-        if (config.apiUrl) {
-          apiUrl = config.apiUrl
-        }
-      } catch (err) {
-        console.warn('Failed to fetch API config:', err)
-      }
-
-      if (!apiUrl) {
-        // Vite dev server (:5173) talks to the native backend on :8080;
-        // anywhere else (the demo container) the API is same-origin.
-        apiUrl =
-          window.location.port === '5173' ? 'http://localhost:8080' : window.location.origin
-      }
-
-      setSwaggerUrl(`${apiUrl}/swagger`)
-    }
-
-    determineSwaggerUrl()
-  }, [])
-
-  if (!swaggerUrl) {
-    return <div className="h-screen w-screen bg-white flex items-center justify-center">Loading...</div>
-  }
+  // Vite dev server (:5173) talks to the native backend on :8080; anywhere else
+  // (the demo container) the API is same-origin.
+  const apiUrl =
+    window.location.port === '5173' ? 'http://localhost:8080' : window.location.origin
+  const swaggerUrl = `${apiUrl}/swagger`
 
   return (
     <div className="h-screen w-screen bg-white overflow-hidden flex flex-col">

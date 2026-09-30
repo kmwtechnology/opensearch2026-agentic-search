@@ -21,7 +21,6 @@ from api.schemas.events import (
     LLMResponseChunkEvent,
     LLMResponseCorrectedEvent,
     LLMResponseStartEvent,
-    MetricsEvent,
     NodeEndEvent,
     NodeStartEvent,
     PipelineSummaryEvent,
@@ -36,8 +35,6 @@ from core.config import (
     ANSWER_STREAM_TAG,
     DEFAULT_ALPHA,
     INTERNAL_LLM_TAG,
-    RERANKER_TYPE,
-    RETRIEVER_FETCH_K,
 )
 from main import EcommerceSearchAgent
 from observability.confidence_proxy import confidence_from_scores, count_rank_changes
@@ -136,8 +133,6 @@ class ObservableAgentService:
     ) -> Optional[str]:
         """Run one user message through the graph, emitting events; returns the final answer text, or None on failure."""
         start_time = time.time()
-        metrics: Dict[str, float] = {}
-
         try:
             # Wait for warmup to complete (poll without holding lock to avoid
             # deadlock with _warmup_reranker which needs the lock to set the flag)
@@ -161,11 +156,6 @@ class ObservableAgentService:
                     ConversationContextEvent(
                         previous_message_count=previous_count,
                         is_new_conversation=is_new,
-                        summary=(
-                            "New conversation"
-                            if is_new
-                            else f"Loaded {previous_count} previous messages"
-                        ),
                     )
                 )
 
@@ -181,10 +171,7 @@ class ObservableAgentService:
                     "configurable": {"thread_id": thread_id},
                 }
 
-                # Track metrics timing
-                node_start_times: Dict[str, float] = {}
                 final_response: Optional[str] = None
-                documents_used = 0
                 citations: List[Dict[str, str]] = []
 
                 # Pipeline-summary state, last write wins per key as node outputs flow past.
@@ -202,10 +189,8 @@ class ObservableAgentService:
 
                 # 150s cap so a hung node cannot hold the request lock forever.
                 async def stream_graph_with_timeout():
-                    nonlocal final_response, documents_used, citations
-                    async for event in self._astream_graph(
-                        initial_state, config, emit, node_start_times, metrics
-                    ):
+                    nonlocal final_response, citations
+                    async for event in self._astream_graph(initial_state, config, emit):
                         if isinstance(event, dict):
                             if "messages" in event:
                                 for msg in event.get("messages", []):
@@ -217,7 +202,6 @@ class ObservableAgentService:
                                             )
 
                             if "retrieved_documents" in event:
-                                documents_used = len(event["retrieved_documents"])
                                 pipeline_state["post_rerank_documents"] = list(
                                     event["retrieved_documents"]
                                 )
@@ -256,22 +240,7 @@ class ObservableAgentService:
                     thread_id=thread_id,
                     total_duration_ms=total_duration_ms,
                     final_response=final_response or "No response generated",
-                    iterations=0,
-                    response_retries=0,
-                    documents_used=documents_used,
                     citations=citations,
-                )
-            )
-
-            await emit(
-                MetricsEvent(
-                    query_evaluation_ms=metrics.get("query_evaluator"),
-                    retrieval_ms=metrics.get("retriever"),
-                    reranking_ms=metrics.get("reranker"),
-                    document_grading_ms=None,
-                    llm_generation_ms=metrics.get("agent"),
-                    response_grading_ms=None,
-                    total_ms=total_duration_ms,
                 )
             )
 
@@ -301,22 +270,11 @@ class ObservableAgentService:
 
             return final_response
 
-        except (TimeoutError, ConnectionError, RuntimeError) as e:
-            await emit(
-                AgentErrorEvent(
-                    error=str(e),
-                    recoverable=True,  # Transient failures may succeed on retry
-                )
-            )
-            return None
         except Exception as e:
-            logger.exception("Unexpected error in agent execution")
-            await emit(
-                AgentErrorEvent(
-                    error=str(e),
-                    recoverable=False,  # Logic errors, etc. are not retryable
-                )
-            )
+            # Transient failures are expected; anything else gets a traceback.
+            if not isinstance(e, (TimeoutError, ConnectionError, RuntimeError)):
+                logger.exception("Unexpected error in agent execution")
+            await emit(AgentErrorEvent(error=str(e)))
             return None
 
     def _build_pipeline_summary(
@@ -378,7 +336,6 @@ class ObservableAgentService:
             generation=generation,
             original_generation=original_generation,
             hallucination_retry_used=bool(pipeline_state.get("hallucination_retry_used")),
-            corrected_response=pipeline_state.get("corrected_response"),
             latency=latency,
         )
 
@@ -387,8 +344,6 @@ class ObservableAgentService:
         initial_state: Dict[str, Any],
         config: Dict[str, Any],
         emit: EmitCallback,
-        node_start_times: Dict[str, float],
-        metrics: Dict[str, float],
     ):
         """Stream the graph via astream_events v2: node lifecycle, LLM tokens; yields each node's output."""
         tracked_nodes = {
@@ -401,6 +356,7 @@ class ObservableAgentService:
             "agent",
             "llm_judge",
         }
+        node_start_times: Dict[str, float] = {}
         current_node: Optional[str] = None
         accumulated_output: Dict[str, Any] = {}
         response_streaming_started = False
@@ -446,31 +402,13 @@ class ObservableAgentService:
                         )
 
                         if event_name == "retriever":
-                            input_state = event_data.get("input", {})
-                            query = ""
-                            for msg in reversed(input_state.get("messages", [])):
-                                if (
-                                    hasattr(msg, "content")
-                                    and hasattr(msg, "type")
-                                    and msg.type == "human"
-                                ):
-                                    query = msg.content
-                                    break
-
-                            await emit(
-                                HybridSearchStartEvent(
-                                    query=query,
-                                    alpha=input_state.get("alpha", DEFAULT_ALPHA),
-                                    fetch_k=RETRIEVER_FETCH_K,
-                                )
-                            )
+                            await emit(HybridSearchStartEvent())
 
                 elif event_type == "on_chain_end":
                     if event_name in tracked_nodes:
                         duration_ms = 0.0
                         if event_name in node_start_times:
                             duration_ms = (time.time() - node_start_times[event_name]) * 1000
-                            metrics[event_name] = metrics.get(event_name, 0) + duration_ms
 
                         output = event_data.get("output", {})
                         if isinstance(output, dict):
@@ -557,7 +495,6 @@ class ObservableAgentService:
         elif node_name == "query_evaluator":
             await emit(
                 QueryEvaluationEvent(
-                    query="",  # Original query used as-is (no query rewriting)
                     alpha=output.get("alpha", DEFAULT_ALPHA),
                     query_analysis=output.get("query_analysis", ""),
                     search_strategy=self._get_search_strategy(output.get("alpha", DEFAULT_ALPHA)),
@@ -587,7 +524,6 @@ class ObservableAgentService:
                     RerankerResultEvent(
                         results=reranked_docs,
                         reranking_changed_order=reranking_changed_order,
-                        reranker_type=RERANKER_TYPE,
                     )
                 )
 

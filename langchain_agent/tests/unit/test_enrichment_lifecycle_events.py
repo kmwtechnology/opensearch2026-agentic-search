@@ -171,7 +171,6 @@ class TestEnrichmentLifecycleEvents:
             reindex_success=True,
             docs_processed=9618,
             duration_seconds=19.4,
-            reindex_mode="scoped",
             corrected_from="yellow",
         )
         agent = _agent_with_llm(_correction_tool_call())
@@ -185,7 +184,6 @@ class TestEnrichmentLifecycleEvents:
         assert terminal["canonical"] == "brown"
         assert terminal["docs_processed"] == 9618
         assert terminal["duration_seconds"] == 19.4
-        assert terminal["reindex_mode"] == "scoped"
 
     @patch("retrieval.attribute_mapping_store.AttributeMappingStore")
     @patch("quality.enrichment_service.enrich_attribute")

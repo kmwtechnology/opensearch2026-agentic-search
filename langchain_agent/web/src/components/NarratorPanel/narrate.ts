@@ -287,7 +287,6 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
     correctedFrom: e.corrected_from,
     docsProcessed: e.docs_processed,
     durationSeconds: e.duration_seconds,
-    reindexMode: e.reindex_mode,
     error: e.error,
     weight: 'moment' as const,
   }

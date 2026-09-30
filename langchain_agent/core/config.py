@@ -133,7 +133,6 @@ RERANKER_TOP_K = 10
 RERANKER_WARMUP_ENABLED = os.getenv("RERANKER_WARMUP_ENABLED", "true").lower() == "true"
 
 # Reported on reranker_result events; the UI keys its description off it.
-RERANKER_TYPE = "cross-encoder"
 
 CROSS_ENCODER_MODEL = os.getenv("CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-12-v2")
 

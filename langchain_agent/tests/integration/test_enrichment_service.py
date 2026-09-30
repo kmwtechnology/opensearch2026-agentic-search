@@ -58,7 +58,6 @@ def _fake_trigger(success: bool = True, docs_processed: int = 31, docs_scanned: 
     trigger.trigger.return_value = ReindexOutcome(
         triggered=True,
         success=success,
-        mode="scoped",
         docs_processed=docs_processed if success else 0,
         docs_scanned=docs_scanned if success else 0,
         error=None if success else "scoped re-tag failed",

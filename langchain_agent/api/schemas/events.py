@@ -8,7 +8,7 @@ providing full observability into every step and decision.
 from datetime import datetime, timezone
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 # ============================================================================
 # TYPE ALIASES FOR BOUNDED SCORES
@@ -60,7 +60,6 @@ class ConnectionEstablished(BaseEvent):
 
     type: Literal["connection_established"] = "connection_established"
     thread_id: str
-    existing_messages: int = 0
 
 
 # ============================================================================
@@ -96,7 +95,6 @@ class ConversationContextEvent(BaseEvent):
     type: Literal["conversation_context"] = "conversation_context"
     previous_message_count: int
     is_new_conversation: bool
-    summary: Optional[str] = None  # e.g., "Loaded 6 previous messages"
 
 
 # ============================================================================
@@ -109,26 +107,11 @@ class QueryEvaluationEvent(BaseEvent):
 
     type: Literal["query_evaluation"] = "query_evaluation"
     node: Literal["query_evaluator"] = "query_evaluator"
-    query: str
     alpha: AlphaWeight  # 0.0 (lexical) to 1.0 (semantic), validated at construction
     query_analysis: str  # LLM's reasoning
     search_strategy: Literal[
         "lexical-heavy", "balanced", "semantic-heavy"
     ]  # Validated set of strategies
-
-    @field_validator("search_strategy", mode="after")
-    @classmethod
-    def validate_strategy_matches_alpha(cls, strategy: str, info) -> str:
-        """Ensure search strategy is consistent with alpha value."""
-        alpha = info.data.get("alpha", 0.5)
-        # Lexical-heavy for alpha < 0.3, balanced for 0.3-0.7, semantic-heavy for > 0.7
-        if alpha < 0.3 and strategy != "lexical-heavy":
-            raise ValueError(f"alpha={alpha} suggests lexical-heavy search, not '{strategy}'")
-        if 0.3 <= alpha < 0.7 and strategy != "balanced":
-            raise ValueError(f"alpha={alpha} suggests balanced search, not '{strategy}'")
-        if alpha >= 0.7 and strategy != "semantic-heavy":
-            raise ValueError(f"alpha={alpha} suggests semantic-heavy search, not '{strategy}'")
-        return strategy
 
 
 class IntentClassificationEvent(BaseEvent):
@@ -210,9 +193,6 @@ class HybridSearchStartEvent(BaseEvent):
 
     type: Literal["hybrid_search_start"] = "hybrid_search_start"
     node: Literal["retriever"] = "retriever"
-    query: str
-    alpha: AlphaWeight  # Validated to [0.0, 1.0]
-    fetch_k: Annotated[int, Field(gt=0, description="Number of documents to fetch (must be > 0)")]
 
 
 class SearchCandidate(BaseModel):
@@ -220,11 +200,6 @@ class SearchCandidate(BaseModel):
 
     source: str
     snippet: str
-    full_content: Optional[str] = None
-    vector_score: Optional[float] = None
-    text_score: Optional[float] = None
-    rrf_score: Optional[float] = None
-    url: Optional[str] = None
 
 
 class HybridSearchResultEvent(BaseEvent):
@@ -246,8 +221,6 @@ class RerankerStartEvent(BaseEvent):
 
     type: Literal["reranker_start"] = "reranker_start"
     node: Literal["reranker"] = "reranker"
-    model: str
-    candidate_count: int
 
 
 class RerankedDocument(BaseModel):
@@ -265,18 +238,6 @@ class RerankedDocument(BaseModel):
     rank_change: int = 0  # How much the rank changed (computed: rank - original_rank)
     url: Optional[str] = None
 
-    @field_validator("rank_change", mode="after")
-    @classmethod
-    def validate_rank_change(cls, rank_change: int, info) -> int:
-        """Ensure rank_change is consistent with rank and original_rank."""
-        rank = info.data.get("rank")
-        original_rank = info.data.get("original_rank")
-        if rank is not None and original_rank is not None:
-            expected = rank - original_rank
-            if rank_change != expected:
-                raise ValueError(f"rank_change={rank_change} but rank - original_rank = {expected}")
-        return rank_change
-
 
 class RerankerResultEvent(BaseEvent):
     """Emitted when reranking completes with scored documents."""
@@ -285,9 +246,6 @@ class RerankerResultEvent(BaseEvent):
     node: Literal["reranker"] = "reranker"
     results: List[RerankedDocument]
     reranking_changed_order: bool = False
-    # The actually configured RERANKER_TYPE (only "cross-encoder" since #148) —
-    # lets the UI describe the real reranker instead of assuming one (#87).
-    reranker_type: str = "cross-encoder"
 
 
 # ============================================================================
@@ -300,9 +258,6 @@ class SearchProgressEvent(BaseEvent):
 
     type: Literal["search_progress"] = "search_progress"
     node: Literal["retriever"] = "retriever"
-    stage: Literal[
-        "attribute_extraction", "embedding", "vector_search", "text_search", "fusion"
-    ] = "embedding"
     message: str  # e.g., "Embedding query...", "Searching vector index..."
 
 
@@ -311,7 +266,6 @@ class RerankerProgressEvent(BaseEvent):
 
     type: Literal["reranker_progress"] = "reranker_progress"
     node: Literal["reranker"] = "reranker"
-    stage: Literal["scoring", "ranking"] = "scoring"
     progress: ProgressPercent = 0.0  # 0.0-1.0, validated
     message: str  # e.g., "Scoring document 20/40..."
 
@@ -359,9 +313,6 @@ class AgentCompleteEvent(BaseEvent):
     thread_id: str
     total_duration_ms: float
     final_response: str
-    iterations: int = 0  # Number of retrieval iterations
-    response_retries: int = 0  # Number of response retries
-    documents_used: int = 0
     citations: Optional[List[Dict[str, str]]] = None
 
 
@@ -370,8 +321,6 @@ class AgentErrorEvent(BaseEvent):
 
     type: Literal["agent_error"] = "agent_error"
     error: str
-    node: Optional[str] = None
-    recoverable: bool = False
 
 
 # ============================================================================
@@ -443,32 +392,13 @@ class PipelineSummaryEvent(BaseEvent):
     # LLM-as-judge result. Adds the "Generation" row to the card with a
     # pairwise verdict + 4 absolute scores + hallucinations.
     generation: Optional[GenerationJudgment] = None
-    # When auto-correction (Layer 3a) fires, ``generation`` carries the
-    # post-retry judgment and these fields carry the original (flagged)
-    # judgment + corrected response text so the UI can show before/after.
+    # When auto-correction fires, ``generation`` carries the post-retry judgment
+    # and ``original_generation`` the original (flagged) one, so the UI can show
+    # before/after.
     original_generation: Optional[GenerationJudgment] = None
     hallucination_retry_used: bool = False
-    corrected_response: Optional[str] = None
 
     latency: List[LatencyStage] = []
-
-
-# ============================================================================
-# METRICS EVENT
-# ============================================================================
-
-
-class MetricsEvent(BaseEvent):
-    """Emitted with timing and performance metrics."""
-
-    type: Literal["metrics"] = "metrics"
-    query_evaluation_ms: Optional[float] = None
-    retrieval_ms: Optional[float] = None
-    reranking_ms: Optional[float] = None
-    document_grading_ms: Optional[float] = None
-    llm_generation_ms: Optional[float] = None
-    response_grading_ms: Optional[float] = None
-    total_ms: float
 
 
 # ============================================================================
@@ -499,8 +429,6 @@ class EnrichmentTriggeredEvent(BaseEvent):
     corrected_from: Optional[str] = None
     # Why a "failed" or "declined" event happened, in presentable prose.
     error: Optional[str] = None
-    # Always "scoped" (pipeline/scoped_retag.py) — the only reindex mode.
-    reindex_mode: Optional[str] = None
     # Measured, real numbers from the completed reindex — None on every
     # non-"complete" status.
     duration_seconds: Optional[float] = None
@@ -539,5 +467,4 @@ AgentEvent = (
     | AgentCompleteEvent
     | AgentErrorEvent
     | PipelineSummaryEvent
-    | MetricsEvent
 )

@@ -30,9 +30,8 @@ class EnrichmentResult:
     reindex_triggered: bool = False
     reindex_success: bool = False
     docs_processed: int = 0  # products whose tags the reindex changed
-    docs_scanned: int = 0  # scoped mode: products re-detected (text mentions the variant)
+    docs_scanned: int = 0  # products re-detected (text mentions the variant)
     duration_seconds: float = 0.0
-    reindex_mode: str = "scoped"
     reindex_error: Optional[str] = None  # short detail when reindex_success is False
     # The mapping this replaced, when it corrected a wrong one (e.g. "tan"->"yellow") rather than adding.
     corrected_from: Optional[str] = None
@@ -136,7 +135,6 @@ def enrich_attribute(
         docs_processed=outcome.docs_processed,
         docs_scanned=outcome.docs_scanned,
         duration_seconds=outcome.duration_seconds,
-        reindex_mode=outcome.mode,
         reindex_error=outcome.error,
         corrected_from=existing_canonical,
     )

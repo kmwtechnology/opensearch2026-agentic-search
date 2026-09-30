@@ -44,10 +44,6 @@ class EnrichmentResponse(BaseModel):
     reindex_success: bool = False
     docs_processed: int = Field(0, description="Documents processed by the triggered reindex")
     duration_seconds: float = Field(0.0, description="Wall-clock time of the triggered reindex")
-    reindex_mode: str = Field(
-        "scoped",
-        description="Which reindex mechanism ran: always 'scoped' (pipeline/scoped_retag.py)",
-    )
     reindex_error: Optional[str] = Field(
         None, description="Short failure detail when reindex_success is False"
     )

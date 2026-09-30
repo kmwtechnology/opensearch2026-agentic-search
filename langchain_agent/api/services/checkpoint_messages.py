@@ -1,11 +1,5 @@
-"""Shared checkpoint message-loading helpers.
-
-Both the WebSocket connect handler (api/routes/chat.py) and
-ObservableAgentService (api/services/observable_agent.py) need to count how
-many human/AI messages already exist for a thread_id, read from LangGraph's
-checkpoint_blobs table -- they used to implement this independently and had
-already drifted (one required non-empty message content, the other didn't).
-"""
+"""Counts the human/AI messages already checkpointed for a thread_id, read from
+LangGraph's checkpoint_blobs table (used by ObservableAgentService)."""
 
 from typing import Any, Optional
 

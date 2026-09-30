@@ -174,7 +174,6 @@ class TestTriggerEnrichmentTool:
             canonical="waterproof",
             reindex_triggered=True,
             reindex_success=False,
-            reindex_mode="scoped",
             reindex_error="OpenSearch bulk update timed out",
         )
 

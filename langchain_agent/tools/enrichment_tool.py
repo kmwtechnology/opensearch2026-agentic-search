@@ -71,15 +71,9 @@ def format_enrichment_message(result: EnrichmentResult) -> str:
             f"the mapping is saved and will take effect on the next successful re-index."
         )
 
-    if result.reindex_mode == "scoped":
-        return (
-            f"{action}. Re-checked the {result.docs_scanned} products that mention "
-            f"'{result.variant}' and re-tagged {result.docs_processed} of them in "
-            f"{result.duration_seconds:.1f}s — the fix is now live."
-        )
-
     return (
-        f"{action}. Re-indexed {result.docs_processed} products in "
+        f"{action}. Re-checked the {result.docs_scanned} products that mention "
+        f"'{result.variant}' and re-tagged {result.docs_processed} of them in "
         f"{result.duration_seconds:.1f}s — the fix is now live."
     )
 

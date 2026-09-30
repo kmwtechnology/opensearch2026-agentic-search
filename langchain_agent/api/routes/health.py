@@ -2,10 +2,8 @@
 Health check endpoints for monitoring API and dependencies.
 """
 
-import os
-
 import psycopg
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 
 from core.config import (
@@ -135,60 +133,3 @@ async def health_check():
         Health status of postgres, llm, vector_store, and overall system.
     """
     return await run_in_threadpool(_health_check_sync)
-
-
-@router.get("/config", summary="Runtime frontend config (API URL discovery)")
-async def get_frontend_config(request: Request):
-    """
-    Runtime configuration for frontend.
-
-    **Purpose:** Allow frontend to discover API URL at runtime (not build time).
-
-    **Why needed:**
-        - The same code could run behind any domain (dev, or a future deploy)
-        - Frontend doesn't know its own domain until runtime
-        - API_URL is environment-dependent
-
-    **Request:** `GET /api/config`
-
-    **Response:** 200 OK
-        ```json
-        {
-            "apiUrl": "https://example.com"
-        }
-        ```
-        (or empty string in dev if not configured)
-
-    **Behavior:**
-        - If request Origin is HTTPS → use Origin as apiUrl (same-origin HTTPS deploy)
-        - If request Origin is HTTP → use API_URL env var (dev, may be empty)
-        - Frontend uses this to construct WebSocket and API URLs
-
-    **Frontend Usage:**
-        ```typescript
-        const config = await fetch('/api/config').then(r => r.json());
-        const wsUrl = `${config.apiUrl}/ws/chat`;
-        const ws = new WebSocket(wsUrl);
-        ```
-
-    **Environment Variables:**
-        - `API_URL` — Optional explicit API base URL (for dev behind proxy)
-
-    Returns:
-        Frontend configuration object with apiUrl.
-    """
-    # Get the origin URL from the request
-    origin = request.headers.get("origin", "")
-
-    # Determine API base URL
-    # For an HTTPS same-origin deploy, use the origin URL
-    # In development the Vite UI proxies to the native backend on :8080, so
-    # an empty apiUrl (relative URLs) is correct there too.
-    if origin and origin.startswith("https://"):
-        api_url = origin
-    else:
-        api_url = os.environ.get("API_URL", "")
-
-    return {
-        "apiUrl": api_url,
-    }

@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 class ReindexOutcome:
     triggered: bool
     success: bool
-    mode: str  # "scoped"
     docs_processed: int = 0  # products whose tags changed
     docs_scanned: int = 0  # candidate products re-detected
     duration_seconds: float = 0.0
@@ -35,8 +34,6 @@ _LOCAL_REINDEX_LOCK = threading.Lock()
 class ScopedRetagTrigger:
     """Re-tag only the products a mapping change can affect."""
 
-    mode = "scoped"
-
     def trigger(
         self, attribute_type: Optional[str] = None, variants: Sequence[str] = ()
     ) -> ReindexOutcome:
@@ -44,7 +41,6 @@ class ScopedRetagTrigger:
             return ReindexOutcome(
                 triggered=False,
                 success=False,
-                mode=self.mode,
                 error="scoped re-tag needs an attribute type and variant",
             )
         if not _LOCAL_REINDEX_LOCK.acquire(blocking=False):
@@ -52,7 +48,6 @@ class ScopedRetagTrigger:
             return ReindexOutcome(
                 triggered=False,
                 success=False,
-                mode=self.mode,
                 error="a re-index is already running",
             )
         start = time.monotonic()
@@ -75,7 +70,6 @@ class ScopedRetagTrigger:
             return ReindexOutcome(
                 triggered=True,
                 success=False,
-                mode=self.mode,
                 duration_seconds=time.monotonic() - start,
                 error=f"scoped re-tag failed: {type(e).__name__}",
             )
@@ -84,7 +78,6 @@ class ScopedRetagTrigger:
         return ReindexOutcome(
             triggered=True,
             success=True,
-            mode=self.mode,
             docs_processed=result.updated,
             docs_scanned=result.candidates,
             duration_seconds=time.monotonic() - start,

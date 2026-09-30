@@ -10,7 +10,6 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from api.middleware.origin_auth import verify_websocket_origin
 from api.schemas.events import AgentErrorEvent, BaseEvent, ConnectionEstablished
-from api.services.checkpoint_messages import load_message_count
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -40,20 +39,10 @@ class ConnectionManager:
             self._agent_service = ObservableAgentService()
         return self._agent_service
 
-    async def connect(self, websocket: WebSocket, thread_id: str) -> bool:
-        """
-        Accept WebSocket connection and register it.
-
-        Args:
-            websocket: The WebSocket connection
-            thread_id: Conversation thread ID
-
-        Returns:
-            True if connection successful
-        """
+    async def connect(self, websocket: WebSocket, thread_id: str) -> None:
+        """Accept the WebSocket and register it under its thread ID."""
         await websocket.accept()
         self.active_connections[thread_id] = websocket
-        return True
 
     async def disconnect(self, thread_id: str):
         """Remove connection from active connections and cancel any running task."""
@@ -173,7 +162,6 @@ async def websocket_chat(websocket: WebSocket):
 
     **Query Parameters:**
         - `thread_id` (optional, str): Conversation thread ID for resuming conversations.
-          Format: alphanumeric, underscore, hyphen, max 64 chars.
           If not provided, server generates `conversation_{uuid}`.
 
     **Client Message Format (JSON):**
@@ -204,16 +192,14 @@ async def websocket_chat(websocket: WebSocket):
         - `PipelineSummaryEvent` — End-of-pipeline scorecard (per-stage latency,
           confidence proxy, LLM-as-judge generation row with categorical
           hallucination flags)
-        - `AgentErrorEvent` — Error occurred (recoverable or fatal)
+        - `AgentErrorEvent` — Error occurred
 
     **Authentication:**
-        Same-origin only — Origin header must match the deployed app
-        (allow-list of localhost dev ports + Cloud Run `*.run.app`).
+        Same-origin only — the Origin header must be on the allow-list of
+        localhost ports.
 
     **Error Handling:**
-        - Invalid thread_id format → disconnects with error
         - Processing errors → sends AgentErrorEvent with error message
-        - Network errors → logs and attempts graceful reconnection
     """
     # Verify same-origin authentication before accepting connection
     if not await verify_websocket_origin(websocket):
@@ -227,27 +213,7 @@ async def websocket_chat(websocket: WebSocket):
     # Accept connection
     await manager.connect(websocket, thread_id)
 
-    # Load existing message count from checkpoint
-    existing_count = 0
-    try:
-        pool = (
-            manager.agent_service._agent.async_pool
-            if manager.agent_service and manager.agent_service._agent
-            else None
-        )
-        if pool:
-            existing_count = await load_message_count(pool, thread_id)
-    except Exception as e:
-        logger.warning("message_count_load_error", thread_id=thread_id, error=str(e))
-
-    # Send connection established event
-    await manager.emit_event(
-        thread_id,
-        ConnectionEstablished(
-            thread_id=thread_id,
-            existing_messages=existing_count,
-        ),
-    )
+    await manager.emit_event(thread_id, ConnectionEstablished(thread_id=thread_id))
 
     try:
         # Ensure agent service is initialized
@@ -289,22 +255,13 @@ async def websocket_chat(websocket: WebSocket):
                         # Notify client that execution was cancelled
                         await manager.emit_event(
                             msg_thread_id,
-                            AgentErrorEvent(
-                                error="Execution stopped by user",
-                                recoverable=True,
-                            ),
+                            AgentErrorEvent(error="Execution stopped by user"),
                         )
                     except Exception as e:
                         logger.error(
                             "agent_processing_error", thread_id=msg_thread_id, error=str(e)
                         )
-                        await manager.emit_event(
-                            msg_thread_id,
-                            AgentErrorEvent(
-                                error=str(e),
-                                recoverable=True,
-                            ),
-                        )
+                        await manager.emit_event(msg_thread_id, AgentErrorEvent(error=str(e)))
                     finally:
                         # Clean up the task reference
                         if msg_thread_id in manager.running_tasks:

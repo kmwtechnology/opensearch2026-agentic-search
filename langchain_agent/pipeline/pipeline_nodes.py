@@ -33,7 +33,6 @@ from core.agent_state import CustomAgentState
 from core.config import (
     ALPHA_ESTIMATOR_CALL_TIMEOUT_SECONDS,
     ANSWER_STREAM_TAG,
-    CROSS_ENCODER_MODEL,
     DEFAULT_ALPHA,
     EVALUATOR_FALLBACK_ALPHA,
     INTERNAL_LLM_TAG,
@@ -743,7 +742,6 @@ so briefly."""
             canonical=enrichment_result.canonical or canonical,
             corrected_from=enrichment_result.corrected_from,
             error=enrichment_result.reindex_error,
-            reindex_mode=enrichment_result.reindex_mode,
             duration_seconds=(
                 enrichment_result.duration_seconds if enrichment_result.reindex_success else None
             ),
@@ -1428,8 +1426,8 @@ Respond with JSON only. No other text."""
 
         return AIMessage(content=accumulated_content)
 
-    def _emit_progress(self, stage: str, message: str) -> None:
-        self._emit_event_from_sync(SearchProgressEvent(stage=stage, message=message))
+    def _emit_progress(self, message: str) -> None:
+        self._emit_event_from_sync(SearchProgressEvent(message=message))
 
     def _emit_event_from_sync(self, event) -> None:
         """Schedule an event on the running loop from a sync node, without blocking."""
@@ -1603,7 +1601,7 @@ Original query: {query}
         return {"summary_text": summary_text, "message_count": len(messages)}
 
     def retriever_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """Hybrid (BM25 + vector, RRF) retrieval at the query evaluator's alpha; the LLM is
+        """Hybrid (BM25 + vector) retrieval at the query evaluator's alpha; the LLM is
         used only to rewrite vague follow-ups and extract attribute filters.
 
         Refinements are constrained to the prior turn's products.
@@ -1635,7 +1633,7 @@ Original query: {query}
 
         attribute_filters = None
         if intent in ("attribute_filter", "refinement"):
-            self._emit_progress("attribute_extraction", "Extracting attribute filters...")
+            self._emit_progress("Extracting attribute filters...")
             attribute_filters = self._extract_attributes(query)
             if attribute_filters:
                 logger.info(f"Retriever: applying {len(attribute_filters)} attribute filter(s)")
@@ -1658,7 +1656,7 @@ Original query: {query}
                     f"Retriever (refinement): constraining to {len(prior_product_ids)} prior search product(s)"
                 )
 
-        self._emit_progress("embedding", "Embedding query...")
+        self._emit_progress("Embedding query...")
 
         # Filled with the DSL body actually sent to OpenSearch, for the observability panel.
         hybrid_capture: Dict[str, Any] = {}
@@ -1681,7 +1679,7 @@ Original query: {query}
                 k,
             )
 
-        self._emit_progress("vector_search", "Searching vector index...")
+        self._emit_progress("Searching vector index...")
 
         retrieve_start = time.time()
         results = collapse_by_product(
@@ -1748,8 +1746,8 @@ Original query: {query}
             )
         )
 
-        self._emit_progress("text_search", "Full-text search complete")
-        self._emit_progress("fusion", "Fusing results with Reciprocal Rank Fusion...")
+        self._emit_progress("Full-text search complete")
+        self._emit_progress("Fusing keyword and vector results...")
 
         if results:
             self._emit_event_from_sync(
@@ -1763,7 +1761,6 @@ Original query: {query}
                                 if len(doc.page_content) > 200
                                 else doc.page_content
                             ),
-                            url=doc.metadata.get("url"),
                         )
                         for doc in results[:10]
                     ],
@@ -1806,9 +1803,7 @@ Original query: {query}
                     query = _flatten_llm_content(msg)
                     break
 
-        self._emit_event_from_sync(
-            RerankerStartEvent(model=CROSS_ENCODER_MODEL, candidate_count=len(retrieved_documents))
-        )
+        self._emit_event_from_sync(RerankerStartEvent())
 
         for i, doc in enumerate(retrieved_documents, 1):
             doc.metadata["original_rank"] = i
@@ -1820,7 +1815,6 @@ Original query: {query}
         )
         self._emit_event_from_sync(
             RerankerProgressEvent(
-                stage="scoring",
                 progress=0.0,
                 message=f"Scoring {len(retrieved_documents)} documents...",
             )
@@ -1831,7 +1825,6 @@ Original query: {query}
 
         self._emit_event_from_sync(
             RerankerProgressEvent(
-                stage="ranking",
                 progress=1.0,
                 message=f"Ranking complete - {len(retrieved_documents)} documents scored",
             )

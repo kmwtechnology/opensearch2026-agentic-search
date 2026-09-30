@@ -1,20 +1,19 @@
 """
 Unit tests for api/routes/health.py.
 
-Mocks psycopg, create_opensearch_client, and config values so no live
+Mocks psycopg, the shared OpenSearch client, and config values so no live
 services are required.
 """
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
-from api.routes.chat import manager as chat_manager
 from retrieval import vector_store
 
 
@@ -150,34 +149,6 @@ def test_health_returns_version(mock_pg, mock_os, client):
 
 
 # ---------------------------------------------------------------------------
-# GET /config
-# ---------------------------------------------------------------------------
-
-
-def test_config_returns_empty_api_url_in_dev(client):
-    with patch.dict("os.environ", {"API_URL": ""}, clear=False):
-        r = client.get("/api/config")
-    assert r.status_code == 200
-    assert "apiUrl" in r.json()
-
-
-def test_config_returns_https_origin_as_api_url(client):
-    r = client.get(
-        "/api/config",
-        headers={"origin": "https://my-service.example.com"},
-    )
-    assert r.status_code == 200
-    assert r.json()["apiUrl"] == "https://my-service.example.com"
-
-
-def test_config_uses_env_var_for_http_origin(client):
-    with patch.dict("os.environ", {"API_URL": "http://localhost:8000"}):
-        r = client.get("/api/config", headers={"origin": "http://localhost:5173"})
-    assert r.status_code == 200
-    assert r.json()["apiUrl"] == "http://localhost:8000"
-
-
-# ---------------------------------------------------------------------------
 # Event loop non-blocking (regression coverage for #25)
 # ---------------------------------------------------------------------------
 
@@ -186,9 +157,8 @@ def test_config_uses_env_var_for_http_origin(client):
 @patch(_OS_CLIENT, return_value=_os_ok())
 @patch(_PSYCOPG + ".connect")
 @pytest.mark.asyncio
-async def test_slow_postgres_does_not_block_concurrent_config_request(mock_connect, mock_os):
-    """/api/health is Cloud Run's --startup-probe target (see #23), polled on
-    a schedule. A blocking psycopg.connect() called directly on an async def
+async def test_slow_postgres_does_not_block_concurrent_request(mock_connect, mock_os):
+    """/api/health is polled by start.sh and the UI. A blocking psycopg.connect() called directly on an async def
     route would stall the loop -- and every in-flight WebSocket -- for the
     duration of a Postgres hiccup. run_in_threadpool moves it to a worker
     thread; this proves a concurrent request doesn't wait on it."""
@@ -204,7 +174,7 @@ async def test_slow_postgres_does_not_block_concurrent_config_request(mock_conne
         t0 = time.monotonic()
         slow_task = asyncio.create_task(ac.get("/api/health"))
         await asyncio.sleep(0.05)  # let the slow request actually start
-        fast_resp = await ac.get("/api/config")
+        fast_resp = await ac.get("/openapi.json")
         fast_elapsed = time.monotonic() - t0
         slow_resp = await slow_task
 

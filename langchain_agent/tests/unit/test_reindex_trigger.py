@@ -24,7 +24,7 @@ class TestScopedRetagTrigger:
 
         outcome = ScopedRetagTrigger().trigger("color", ["tan"])
 
-        assert (outcome.success, outcome.mode) == (True, "scoped")
+        assert outcome.success is True
         assert (outcome.docs_processed, outcome.docs_scanned) == (31, 274)
         assert mock_retag.call_args.args[2:] == ("color", ["tan"], {"tan": "brown"})
 

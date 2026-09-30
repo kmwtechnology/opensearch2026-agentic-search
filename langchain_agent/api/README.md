@@ -18,7 +18,7 @@ cookie, no API key, no admin token.
 
 | Route | Auth |
 |---|---|
-| `GET /api/health`, `GET /api/config`, `/swagger` | Public |
+| `GET /api/health`, `/swagger` | Public |
 | `WS /ws/chat`, `GET/POST /api/admin/*` | `Origin` (or `Referer`) must be on the allow-list |
 
 The allow-list (`middleware/origin_auth.py::get_allowed_origins`) is
@@ -36,7 +36,6 @@ curl -H 'Origin: http://localhost:8080' http://localhost:8080/api/admin/health
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | Dependency probe: `status` is `ok` when PostgreSQL and Ollama are healthy, else `degraded` (always 200) |
-| GET | `/api/config` | `{"apiUrl": ...}` for the UI; empty means "same origin" |
 | WS | `/ws/chat?thread_id=` | Streaming chat with the full pipeline event stream |
 | GET | `/api/admin/health` | Product index existence and document count |
 | POST | `/api/admin/enrich` | Add or correct a taxonomy mapping and run the scoped re-tag |
@@ -66,7 +65,7 @@ variant. A term that can't be classified or is already mapped returns
 ```json
 {"success": true, "attribute_type": "color", "variant": "tan", "canonical": "brown",
  "reason": null, "reindex_triggered": true, "reindex_success": true,
- "docs_processed": 679, "duration_seconds": 0.9, "reindex_mode": "scoped",
+ "docs_processed": 679, "duration_seconds": 0.9,
  "reindex_error": null}
 ```
 
@@ -80,8 +79,7 @@ calls it; so does `scripts/reset_demo_taxonomy.sh`.
 
 Connect to `ws://localhost:8080/ws/chat?thread_id=<id>` with an allow-listed
 `Origin`. The server replies with `connection_established` carrying the
-`thread_id` (generated if you omitted it) and `existing_messages` for that
-thread. Conversation state is checkpointed in PostgreSQL per `thread_id`;
+`thread_id` (generated if you omitted it). Conversation state is checkpointed in PostgreSQL per `thread_id`;
 reconnecting with the same id continues the conversation.
 
 Inbound messages (`routes/chat.py`):
@@ -96,14 +94,14 @@ Outbound events, in the order a search turn emits them. Every event has
 
 | `type` | `node` | Payload |
 |---|---|---|
-| `connection_established` | — | `thread_id`, `existing_messages` |
-| `conversation_context` | — | prior-turn summary for the panel |
+| `connection_established` | — | `thread_id` |
+| `conversation_context` | — | prior message count for the panel |
 | `node_start` / `node_end` | any | stage timing; `node_end` carries `duration_ms` and a status line |
 | `intent_classification` | intent_classifier | `intent`, `confidence`, reasoning |
 | `query_evaluation` | query_evaluator | assigned `alpha`, strategy, reasoning |
 | `query_expansion` | retriever | original vs rewritten query |
 | `opensearch_query` | retriever | the full DSL `body`, `index`, `params`; `query_type` is `hybrid` or `quality_gate_retry` |
-| `hybrid_search_start` / `hybrid_search_result` | retriever | candidate count, then candidates with scores |
+| `hybrid_search_start` / `hybrid_search_result` | retriever | start marker, then candidate count and snippets |
 | `search_progress` | retriever | interim status text |
 | `reranker_start` / `reranker_progress` / `reranker_result` | reranker | per-document scores in 0–1 |
 | `quality_gate` | quality_gate | pass / retry, threshold used, alpha adjustment |
@@ -111,9 +109,8 @@ Outbound events, in the order a search turn emits them. Every event has
 | `llm_response_start` / `llm_response_chunk` | agent | answer tokens; the last chunk has `is_complete: true` |
 | `enrichment_triggered` | agent | `attribute_type`, `variant`, `canonical`, `status` (`started`, then `complete` / `failed` / `declined`), `corrected_from`, re-tag counts |
 | `llm_response_corrected` | llm_judge | the regenerated answer after a hallucination retry, with before/after faithfulness |
-| `agent_complete` | — | `final_response`, `citations`, `total_duration_ms`, `documents_used` |
+| `agent_complete` | — | `final_response`, `citations`, `total_duration_ms` |
 | `pipeline_summary` | — | confidence proxy (top-1 score, gap, variance, rank churn), the judge's generation verdict, and per-stage latency |
-| `metrics` | — | timing metrics |
 | `agent_error` | — | error text; the client's escape hatch when a turn fails |
 
 Citations arrive on `agent_complete`, one frame after the final

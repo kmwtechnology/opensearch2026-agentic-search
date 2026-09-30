@@ -14,7 +14,6 @@ export interface BaseEvent {
 export interface ConnectionEstablished extends BaseEvent {
   type: 'connection_established'
   thread_id: string
-  existing_messages: number
 }
 
 // Conversation context events
@@ -22,7 +21,6 @@ export interface ConversationContextEvent extends BaseEvent {
   type: 'conversation_context'
   previous_message_count: number
   is_new_conversation: boolean
-  summary?: string
 }
 
 // Node lifecycle events
@@ -43,7 +41,6 @@ export interface NodeEndEvent extends BaseEvent {
 export interface QueryEvaluationEvent extends BaseEvent {
   type: 'query_evaluation'
   node: 'query_evaluator'
-  query: string
   alpha: number
   query_analysis: string
   search_strategy: 'lexical-heavy' | 'balanced' | 'semantic-heavy'
@@ -104,19 +101,11 @@ export interface SummaryEvent extends BaseEvent {
 export interface SearchCandidate {
   source: string
   snippet: string
-  full_content?: string
-  vector_score?: number
-  text_score?: number
-  rrf_score?: number
-  url?: string
 }
 
 export interface HybridSearchStartEvent extends BaseEvent {
   type: 'hybrid_search_start'
   node: 'retriever'
-  query: string
-  alpha: number
-  fetch_k: number
 }
 
 export interface HybridSearchResultEvent extends BaseEvent {
@@ -130,8 +119,6 @@ export interface HybridSearchResultEvent extends BaseEvent {
 export interface RerankerStartEvent extends BaseEvent {
   type: 'reranker_start'
   node: 'reranker'
-  model: string
-  candidate_count: number
 }
 
 export interface RerankedDocument {
@@ -149,21 +136,18 @@ export interface RerankerResultEvent extends BaseEvent {
   node: 'reranker'
   results: RerankedDocument[]
   reranking_changed_order: boolean
-  reranker_type: string
 }
 
 // Search progress events
 export interface SearchProgressEvent extends BaseEvent {
   type: 'search_progress'
   node: 'retriever'
-  stage: 'attribute_extraction' | 'embedding' | 'vector_search' | 'text_search' | 'fusion'
   message: string
 }
 
 export interface RerankerProgressEvent extends BaseEvent {
   type: 'reranker_progress'
   node: 'reranker'
-  stage: 'scoring' | 'ranking'
   progress: number  // 0.0-1.0
   message: string
 }
@@ -214,8 +198,6 @@ export interface EnrichmentTriggeredEvent extends BaseEvent {
   corrected_from?: string
   // Why a 'failed' or 'declined' event happened, in presentable prose.
   error?: string
-  // Always 'scoped' (pipeline/scoped_retag.py is the only re-tag path).
-  reindex_mode?: string
   // Real measured numbers; present only on a 'complete'. docs_processed is
   // how many products' tags changed; docs_scanned (scoped mode, the default)
   // is how many products mention the term and were re-detected at all.
@@ -230,29 +212,12 @@ export interface AgentCompleteEvent extends BaseEvent {
   thread_id: string
   total_duration_ms: number
   final_response: string
-  iterations: number
-  response_retries: number
-  documents_used: number
   citations?: { label: string; url: string; asin?: string; image_url?: string }[]
 }
 
 export interface AgentErrorEvent extends BaseEvent {
   type: 'agent_error'
   error: string
-  node?: string
-  recoverable: boolean
-}
-
-// Metrics events
-export interface MetricsEvent extends BaseEvent {
-  type: 'metrics'
-  query_evaluation_ms?: number
-  retrieval_ms?: number
-  reranking_ms?: number
-  document_grading_ms?: number
-  llm_generation_ms?: number
-  response_grading_ms?: number
-  total_ms: number
 }
 
 // ============================================================================
@@ -307,7 +272,6 @@ export interface PipelineSummaryEvent extends BaseEvent {
   generation?: GenerationJudgment | null
   original_generation?: GenerationJudgment | null
   hallucination_retry_used?: boolean
-  corrected_response?: string | null
   latency: LatencyStage[]
 }
 
@@ -336,7 +300,6 @@ export type AgentEvent =
   | AgentCompleteEvent
   | AgentErrorEvent
   | PipelineSummaryEvent
-  | MetricsEvent
 
 // Node names for routing
 export type NodeName =
