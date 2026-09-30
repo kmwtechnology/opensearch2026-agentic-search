@@ -248,19 +248,7 @@ export function MessageList() {
     }
   }, [messages, streamingContent])
 
-  // Show streaming content in the last message if it's an assistant message (memoized)
   const displayMessages = useMemo(() => {
-    const withStreaming = messages.map((msg, index) => {
-      if (
-        index === messages.length - 1 &&
-        msg.role === 'assistant' &&
-        msg.isStreaming &&
-        streamingContent
-      ) {
-        return { ...msg, content: streamingContent }
-      }
-      return msg
-    })
     // Hold back the answer bubble until the turn is committed.
     //
     // It used to appear the moment the first token landed — but the citations
@@ -273,12 +261,12 @@ export function MessageList() {
     // This also preserves the #103 fix: an empty bubble with a blinking
     // cursor used to suppress that status line through the whole
     // retrieval-and-rerank phase, showing a blank box with no explanation.
-    const last = withStreaming[withStreaming.length - 1]
+    const last = messages[messages.length - 1]
     if (last && last.role === 'assistant' && last.isStreaming) {
-      return withStreaming.slice(0, -1)
+      return messages.slice(0, -1)
     }
-    return withStreaming
-  }, [messages, streamingContent])
+    return messages
+  }, [messages])
 
   if (messages.length === 0) {
     // Deliberately almost empty (#103). This used to be a feature tour —

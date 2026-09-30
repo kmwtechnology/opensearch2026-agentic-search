@@ -31,8 +31,7 @@ export function IntentClassifierDetails({ event, queryExpansion }: IntentClassif
           event.intent === 'summary' && 'bg-white border-2 border-[#5B21B6] text-[#5B21B6]',
           event.intent === 'follow_up' && 'bg-white border-2 border-[#155E75] text-[#155E75]',
           event.intent === 'clarify' && 'bg-white border-2 border-[#9A3412] text-[#9A3412]',
-          event.intent === 'greeting' && 'bg-white border-2 border-[#065F46] text-[#065F46]',
-          !['question', 'summary', 'follow_up', 'clarify', 'greeting'].includes(event.intent) && 'bg-white border-2 border-[#4A463F] text-[var(--color-stage-ink-soft)]'
+          !['question', 'summary', 'follow_up', 'clarify'].includes(event.intent) && 'bg-white border-2 border-[#4A463F] text-[var(--color-stage-ink-soft)]'
         )}>
           {event.intent}
         </span>

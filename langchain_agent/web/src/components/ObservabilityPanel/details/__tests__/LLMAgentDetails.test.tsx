@@ -69,16 +69,6 @@ describe('LLMAgentDetails', () => {
     expect(screen.getByText(/catalog re-indexed/i)).toBeInTheDocument()
   })
 
-  it('shows the real measured duration and doc count once complete (#80)', () => {
-    const step = makeStep({
-      status: 'complete',
-      events: [makeEnrichmentEvent({ duration_seconds: 21.5, docs_processed: 9618 })],
-    })
-    const { container } = render(<LLMAgentDetails step={step} />)
-
-    expect(container.textContent).toContain('9618 products in 21.5s')
-  })
-
   it('reports re-tagged of scanned for a scoped re-tag (#147)', () => {
     const step = makeStep({
       status: 'complete',

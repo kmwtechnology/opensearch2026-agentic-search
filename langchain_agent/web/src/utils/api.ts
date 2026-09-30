@@ -1,5 +1,5 @@
 /**
- * API utility with same-origin authentication.
+ * API helper. There is no login:
  *
  * Same-origin (Origin/Referer/Host) is enforced by the backend on every
  * route -- no login, no session cookie, no API key sent in headers or
@@ -10,16 +10,6 @@
 // use relative URLs (empty string) - browser will use the current origin automatically.
 // The browser automatically sends the Origin header, which the backend validates.
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
-
-/**
- * Create headers for API requests.
- */
-function createHeaders(additionalHeaders?: Record<string, string>): Record<string, string> {
-  return {
-    'Content-Type': 'application/json',
-    ...additionalHeaders,
-  }
-}
 
 /**
  * Make an API request; the browser's Origin header is the only credential.
@@ -34,30 +24,14 @@ export async function apiFetch(
 ): Promise<Response> {
   const url = `${API_BASE_URL}${endpoint}`
 
-  const headers = createHeaders(
-    options.headers as Record<string, string> | undefined
-  )
-
   return fetch(url, {
     ...options,
-    headers,
+    headers: { 'Content-Type': 'application/json', ...(options.headers as Record<string, string>) },
     credentials: 'include',
   })
 }
 
-/**
- * GET request with authentication.
- */
-export async function apiGet(
-  endpoint: string,
-  options: Omit<RequestInit, 'method' | 'body'> = {}
-): Promise<Response> {
-  return apiFetch(endpoint, { ...options, method: 'GET' })
-}
-
-/**
- * POST request with authentication.
- */
+/** POST a JSON body. */
 export async function apiPost(endpoint: string, body?: unknown): Promise<Response> {
   return apiFetch(endpoint, {
     method: 'POST',

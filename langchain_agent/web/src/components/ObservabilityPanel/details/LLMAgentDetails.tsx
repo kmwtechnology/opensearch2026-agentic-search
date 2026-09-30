@@ -10,33 +10,13 @@ import type {
   EnrichmentTriggeredEvent,
   ObservabilityStep,
 } from '../../../types/events'
-
-/**
- * Pre-process markdown content to fix common issues from LLM output.
- */
-function preprocessMarkdown(content: string): string {
-  return content
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/(?<!\\)\\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-}
+import { preprocessMarkdown } from '../../../utils/preprocessMarkdown'
 
 interface LLMAgentDetailsProps {
   step: ObservabilityStep
 }
 
-export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
-  // Use the step passed directly from the parent, not from global state
-  const agentStep = step
-
-  if (!agentStep) {
-    return (
-      <div className="text-[1.375rem] text-[var(--color-stage-ink-soft)]">
-        No agent execution data available
-      </div>
-    )
-  }
-
+export function LLMAgentDetails({ step: agentStep }: LLMAgentDetailsProps) {
   // Extract different event types from the step's events
   const responseChunks = agentStep.events.filter(
     (e) => e.type === 'llm_response_chunk'
@@ -80,9 +60,8 @@ export function LLMAgentDetails({ step }: LLMAgentDetailsProps) {
                   New mapping written; catalog re-indexed —{' '}
                   <span className="font-mono">
                     {enrichmentEvent.docs_processed != null &&
-                      (enrichmentEvent.docs_scanned != null
-                        ? `${enrichmentEvent.docs_processed} of ${enrichmentEvent.docs_scanned} matching products re-tagged in `
-                        : `${enrichmentEvent.docs_processed} products in `)}
+                      enrichmentEvent.docs_scanned != null &&
+                      `${enrichmentEvent.docs_processed} of ${enrichmentEvent.docs_scanned} matching products re-tagged in `}
                     {enrichmentEvent.duration_seconds.toFixed(1)}s
                   </span>
                   . This query — and future ones — now resolve it.

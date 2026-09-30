@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_VISIBLE_LINES, narrate, visibleLines } from '../narrate'
+import { narrate, visibleLines } from '../narrate'
 import type { AgentEvent, EnrichmentTriggeredEvent } from '../../../types/events'
 
 const TS = '2026-09-14T12:00:00Z'
@@ -29,7 +29,6 @@ describe('narrate', () => {
     } as AgentEvent)
 
     expect(line?.text).toBe('Read this as a refinement of the last turn — 94% confident.')
-    expect(line?.weight).toBe('step')
   })
 
   it('reuses the backend search_strategy rather than re-deriving it from alpha', () => {
@@ -142,7 +141,6 @@ describe('narrate', () => {
       type: 'reranker_result',
       node: 'reranker',
       timestamp: TS,
-      reranker_type: 'cross-encoder',
       reranking_changed_order: true,
       results: [
         { source: 'b', score: 0.97, rank: 1, original_rank: 3, snippet: '', rank_change: 2 },
@@ -159,7 +157,6 @@ describe('narrate', () => {
       type: 'reranker_result',
       node: 'reranker',
       timestamp: TS,
-      reranker_type: 'cross-encoder',
       reranking_changed_order: true,
       results: [
         { source: 'a', score: 0.97, rank: 1, original_rank: 1, snippet: '', rank_change: 0 },
@@ -176,7 +173,6 @@ describe('narrate', () => {
       type: 'reranker_result',
       node: 'reranker',
       timestamp: TS,
-      reranker_type: 'cross-encoder',
       reranking_changed_order: false,
       results: [
         { source: 'a', score: 0.97, rank: 1, original_rank: 1, snippet: '', rank_change: 0 },
@@ -198,8 +194,6 @@ describe('narrate', () => {
       threshold: 0.45,
       reason: 'RETRY (attribute_filter): score 0.300 < 0.45, alpha -> 0.55',
     } as AgentEvent)
-
-    expect(line?.weight).toBe('moment')
     expect(line?.text).toContain('Searching again')
     expect(line?.text).not.toMatch(/better|improved|higher/i)
   })
@@ -215,8 +209,6 @@ describe('narrate', () => {
       threshold: 0.45,
       reason: 'PASS',
     } as AgentEvent)
-
-    expect(line?.weight).toBe('step')
     expect(line?.text).toContain('Passed')
   })
 
@@ -276,7 +268,6 @@ describe('narrate — enrichment lifecycle', () => {
   it('announces a GAP fill while the re-index is underway (#142: say why, not just that)', () => {
     const line = narrate(enrichment({ status: 'started', canonical: 'brown' }))
     expect(line?.enrichment).toBe('started')
-    expect(line?.weight).toBe('moment')
     expect(line?.text).toContain('No products are tagged')
     expect(line?.text).toContain('tan')
   })
@@ -329,8 +320,9 @@ describe('narrate — enrichment lifecycle', () => {
         status: 'complete',
         canonical: 'brown',
         corrected_from: 'yellow',
-        docs_processed: 9618,
-        duration_seconds: 19.4,
+        docs_processed: 679,
+        docs_scanned: 905,
+        duration_seconds: 0.9,
       })
     )
     const learned = narrate(
@@ -339,14 +331,15 @@ describe('narrate — enrichment lifecycle', () => {
         variant: 'weatherproof',
         attribute_type: 'waterproof',
         canonical: 'waterproof',
-        docs_processed: 9618,
-        duration_seconds: 19.4,
+        docs_processed: 12,
+        docs_scanned: 40,
+        duration_seconds: 0.4,
       })
     )
 
     expect(corrected?.label).toBe('Correction Applied')
     expect(corrected?.text).toContain('was tagged yellow')
-    expect(corrected?.text).toContain('9,618')
+    expect(corrected?.text).toContain('re-tagged 679')
     expect(corrected?.correctedFrom).toBe('yellow')
 
     expect(learned?.label).toBe('Catalog Learned')
@@ -377,7 +370,6 @@ describe('visibleLines', () => {
       node,
       label: node,
       text: id,
-      weight: 'step',
     }) as never
 
   it('keeps one line per pipeline stage, in the order the stages first ran', () => {
@@ -450,9 +442,5 @@ describe('visibleLines', () => {
 
     expect(enrichmentLines).toHaveLength(1)
     expect(enrichmentLines[0].enrichment).toBe('complete')
-  })
-
-  it('respects the safety cap', () => {
-    expect(MAX_VISIBLE_LINES).toBeGreaterThanOrEqual(6)
   })
 })

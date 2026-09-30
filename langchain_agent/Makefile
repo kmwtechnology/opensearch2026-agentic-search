@@ -48,8 +48,8 @@ ci:
 	@$(PY)/pytest tests/unit/ -q
 	@echo "[ci] pytest --collect-only tests/e2e/"
 	@$(PY)/pytest --collect-only -q tests/e2e/ > /dev/null
-	@echo "[ci] frontend: vitest, eslint, tsc, build"
-	@cd web && npm install --silent && npm run test && npm run lint && npx tsc --noEmit && npm run build
+	@echo "[ci] frontend: vitest, eslint, build (tsc + vite)"
+	@cd web && npm install --silent && npm run test && npm run lint && npm run build
 	@echo "[ci] docker services"
 	@docker info >/dev/null 2>&1 || { echo "Docker isn't running — open -a Docker, wait for it, re-run make ci"; exit 1; }
 	@cd .. && docker compose up -d --wait

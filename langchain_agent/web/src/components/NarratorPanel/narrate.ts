@@ -42,13 +42,6 @@ export type NarratorNode =
   | 'enrichment'
 
 /**
- * 'moment' lines get oversized, full-width treatment. Reserved for the three
- * things that carry the demo: a quality-gate retry, a judge verdict, and the
- * taxonomy correction sequence. Everything else is a 'step'.
- */
-export type NarratorWeight = 'step' | 'moment'
-
-/**
  * A small horizontal bar rendered beside a line, for the two numbers in this
  * pipeline that are positions on a range rather than bare values: where the
  * hybrid weighting sat between keywords and meaning, and where the best match
@@ -81,17 +74,12 @@ export interface NarratorLine {
   label: string
   /** The sentence. Plain language, no jargon the audience has not been given. */
   text: string
-  weight: NarratorWeight
   /** Enrichment lifecycle phase, when this line is part of that sequence. */
   enrichment?: EnrichmentTriggeredEvent['status']
   /** Set on a correction so the panel can render the before/after pair. */
   correctedFrom?: string
   canonical?: string
   variant?: string
-  docsProcessed?: number
-  durationSeconds?: number
-  reindexMode?: string
-  error?: string
   /** Optional bar rendered under the sentence. */
   gauge?: NarratorGauge
 }
@@ -134,7 +122,6 @@ function intentLine(e: IntentClassificationEvent): NarratorLine {
     text: confidence
       ? `Read this as ${phrasing} — ${confidence} confident.`
       : `Read this as ${phrasing}.`,
-    weight: 'step',
   }
 }
 
@@ -150,7 +137,6 @@ function evaluatorLine(e: QueryEvaluationEvent): NarratorLine {
     // exact-words/meaning axis labels — restating the concept in words every
     // single turn was pure boilerplate, not something specific to this turn.
     text: `Leaned ${strategy}.`,
-    weight: 'step',
     gauge: {
       kind: 'alpha',
       value: Math.max(0, Math.min(1, e.alpha)),
@@ -169,7 +155,6 @@ function expansionLine(e: QueryExpansionEvent): NarratorLine | null {
     node: 'query_rewriter',
     label: 'Query Rewriter',
     text: `Understood “${e.original_query}” as “${e.expanded_query}”.`,
-    weight: 'step',
   }
 }
 
@@ -183,7 +168,6 @@ function searchLine(e: OpenSearchQueryEvent): NarratorLine | null {
     text: isRetry
       ? `Searched the catalog again with the rebalanced settings.${filters}`
       : `Searched the catalog, ${describeAlpha(e.alpha)}.${filters}`,
-    weight: 'step',
   }
 }
 
@@ -205,7 +189,6 @@ function rerankerLine(e: RerankerResultEvent): NarratorLine {
     node: 'reranker',
     label: 'Reranker',
     text,
-    weight: 'step',
   }
 }
 
@@ -223,7 +206,6 @@ function qualityGateLine(e: QualityGateEvent): NarratorLine {
         `The results weren't good enough — best match ${e.max_score.toFixed(2)} ` +
         `against a bar of ${e.threshold.toFixed(2)}. Searching again, deeper ` +
         `into the ranking.`,
-      weight: 'moment',
     }
   }
   // A max score of exactly zero means nothing was retrieved to score in the
@@ -237,7 +219,6 @@ function qualityGateLine(e: QualityGateEvent): NarratorLine {
       node: 'quality_gate',
       label: 'Quality Gate',
       text: 'Nothing came back to score — no product matched those filters.',
-      weight: 'step',
     }
   }
 
@@ -256,7 +237,6 @@ function qualityGateLine(e: QualityGateEvent): NarratorLine {
       text:
         `Still under the bar after retrying — ${e.max_score.toFixed(2)} against ` +
         `${e.threshold.toFixed(2)}. Answering with the best available matches.`,
-      weight: 'step',
     }
   }
 
@@ -273,7 +253,6 @@ function qualityGateLine(e: QualityGateEvent): NarratorLine {
       rightLabel: '1',
       caption: `best match ${e.max_score.toFixed(2)} against a bar of ${e.threshold.toFixed(2)}`,
     },
-    weight: 'step',
   }
 }
 
@@ -285,10 +264,6 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
     variant: e.variant,
     canonical: e.canonical,
     correctedFrom: e.corrected_from,
-    docsProcessed: e.docs_processed,
-    durationSeconds: e.duration_seconds,
-    error: e.error,
-    weight: 'moment' as const,
   }
 
   switch (e.status) {
@@ -332,8 +307,6 @@ function enrichmentLine(e: EnrichmentTriggeredEvent): NarratorLine {
       const scale =
         e.docs_scanned != null && e.docs_processed != null && e.duration_seconds
           ? ` Re-checked the ${e.docs_scanned.toLocaleString()} products that mention it; re-tagged ${e.docs_processed.toLocaleString()} in ${e.duration_seconds.toFixed(1)}s.`
-          : e.docs_processed && e.duration_seconds
-          ? ` Rebuilt ${e.docs_processed.toLocaleString()} products in ${e.duration_seconds.toFixed(1)}s.`
           : ''
       return {
         ...base,
@@ -404,7 +377,7 @@ export function narrate(event: AgentEvent): NarratorLine | null {
  * lets the audience follow the same top-to-bottom path as the architecture
  * diagram they were just shown.
  */
-export const MAX_VISIBLE_LINES = 7
+const MAX_VISIBLE_LINES = 7
 
 /**
  * How many pipeline lines survive alongside the enrichment card (#108).
@@ -420,20 +393,10 @@ export const MAX_VISIBLE_LINES = 7
  * The card IS the point of the turn; the stages above it are context the
  * presenter has already narrated by the time it appears.
  */
-export const MAX_VISIBLE_LINES_WITH_MOMENT = 3
+const MAX_VISIBLE_LINES_WITH_MOMENT = 3
 
-/**
- * Node types that render as a full-width card rather than an ordinary line,
- * and how many ordinary lines stay visible alongside each — enrichment keeps
- * 3, since the presenter is still narrating the pipeline context (the
- * quality-gate retry, the search that led here) right up to the moment the
- * card appears.
- *
- */
-const MOMENT_LINE_CAPS: Partial<Record<NarratorNode, number>> = {
-  enrichment: MAX_VISIBLE_LINES_WITH_MOMENT,
-}
-const MOMENT_NODES = new Set<NarratorNode>(Object.keys(MOMENT_LINE_CAPS) as NarratorNode[])
+/** The node that renders as a full-width card rather than an ordinary line. */
+const MOMENT_NODE: NarratorNode = 'enrichment'
 
 export function visibleLines(lines: NarratorLine[]): NarratorLine[] {
   const byNode = new Map<NarratorNode, NarratorLine>()
@@ -444,14 +407,13 @@ export function visibleLines(lines: NarratorLine[]): NarratorLine[] {
   // position — exactly the "first-seen order, latest content" we want.
   const deduped = [...byNode.values()]
 
-  const moments = deduped.filter((l) => MOMENT_NODES.has(l.node))
+  const moments = deduped.filter((l) => l.node === MOMENT_NODE)
   const moment = moments[moments.length - 1]
   if (!moment) {
     return deduped.slice(-MAX_VISIBLE_LINES)
   }
 
-  const cap = MOMENT_LINE_CAPS[moment.node] ?? MAX_VISIBLE_LINES_WITH_MOMENT
   // Keep the card, and only the pipeline lines immediately preceding it.
-  const rest = deduped.filter((l) => !MOMENT_NODES.has(l.node))
-  return [...rest.slice(-cap), moment]
+  const rest = deduped.filter((l) => l.node !== MOMENT_NODE)
+  return [...rest.slice(-MAX_VISIBLE_LINES_WITH_MOMENT), moment]
 }

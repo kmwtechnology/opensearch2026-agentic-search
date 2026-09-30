@@ -13,9 +13,6 @@ let wsInstance: WebSocket | null = null
 let currentThreadId: string | null = null
 
 interface UseWebSocketReturn {
-  isConnected: boolean
-  isConnecting: boolean
-  error: string | null
   connect: (threadId: string) => void
   disconnect: (options?: { preserveThreadId?: boolean }) => void
   sendMessage: (message: string) => void
@@ -23,7 +20,7 @@ interface UseWebSocketReturn {
 }
 
 export function useWebSocket(): UseWebSocketReturn {
-  const { isConnected, isConnecting, connectionError, setConnectionState } = useChatStore()
+  const setConnectionState = useChatStore((s) => s.setConnectionState)
 
   const threadIdRef = useRef<string | null>(null)
 
@@ -197,8 +194,6 @@ export function useWebSocket(): UseWebSocketReturn {
       ws.onopen = () => {
         console.log('WebSocket onopen event fired')
         setConnectionState(true, false, null)
-        // Also update Zustand chat store to ensure state consistency
-        useChatStore.getState().setConnectionState(true, false, null)
         console.log('WebSocket connected - state updated')
       }
 
@@ -302,9 +297,6 @@ export function useWebSocket(): UseWebSocketReturn {
   }, [])
 
   return {
-    isConnected,
-    isConnecting,
-    error: connectionError,
     connect,
     disconnect,
     sendMessage,

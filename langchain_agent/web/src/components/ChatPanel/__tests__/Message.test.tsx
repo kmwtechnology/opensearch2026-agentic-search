@@ -168,16 +168,4 @@ describe('Message — preprocessMarkdown (via rendered output)', () => {
     expect(screen.getByText(/Line one/)).toBeInTheDocument()
     expect(screen.getByText(/Line two/)).toBeInTheDocument()
   })
-
-  it('handles array content blocks', () => {
-    const arrayContent = [
-      { text: 'Part one ' },
-      { text: 'part two' },
-    ] as unknown as string
-    render(
-      <Message message={makeMessage({ role: 'assistant', content: arrayContent })} />
-    )
-    expect(screen.getByText(/Part one/)).toBeInTheDocument()
-    expect(screen.getByText(/part two/)).toBeInTheDocument()
-  })
 })

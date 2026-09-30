@@ -12,45 +12,9 @@ import { User, Bot, BookOpen, ChevronDown, Copy, Check } from 'lucide-react'
 import type { ChatMessage } from '../../stores/chatStore'
 import { ProductCard } from './ProductCard'
 import { indexProducts } from './productIndex'
+import { preprocessMarkdown } from '../../utils/preprocessMarkdown'
 import type { ProductLookup } from './productIndex'
 import clsx from 'clsx'
-
-/**
- * Pre-process markdown content to fix common issues from LLM output.
- * - Converts <br> tags to actual newlines
- * - Converts literal \n strings to newlines
- * - Fixes code blocks that use <br> instead of newlines
- * - Handles non-string content (arrays, objects) by converting to string
- */
-function preprocessMarkdown(content: string | unknown): string {
-  // Handle non-string content (from content-block arrays or other formats)
-  let stringContent: string
-  if (typeof content !== 'string') {
-    if (Array.isArray(content)) {
-      // If it's an array of content blocks, extract text from each block
-      stringContent = content
-        .map(block => {
-          if (typeof block === 'object' && block !== null && 'text' in block) {
-            return (block as { text: string }).text
-          }
-          return String(block)
-        })
-        .join('')
-    } else {
-      stringContent = String(content)
-    }
-  } else {
-    stringContent = content
-  }
-
-  return stringContent
-    // Convert <br>, <br/>, <br /> tags to newlines
-    .replace(/<br\s*\/?>/gi, '\n')
-    // Convert literal \n strings to actual newlines (but not \\n which is escaped)
-    .replace(/(?<!\\)\\n/g, '\n')
-    // Clean up any double newlines that might result
-    .replace(/\n{3,}/g, '\n\n')
-}
 
 /** Concatenated text of a hast node, however deeply it is nested. */
 function nodeText(node: RootContent): string {

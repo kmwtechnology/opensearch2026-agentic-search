@@ -10,18 +10,17 @@ import { StepCard } from './StepCard'
 export function StepsList() {
   const { steps, conversationContext } = useObservabilityStore()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const [isAutoScrollEnabled] = useState(true)
   const [isNearBottom, setIsNearBottom] = useState(true)
 
   // Auto-scroll to bottom when new steps arrive
   useEffect(() => {
-    if (isAutoScrollEnabled && isNearBottom && scrollContainerRef.current) {
+    if (isNearBottom && scrollContainerRef.current) {
       scrollContainerRef.current.scrollTo({
         top: scrollContainerRef.current.scrollHeight,
         behavior: 'smooth'
       })
     }
-  }, [steps.length, isAutoScrollEnabled, isNearBottom])
+  }, [steps.length, isNearBottom])
 
   // Detect if user has scrolled away from bottom
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {

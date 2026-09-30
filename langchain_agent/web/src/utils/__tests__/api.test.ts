@@ -1,9 +1,9 @@
 /**
- * Tests for api.ts — apiFetch, apiGet, apiPost
+ * Tests for api.ts — apiFetch, apiPost
  */
 
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
-import { apiFetch, apiGet, apiPost } from '../api'
+import { apiFetch, apiPost } from '../api'
 
 const mockFetch = vi.fn()
 
@@ -54,37 +54,11 @@ describe('apiFetch', () => {
     expect(options.body).toBe('{"key":"val"}')
   })
 
-  it('prepends API_BASE_URL to the path', async () => {
-    await apiFetch('/api/endpoint')
-    const [url] = mockFetch.mock.calls[0]
-    expect(url).toContain('/api/endpoint')
-  })
-
   it('returns the fetch response', async () => {
     const fakeResp = { ok: true, status: 200, json: async () => ({}) } as Response
     mockFetch.mockResolvedValueOnce(fakeResp)
     const result = await apiFetch('/api/test')
     expect(result).toBe(fakeResp)
-  })
-})
-
-describe('apiGet', () => {
-  it('uses GET method', async () => {
-    await apiGet('/api/items')
-    const [, options] = mockFetch.mock.calls[0]
-    expect(options.method).toBe('GET')
-  })
-
-  it('passes the correct URL', async () => {
-    await apiGet('/api/items')
-    const [url] = mockFetch.mock.calls[0]
-    expect(url).toBe('/api/items')
-  })
-
-  it('does not send a request body', async () => {
-    await apiGet('/api/items')
-    const [, options] = mockFetch.mock.calls[0]
-    expect(options.body).toBeUndefined()
   })
 })
 
@@ -103,12 +77,6 @@ describe('apiPost', () => {
 
   it('sends no body when body argument is omitted', async () => {
     await apiPost('/api/admin/demo-reset')
-    const [, options] = mockFetch.mock.calls[0]
-    expect(options.body).toBeUndefined()
-  })
-
-  it('sends no body when body is undefined', async () => {
-    await apiPost('/api/admin/demo-reset', undefined)
     const [, options] = mockFetch.mock.calls[0]
     expect(options.body).toBeUndefined()
   })
