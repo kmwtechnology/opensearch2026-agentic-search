@@ -3,15 +3,11 @@ Health check endpoints for monitoring API and dependencies.
 """
 
 import os
-import sys
-from pathlib import Path
 
 import psycopg
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 
-# Add parent directory to path for config import (dynamic, not hardcoded)
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.config import (
     API_VERSION,
     DATABASE_URL,

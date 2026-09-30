@@ -98,10 +98,6 @@ class PipelineNodesMixin:
     judge: Optional[LLMJudge]
     enrichment_value_judge: Optional[EnrichmentValueJudge]
 
-    # ========================================================================
-    # AGENT GRAPH NODES FOR DYNAMIC QUERY EVALUATION
-    # ========================================================================
-
     def intent_classifier_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """Classify the latest user message with one structured LLM call.
 
@@ -132,7 +128,7 @@ class PipelineNodesMixin:
             if prior_docs:
                 # Validate category continuity
                 continuity_score, category_reasoning = self._validate_category_continuity(
-                    prior_docs, user_query, []
+                    prior_docs, user_query
                 )
 
                 # If categories are very different, downgrade to search
@@ -174,7 +170,6 @@ class PipelineNodesMixin:
         Returns `alpha` and `query_analysis` (the reasoning, shown in the UI).
         """
         start_time = time.time()
-        default_alpha = EVALUATOR_FALLBACK_ALPHA
 
         last_user_msg = None
         for msg in reversed(state["messages"]):
@@ -183,7 +178,7 @@ class PipelineNodesMixin:
                 break
 
         if not last_user_msg:
-            return {"alpha": default_alpha, "query_analysis": "No query detected"}
+            return {"alpha": EVALUATOR_FALLBACK_ALPHA, "query_analysis": "No query detected"}
 
         intent = state.get("intent", "search")
 
@@ -246,10 +241,13 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 extra={
                     "error": repr(e),
                     "elapsed_ms": int((time.time() - start_time) * 1000),
-                    "fallback_alpha": default_alpha,
+                    "fallback_alpha": EVALUATOR_FALLBACK_ALPHA,
                 },
             )
-            return {"alpha": default_alpha, "query_analysis": f"Evaluation failed: {e}"}
+            return {
+                "alpha": EVALUATOR_FALLBACK_ALPHA,
+                "query_analysis": f"Evaluation failed: {e}",
+            }
 
     @staticmethod
     def _build_grounded_context(documents: List[Document]) -> str:
@@ -491,12 +489,10 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         citations_dict: Dict[str, Tuple[str, List[int], str, str]] = {}
 
         # max_relevance (computed above) < cutoff means nothing is worth citing.
-        MIN_CITATION_RELEVANCE = MIN_RELEVANCE_THRESHOLD
-
-        if max_relevance >= MIN_CITATION_RELEVANCE:
+        if max_relevance >= MIN_RELEVANCE_THRESHOLD:
             for i, doc in enumerate(retrieved_documents, 1):
                 doc_score = doc.metadata.get("reranker_score", 0.0)
-                if doc_score < MIN_CITATION_RELEVANCE:
+                if doc_score < MIN_RELEVANCE_THRESHOLD:
                     continue
 
                 url = self._citation_url_for_doc(doc)
@@ -514,7 +510,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 )
         else:
             logger.info(
-                f"Suppressing citations: max_relevance={max_relevance:.3f} < {MIN_CITATION_RELEVANCE}"
+                f"Suppressing citations: max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD}"
             )
 
         citations = []
@@ -857,7 +853,7 @@ just respond to the shopper normally."""
             content = getattr(msg, "content", "")
             if not content or not str(content).strip():
                 continue
-            label = self._label_for_message(msg)
+            label = "User" if isinstance(msg, HumanMessage) else "Assistant"
             history_entries.append(f"{label}: {str(content).strip()}")
             if len(history_entries) >= limit:
                 break
@@ -998,18 +994,16 @@ Query: "{query}" """
         self,
         prior_docs: List[Document],
         current_query: str,
-        current_results: List[Document],
     ) -> Tuple[float, str]:
-        """Score (0-1) whether the query continues the prior search, from category match
-        and, when `current_results` is given, product-id overlap. Returns (score, reasoning);
-        > 0.7 strong continuity, 0.3-0.7 ambiguous, < 0.3 a new search."""
+        """Score (0-1) whether the query continues the prior search, from category match.
+        Returns (score, reasoning); > 0.7 strong continuity, 0.3-0.7 ambiguous, < 0.3 a
+        new search."""
         if not prior_docs:
             return 0.5, "No prior search context available"
 
         scores = []
         reasons = []
 
-        # 1. Category name matching
         prior_category = self._extract_product_category_from_documents(prior_docs)
         current_category = self._extract_product_category_from_query(current_query)
 
@@ -1026,22 +1020,6 @@ Query: "{query}" """
         elif current_category:
             scores.append(0.5)
             reasons.append(f"Could not extract prior category, current: {current_category}")
-
-        # Document-id overlap counts only when there are current results to compare:
-        # scoring "no results yet" as 0% overlap would sink every refinement whose
-        # category can't be keyword-matched (e.g. a tag dispute).
-        prior_ids = {
-            doc.metadata.get("product_id") for doc in prior_docs if doc.metadata.get("product_id")
-        }
-        if prior_ids and current_results:
-            current_ids = {
-                doc.metadata.get("product_id")
-                for doc in current_results
-                if doc.metadata.get("product_id")
-            }
-            overlap = len(prior_ids & current_ids) / len(prior_ids)
-            scores.append(overlap)
-            reasons.append(f"Document overlap: {overlap:.1%} of prior results")
 
         final_score = sum(scores) / len(scores) if scores else 0.5
 
@@ -1411,19 +1389,6 @@ CONVERSATION HISTORY:
 Respond with JSON only. No other text."""
         return prompt
 
-    def _label_for_message(self, message: BaseMessage) -> str:
-        """Return a human-readable role label for a message (User / Assistant / Tool)."""
-        if isinstance(message, HumanMessage):
-            return "User"
-        if isinstance(message, AIMessage):
-            return "Assistant"
-        if isinstance(message, ToolMessage):
-            tool_name = getattr(message, "tool_name", "tool")
-            return f"Tool:{tool_name}"
-        if isinstance(message, SystemMessage):
-            return "System"
-        return "Message"
-
     def _stream_llm_response_simple(self, messages: Sequence[BaseMessage]) -> AIMessage:
         """Stream the answer, emitting start and chunk events, and return the accumulated AIMessage."""
         stream_start = time.time()
@@ -1447,21 +1412,13 @@ Respond with JSON only. No other text."""
                             LLMResponseChunkEvent(content=content, is_complete=False)
                         )
 
-        except StopIteration:
-            pass
-        except RuntimeError as e:
-            if "StopIteration" not in str(e):
-                logger.warning(f"RuntimeError during LLM streaming: {e}. Falling back to invoke.")
         except Exception as e:
             logger.warning(f"Exception during LLM streaming: {e}. Falling back to invoke.")
 
         # If streaming produced no content, fall back to invoke
         if not accumulated_content:
             invoke_result = self.llm.invoke(messages, config={"tags": [ANSWER_STREAM_TAG]})
-            if hasattr(invoke_result, "content"):
-                accumulated_content = invoke_result.content if invoke_result.content else ""
-            else:
-                accumulated_content = str(invoke_result)
+            accumulated_content = invoke_result.content or ""
 
         stream_elapsed = time.time() - stream_start
         logger.debug(
@@ -1481,8 +1438,7 @@ Respond with JSON only. No other text."""
         try:
             asyncio.run_coroutine_threadsafe(self.emit_callback(event), self.event_loop)
         except Exception as e:
-            logger.debug(f"Could not emit event immediately: {e}, queueing instead")
-            self.event_queue.append(event)
+            logger.debug(f"Could not emit event: {e}")
 
     def llm_judge_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """LLM-as-judge for the Pipeline Summary "Generation" stage: compares the agent's
@@ -1574,8 +1530,7 @@ Respond with JSON only. No other text."""
             return {"judgment": result.model_dump()}
 
         try:
-            new_baseline = self._format_search_results(documents, query)
-            new_result = self.judge.judge(query, documents, corrected, new_baseline)
+            new_result = self.judge.judge(query, documents, corrected, baseline)
         except Exception as exc:
             logger.warning("Auto-retry re-judge failed: %s", exc, exc_info=True)
             return {"judgment": result.model_dump()}
@@ -1638,12 +1593,8 @@ Original query: {query}
         return _flatten_llm_content(self.llm.invoke(messages))
 
     def summary_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """Summarize the conversation when the intent is `summary`."""
-        intent = state.get("intent", "question")
+        """Summarize the conversation; only summary-intent turns are routed here."""
         messages = state["messages"]
-        if intent != "summary":
-            return {"summary_text": None, "message_count": len(messages)}
-
         logger.info(f"Generating summary for {len(messages)} messages")
         summary_text = self.summarize_messages(messages)
         if not summary_text:
@@ -1654,23 +1605,14 @@ Original query: {query}
         """Hybrid (BM25 + vector, RRF) retrieval at the query evaluator's alpha; the LLM is
         used only to rewrite vague follow-ups and extract attribute filters.
 
-        Refinements are constrained to the prior turn's products; summary turns skip retrieval.
+        Refinements are constrained to the prior turn's products.
         """
         start_time = time.time()
         messages = state["messages"]
-        alpha = state.get("alpha", 0.25)
+        alpha = state.get("alpha", DEFAULT_ALPHA)
         intent = state.get("intent", "search")
 
         prior_search_documents = state.get("retrieved_documents", [])
-        prior_search_intent = state.get("intent", None)
-
-        if intent == "summary":
-            logger.debug("Retriever: skipping hybrid search (intent=summary)")
-            return {
-                "retrieved_documents": [],
-                "prior_search_documents": prior_search_documents,
-                "prior_search_intent": prior_search_intent,
-            }
 
         query = None
         for msg in reversed(messages):
@@ -1686,7 +1628,6 @@ Original query: {query}
             return {
                 "retrieved_documents": [],
                 "prior_search_documents": prior_search_documents,
-                "prior_search_intent": prior_search_intent,
             }
 
         logger.info(f"Retriever: query='{query[:50]}...', alpha={alpha:.2f}")
@@ -1838,9 +1779,7 @@ Original query: {query}
             "pre_rerank_documents": list(results),
             "retriever_latency_ms": retriever_latency_ms,
             "prior_search_documents": prior_search_documents,
-            "prior_search_intent": prior_search_intent,
             "user_query": query,
-            "intent": intent,
         }
 
     def reranker_node(self, state: CustomAgentState) -> Dict[str, Any]:
@@ -1858,8 +1797,6 @@ Original query: {query}
                 "retrieved_documents": retrieved_documents,
                 "reranker_max_score": 0.0,
                 "reranker_latency_ms": 0.0,
-                "quality_gate_retried": state.get("quality_gate_retried", False),
-                "intent": intent,
             }
 
         query = state.get("user_query", "")
@@ -1919,7 +1856,6 @@ Original query: {query}
             "all_reranked_documents": [doc for doc, _ in all_scored],
             "reranker_max_score": max_score,
             "reranker_latency_ms": rerank_elapsed * 1000.0,
-            "intent": intent,
         }
 
     def quality_gate_node(self, state: CustomAgentState) -> Dict[str, Any]:

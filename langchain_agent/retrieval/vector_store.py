@@ -471,7 +471,7 @@ class OpenSearchVectorStore:
         except EmbeddingError:
             raise
         except TimeoutError as e:
-            raise SearchTimeoutError(f"Search timed out: {e}", operation="hybrid_search") from e
+            raise SearchTimeoutError(f"Search timed out: {e} (operation=hybrid_search)") from e
         except Exception as e:
             raise SearchFailureError(f"Hybrid search failed: {e}") from e
 

@@ -1,27 +1,12 @@
 """Wraps EcommerceSearchAgent and emits a WebSocket event for each step of a turn."""
 
-import warnings
-
-# Suppress Pydantic V1 compatibility warning on Python 3.14+
-# langchain-core imports pydantic.v1 for backward compatibility, but we use Pydantic V2
-warnings.filterwarnings(
-    "ignore",
-    message="Core Pydantic V1 functionality isn't compatible with Python 3.14",
-    category=UserWarning,
-)
-
 import asyncio
 import logging
-import sys
 import time
-from pathlib import Path
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
+from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-# pylint: disable=wrong-import-position  # sys.path tweak above is required first
 from api.schemas.events import (
     AgentCompleteEvent,
     AgentErrorEvent,
@@ -49,6 +34,7 @@ from api.schemas.events import (
 from api.services.checkpoint_messages import load_message_count
 from core.config import (
     ANSWER_STREAM_TAG,
+    DEFAULT_ALPHA,
     INTERNAL_LLM_TAG,
     RERANKER_TYPE,
     RETRIEVER_FETCH_K,
@@ -74,7 +60,7 @@ class ObservableAgentService:
         self._lock = asyncio.Lock()
         self._warmup_complete = False
         self._warmup_lock = asyncio.Lock()
-        # The single shared agent keeps emit_callback/event_loop/event_queue as plain
+        # The single shared agent keeps emit_callback/event_loop as plain
         # attributes set per request; concurrent turns would overwrite each other's and
         # cross-deliver events. This lock serializes the section that uses them.
         self._request_lock = asyncio.Lock()
@@ -167,10 +153,7 @@ class ObservableAgentService:
             async with self._request_lock:
                 # Nodes on worker threads emit through these.
                 self._agent.emit_callback = emit
-                try:
-                    self._agent.event_loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    pass  # No running loop, will fallback to queueing
+                self._agent.event_loop = asyncio.get_running_loop()
 
                 previous_count = await self._load_conversation_context(thread_id)
                 is_new = previous_count == 0
@@ -187,8 +170,6 @@ class ObservableAgentService:
                 )
 
                 # Per-query state is reset here; history comes from the checkpoint.
-                from core.config import DEFAULT_ALPHA
-
                 initial_state = {
                     "messages": [HumanMessage(content=message)],
                     "alpha": DEFAULT_ALPHA,
@@ -401,13 +382,6 @@ class ObservableAgentService:
             latency=latency,
         )
 
-    async def _emit_queued_events(self, emit: EmitCallback) -> None:
-        """Emit events a sync node queued because it could not reach the event loop."""
-        queued_events = self._agent.event_queue
-        self._agent.event_queue = []
-        for event in queued_events:
-            await emit(event)
-
     async def _astream_graph(
         self,
         initial_state: Dict[str, Any],
@@ -430,7 +404,6 @@ class ObservableAgentService:
         current_node: Optional[str] = None
         accumulated_output: Dict[str, Any] = {}
         response_streaming_started = False
-        skipped_nodes: Set[str] = set()
 
         # Bridge enrichment lifecycle events from the agent node's worker thread onto this
         # loop, for this turn only so concurrent turns never emit into each other's sockets.
@@ -461,12 +434,6 @@ class ObservableAgentService:
                 event_data = event.get("data", {})
 
                 if event_type == "on_chain_start":
-                    if event_name == "retriever":
-                        input_state = event_data.get("input", {})
-                        if input_state.get("intent") == "summary":
-                            skipped_nodes.add(event_name)
-                            continue
-
                     if event_name in tracked_nodes:
                         current_node = event_name
                         node_start_times[event_name] = time.time()
@@ -493,16 +460,12 @@ class ObservableAgentService:
                             await emit(
                                 HybridSearchStartEvent(
                                     query=query,
-                                    alpha=input_state.get("alpha", 0.25),
+                                    alpha=input_state.get("alpha", DEFAULT_ALPHA),
                                     fetch_k=RETRIEVER_FETCH_K,
                                 )
                             )
 
                 elif event_type == "on_chain_end":
-                    if event_name in skipped_nodes:
-                        skipped_nodes.remove(event_name)
-                        continue
-
                     if event_name in tracked_nodes:
                         duration_ms = 0.0
                         if event_name in node_start_times:
@@ -526,25 +489,15 @@ class ObservableAgentService:
                                 ),
                             )
 
-                            await self._emit_queued_events(emit)
-
-                        # No NodeEndEvent for a summary node that produced no summary.
-                        skip_node_end = (
-                            event_name == "summary"
-                            and isinstance(output, dict)
-                            and output.get("summary_text") is None
-                        )
-
-                        if not skip_node_end:
-                            await emit(
-                                NodeEndEvent(
-                                    node=event_name,
-                                    duration_ms=duration_ms,
-                                    output_summary=self._summarize_output(
-                                        event_name, output if isinstance(output, dict) else {}
-                                    ),
-                                )
+                        await emit(
+                            NodeEndEvent(
+                                node=event_name,
+                                duration_ms=duration_ms,
+                                output_summary=self._summarize_output(
+                                    event_name, output if isinstance(output, dict) else {}
+                                ),
                             )
+                        )
 
                         if isinstance(output, dict) and output:
                             yield output
@@ -595,9 +548,9 @@ class ObservableAgentService:
         if node_name == "intent_classifier":
             await emit(
                 IntentClassificationEvent(
-                    intent=output.get("intent", "question"),
+                    intent=output["intent"],
                     user_query=output.get("user_query", ""),
-                    reasoning=output.get("reasoning", "Heuristic classification"),
+                    reasoning=output["reasoning"],
                     confidence=output.get("confidence") or output.get("intent_confidence"),
                 )
             )
@@ -605,9 +558,9 @@ class ObservableAgentService:
             await emit(
                 QueryEvaluationEvent(
                     query="",  # Original query used as-is (no query rewriting)
-                    alpha=output.get("alpha", 0.25),
+                    alpha=output.get("alpha", DEFAULT_ALPHA),
                     query_analysis=output.get("query_analysis", ""),
-                    search_strategy=self._get_search_strategy(output.get("alpha", 0.25)),
+                    search_strategy=self._get_search_strategy(output.get("alpha", DEFAULT_ALPHA)),
                 )
             )
 
@@ -639,7 +592,7 @@ class ObservableAgentService:
                 )
 
         elif node_name == "quality_gate":
-            from core.config import DEFAULT_ALPHA, QUALITY_GATE_THRESHOLD
+            from core.config import QUALITY_GATE_THRESHOLD
 
             reason = output.get("quality_gate_reason", "")
             triggered = reason.startswith("RETRY")
@@ -724,7 +677,7 @@ class ObservableAgentService:
     def _summarize_output(self, node_name: str, output: Dict[str, Any]) -> str:
         """Generate a brief summary of node output."""
         if node_name == "query_evaluator":
-            return f"alpha={output.get('alpha', 0.25):.2f}"
+            return f"alpha={output.get('alpha', DEFAULT_ALPHA):.2f}"
         elif node_name == "retriever":
             docs = output.get("retrieved_documents", [])
             return f"{len(docs)} documents retrieved"
@@ -741,15 +694,9 @@ class ObservableAgentService:
                 return "Response generated"
             return ""
         elif node_name == "intent_classifier":
-            intent = output.get("intent", "unknown")
-            reasoning = output.get("reasoning", "Heuristic classification")
-            return f"Intent → {intent} ({reasoning})"
+            return f"Intent → {output.get('intent')} ({output.get('reasoning')})"
         elif node_name == "summary":
-            summary_text = output.get("summary_text")
-            message_count = output.get("message_count", 0)
-            if summary_text:
-                return f"{message_count} messages summarized"
-            return f"Summary skipped ({message_count} msgs)"
+            return f"{output.get('message_count', 0)} messages summarized"
         return ""
 
     async def cleanup(self):

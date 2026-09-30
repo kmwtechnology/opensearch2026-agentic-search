@@ -69,7 +69,6 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
         # Set per request by ObservableAgentService so sync nodes can emit events.
         self.emit_callback = None
         self.event_loop = None
-        self.event_queue = []
         self.reranker = None
         self.alpha_estimator_llm = None
 
@@ -136,10 +135,6 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
             return intent
         return "other"
 
-    def _route_after_summary(self, state: CustomAgentState) -> str:
-        """A summary turn goes straight to agent; anything else continues to retrieval."""
-        return "done" if state.get("intent") == "summary" else "continue"
-
     def _quality_gate_route(self, state: CustomAgentState) -> str:
         """Route after quality gate: retry retrieval or continue to agent."""
         # quality_gate_node sets quality_gate_status explicitly for this decision; routing
@@ -172,11 +167,7 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
             {"summary": "summary", "clarify": "agent", "other": "query_evaluator"},
         )
         workflow.add_edge("query_evaluator", "retriever")
-        workflow.add_conditional_edges(
-            "summary",
-            self._route_after_summary,
-            {"done": "agent", "continue": "retriever"},
-        )
+        workflow.add_edge("summary", "agent")
         workflow.add_edge("retriever", "reranker")
         workflow.add_edge("reranker", "quality_gate")
 
@@ -201,11 +192,7 @@ class EcommerceSearchAgent(PipelineNodesMixin, ConversationManagementMixin):
                 logger.warning(f"Error opening async pool: {e}")
 
         if self.checkpointer is None:
-            from checkpoints.checkpoint_optimizer import SelectiveJsonPlusSerializer
-
-            self.checkpointer = AsyncPostgresSaver(
-                self.async_pool, serde=SelectiveJsonPlusSerializer()
-            )
+            self.checkpointer = AsyncPostgresSaver(self.async_pool)
             if self.app is not None:
                 self.create_agent_graph()
 

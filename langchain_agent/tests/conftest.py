@@ -30,14 +30,11 @@ def bare_agent():
     agent.llm = None
     agent.embeddings = None
     agent.vector_store = None
-    agent.pool = None
     agent.async_pool = None
     agent.checkpointer = None
     agent.app = None
     agent.emit_callback = None
     agent.event_loop = None
-    agent.event_queue = []
-    agent.retriever = None
     agent.reranker = None
     agent.alpha_estimator_llm = None
     agent.judge = None

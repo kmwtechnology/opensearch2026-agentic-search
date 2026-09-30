@@ -3,15 +3,10 @@ WebSocket endpoint for real-time chat with agent observability.
 """
 
 import asyncio
-import sys
 import uuid
-from pathlib import Path
 from typing import Dict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-
-# Add parent directory to path for config import
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from api.middleware.origin_auth import verify_websocket_origin
 from api.schemas.events import AgentErrorEvent, BaseEvent, ConnectionEstablished

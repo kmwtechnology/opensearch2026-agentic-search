@@ -12,13 +12,6 @@ def _msgs(n=2):
 
 @pytest.mark.unit
 class TestSummaryNode:
-    def test_non_summary_intent_returns_none_text(self, bare_agent):
-        agent = bare_agent
-        msgs = _msgs(2)
-        result = agent.summary_node({"messages": msgs, "intent": "search"})
-        assert result["summary_text"] is None
-        assert result["message_count"] == 2
-
     def test_summary_intent_calls_summarize_messages(self, bare_agent):
         agent = bare_agent
         msgs = _msgs(3)
@@ -34,13 +27,6 @@ class TestSummaryNode:
         agent.summarize_messages = MagicMock(return_value="")
         result = agent.summary_node({"messages": msgs, "intent": "summary"})
         assert result["summary_text"] == "No additional context available for summary."
-
-    def test_message_count_always_correct(self, bare_agent):
-        agent = bare_agent
-        msgs = _msgs(3)
-        result = agent.summary_node({"messages": msgs, "intent": "follow_up"})
-        assert result["message_count"] == 3
-        assert result["summary_text"] is None
 
 
 @pytest.mark.unit

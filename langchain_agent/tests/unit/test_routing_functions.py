@@ -39,31 +39,6 @@ class TestRouteAfterIntent:
 
 
 # ---------------------------------------------------------------------------
-# _route_after_summary
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestRouteAfterSummary:
-    @pytest.fixture(autouse=True)
-    def _setup(self, bare_agent):
-        self.agent = bare_agent
-
-    def test_summary_intent_returns_done(self):
-        state = {"intent": "summary", "messages": []}
-        assert self.agent._route_after_summary(state) == "done"
-
-    def test_non_summary_intent_returns_continue(self):
-        for intent in ("search", "comparison", "follow_up"):
-            state = {"intent": intent, "messages": []}
-            assert self.agent._route_after_summary(state) == "continue"
-
-    def test_missing_intent_returns_continue(self):
-        state = {"messages": []}
-        assert self.agent._route_after_summary(state) == "continue"
-
-
-# ---------------------------------------------------------------------------
 # _quality_gate_route
 # ---------------------------------------------------------------------------
 

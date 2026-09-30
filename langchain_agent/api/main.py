@@ -15,12 +15,8 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-
-# Add parent directory to path for config import
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

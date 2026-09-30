@@ -49,7 +49,6 @@ COPY langchain_agent/pipeline/ ./pipeline/
 COPY langchain_agent/retrieval/ ./retrieval/
 COPY langchain_agent/quality/ ./quality/
 COPY langchain_agent/observability/ ./observability/
-COPY langchain_agent/checkpoints/ ./checkpoints/
 COPY langchain_agent/tools/ ./tools/
 # scripts/ is deliberately NOT copied: those are local entry points invoked from
 # the Makefile, never imported at runtime.
