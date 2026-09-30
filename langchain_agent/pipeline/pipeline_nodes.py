@@ -47,6 +47,7 @@ from pipeline import enrichment_events
 from quality.enrichment_value_judge import EnrichmentValueJudge
 from quality.judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
 from retrieval.attribute_discovery import CANONICALS_BY_TYPE, single_term_classify
+from retrieval.vector_store import collapse_by_product
 
 logger = logging.getLogger(__name__)
 
@@ -1680,20 +1681,19 @@ Original query: {query}
                 k,
             )
 
-        retriever = self.vector_store.as_retriever(
-            search_kwargs={
-                "k": k,
-                "fetch_k": fetch_k,
-                "alpha": alpha,
-                "filters": attribute_filters,
-                "capture_body": hybrid_capture,
-            },
-        )
-
         self._emit_progress("vector_search", "Searching vector index...")
 
         retrieve_start = time.time()
-        results = retriever.invoke(query)
+        results = collapse_by_product(
+            self.vector_store.hybrid_search(
+                query,
+                k=k,
+                fetch_k=fetch_k,
+                alpha=alpha,
+                filters=attribute_filters,
+                capture_body=hybrid_capture,
+            )
+        )
         retriever_latency_ms = (time.time() - retrieve_start) * 1000.0
         logger.info(f"Retriever: hybrid={len(results)} docs ({retriever_latency_ms:.0f}ms)")
 
@@ -1715,16 +1715,16 @@ Original query: {query}
                     len(attribute_filters),
                     len(hard_filters),
                 )
-                relaxed_retriever = self.vector_store.as_retriever(
-                    search_kwargs={
-                        "k": RERANKER_FETCH_K,
-                        "fetch_k": RETRIEVER_FETCH_K,
-                        "alpha": alpha,
-                        "filters": hard_filters or None,
-                        "capture_body": hybrid_capture,
-                    },
+                relaxed_results = collapse_by_product(
+                    self.vector_store.hybrid_search(
+                        query,
+                        k=RERANKER_FETCH_K,
+                        fetch_k=RETRIEVER_FETCH_K,
+                        alpha=alpha,
+                        filters=hard_filters or None,
+                        capture_body=hybrid_capture,
+                    )
                 )
-                relaxed_results = relaxed_retriever.invoke(query)
                 if len(relaxed_results) > len(results):
                     results = relaxed_results
                     attribute_filters = hard_filters or None
@@ -1816,7 +1816,7 @@ Original query: {query}
         rerank_start = time.time()
         logger.info(
             f"Reranker: processing {len(retrieved_documents)} candidates, "
-            f"batch_size={self.reranker.batch_size}, device={self.reranker.device}"
+            f"device={self.reranker.device}"
         )
         self._emit_event_from_sync(
             RerankerProgressEvent(

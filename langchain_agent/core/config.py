@@ -107,14 +107,8 @@ EMBEDDING_CACHE_MAX_SIZE = int(os.getenv("EMBEDDING_CACHE_MAX_SIZE", 100))
 # RETRIEVER CONFIGURATION
 # ============================================================================
 
-# Documents returned by a retriever built without explicit search_kwargs.
-RETRIEVER_K = 10
-
 # Candidates per method (kNN and BM25) fetched for hybrid search.
 RETRIEVER_FETCH_K = 40
-
-# Hybrid weight when none is given: 0.0 = pure BM25, 1.0 = pure vector.
-RETRIEVER_ALPHA = 0.25
 
 # Max wait for the pipeline's hidden LLM calls (alpha estimation, attribute extraction,
 # query expansion): they have no timeout of their own and one was measured hanging ~18.7s.

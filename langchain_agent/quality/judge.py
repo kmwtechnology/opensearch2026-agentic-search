@@ -15,7 +15,7 @@ import logging
 import random
 import time
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import List, Literal
 
 from langchain_core.documents import Document
 from pydantic import BaseModel, Field, field_validator
@@ -218,10 +218,8 @@ Provide a 1-2 sentence justification for the pairwise verdict."""
 class LLMJudge:
     """Pairwise + absolute LLM-as-judge for the Generation stage."""
 
-    def __init__(self, model_name: Optional[str] = None):
-        from core.config import JUDGE_MODEL
-
-        self.model_name = model_name or JUDGE_MODEL
+    def __init__(self, model_name: str):
+        self.model_name = model_name
         self.llm = build_chat_model(self.model_name, temperature=0, max_tokens=1024)
         self.structured_llm = self.llm.with_structured_output(JudgmentResult)
         logger.info("LLMJudge loaded: model=%s", self.model_name)
@@ -232,13 +230,10 @@ class LLMJudge:
         documents: List[Document],
         llm_response: str,
         baseline_response: str,
-        *,
-        seed: Optional[int] = None,
     ) -> JudgmentResult:
         """Score the LLM response against the baseline. The A/B assignment is random per call;
         the verdict is reported in terms of the LLM response, whichever label it wore."""
-        rng = random.Random(seed) if seed is not None else random
-        a_is_llm = rng.random() < 0.5
+        a_is_llm = random.random() < 0.5
         response_a = llm_response if a_is_llm else baseline_response
         response_b = baseline_response if a_is_llm else llm_response
 

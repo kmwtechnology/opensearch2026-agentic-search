@@ -127,12 +127,7 @@ class TestCrossEncoderReranker:
         # Should have called predict() at least once (for warmup)
         assert reranker.model.predict.called
 
-    def test_attributes_required_by_main_py(self):
+    def test_attributes_logged_by_reranker_node(self):
         reranker = _make_cross_reranker()
-        # reranker_node in main.py uses these attributes for logging
-        assert hasattr(reranker, "batch_size")
-        assert hasattr(reranker, "device")
-        assert hasattr(reranker, "model_name")
-        assert reranker.batch_size == 32
         assert reranker.device == "cpu"
         assert reranker.model_name == "cross-encoder/ms-marco-MiniLM-L-12-v2"

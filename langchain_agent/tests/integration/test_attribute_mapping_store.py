@@ -48,15 +48,14 @@ class TestBasicReadWrite:
         lookup = store.get_lookup_table("color")
         assert lookup.get("jet black") == "black"
 
-    def test_get_mapping_single_lookup(self, store):
+    def test_single_lookup(self, store):
         store.add_mapping("waterproof", "weatherproof", "waterproof", source="test")
-        assert store.get_mapping("waterproof", "weatherproof") == "waterproof"
-        assert store.get_mapping("waterproof", "nonexistent") is None
+        assert store.get_lookup_table("waterproof").get("weatherproof") == "waterproof"
+        assert store.get_lookup_table("waterproof").get("nonexistent") is None
 
     def test_variant_lookup_is_case_insensitive(self, store):
         store.add_mapping("color", "Jet Black", "black", source="test")
-        assert store.get_mapping("color", "JET BLACK") == "black"
-        assert store.get_mapping("color", "jet black") == "black"
+        assert store.get_lookup_table("color").get("jet black") == "black"
 
     def test_unknown_attribute_type_returns_empty(self, store):
         assert store.get_lookup_table("nonexistent") == {}
@@ -78,7 +77,7 @@ class TestIdempotency:
     def test_remapping_to_different_canonical_updates_in_place(self, store):
         store.add_mapping("color", "jet black", "black", source="test")
         store.add_mapping("color", "jet black", "gray", source="agent")
-        assert store.get_mapping("color", "jet black") == "gray"
+        assert store.get_lookup_table("color").get("jet black") == "gray"
 
         # only one doc should exist for this variant, not two
         lookup = store.get_lookup_table("color")

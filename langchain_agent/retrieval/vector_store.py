@@ -1,14 +1,8 @@
-"""
-OpenSearch-based vector store with hybrid search capabilities.
-
-Provides:
-- OpenSearchVectorStore: Main vector store with native hybrid search
-- OpenSearchRetriever: LangChain-compatible retriever interface
-"""
+"""OpenSearch vector store: kNN, BM25 and native hybrid search over the products index."""
 
 import logging
 import threading
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 
 import urllib3
 from langchain_core.documents import Document
@@ -27,9 +21,6 @@ from core.config import (
     OPENSEARCH_USE_SSL,
     OPENSEARCH_USER,
     OPENSEARCH_VERIFY_CERTS,
-    RETRIEVER_ALPHA,
-    RETRIEVER_FETCH_K,
-    RETRIEVER_K,
 )
 from core.exceptions import (
     EmbeddingError,
@@ -333,27 +324,6 @@ class OpenSearchVectorStore:
         self._embedding_cache.set(query, embedding)
         return embedding
 
-    def as_retriever(
-        self,
-        search_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> "OpenSearchRetriever":
-        """Return a retriever interface with optional attribute filters."""
-        if search_kwargs is None:
-            search_kwargs = {
-                "k": RETRIEVER_K,
-                "fetch_k": RETRIEVER_FETCH_K,
-                "alpha": RETRIEVER_ALPHA,
-            }
-
-        return OpenSearchRetriever(
-            self,
-            k=search_kwargs.get("k", RETRIEVER_K),
-            fetch_k=search_kwargs.get("fetch_k", RETRIEVER_FETCH_K),
-            alpha=search_kwargs.get("alpha", RETRIEVER_ALPHA),
-            filters=search_kwargs.get("filters"),
-            capture_body=search_kwargs.get("capture_body"),
-        )
-
     @staticmethod
     def _truncate_query_terms(query: str, max_terms: int = 40) -> str:
         """Cap a query at `max_terms` terms to stay under Lucene's 1024-clause limit."""
@@ -443,7 +413,9 @@ class OpenSearchVectorStore:
         filters: Optional[List[Dict[str, Any]]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
-        """Hybrid kNN + BM25 search. alpha 0.0 is pure BM25, 1.0 pure vector.
+        """Hybrid kNN + BM25 search. alpha 0.0 is pure BM25, 1.0 pure vector; anything
+        between runs the native hybrid query, which the search pipeline fuses at fixed
+        equal weights.
 
         `filters` are OpenSearch clauses, implicitly AND'd.
         """
@@ -465,7 +437,7 @@ class OpenSearchVectorStore:
             query_embedding = self._get_embedding(query)
 
             return self._hybrid_search_native(
-                query, query_embedding, k, fetch_k, alpha, filters, capture_body=capture_body
+                query, query_embedding, k, fetch_k, filters, capture_body=capture_body
             )
 
         except EmbeddingError:
@@ -513,7 +485,6 @@ class OpenSearchVectorStore:
         query_embedding: List[float],
         k: int,
         fetch_k: int,
-        alpha: float,
         filters: Optional[List[Dict[str, Any]]] = None,
         capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
@@ -586,19 +557,17 @@ class OpenSearchVectorStore:
             return []
 
     @staticmethod
-    def _hit_to_document(hit: dict, retrieval_score: Optional[float] = None) -> Document:
-        """Convert an OpenSearch hit to a Document; ``retrieval_score`` overrides ``hit["_score"]``."""
+    def _hit_to_document(hit: dict) -> Document:
+        """Convert an OpenSearch hit to a Document."""
         src = hit["_source"]
-        score = retrieval_score if retrieval_score is not None else hit.get("_score")
+        score = hit.get("_score")
         # The dump stores the ASIN as the document _id and never writes it into _source
         # as product_id, so _id is the source of truth.
         product_id = hit.get("_id") or src.get("id") or src.get("product_id", "")
         metadata = {
             "source": src.get("source", ""),
             "title": src.get("title", ""),
-            "doc_type": src.get("doc_type", ""),
             "url": src.get("url", ""),
-            "collection_id": src.get("collection_id", ""),
             "product_id": product_id,
             "product_brand": src.get("product_brand", ""),
             "product_color": src.get("product_color", ""),
@@ -610,67 +579,14 @@ class OpenSearchVectorStore:
         return Document(page_content=src.get("chunk_text", ""), metadata=metadata)
 
 
-class OpenSearchRetriever:
-    """Hybrid retriever over OpenSearchVectorStore (kNN + BM25; alpha 0 is pure BM25, 1 pure
-    vector).
-
-    `fetch_k` is the per-method candidate pool, `k` the count returned; `filters` are
-    OpenSearch clauses, AND'd. Chunks of one product collapse to the top-scoring one.
-    """
-
-    def __init__(
-        self,
-        vector_store: OpenSearchVectorStore,
-        k: int = 4,
-        fetch_k: int = 20,
-        alpha: float = 0.5,
-        filters: Optional[List[Dict[str, Any]]] = None,
-        capture_body: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        self.vector_store = vector_store
-        self.k = k
-        self.fetch_k = fetch_k
-        self.alpha = alpha
-        self.filters = filters
-        # Filled in place by invoke() with the DSL body sent to OpenSearch.
-        self.capture_body = capture_body
-
-    @staticmethod
-    def collapse_by_document(
-        documents: List[Document],
-        collapse_field: str = "product_id",
-    ) -> List[Document]:
-        """Keep the first (highest-ranked) document per `collapse_field` value; documents without one pass through."""
-        seen_ids: set = set()
-        collapsed: List[Document] = []
-        for doc in documents:
-            doc_id = doc.metadata.get(collapse_field)
-            if not doc_id or doc_id not in seen_ids:
-                if doc_id:
-                    seen_ids.add(doc_id)
-                collapsed.append(doc)
-        return collapsed
-
-    def invoke(
-        self,
-        input_dict: Union[Dict[str, Any], str],
-    ) -> List[Document]:
-        """Retrieve for a query string or a dict with an 'input' or 'query' key."""
-        if isinstance(input_dict, dict):
-            query = input_dict.get("input") or input_dict.get("query", "")
-        else:
-            query = str(input_dict)
-
-        documents = self.vector_store.hybrid_search(
-            query,
-            k=self.k,
-            fetch_k=self.fetch_k,
-            alpha=self.alpha,
-            filters=self.filters,
-            capture_body=self.capture_body,
-        )
-
-        if self.vector_store.collection_id == "esci_products":
-            documents = self.collapse_by_document(documents, "product_id")
-
-        return documents
+def collapse_by_product(documents: List[Document]) -> List[Document]:
+    """Keep the first (highest-ranked) document per product_id; documents without one pass through."""
+    seen_ids: set = set()
+    collapsed: List[Document] = []
+    for doc in documents:
+        doc_id = doc.metadata.get("product_id")
+        if not doc_id or doc_id not in seen_ids:
+            if doc_id:
+                seen_ids.add(doc_id)
+            collapsed.append(doc)
+    return collapsed

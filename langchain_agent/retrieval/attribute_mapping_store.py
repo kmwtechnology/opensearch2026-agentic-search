@@ -1,7 +1,7 @@
 """OpenSearch-backed attribute mapping store.
 
 Centralized, mutable source of truth for attribute variant→canonical mappings.
-Replaces bundled JSON files (color_mappings.json); allows agent-driven taxonomy growth.
+The agent grows and corrects it at runtime.
 """
 
 import threading
@@ -43,7 +43,7 @@ INDEX_MAPPING = {
             "attribute_type": {"type": "keyword"},
             "variant": {"type": "keyword"},
             "canonical": {"type": "keyword"},
-            "source": {"type": "keyword"},  # "seed", "migrated", "agent"
+            "source": {"type": "keyword"},  # "seed", "agent"
             "added_at": {"type": "date"},
         }
     }
@@ -121,7 +121,6 @@ class AttributeMappingStore:
         variant: str,
         canonical: str,
         source: str = "agent",
-        refresh: bool = True,
     ) -> bool:
         """Add or update a variant→canonical mapping.
 
@@ -129,11 +128,7 @@ class AttributeMappingStore:
             attribute_type: e.g. "color", "waterproof"
             variant: the variant term (e.g. "vegan leather")
             canonical: the canonical value it maps to (e.g. "leather")
-            source: origin of the mapping ("seed", "migrated", "agent")
-            refresh: force the write to be immediately searchable. Keep True
-                for single/live-agent writes (the flywheel needs read-your-
-                write consistency); bulk callers pass False per-call and
-                refresh once at the end for efficiency.
+            source: origin of the mapping ("seed", "agent")
 
         Returns:
             True if newly added, False if already existed with same canonical
@@ -142,8 +137,7 @@ class AttributeMappingStore:
 
         doc_id = f"{attribute_type}#{variant.lower()}"
 
-        # Idempotency: fetch by deterministic id rather than searching, so
-        # bulk callers (refresh=False) see their own just-written docs too.
+        # Idempotency: fetch by deterministic id rather than searching.
         try:
             existing_doc = self.client.get(index=INDEX_NAME, id=doc_id)["_source"]
             if existing_doc["canonical"] == canonical:
@@ -162,7 +156,7 @@ class AttributeMappingStore:
                 "source": source,
                 "added_at": datetime.utcnow().isoformat(),
             },
-            refresh=refresh,
+            refresh=True,  # the flywheel needs read-your-write consistency
         )
 
         # Invalidate the cached lookup table for this attribute type so the
@@ -174,16 +168,3 @@ class AttributeMappingStore:
             _lookup_cache.pop((INDEX_NAME, attribute_type), None)
 
         return is_new
-
-    def get_mapping(self, attribute_type: str, variant: str) -> Optional[str]:
-        """Look up a single variant's canonical value.
-
-        Args:
-            attribute_type: e.g. "color", "waterproof"
-            variant: the variant term
-
-        Returns:
-            Canonical value if found, None otherwise
-        """
-        lookup = self.get_lookup_table(attribute_type)
-        return lookup.get(variant.lower())

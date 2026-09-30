@@ -89,8 +89,3 @@ class ScopedRetagTrigger:
             docs_scanned=result.candidates,
             duration_seconds=time.monotonic() - start,
         )
-
-
-def build_reindex_trigger() -> ScopedRetagTrigger:
-    """Construct the reindex trigger; ``scoped`` is the only mode there is."""
-    return ScopedRetagTrigger()

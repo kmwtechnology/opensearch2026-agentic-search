@@ -18,15 +18,6 @@ class CrossEncoderReranker:
     """
     Cross-encoder reranker using sentence-transformers for fast local document scoring.
 
-    Replaces LLM-based reranking (~500ms per batch) with a specialized cross-encoder model.
-    Cross-encoders are designed for pair-wise relevance scoring, unlike general-purpose LLMs.
-
-    ## Why Cross-Encoders?
-
-    Cross-encoders directly score (query, document) pairs, capturing interaction between
-    query and document tokens. This is more accurate and faster than LLM reranking for
-    classification tasks like relevance scoring.
-
     ## Scoring Approach
 
     Uses `sentence-transformers.CrossEncoder` to score (query, document) pairs:
@@ -42,36 +33,9 @@ class CrossEncoderReranker:
       ~10ms/batch figure this docstring and several other docs previously claimed
       (that number doesn't match observed behavior at real batch size / real hardware;
       don't propagate it further without re-measuring).
-    - Quality: Comparable or better than an LLM-as-reranker on ESCI benchmarks
-      (cross-encoders are rank-trained on MS MARCO)
     - Memory: ~200MB model weights (baked into the Docker image at build time, not
       downloaded at runtime — see the HF_HOME/HF_HUB_OFFLINE comments in the Dockerfile)
 
-    ## Parameters
-
-    Args:
-        model_name: Cross-encoder model from sentence-transformers Hub.
-                    Default: "cross-encoder/ms-marco-MiniLM-L-12-v2"
-                    Alternatives: "ms-marco-MiniLM-L-6-v2" (6M params, faster),
-                                  "qnli-distilroberta-base" (lighter)
-
-    ## Usage Example
-
-        reranker = CrossEncoderReranker()
-        reranker.warmup()
-
-        documents = [Document(page_content="Sony headphones...", metadata={...}), ...]
-        query = "best wireless headphones under 200 dollars"
-
-        scored = reranker.score_documents(query, documents)
-        for doc, score in scored:
-            print(f"{score:.2f}: {doc.metadata['title']}")
-
-    ## Extension Points
-
-    **Switch to a different cross-encoder**: Update `model_name` in `config.py`.
-
-    **Adjust device**: Change `self.device` to "cuda" for GPU acceleration (if available).
     """
 
     def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L-12-v2"):
@@ -79,7 +43,6 @@ class CrossEncoderReranker:
 
         self.model_name = model_name
         self.device = "cpu"
-        self.batch_size = 32
 
         self.model = CrossEncoder(model_name, device=self.device)
         logger.info(f"CrossEncoderReranker loaded: model={model_name}, device={self.device}")
@@ -100,7 +63,7 @@ class CrossEncoderReranker:
         return elapsed
 
     def score_documents(
-        self, query: str, documents: List[Document], batch_size: int = None
+        self, query: str, documents: List[Document]
     ) -> List[Tuple[Document, float]]:
         """
         Score documents by relevance to query using cross-encoder pairwise scoring.
@@ -108,8 +71,6 @@ class CrossEncoderReranker:
         Args:
             query: The search query string
             documents: List of LangChain Document objects to score
-            batch_size: Unused (kept for call-site compatibility).
-                        All documents are scored in a single predict() call.
 
         Returns:
             List of (Document, score) tuples sorted by score descending.
@@ -121,18 +82,16 @@ class CrossEncoderReranker:
         if not documents:
             return []
 
-        import time as time_module
-
-        start_time = time_module.time()
+        start_time = time.time()
 
         pairs = [(query, doc.page_content[:500]) for doc in documents]
-        prep_time = time_module.time() - start_time
+        prep_time = time.time() - start_time
         logger.info(f"CrossEncoder: prep took {prep_time*1000:.1f}ms")
 
         try:
-            predict_start = time_module.time()
+            predict_start = time.time()
             raw_scores = self.model.predict(pairs)
-            predict_time = time_module.time() - predict_start
+            predict_time = time.time() - predict_start
             logger.info(
                 f"CrossEncoder: predict() took {predict_time*1000:.1f}ms for {len(documents)} docs"
             )

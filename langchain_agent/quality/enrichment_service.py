@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from pipeline.reindex_trigger import ScopedRetagTrigger, build_reindex_trigger
+from pipeline.reindex_trigger import ScopedRetagTrigger
 from retrieval.attribute_discovery import CANONICALS_BY_TYPE, single_term_classify
 from retrieval.attribute_mapping_store import AttributeMappingStore
 
@@ -124,7 +124,7 @@ def enrich_attribute(
             "Enrichment: mapped '%s' (%s) -> '%s'", variant_lower, attribute_type, canonical
         )
 
-    outcome = (trigger or build_reindex_trigger()).trigger(attribute_type, [variant_lower])
+    outcome = (trigger or ScopedRetagTrigger()).trigger(attribute_type, [variant_lower])
 
     return EnrichmentResult(
         success=True,

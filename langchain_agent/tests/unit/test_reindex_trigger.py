@@ -1,19 +1,10 @@
 """
-Unit tests for reindex_trigger — the scoped re-tag trigger and the factory.
+Unit tests for reindex_trigger — the scoped re-tag trigger.
 """
 
 from unittest.mock import patch
 
-from pipeline.reindex_trigger import (
-    _LOCAL_REINDEX_LOCK,
-    ScopedRetagTrigger,
-    build_reindex_trigger,
-)
-
-
-class TestBuildReindexTrigger:
-    def test_returns_scoped(self):
-        assert isinstance(build_reindex_trigger(), ScopedRetagTrigger)
+from pipeline.reindex_trigger import _LOCAL_REINDEX_LOCK, ScopedRetagTrigger
 
 
 class TestScopedRetagTrigger:

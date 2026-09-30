@@ -106,8 +106,8 @@ settings, `PORT`, the embedding cache, reranker warm-up, the quality gate
 (`ENABLE_QUALITY_GATE`, `QUALITY_GATE_THRESHOLD`), the query evaluator's
 temperature/tokens/timeout, logging, and `ENABLE_ENRICHMENT_TOOL`.
 
-Retrieval tuning is **not** environment-configurable — `RETRIEVER_K`,
-`RETRIEVER_FETCH_K`, `RETRIEVER_ALPHA`, `RERANKER_FETCH_K`, `RERANKER_TOP_K`,
+Retrieval tuning is **not** environment-configurable — 
+`RETRIEVER_FETCH_K`, `RERANKER_FETCH_K`, `RERANKER_TOP_K`,
 `VECTOR_DIMENSION` and friends are Python literals in `core/config.py`; a
 matching `.env` line is ignored.
 

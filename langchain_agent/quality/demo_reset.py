@@ -70,15 +70,12 @@ def _reset_color_demo() -> Dict[str, Any]:
     logger.info("Demo reset: re-tagged %s tan-listed products", updated)
 
     return {
-        "mode": "fast",
         "restored": {
             "attribute_type": DEMO_ATTRIBUTE_TYPE,
             "variant": DEMO_VARIANT,
             "canonical": DEMO_BROKEN_CANONICAL,
         },
         "products_retagged": updated,
-        "reindex_success": True,
-        "error": None,
     }
 
 

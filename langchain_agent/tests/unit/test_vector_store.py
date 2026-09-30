@@ -6,9 +6,9 @@ import pytest
 from langchain_core.documents import Document
 
 from retrieval.vector_store import (
-    OpenSearchRetriever,
     OpenSearchVectorStore,
     _scrub_body_for_display,
+    collapse_by_product,
 )
 
 # ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ class TestCollapseByDocument:
 
     def test_deduplicates_by_product_id(self):
         docs = [_make_doc("A"), _make_doc("A"), _make_doc("B")]
-        result = OpenSearchRetriever.collapse_by_document(docs)
+        result = collapse_by_product(docs)
         assert len(result) == 2
         assert result[0].metadata["product_id"] == "A"
         assert result[1].metadata["product_id"] == "B"
@@ -55,33 +55,22 @@ class TestCollapseByDocument:
     def test_keeps_first_occurrence(self):
         doc_high = _make_doc("A", score=0.9)
         doc_low = _make_doc("A", score=0.5)
-        result = OpenSearchRetriever.collapse_by_document([doc_high, doc_low])
+        result = collapse_by_product([doc_high, doc_low])
         assert len(result) == 1
         assert result[0].metadata["retrieval_score"] == 0.9
 
     def test_docs_without_product_id_pass_through(self):
         doc_no_id = Document(page_content="no id", metadata={"title": "x"})
         doc_with_id = _make_doc("A")
-        result = OpenSearchRetriever.collapse_by_document([doc_no_id, doc_with_id])
+        result = collapse_by_product([doc_no_id, doc_with_id])
         assert len(result) == 2
 
     def test_empty_list_returns_empty(self):
-        assert OpenSearchRetriever.collapse_by_document([]) == []
-
-    def test_different_collapse_field(self):
-        docs = [
-            Document(page_content="a", metadata={"source": "s1"}),
-            Document(page_content="b", metadata={"source": "s1"}),
-            Document(page_content="c", metadata={"source": "s2"}),
-        ]
-        result = OpenSearchRetriever.collapse_by_document(docs, collapse_field="source")
-        assert len(result) == 2
-        assert result[0].metadata["source"] == "s1"
-        assert result[1].metadata["source"] == "s2"
+        assert collapse_by_product([]) == []
 
     def test_preserves_order(self):
         docs = [_make_doc("A"), _make_doc("B"), _make_doc("A"), _make_doc("C")]
-        result = OpenSearchRetriever.collapse_by_document(docs)
+        result = collapse_by_product(docs)
         assert [d.metadata["product_id"] for d in result] == ["A", "B", "C"]
 
 
@@ -117,7 +106,6 @@ class TestHitToDocument:
         assert doc.metadata["product_id"] == "ASIN123"
         assert doc.metadata["product_brand"] == "BrandX"
         assert doc.metadata["product_color"] == "blue"
-        assert doc.metadata["collection_id"] == "esci_products"
 
     def test_includes_product_color_primary_when_present(self):
         hit = self._make_hit(product_color_primary="blue")
@@ -150,11 +138,6 @@ class TestHitToDocument:
         doc = OpenSearchVectorStore._hit_to_document(hit)
         assert doc.metadata["retrieval_score"] == pytest.approx(0.42)
 
-    def test_retrieval_score_override(self):
-        hit = self._make_hit(score=0.42)
-        doc = OpenSearchVectorStore._hit_to_document(hit, retrieval_score=0.99)
-        assert doc.metadata["retrieval_score"] == pytest.approx(0.99)
-
     def test_missing_fields_default_to_empty_string(self):
         hit = {"_source": {"chunk_text": "text"}, "_score": 0.5}
         doc = OpenSearchVectorStore._hit_to_document(hit)
@@ -162,9 +145,9 @@ class TestHitToDocument:
         assert doc.metadata["source"] == ""
         assert doc.metadata["product_id"] == ""
 
-    def test_no_score_when_both_none(self):
+    def test_no_score_when_hit_has_none(self):
         hit = {"_source": {"chunk_text": "text"}}  # no _score key
-        doc = OpenSearchVectorStore._hit_to_document(hit, retrieval_score=None)
+        doc = OpenSearchVectorStore._hit_to_document(hit)
         assert "retrieval_score" not in doc.metadata
 
 
@@ -334,47 +317,6 @@ class TestTextSearch:
 
 
 # ---------------------------------------------------------------------------
-# TestOpenSearchRetrieverInvoke
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestOpenSearchRetrieverInvoke:
-    def _make_retriever(self):
-        store, mock_client, _ = _make_full_store()
-        mock_client.search.return_value = _search_resp(_hit("p1"), _hit("p2"))
-        retriever = OpenSearchRetriever(
-            vector_store=store,
-            k=2,
-            fetch_k=10,
-            alpha=0.5,
-        )
-        return retriever, mock_client
-
-    def test_invoke_with_dict_input(self):
-        retriever, _ = self._make_retriever()
-        results = retriever.invoke({"input": "query"})
-        assert len(results) > 0
-
-    def test_invoke_with_string_input(self):
-        retriever, _ = self._make_retriever()
-        results = retriever.invoke("headphones")
-        assert len(results) > 0
-
-    def test_collapses_duplicates_for_esci(self):
-        store, mock_client, _ = _make_full_store()
-        # Two hits with same product_id → should collapse to 1
-        mock_client.search.side_effect = [
-            _search_resp(_hit("p1", 0.9), _hit("p1", 0.7)),
-            _search_resp(),
-        ]
-        retriever = OpenSearchRetriever(vector_store=store, k=4, fetch_k=10, alpha=0.5)
-        results = retriever.invoke("query")
-        assert all(r.metadata["product_id"] == "p1" for r in results)
-        assert len(results) == 1
-
-
-# ---------------------------------------------------------------------------
 # TestScrubBodyForDisplay
 # ---------------------------------------------------------------------------
 
@@ -461,7 +403,6 @@ class TestCaptureBody:
             query_embedding=[0.42] * 768,
             k=4,
             fetch_k=20,
-            alpha=0.5,
             capture_body=capture,
         )
 
